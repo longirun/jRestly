@@ -10,6 +10,9 @@ public interface TestController {
     @Get(path = "/api/items/${id}")
     TestDto getItem(@PathVariable(name = "id") Long id);
 
+    @Get(path = "/api/items/${slug}")
+    TestDto getItemBySlug(@PathVariable(name = "slug") String slug);
+
     @Get(path = "/api/items")
     List<TestDto> getItems(@RequestParam(name = "page") Integer page);
 

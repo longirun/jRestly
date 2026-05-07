@@ -110,4 +110,19 @@ class GetMethodTest extends BaseWireMockTest {
 
         assertNotNull(result);
     }
+
+    @Test
+    @DisplayName("GET с @PathVariable кодирует спецсимволы в URL")
+    void getWithEncodedPathVariable() {
+        stubFor(get(urlEqualTo("/api/items/hello%20world"))
+                .willReturn(aResponse()
+                        .withStatus(200)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody("{\"id\":1,\"name\":\"encoded\",\"description\":\"desc\"}")));
+
+        TestDto result = controller.getItemBySlug("hello world");
+
+        assertNotNull(result);
+        assertEquals("encoded", result.name());
+    }
 }

@@ -40,6 +40,7 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Parameter;
 import java.lang.reflect.Type;
+import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -151,7 +152,8 @@ public class HttpTemplateBuilder {
                         ? parameters[i].getName()
                         : pathAnnotation.name();
 
-                path = StrSubstitutor.replace(path, Map.of(name, args[i].toString()));
+                String encodedValue = URLEncoder.encode(args[i].toString(), StandardCharsets.UTF_8).replace("+", "%20");
+                path = StrSubstitutor.replace(path, Map.of(name, encodedValue));
             }
         }
 
