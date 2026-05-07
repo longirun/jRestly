@@ -33,7 +33,6 @@ import ru.jrestly.annotation.RequestDefaultParam;
 import ru.jrestly.annotation.RequestHeader;
 import ru.jrestly.annotation.RequestParam;
 import ru.jrestly.annotation.SetAuthDetails;
-import ru.jrestly.util.Mapper;
 
 import java.io.File;
 import java.io.UnsupportedEncodingException;
@@ -72,6 +71,7 @@ public class HttpTemplateBuilder {
 
         result.setLogger(LogManager.getLogger(controller));
         result.setModuleInfo(moduleInfo);
+        result.setObjectMapper(moduleInfo.getObjectMapper());
 
         result.setHttpClient(httpClient);
         result.setUrl(createUrl());
@@ -109,6 +109,7 @@ public class HttpTemplateBuilder {
         result.setLogger(oldTemplate.getLogger());
         result.setHttpClient(oldTemplate.getHttpClient());
         result.setModuleInfo(moduleInfo);
+        result.setObjectMapper(moduleInfo.getObjectMapper());
         result.setUrl(redirectUri);
         result.setHttpMethod(HttpMethod.GET);
         result.setContentType(ContentType.WILDCARD);
@@ -320,7 +321,7 @@ public class HttpTemplateBuilder {
 
         String stringifiedBody = body instanceof String
                 ? (String) body
-                : Mapper.getMapper().writeValueAsString(body);
+                : moduleInfo.getObjectMapper().writeValueAsString(body);
 
         StringEntity entity = new StringEntity(stringifiedBody, StandardCharsets.UTF_8);
         entity.setContentType(contentType.getMimeType());

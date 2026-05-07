@@ -1,5 +1,6 @@
 package ru.jrestly;
 
+import org.apache.http.client.config.RequestConfig;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClients;
 import org.apache.logging.log4j.LogManager;
@@ -31,14 +32,25 @@ public abstract class AbstractHttpClient {
         createShutdownHook();
     }
 
-    protected abstract ClassLoader getClassLoader();
-    protected abstract void login();
+    protected ClassLoader getClassLoader() {
+        return getClass().getClassLoader();
+    }
+
+    protected void login() {
+    }
 
     protected void createConnection() {
+        RequestConfig config = RequestConfig.custom()
+                .setConnectTimeout(moduleInfo.getConnectTimeout())
+                .setSocketTimeout(moduleInfo.getSocketTimeout())
+                .setConnectionRequestTimeout(moduleInfo.getConnectionRequestTimeout())
+                .build();
+
         this.httpClient = HttpClients.custom()
                 .setDefaultCookieStore(null)
                 .disableRedirectHandling()
                 .disableAuthCaching()
+                .setDefaultRequestConfig(config)
                 .build();
     }
 
@@ -56,6 +68,11 @@ public abstract class AbstractHttpClient {
                 logger.error("Failed to close http connection", e);
             }
         }
+    }
+
+    @SuppressWarnings("unchecked")
+    public <T> T get(Class<T> controllerClass) {
+        return (T) controllers.computeIfAbsent(controllerClass, this::createController);
     }
 
     protected Proxy createController(Class<?> classInterface) {

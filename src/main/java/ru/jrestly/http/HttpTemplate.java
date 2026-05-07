@@ -1,6 +1,7 @@
 package ru.jrestly.http;
 
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.apache.commons.lang3.tuple.Pair;
@@ -24,7 +25,6 @@ import org.apache.http.protocol.HTTP;
 import org.apache.logging.log4j.Logger;
 import ru.jrestly.ModuleInfo;
 import ru.jrestly.util.IO;
-import ru.jrestly.util.Mapper;
 
 import java.io.IOException;
 import java.net.URI;
@@ -44,6 +44,7 @@ public class HttpTemplate {
 
     private CloseableHttpClient httpClient;
     private ModuleInfo moduleInfo;
+    private ObjectMapper objectMapper;
 
     private String url;
     private HttpMethod httpMethod;
@@ -134,12 +135,12 @@ public class HttpTemplate {
             }
 
             if (onErrorParser != null && onErrorParser.canParse(response.getStatusLine().getStatusCode())) {
-                Object errorObject = Mapper.getMapper().readValue(payload, onErrorParser.getErrorClass());
+                Object errorObject = objectMapper.readValue(payload, onErrorParser.getErrorClass());
                 throw new HandledException(errorObject);
             }
 
             //noinspection unchecked
-            return (T) Mapper.getMapper().readValue(payload, typeReference);
+            return (T) objectMapper.readValue(payload, typeReference);
 
         } catch (IOException e) {
             String message = null;
@@ -279,8 +280,8 @@ public class HttpTemplate {
 
     private String readPrettyPayload(String payload) {
         try {
-            Object value = Mapper.getMapper().readValue(payload, Object.class);
-            return Mapper.getMapper().writerWithDefaultPrettyPrinter().writeValueAsString(value);
+            Object value = objectMapper.readValue(payload, Object.class);
+            return objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(value);
         } catch (IOException e) {
             return payload;
         }
@@ -321,6 +322,10 @@ public class HttpTemplate {
 
     public void setModuleInfo(ModuleInfo moduleInfo) {
         this.moduleInfo = moduleInfo;
+    }
+
+    public void setObjectMapper(ObjectMapper objectMapper) {
+        this.objectMapper = objectMapper;
     }
 
     public String getUrl() {

@@ -37,7 +37,7 @@ public abstract class BaseWireMockTest {
     }
 
     protected ObjectMapper objectMapper() {
-        return Mapper.getMapper();
+        return Mapper.defaults();
     }
 
     protected String baseUrl() {
