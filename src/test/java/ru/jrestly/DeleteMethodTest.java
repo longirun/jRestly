@@ -1,0 +1,40 @@
+package ru.jrestly;
+
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import ru.jrestly.fixtures.TestDto;
+
+import static com.github.tomakehurst.wiremock.client.WireMock.*;
+import static org.junit.jupiter.api.Assertions.*;
+
+class DeleteMethodTest extends BaseWireMockTest {
+
+    @Test
+    @DisplayName("DELETE с @PathVariable")
+    void deleteWithPathVariable() {
+        stubFor(delete(urlEqualTo("/api/items/99"))
+                .willReturn(aResponse()
+                        .withStatus(200)
+                        .withBody("")));
+
+        controller.deleteItem(99L);
+
+        verify(deleteRequestedFor(urlEqualTo("/api/items/99")));
+    }
+
+    @Test
+    @DisplayName("DELETE с @RequestBody отправляет JSON в теле")
+    void deleteWithBody() {
+        stubFor(delete(urlEqualTo("/api/items"))
+                .willReturn(aResponse()
+                        .withStatus(200)
+                        .withBody("")));
+
+        TestDto criteria = new TestDto(1L, "test", null);
+        controller.deleteItems(criteria);
+
+        verify(deleteRequestedFor(urlEqualTo("/api/items"))
+                .withHeader("Content-Type", containing("application/json"))
+                .withRequestBody(containing("test")));
+    }
+}
