@@ -24,8 +24,10 @@ import ru.jrestly.annotation.FollowRedirects;
 import ru.jrestly.annotation.Get;
 import ru.jrestly.annotation.MultipartFormFile;
 import ru.jrestly.annotation.OnError;
+import ru.jrestly.annotation.Patch;
 import ru.jrestly.annotation.PathVariable;
 import ru.jrestly.annotation.Post;
+import ru.jrestly.annotation.Put;
 import ru.jrestly.annotation.RequestBody;
 import ru.jrestly.annotation.RequestDefaultParam;
 import ru.jrestly.annotation.RequestHeader;
@@ -181,10 +183,14 @@ public class HttpTemplateBuilder {
     private String getPath() {
         if (method.isAnnotationPresent(Get.class)) {
             return method.getAnnotation(Get.class).path();
-        } else if (method.isAnnotationPresent(Delete.class)) {
-            return method.getAnnotation(Delete.class).path();
         } else if (method.isAnnotationPresent(Post.class)) {
             return method.getAnnotation(Post.class).path();
+        } else if (method.isAnnotationPresent(Put.class)) {
+            return method.getAnnotation(Put.class).path();
+        } else if (method.isAnnotationPresent(Patch.class)) {
+            return method.getAnnotation(Patch.class).path();
+        } else if (method.isAnnotationPresent(Delete.class)) {
+            return method.getAnnotation(Delete.class).path();
         }
 
         throw new UnsupportedOperationException("Cannot define http path");
@@ -196,6 +202,12 @@ public class HttpTemplateBuilder {
         }
         if (method.isAnnotationPresent(Post.class)) {
             return HttpMethod.POST;
+        }
+        if (method.isAnnotationPresent(Put.class)) {
+            return HttpMethod.PUT;
+        }
+        if (method.isAnnotationPresent(Patch.class)) {
+            return HttpMethod.PATCH;
         }
         if (method.isAnnotationPresent(Delete.class)) {
             return HttpMethod.DELETE;
@@ -209,23 +221,32 @@ public class HttpTemplateBuilder {
             return ContentType.APPLICATION_JSON;
         }
 
-        if (method.isAnnotationPresent(Delete.class)) {
-            RequestType type = method.getAnnotation(Delete.class).requestType();
-            switch (type) {
-                case APPLICATION_JSON: return ContentType.APPLICATION_JSON;
-            }
+        if (method.isAnnotationPresent(Post.class)) {
+            return resolveContentType(method.getAnnotation(Post.class).requestType());
         }
 
-        if (method.isAnnotationPresent(Post.class)) {
-            RequestType type = method.getAnnotation(Post.class).requestType();
-            switch (type) {
-                case APPLICATION_JSON: return ContentType.APPLICATION_JSON;
-                case APPLICATION_FORM_URLENCODED: return ContentType.APPLICATION_FORM_URLENCODED;
-                case MULTIPART_FORM_DATA: return ContentType.MULTIPART_FORM_DATA;
-            }
+        if (method.isAnnotationPresent(Put.class)) {
+            return resolveContentType(method.getAnnotation(Put.class).requestType());
+        }
+
+        if (method.isAnnotationPresent(Patch.class)) {
+            return resolveContentType(method.getAnnotation(Patch.class).requestType());
+        }
+
+        if (method.isAnnotationPresent(Delete.class)) {
+            return resolveContentType(method.getAnnotation(Delete.class).requestType());
         }
 
         throw new UnsupportedOperationException("Cannot define content type");
+    }
+
+    private ContentType resolveContentType(RequestType type) {
+        switch (type) {
+            case APPLICATION_JSON: return ContentType.APPLICATION_JSON;
+            case APPLICATION_FORM_URLENCODED: return ContentType.APPLICATION_FORM_URLENCODED;
+            case MULTIPART_FORM_DATA: return ContentType.MULTIPART_FORM_DATA;
+            default: throw new UnsupportedOperationException("Unknown request type: " + type);
+        }
     }
 
     private Consumer<List<Pair<String, String>>> getCookiesConsumer() {
@@ -245,6 +266,12 @@ public class HttpTemplateBuilder {
             result.addAll(createRequestDefaultParams(method.getAnnotation(Get.class).params()));
         } else if (method.isAnnotationPresent(Post.class)) {
             result.addAll(createRequestDefaultParams(method.getAnnotation(Post.class).params()));
+        } else if (method.isAnnotationPresent(Put.class)) {
+            result.addAll(createRequestDefaultParams(method.getAnnotation(Put.class).params()));
+        } else if (method.isAnnotationPresent(Patch.class)) {
+            result.addAll(createRequestDefaultParams(method.getAnnotation(Patch.class).params()));
+        } else if (method.isAnnotationPresent(Delete.class)) {
+            result.addAll(createRequestDefaultParams(method.getAnnotation(Delete.class).params()));
         }
 
         Parameter[] parameters = method.getParameters();
@@ -302,7 +329,7 @@ public class HttpTemplateBuilder {
     }
 
     private Object createBody(Method method, Object[] args){
-        if (!method.isAnnotationPresent(Post.class) && !method.isAnnotationPresent(Delete.class)) {
+        if (method.isAnnotationPresent(Get.class)) {
             return null;
         }
 
@@ -317,8 +344,16 @@ public class HttpTemplateBuilder {
     }
 
     private MultipartEntityBuilder createMultipartFormBuilder(ContentType contentType) {
-        Post postAnnotation = method.getAnnotation(Post.class);
-        if (postAnnotation == null || !RequestType.MULTIPART_FORM_DATA.equals(postAnnotation.requestType())) {
+        RequestType requestType = null;
+        if (method.isAnnotationPresent(Post.class)) {
+            requestType = method.getAnnotation(Post.class).requestType();
+        } else if (method.isAnnotationPresent(Put.class)) {
+            requestType = method.getAnnotation(Put.class).requestType();
+        } else if (method.isAnnotationPresent(Patch.class)) {
+            requestType = method.getAnnotation(Patch.class).requestType();
+        }
+
+        if (requestType == null || !RequestType.MULTIPART_FORM_DATA.equals(requestType)) {
             throw new UnsupportedOperationException("Cannot create multipart entity");
         }
 
@@ -342,8 +377,16 @@ public class HttpTemplateBuilder {
     }
 
     private UrlEncodedFormEntity createUrlEncodedEntity(ContentType contentType) throws UnsupportedEncodingException {
-        Post postAnnotation = method.getAnnotation(Post.class);
-        if (postAnnotation == null || !RequestType.APPLICATION_FORM_URLENCODED.equals(postAnnotation.requestType())) {
+        RequestType requestType = null;
+        if (method.isAnnotationPresent(Post.class)) {
+            requestType = method.getAnnotation(Post.class).requestType();
+        } else if (method.isAnnotationPresent(Put.class)) {
+            requestType = method.getAnnotation(Put.class).requestType();
+        } else if (method.isAnnotationPresent(Patch.class)) {
+            requestType = method.getAnnotation(Patch.class).requestType();
+        }
+
+        if (requestType == null || !RequestType.APPLICATION_FORM_URLENCODED.equals(requestType)) {
             throw new UnsupportedOperationException("Cannot create urlencoded entity");
         }
 

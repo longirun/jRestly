@@ -66,4 +66,13 @@ public interface TestController {
 
     @Get(path = "/api/collection")
     List<TestDto> getWithCollectionParam(@RequestParam(name = "ids") List<Long> ids);
+
+    @Patch(path = "/api/items/${id}")
+    TestDto patchItem(@PathVariable(name = "id") Long id, @RequestBody TestDto item);
+
+    @Patch(path = "/api/items/${id}", requestType = RequestType.APPLICATION_FORM_URLENCODED)
+    String patchItemForm(@PathVariable(name = "id") Long id, @RequestParam(name = "name") String name);
+
+    @Put(path = "/api/items/${id}")
+    TestDto putItem(@PathVariable(name = "id") Long id, @RequestBody TestDto item);
 }
