@@ -1,9 +1,10 @@
 plugins {
     id 'java'
+    id 'maven-publish'
 }
 
 group = 'ru.jrestly'
-version = '1.0-SNAPSHOT'
+version = '0.1.0'
 
 repositories {
     mavenCentral()
@@ -28,10 +29,57 @@ dependencies {
     testImplementation 'org.wiremock:wiremock-standalone:3.12.1'
 }
 
+java {
+    sourceCompatibility = JavaVersion.VERSION_21
+    targetCompatibility = JavaVersion.VERSION_21
+    withSourcesJar()
+    withJavadocJar()
+}
+
 compileJava {
     options.compilerArgs << '-parameters'
 }
 
+jar {
+    manifest {
+        attributes(
+                'Automatic-Module-Name': 'ru.jrestly'
+        )
+    }
+}
+
 test {
     useJUnitPlatform()
+}
+
+publishing {
+    publications {
+        mavenJava(MavenPublication) {
+            from components.java
+            pom {
+                name = 'jRestly'
+                description = 'A declarative HTTP client for Java: define an interface, get a working HTTP client via a dynamic proxy.'
+                url = 'https://github.com/longirun/jRestly'
+                inceptionYear = '2026'
+                licenses {
+                    license {
+                        name = 'Apache License, Version 2.0'
+                        url = 'https://www.apache.org/licenses/LICENSE-2.0.txt'
+                    }
+                }
+                developers {
+                    developer {
+                        id = 'longirun'
+                        name = 'Anton Sinyagovsky'
+                        email = 'sinyagovsky@gmail.com'
+                    }
+                }
+                scm {
+                    connection = 'scm:git:git://github.com/longirun/jRestly.git'
+                    developerConnection = 'scm:git:ssh://github.com/longirun/jRestly.git'
+                    url = 'https://github.com/longirun/jRestly'
+                }
+            }
+        }
+    }
 }
