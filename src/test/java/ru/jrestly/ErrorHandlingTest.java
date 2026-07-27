@@ -25,6 +25,11 @@ class ErrorHandlingTest extends BaseWireMockTest {
         assertNotNull(error);
         assertEquals("VALIDATION_ERROR", error.code());
         assertEquals("Invalid request", error.message());
+
+        assertEquals(400, exception.getStatusCode());
+        assertTrue(exception.getResponseHeaders().stream()
+                .anyMatch(h -> "Content-Type".equals(h.getKey())
+                        && "application/json".equals(h.getValue())));
     }
 
     @Test
@@ -40,5 +45,9 @@ class ErrorHandlingTest extends BaseWireMockTest {
 
         TestErrorDto error = exception.getDetails();
         assertEquals("NOT_FOUND", error.code());
+
+        assertEquals(404, exception.getStatusCode());
+        assertTrue(exception.getResponseHeaders().stream()
+                .anyMatch(h -> "Content-Type".equals(h.getKey())));
     }
 }

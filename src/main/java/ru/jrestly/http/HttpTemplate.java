@@ -85,13 +85,15 @@ public class HttpTemplate {
 
         try (CloseableHttpResponse response = httpClient.execute(httpRequest)) {
 
-            if (headersConsumer != null && response.getAllHeaders() != null) {
-                Stream<Header> headersStream = Arrays.stream(response.getAllHeaders());
-                List<Pair<String, String>> responseHeaders = headersStream
+            List<Pair<String, String>> responseHeaders = null;
+            if (response.getAllHeaders() != null) {
+                responseHeaders = Arrays.stream(response.getAllHeaders())
                         .map(header -> new ImmutablePair<>(header.getName(), header.getValue()))
                         .collect(Collectors.toList());
 
-                headersConsumer.accept(responseHeaders);
+                if (headersConsumer != null) {
+                    headersConsumer.accept(responseHeaders);
+                }
             }
 
             logResponseHeaders(response);
@@ -136,7 +138,9 @@ public class HttpTemplate {
 
             if (onErrorParser != null && onErrorParser.canParse(response.getStatusLine().getStatusCode())) {
                 Object errorObject = objectMapper.readValue(payload, onErrorParser.getErrorClass());
-                throw new HandledException(errorObject);
+                throw new HandledException(errorObject,
+                        response.getStatusLine().getStatusCode(),
+                        responseHeaders);
             }
 
             //noinspection unchecked
