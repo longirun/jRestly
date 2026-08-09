@@ -9,7 +9,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class RequestHeadersTest extends BaseWireMockTest {
 
     @Test
-    @DisplayName("@RequestHeader добавляет заголовок в запрос")
+    @DisplayName("@RequestHeader adds header to request")
     void customHeaderIsSent() {
         stubFor(get(urlEqualTo("/api/headers"))
                 .willReturn(aResponse()
@@ -25,7 +25,7 @@ class RequestHeadersTest extends BaseWireMockTest {
     }
 
     @Test
-    @DisplayName("Auth header подставляется когда провайдер авторизован")
+    @DisplayName("Auth header is added when provider is authorized")
     void authHeaderIsSentWhenAuthorized() {
         moduleInfo.getTestAuthProvider().setAuthorized(true);
         moduleInfo.getTestAuthProvider().setHeaderName("Authorization");

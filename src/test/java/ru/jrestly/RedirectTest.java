@@ -9,7 +9,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class RedirectTest extends BaseWireMockTest {
 
     @Test
-    @DisplayName("@FollowRedirects следует за 302 редиректом")
+    @DisplayName("@FollowRedirects follows a 302 redirect")
     void followsRedirect() {
         stubFor(get(urlEqualTo("/api/redirect"))
                 .willReturn(aResponse()

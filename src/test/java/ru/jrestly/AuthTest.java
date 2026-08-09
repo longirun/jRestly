@@ -13,7 +13,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class AuthTest extends BaseWireMockTest {
 
     @Test
-    @DisplayName("@Anonymous метод не требует авторизации")
+    @DisplayName("@Anonymous method does not require authorization")
     void anonymousMethodNoAuthRequired() {
         stubFor(get(urlEqualTo("/api/public"))
                 .willReturn(aResponse()
@@ -28,7 +28,7 @@ class AuthTest extends BaseWireMockTest {
     }
 
     @Test
-    @DisplayName("@SetAuthDetails захватывает заголовок из ответа")
+    @DisplayName("@SetAuthDetails captures header from response")
     void setAuthDetailsCapturesHeader() {
         stubFor(post(urlEqualTo("/api/login"))
                 .willReturn(aResponse()
@@ -47,7 +47,7 @@ class AuthTest extends BaseWireMockTest {
     }
 
     @Test
-    @DisplayName("@Authorization метод вызывает login когда не авторизован")
+    @DisplayName("@Authorization method triggers login when not authorized")
     void authorizationMethodTriggersLogin() {
         moduleInfo.getTestAuthProvider().setAuthorized(true);
         moduleInfo.getTestAuthProvider().setHeaderName("access-token");

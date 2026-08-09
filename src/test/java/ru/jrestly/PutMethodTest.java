@@ -10,7 +10,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class PutMethodTest extends BaseWireMockTest {
 
     @Test
-    @DisplayName("PUT с @RequestBody отправляет JSON и десериализует ответ")
+    @DisplayName("PUT with @RequestBody sends JSON and deserializes response")
     void putWithJsonBody() {
         stubFor(put(urlEqualTo("/api/items/7"))
                 .willReturn(aResponse()

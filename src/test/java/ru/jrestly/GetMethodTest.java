@@ -12,7 +12,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class GetMethodTest extends BaseWireMockTest {
 
     @Test
-    @DisplayName("GET с @PathVariable подставляет значение в путь")
+    @DisplayName("GET with @PathVariable substitutes value into path")
     void getWithPathVariable() {
         stubFor(get(urlEqualTo("/api/items/42"))
                 .willReturn(aResponse()
@@ -29,7 +29,7 @@ class GetMethodTest extends BaseWireMockTest {
     }
 
     @Test
-    @DisplayName("GET с @RequestParam добавляет параметр в URL")
+    @DisplayName("GET with @RequestParam adds parameter to URL")
     void getWithRequestParam() {
         stubFor(get(urlEqualTo("/api/items?page=5"))
                 .willReturn(aResponse()
@@ -44,7 +44,7 @@ class GetMethodTest extends BaseWireMockTest {
     }
 
     @Test
-    @DisplayName("GET с несколькими @RequestParam")
+    @DisplayName("GET with multiple @RequestParam")
     void getWithMultipleParams() {
         stubFor(get(urlEqualTo("/api/search?q=test&limit=10"))
                 .willReturn(aResponse()
@@ -60,7 +60,7 @@ class GetMethodTest extends BaseWireMockTest {
     }
 
     @Test
-    @DisplayName("GET с @RequestDefaultParam добавляет дефолтные параметры")
+    @DisplayName("GET with @RequestDefaultParam adds default parameters")
     void getWithDefaultParams() {
         stubFor(get(urlEqualTo("/api/items?size=10&page=1"))
                 .willReturn(aResponse()
@@ -74,7 +74,7 @@ class GetMethodTest extends BaseWireMockTest {
     }
 
     @Test
-    @DisplayName("GET возвращает String как есть")
+    @DisplayName("GET returns String as-is")
     void getReturnsString() {
         stubFor(get(urlEqualTo("/api/raw"))
                 .willReturn(aResponse()
@@ -87,7 +87,7 @@ class GetMethodTest extends BaseWireMockTest {
     }
 
     @Test
-    @DisplayName("GET с void возвратом не падает")
+    @DisplayName("GET with void return does not throw")
     void getReturnsVoid() {
         stubFor(get(urlEqualTo("/api/nothing"))
                 .willReturn(aResponse()
@@ -98,7 +98,7 @@ class GetMethodTest extends BaseWireMockTest {
     }
 
     @Test
-    @DisplayName("GET с коллекцией в @RequestParam создаёт несколько одноимённых параметров")
+    @DisplayName("GET with collection in @RequestParam creates multiple parameters with the same name")
     void getWithCollectionParam() {
         stubFor(get(urlEqualTo("/api/collection?ids=1&ids=2&ids=3"))
                 .willReturn(aResponse()
@@ -112,7 +112,7 @@ class GetMethodTest extends BaseWireMockTest {
     }
 
     @Test
-    @DisplayName("GET с @PathVariable кодирует спецсимволы в URL")
+    @DisplayName("GET with @PathVariable URL-encodes special characters")
     void getWithEncodedPathVariable() {
         stubFor(get(urlEqualTo("/api/items/hello%20world"))
                 .willReturn(aResponse()

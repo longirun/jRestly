@@ -10,7 +10,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class PostMethodTest extends BaseWireMockTest {
 
     @Test
-    @DisplayName("POST с @RequestBody отправляет JSON и десериализует ответ")
+    @DisplayName("POST with @RequestBody sends JSON and deserializes response")
     void postWithJsonBody() {
         stubFor(post(urlEqualTo("/api/items"))
                 .willReturn(aResponse()
@@ -30,7 +30,7 @@ class PostMethodTest extends BaseWireMockTest {
     }
 
     @Test
-    @DisplayName("POST с form-urlencoded отправляет параметры в теле")
+    @DisplayName("POST with form-urlencoded sends parameters in body")
     void postFormUrlEncoded() {
         stubFor(post(urlEqualTo("/api/form"))
                 .willReturn(aResponse()

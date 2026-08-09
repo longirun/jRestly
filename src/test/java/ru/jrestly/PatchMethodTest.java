@@ -10,7 +10,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class PatchMethodTest extends BaseWireMockTest {
 
     @Test
-    @DisplayName("PATCH с @RequestBody отправляет JSON и десериализует ответ")
+    @DisplayName("PATCH with @RequestBody sends JSON and deserializes response")
     void patchWithJsonBody() {
         stubFor(patch(urlEqualTo("/api/items/42"))
                 .willReturn(aResponse()
@@ -30,7 +30,7 @@ class PatchMethodTest extends BaseWireMockTest {
     }
 
     @Test
-    @DisplayName("PATCH с form-urlencoded отправляет параметры в теле")
+    @DisplayName("PATCH with form-urlencoded sends parameters in body")
     void patchFormUrlEncoded() {
         stubFor(patch(urlEqualTo("/api/items/99"))
                 .willReturn(aResponse()

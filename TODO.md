@@ -2,27 +2,27 @@
 
 ## High Priority
 
-- [x] Добавить @Patch и @Put аннотации
-- [x] Поддержка PATCH/PUT в HttpTemplateBuilder (getMethod, path, body, contentType)
-- [x] Добавить PATCH/PUT тесты (WireMock)
+- [x] Add @Patch and @Put annotations
+- [x] PATCH/PUT support in HttpTemplateBuilder (getMethod, path, body, contentType)
+- [x] Add PATCH/PUT tests (WireMock)
 
 ## Medium Priority
 
-- [x] Сделать Mapper конфигурируемым извне (не только через AppProperties)
-- [x] Настроить HTTP таймауты (connect/socket) в HttpClient
-- [x] Полный рефакторинг конфигурации: SimpleModuleInfo + JRestlyClient builder, удалить AppProperties, убрать commons-configuration2 и commons-beanutils
-- [x] `HandledException` — добавить `getStatusCode()` и `getResponseHeaders()` (сейчас доступен только `getDetails()` — десериализованное тело, без статуса и заголовков)
-- [ ] URL-кодирование path variables в HttpTemplateBuilder
+- [x] Make Mapper configurable externally (not only via AppProperties)
+- [x] Configure HTTP timeouts (connect/socket) in HttpClient
+- [x] Full configuration refactoring: SimpleModuleInfo + JRestlyClient builder, remove AppProperties, drop commons-configuration2 and commons-beanutils
+- [x] `HandledException` — add `getStatusCode()` and `getResponseHeaders()` (currently only `getDetails()` is available — deserialized body, without status and headers)
+- [ ] URL-encode path variables in HttpTemplateBuilder
 - [x] `@ExpectStatus(statuses = {…})` for success-status validation: strict validation of response status code. By default, any non-2xx status (not listed in `@OnError`) throws `UnexpectedStatusException` with the raw body. Decided NOT to implement `Response<T>` wrapper — jRestly API stays transparent (return type = user's type)
-- [ ] `JRestlyClient.updateAuthHeader(name, value)` — семантичный способ обновить auth-токен после `login()`, вместо связки `authProvider.setHeaderName(...)` + `setHeaders(List.of(Pair.of(...)))`
-- [ ] `UrlEncodedFormEntity` в `createUrlEncodedEntity()` создаётся без указания charset → ISO-8859-1 по умолчанию. Non-ASCII credentials ломаются. Нужно `new UrlEncodedFormEntity(params, StandardCharsets.UTF_8)`
+- [ ] `JRestlyClient.updateAuthHeader(name, value)` — a semantic way to update the auth token after `login()`, instead of `authProvider.setHeaderName(...)` + `setHeaders(List.of(Pair.of(...)))`
+- [ ] `UrlEncodedFormEntity` in `createUrlEncodedEntity()` is created without specifying a charset → ISO-8859-1 by default. Non-ASCII credentials break. Should be `new UrlEncodedFormEntity(params, StandardCharsets.UTF_8)`
 
 ## Low Priority
 
-- [ ] Убрать shutdown hook на каждый AbstractHttpClient instance
-- [ ] Убрать дублирование createRequestParams() в createUrlEncodedEntity()
-- [ ] Убрать хардкод "data/" в multipart
+- [ ] Remove per-instance shutdown hook in AbstractHttpClient
+- [ ] Remove createRequestParams() duplication in createUrlEncodedEntity()
+- [ ] Remove hardcoded "data/" in multipart
 
-## Done (устаревшие пункты, выполнены в рамках рефакторинга конфигурации)
+## Done (stale items, resolved during configuration refactoring)
 
-- [x] ~~Исправить AppProperties.load() — не глотать исключения~~ → AppProperties удалён
+- [x] ~~Fix AppProperties.load() — do not swallow exceptions~~ → AppProperties removed

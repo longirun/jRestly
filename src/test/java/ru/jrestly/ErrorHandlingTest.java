@@ -11,7 +11,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class ErrorHandlingTest extends BaseWireMockTest {
 
     @Test
-    @DisplayName("@OnError бросает HandledException при статусе из списка")
+    @DisplayName("@OnError throws HandledException for status from the list")
     void throwsHandledExceptionOnErrorStatus() {
         stubFor(get(urlEqualTo("/api/error"))
                 .willReturn(aResponse()
@@ -33,7 +33,7 @@ class ErrorHandlingTest extends BaseWireMockTest {
     }
 
     @Test
-    @DisplayName("@OnError бросает HandledException при 404")
+    @DisplayName("@OnError throws HandledException on 404")
     void throwsHandledExceptionOnNotFound() {
         stubFor(get(urlEqualTo("/api/error"))
                 .willReturn(aResponse()

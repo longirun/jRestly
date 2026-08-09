@@ -10,7 +10,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class DeleteMethodTest extends BaseWireMockTest {
 
     @Test
-    @DisplayName("DELETE с @PathVariable")
+    @DisplayName("DELETE with @PathVariable")
     void deleteWithPathVariable() {
         stubFor(delete(urlEqualTo("/api/items/99"))
                 .willReturn(aResponse()
@@ -23,7 +23,7 @@ class DeleteMethodTest extends BaseWireMockTest {
     }
 
     @Test
-    @DisplayName("DELETE с @RequestBody отправляет JSON в теле")
+    @DisplayName("DELETE with @RequestBody sends JSON in body")
     void deleteWithBody() {
         stubFor(delete(urlEqualTo("/api/items"))
                 .willReturn(aResponse()
