@@ -78,4 +78,15 @@ public interface TestController {
 
     @Put(path = "/api/items/${id}")
     TestDto putItem(@PathVariable(name = "id") Long id, @RequestBody TestDto item);
+
+    @Post(path = "/api/async")
+    @ExpectStatus(statuses = {202})
+    void createAsync(@RequestBody TestDto item);
+
+    @Get(path = "/api/server-error")
+    TestDto getServerError();
+
+    @Delete(path = "/api/items/${id}/silent")
+    @ExpectStatus(statuses = {204})
+    void deleteSilent(@PathVariable(name = "id") Long id);
 }

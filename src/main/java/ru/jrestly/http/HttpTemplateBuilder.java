@@ -20,6 +20,7 @@ import org.apache.logging.log4j.core.lookup.StrSubstitutor;
 import ru.jrestly.AuthProvider;
 import ru.jrestly.ModuleInfo;
 import ru.jrestly.annotation.Delete;
+import ru.jrestly.annotation.ExpectStatus;
 import ru.jrestly.annotation.FollowRedirects;
 import ru.jrestly.annotation.Get;
 import ru.jrestly.annotation.MultipartFormFile;
@@ -99,6 +100,7 @@ public class HttpTemplateBuilder {
         result.setEntity(entity);
         result.setReturnType(createTypeReference(method.getGenericReturnType()));
         result.setOnErrorParser(createOnErrorParser());
+        result.setExpectStatuses(createExpectStatuses());
         result.setFollowRedirectsNumber(getFollowRedirectsNumber());
 
         return result;
@@ -120,6 +122,7 @@ public class HttpTemplateBuilder {
         result.setEntity(null);
         result.setReturnType(oldTemplate.getTypeReference());
         result.setOnErrorParser(oldTemplate.getOnErrorParser());
+        result.setExpectStatuses(oldTemplate.getExpectStatuses());
         result.setFollowRedirectsNumber(oldTemplate.getFollowRedirectsNumber() - 1);
 
         return result;
@@ -426,6 +429,14 @@ public class HttpTemplateBuilder {
         } else {
             return null;
         }
+    }
+
+    private List<Integer> createExpectStatuses() {
+        if (method.isAnnotationPresent(ExpectStatus.class)) {
+            int[] statuses = method.getAnnotation(ExpectStatus.class).statuses();
+            return Arrays.stream(statuses).boxed().toList();
+        }
+        return null;
     }
 
     private Integer getFollowRedirectsNumber() {

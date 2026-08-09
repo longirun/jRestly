@@ -56,6 +56,7 @@ public class HttpTemplate {
     private List<FormBodyPart> multipartFormParts;
     private TypeReference<?> typeReference;
     private OnErrorParser onErrorParser;
+    private List<Integer> expectStatuses;
     private Integer followRedirectsNumber;
 
     public <T> T exchange() {
@@ -119,12 +120,24 @@ public class HttpTemplate {
                 bytes = IO.readBytes(response.getEntity().getContent());
             }
 
-            if (bytes == null || bytes.length == 0) {
+            int statusCode = response.getStatusLine().getStatusCode();
+            payload = (bytes != null && bytes.length > 0) ? new String(bytes, StandardCharsets.UTF_8) : null;
+
+            if (onErrorParser != null && onErrorParser.canParse(statusCode)) {
+                Object errorObject = (payload != null)
+                        ? objectMapper.readValue(payload, onErrorParser.getErrorClass())
+                        : null;
+                throw new HandledException(errorObject, statusCode, responseHeaders);
+            }
+
+            if (!isExpectedStatus(statusCode)) {
+                throw new UnexpectedStatusException(statusCode, payload == null ? "" : payload, responseHeaders);
+            }
+
+            if (payload == null) {
                 logger.info("No response.");
                 return null;
             }
-
-            payload = new String(bytes, StandardCharsets.UTF_8);
 
             if (String.class.equals(typeReference.getType())) {
                 logger.info("Response size: {} bytes \n" + payload, payload.length());
@@ -134,13 +147,6 @@ public class HttpTemplate {
             logger.info("Response size: {} bytes \n" + readPrettyPayload(payload), payload.length());
             if (Void.class.equals(typeReference.getType())) {
                 return null;
-            }
-
-            if (onErrorParser != null && onErrorParser.canParse(response.getStatusLine().getStatusCode())) {
-                Object errorObject = objectMapper.readValue(payload, onErrorParser.getErrorClass());
-                throw new HandledException(errorObject,
-                        response.getStatusLine().getStatusCode(),
-                        responseHeaders);
             }
 
             //noinspection unchecked
@@ -205,6 +211,17 @@ public class HttpTemplate {
 
     public void setOnErrorParser(OnErrorParser onErrorParser) {
         this.onErrorParser = onErrorParser;
+    }
+
+    public void setExpectStatuses(List<Integer> expectStatuses) {
+        this.expectStatuses = expectStatuses;
+    }
+
+    private boolean isExpectedStatus(int statusCode) {
+        if (expectStatuses != null) {
+            return expectStatuses.contains(statusCode);
+        }
+        return statusCode >= 200 && statusCode < 300;
     }
 
     public void setFollowRedirectsNumber(Integer followRedirectsNumber) {
@@ -370,6 +387,10 @@ public class HttpTemplate {
 
     public OnErrorParser getOnErrorParser() {
         return onErrorParser;
+    }
+
+    public List<Integer> getExpectStatuses() {
+        return expectStatuses;
     }
 
     public Integer getFollowRedirectsNumber() {

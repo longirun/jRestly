@@ -13,6 +13,7 @@ A declarative HTTP client for Java. Define an interface, get a working client �
 - Path variables (`@PathVariable` + `${var}`), query params (`@RequestParam`, `@RequestDefaultParam`), headers (`@RequestHeader`), request body (`@RequestBody`)
 - Content types: `application/json` (default), `application/x-www-form-urlencoded`, `multipart/form-data`
 - Per-method typed error mapping: `@OnError(statuses = {…}, errorObject = X.class)` throws `HandledException` with the deserialized body
+- Strict status validation: any status not in `@OnError` and not in `@ExpectStatus` (or not 2xx when `@ExpectStatus` is absent) throws `UnexpectedStatusException` with the raw body. Use `@ExpectStatus(statuses = {202})` for strict 2xx contracts
 - Per-method redirect chasing: `@FollowRedirects(count = N)`
 - Auth state machine: `@Anonymous` (skip auth refresh), `@Authorization` (this is the login call), `@SetAuthDetails(headerName = …)` (capture token from response, reuse on subsequent calls)
 - Apache HttpClient 4 + Jackson 2 (configurable `ObjectMapper`)
