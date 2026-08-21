@@ -391,7 +391,7 @@ public class HttpTemplateBuilder {
             requestType = method.getAnnotation(Patch.class).requestType();
         }
 
-        if (requestType == null || !RequestType.APPLICATION_FORM_URLENCODED.equals(requestType)) {
+        if (!RequestType.APPLICATION_FORM_URLENCODED.equals(requestType)) {
             throw new UnsupportedOperationException("Cannot create urlencoded entity");
         }
 
