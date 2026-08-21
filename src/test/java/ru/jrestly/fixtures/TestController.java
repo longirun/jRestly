@@ -3,6 +3,7 @@ package ru.jrestly.fixtures;
 import ru.jrestly.annotation.*;
 import ru.jrestly.http.RequestType;
 
+import java.io.File;
 import java.util.List;
 
 public interface TestController {
@@ -92,4 +93,10 @@ public interface TestController {
     @Delete(path = "/api/items/${id}/silent")
     @ExpectStatus(statuses = {204})
     void deleteSilent(@PathVariable(name = "id") Long id);
+
+    @Post(path = "/api/upload", requestType = RequestType.MULTIPART_FORM_DATA)
+    String uploadFile(@MultipartFormFile(partName = "file") String filePath);
+
+    @Post(path = "/api/upload", requestType = RequestType.MULTIPART_FORM_DATA)
+    String uploadFileObject(@MultipartFormFile(partName = "file") File file);
 }

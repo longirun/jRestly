@@ -321,7 +321,7 @@ public class HttpTemplateBuilder {
         for (int i = 0; i < parameters.length; i++) {
             if (parameters[i].isAnnotationPresent(MultipartFormFile.class)) {
                 MultipartFormFile multipartAnnotation = parameters[i].getAnnotation(MultipartFormFile.class);
-                builder.addBinaryBody(multipartAnnotation.partName(), new File("data/" + args[i].toString()));
+                builder.addBinaryBody(multipartAnnotation.partName(), new File(args[i].toString()));
             }
         }
 
