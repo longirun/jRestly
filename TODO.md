@@ -19,7 +19,7 @@
 
 ## Low Priority
 
-- [ ] Remove per-instance shutdown hook in AbstractHttpClient
+- [x] Remove per-instance shutdown hook in AbstractHttpClient (lifecycle is caller-owned; class now implements AutoCloseable)
 - [ ] Remove createRequestParams() duplication in createUrlEncodedEntity()
 - [ ] Remove hardcoded "data/" in multipart
 

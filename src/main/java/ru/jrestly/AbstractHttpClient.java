@@ -16,7 +16,7 @@ import java.lang.reflect.Proxy;
 import java.util.HashMap;
 import java.util.Map;
 
-public abstract class AbstractHttpClient {
+public abstract class AbstractHttpClient implements AutoCloseable {
     protected final Logger logger = LogManager.getLogger(getClass());
 
     protected final Map<Class<?>, Proxy> controllers = new HashMap<>();
@@ -28,8 +28,6 @@ public abstract class AbstractHttpClient {
         this.moduleInfo = moduleInfo;
 
         createConnection();
-
-        createShutdownHook();
     }
 
     protected ClassLoader getClassLoader() {
@@ -52,12 +50,6 @@ public abstract class AbstractHttpClient {
                 .disableAuthCaching()
                 .setDefaultRequestConfig(config)
                 .build();
-    }
-
-    protected void createShutdownHook() {
-        Thread hook = new Thread(this::close);
-
-        Runtime.getRuntime().addShutdownHook(hook);
     }
 
     public void close() {
