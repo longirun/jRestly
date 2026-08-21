@@ -14,6 +14,7 @@ import java.io.IOException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 public abstract class AbstractHttpClient implements AutoCloseable {
@@ -68,6 +69,8 @@ public abstract class AbstractHttpClient implements AutoCloseable {
     }
 
     protected Proxy createController(Class<?> classInterface) {
+        validateController(classInterface);
+
         return (Proxy) Proxy.newProxyInstance(
                 getClassLoader(),
                 new Class[] {classInterface},
@@ -82,6 +85,20 @@ public abstract class AbstractHttpClient implements AutoCloseable {
                     return httpTemplate.exchange();
                 }
         );
+    }
+
+    private void validateController(Class<?> classInterface) {
+        List<String> problems = ControllerValidator.validate(classInterface);
+        if (problems.isEmpty()) {
+            return;
+        }
+
+        if (moduleInfo.isValidateControllers()) {
+            throw new ControllerValidationException(classInterface, problems);
+        }
+
+        logger.warn("Controller {} is invalid, eager validation is disabled; failing methods will throw on call: {}",
+                classInterface.getName(), problems);
     }
 
     protected boolean isLoginInBackgroundNeeded(Method method) {

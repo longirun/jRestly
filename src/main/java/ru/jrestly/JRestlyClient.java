@@ -64,6 +64,11 @@ public class JRestlyClient extends AbstractHttpClient {
             return this;
         }
 
+        public Builder validateControllers(boolean validate) {
+            moduleInfoBuilder.validateControllers(validate);
+            return this;
+        }
+
         public JRestlyClient build() {
             return new JRestlyClient(moduleInfoBuilder.build());
         }

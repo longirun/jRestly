@@ -14,6 +14,7 @@ public class SimpleModuleInfo implements ModuleInfo {
     private final int connectTimeout;
     private final int socketTimeout;
     private final int connectionRequestTimeout;
+    private final boolean validateControllers;
 
     private SimpleModuleInfo(Builder builder) {
         this.name = builder.name;
@@ -25,6 +26,7 @@ public class SimpleModuleInfo implements ModuleInfo {
         this.connectTimeout = builder.connectTimeout;
         this.socketTimeout = builder.socketTimeout;
         this.connectionRequestTimeout = builder.connectionRequestTimeout;
+        this.validateControllers = builder.validateControllers;
     }
 
     public static Builder builder() {
@@ -67,6 +69,11 @@ public class SimpleModuleInfo implements ModuleInfo {
         return connectionRequestTimeout;
     }
 
+    @Override
+    public boolean isValidateControllers() {
+        return validateControllers;
+    }
+
     public static class Builder {
         private String name = "default";
         private String baseUrl;
@@ -76,6 +83,7 @@ public class SimpleModuleInfo implements ModuleInfo {
         private int connectTimeout = 5_000;
         private int socketTimeout = 30_000;
         private int connectionRequestTimeout = 5_000;
+        private boolean validateControllers = true;
 
         public Builder name(String name) {
             this.name = name;
@@ -110,6 +118,11 @@ public class SimpleModuleInfo implements ModuleInfo {
 
         public Builder connectionRequestTimeout(int ms) {
             this.connectionRequestTimeout = ms;
+            return this;
+        }
+
+        public Builder validateControllers(boolean validate) {
+            this.validateControllers = validate;
             return this;
         }
 
