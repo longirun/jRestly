@@ -22,7 +22,7 @@
 
 ## Low Priority
 
-- [x] Remove per-instance shutdown hook in AbstractHttpClient (lifecycle is caller-owned; class now implements AutoCloseable)
+- [x] Remove per-instance shutdown hook in AbstractHttpClient (lifecycle is caller-owned; plain `close()` method without `AutoCloseable` — the client is an app-lifetime singleton, the interface provoked per-request try-with-resources usage)
 - [ ] Remove hardcoded "data/" in multipart
 
 ## Done (stale items, resolved during configuration refactoring)

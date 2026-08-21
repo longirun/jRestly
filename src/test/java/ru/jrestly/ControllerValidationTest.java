@@ -13,34 +13,33 @@ public class ControllerValidationTest {
 
     @Test
     void throwsOnGetWithFullProblemListByDefault() {
-        try (JRestlyClient client = JRestlyClient.builder().baseUrl("http://localhost:1").build()) {
-            ControllerValidationException e = assertThrows(ControllerValidationException.class,
-                    () -> client.get(BrokenController.class));
+        JRestlyClient client = JRestlyClient.builder().baseUrl("http://localhost:1").build();
 
-            assertEquals(BrokenController.class, e.getController());
-            assertEquals(4, e.getProblems().size());
-            assertTrue(e.getMessage().contains("noHttpAnnotation"));
-            assertTrue(e.getMessage().contains("multipleHttpAnnotations"));
-            assertTrue(e.getMessage().contains("multipartWithoutParams"));
-            assertTrue(e.getMessage().contains("formWithoutParams"));
-        }
+        ControllerValidationException e = assertThrows(ControllerValidationException.class,
+                () -> client.get(BrokenController.class));
+
+        assertEquals(BrokenController.class, e.getController());
+        assertEquals(4, e.getProblems().size());
+        assertTrue(e.getMessage().contains("noHttpAnnotation"));
+        assertTrue(e.getMessage().contains("multipleHttpAnnotations"));
+        assertTrue(e.getMessage().contains("multipartWithoutParams"));
+        assertTrue(e.getMessage().contains("formWithoutParams"));
     }
 
     @Test
     void disabledValidationKeepsPerMethodFailureOnCall() {
-        try (JRestlyClient client = JRestlyClient.builder().baseUrl("http://localhost:1")
+        JRestlyClient client = JRestlyClient.builder().baseUrl("http://localhost:1")
                 .validateControllers(false)
-                .build()) {
-            BrokenController broken = client.get(BrokenController.class);
+                .build();
+        BrokenController broken = client.get(BrokenController.class);
 
-            assertThrows(UnsupportedOperationException.class, broken::noHttpAnnotation);
-        }
+        assertThrows(UnsupportedOperationException.class, broken::noHttpAnnotation);
     }
 
     @Test
     void validControllerPassesEagerValidation() {
-        try (JRestlyClient client = JRestlyClient.builder().baseUrl("http://localhost:1").build()) {
-            assertNotNull(client.get(TestController.class));
-        }
+        JRestlyClient client = JRestlyClient.builder().baseUrl("http://localhost:1").build();
+
+        assertNotNull(client.get(TestController.class));
     }
 }

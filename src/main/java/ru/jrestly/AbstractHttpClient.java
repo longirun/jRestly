@@ -17,7 +17,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-public abstract class AbstractHttpClient implements AutoCloseable {
+public abstract class AbstractHttpClient {
     protected final Logger logger = LogManager.getLogger(getClass());
 
     protected final Map<Class<?>, Proxy> controllers = new HashMap<>();
@@ -53,6 +53,8 @@ public abstract class AbstractHttpClient implements AutoCloseable {
                 .build();
     }
 
+    // Deliberately NOT AutoCloseable: the client is an app-lifetime singleton, and
+    // the interface would provoke per-request try-with-resources usage
     public void close() {
         if (httpClient != null) {
             try {
