@@ -58,6 +58,8 @@ public class HttpTemplateBuilder {
     private final Object[] args;
     private final Class<?> controller;
 
+    private RequestMeta requestMeta;
+
     public HttpTemplateBuilder(ModuleInfo moduleInfo, CloseableHttpClient httpClient, Method method, Object[] args, Class<?> controller) {
         this.moduleInfo = moduleInfo;
         this.httpClient = httpClient;
@@ -67,8 +69,10 @@ public class HttpTemplateBuilder {
     }
 
     public HttpTemplate build() throws JsonProcessingException {
+        requestMeta = resolveRequestMeta(method);
+
         HttpTemplate result = new HttpTemplate();
-        ContentType contentType = getContentType();
+        ContentType contentType = resolveContentType(requestMeta.requestType());
 
         result.setLogger(LogManager.getLogger(controller));
         result.setModuleInfo(moduleInfo);
@@ -76,7 +80,7 @@ public class HttpTemplateBuilder {
 
         result.setHttpClient(httpClient);
         result.setUrl(createUrl());
-        result.setHttpMethod(getRequestMethod());
+        result.setHttpMethod(requestMeta.httpMethod());
         result.setContentType(contentType);
         result.setHeaders(createHeaders());
         result.setAuthDetailsConsumer(getAuthDetailsConsumer());
@@ -143,7 +147,7 @@ public class HttpTemplateBuilder {
     }
 
     private String createUrl() {
-        String path = getPath();
+        String path = requestMeta.path();
 
         Parameter[] parameters = method.getParameters();
         for (int i = 0; i < parameters.length; i++) {
@@ -182,64 +186,29 @@ public class HttpTemplateBuilder {
         return result;
     }
 
-    private String getPath() {
+    private RequestMeta resolveRequestMeta(Method method) {
         if (method.isAnnotationPresent(Get.class)) {
-            return method.getAnnotation(Get.class).path();
-        } else if (method.isAnnotationPresent(Post.class)) {
-            return method.getAnnotation(Post.class).path();
-        } else if (method.isAnnotationPresent(Put.class)) {
-            return method.getAnnotation(Put.class).path();
-        } else if (method.isAnnotationPresent(Patch.class)) {
-            return method.getAnnotation(Patch.class).path();
-        } else if (method.isAnnotationPresent(Delete.class)) {
-            return method.getAnnotation(Delete.class).path();
-        }
-
-        throw new UnsupportedOperationException("Cannot define http path");
-    }
-
-    private HttpMethod getRequestMethod() {
-        if (method.isAnnotationPresent(Get.class)) {
-            return HttpMethod.GET;
+            Get annotation = method.getAnnotation(Get.class);
+            return new RequestMeta(HttpMethod.GET, annotation.path(), RequestType.APPLICATION_JSON, annotation.params());
         }
         if (method.isAnnotationPresent(Post.class)) {
-            return HttpMethod.POST;
+            Post annotation = method.getAnnotation(Post.class);
+            return new RequestMeta(HttpMethod.POST, annotation.path(), annotation.requestType(), annotation.params());
         }
         if (method.isAnnotationPresent(Put.class)) {
-            return HttpMethod.PUT;
+            Put annotation = method.getAnnotation(Put.class);
+            return new RequestMeta(HttpMethod.PUT, annotation.path(), annotation.requestType(), annotation.params());
         }
         if (method.isAnnotationPresent(Patch.class)) {
-            return HttpMethod.PATCH;
+            Patch annotation = method.getAnnotation(Patch.class);
+            return new RequestMeta(HttpMethod.PATCH, annotation.path(), annotation.requestType(), annotation.params());
         }
         if (method.isAnnotationPresent(Delete.class)) {
-            return HttpMethod.DELETE;
+            Delete annotation = method.getAnnotation(Delete.class);
+            return new RequestMeta(HttpMethod.DELETE, annotation.path(), annotation.requestType(), annotation.params());
         }
 
-        throw new UnsupportedOperationException("Cannot define http method");
-    }
-
-    private ContentType getContentType() {
-        if (method.isAnnotationPresent(Get.class)) {
-            return ContentType.APPLICATION_JSON;
-        }
-
-        if (method.isAnnotationPresent(Post.class)) {
-            return resolveContentType(method.getAnnotation(Post.class).requestType());
-        }
-
-        if (method.isAnnotationPresent(Put.class)) {
-            return resolveContentType(method.getAnnotation(Put.class).requestType());
-        }
-
-        if (method.isAnnotationPresent(Patch.class)) {
-            return resolveContentType(method.getAnnotation(Patch.class).requestType());
-        }
-
-        if (method.isAnnotationPresent(Delete.class)) {
-            return resolveContentType(method.getAnnotation(Delete.class).requestType());
-        }
-
-        throw new UnsupportedOperationException("Cannot define content type");
+        throw new UnsupportedOperationException("No HTTP method annotation found on " + method);
     }
 
     private ContentType resolveContentType(RequestType type) {
@@ -264,18 +233,7 @@ public class HttpTemplateBuilder {
 
     private List<NameValuePair> createRequestParams() {
         List<NameValuePair> result = new ArrayList<>();
-
-        if (method.isAnnotationPresent(Get.class)) {
-            result.addAll(createRequestDefaultParams(method.getAnnotation(Get.class).params()));
-        } else if (method.isAnnotationPresent(Post.class)) {
-            result.addAll(createRequestDefaultParams(method.getAnnotation(Post.class).params()));
-        } else if (method.isAnnotationPresent(Put.class)) {
-            result.addAll(createRequestDefaultParams(method.getAnnotation(Put.class).params()));
-        } else if (method.isAnnotationPresent(Patch.class)) {
-            result.addAll(createRequestDefaultParams(method.getAnnotation(Patch.class).params()));
-        } else if (method.isAnnotationPresent(Delete.class)) {
-            result.addAll(createRequestDefaultParams(method.getAnnotation(Delete.class).params()));
-        }
+        result.addAll(createRequestDefaultParams(requestMeta.defaultParams()));
 
         Parameter[] parameters = method.getParameters();
         for (int i = 0; i < parameters.length; i++) {
@@ -332,7 +290,7 @@ public class HttpTemplateBuilder {
     }
 
     private Object createBody(Method method, Object[] args){
-        if (method.isAnnotationPresent(Get.class)) {
+        if (requestMeta.httpMethod() == HttpMethod.GET) {
             return null;
         }
 
@@ -347,16 +305,7 @@ public class HttpTemplateBuilder {
     }
 
     private MultipartEntityBuilder createMultipartFormBuilder(ContentType contentType) {
-        RequestType requestType = null;
-        if (method.isAnnotationPresent(Post.class)) {
-            requestType = method.getAnnotation(Post.class).requestType();
-        } else if (method.isAnnotationPresent(Put.class)) {
-            requestType = method.getAnnotation(Put.class).requestType();
-        } else if (method.isAnnotationPresent(Patch.class)) {
-            requestType = method.getAnnotation(Patch.class).requestType();
-        }
-
-        if (requestType == null || !RequestType.MULTIPART_FORM_DATA.equals(requestType)) {
+        if (!RequestType.MULTIPART_FORM_DATA.equals(requestMeta.requestType())) {
             throw new UnsupportedOperationException("Cannot create multipart entity");
         }
 
@@ -380,16 +329,7 @@ public class HttpTemplateBuilder {
     }
 
     private UrlEncodedFormEntity createUrlEncodedEntity() {
-        RequestType requestType = null;
-        if (method.isAnnotationPresent(Post.class)) {
-            requestType = method.getAnnotation(Post.class).requestType();
-        } else if (method.isAnnotationPresent(Put.class)) {
-            requestType = method.getAnnotation(Put.class).requestType();
-        } else if (method.isAnnotationPresent(Patch.class)) {
-            requestType = method.getAnnotation(Patch.class).requestType();
-        }
-
-        if (!RequestType.APPLICATION_FORM_URLENCODED.equals(requestType)) {
+        if (!RequestType.APPLICATION_FORM_URLENCODED.equals(requestMeta.requestType())) {
             throw new UnsupportedOperationException("Cannot create urlencoded entity");
         }
 

@@ -37,4 +37,19 @@ class DeleteMethodTest extends BaseWireMockTest {
                 .withHeader("Content-Type", containing("application/json"))
                 .withRequestBody(containing("test")));
     }
+
+    @Test
+    @DisplayName("DELETE with form-urlencoded sends parameters in body")
+    void deleteFormUrlEncoded() {
+        stubFor(delete(urlEqualTo("/api/items"))
+                .willReturn(aResponse()
+                        .withStatus(200)
+                        .withBody("")));
+
+        controller.deleteItemsForm("obsolete");
+
+        verify(deleteRequestedFor(urlEqualTo("/api/items"))
+                .withHeader("Content-Type", containing("application/x-www-form-urlencoded"))
+                .withRequestBody(containing("reason=obsolete")));
+    }
 }

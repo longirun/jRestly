@@ -40,6 +40,9 @@ public interface TestController {
     @Delete(path = "/api/items")
     void deleteItems(@RequestBody TestDto criteria);
 
+    @Delete(path = "/api/items", requestType = RequestType.APPLICATION_FORM_URLENCODED)
+    void deleteItemsForm(@RequestParam(name = "reason") String reason);
+
     @Get(path = "/api/headers")
     String getWithHeaders(@RequestHeader(name = "X-Custom") String customHeader);
 
