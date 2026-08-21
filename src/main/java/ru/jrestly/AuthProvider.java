@@ -13,4 +13,6 @@ public interface AuthProvider {
     void setHeaderName(String name);
 
     boolean isAuthorized();
+
+    void updateAuthHeader(String name, String value);
 }

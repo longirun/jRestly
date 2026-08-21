@@ -3,6 +3,7 @@ package ru.jrestly;
 import org.apache.commons.lang3.tuple.Pair;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import ru.jrestly.fixtures.TestController;
 import ru.jrestly.fixtures.TestDto;
 
 import java.util.List;
@@ -64,5 +65,100 @@ class AuthTest extends BaseWireMockTest {
         String result = controller.authLogin("creds");
 
         assertEquals("auth-ok", result);
+    }
+
+    @Test
+    @DisplayName("updateAuthHeader() sends the new header with the next request")
+    void updateAuthHeaderSendsNewHeader() {
+        client.updateAuthHeader("Authorization", "token-manual");
+
+        stubFor(get(urlEqualTo("/api/auth-check"))
+                .willReturn(aResponse()
+                        .withStatus(200)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody("{\"id\":1,\"name\":\"item\",\"description\":\"ok\"}")));
+
+        controller.getAuthorized();
+
+        verify(getRequestedFor(urlEqualTo("/api/auth-check"))
+                .withHeader("Authorization", equalTo("token-manual")));
+    }
+
+    @Test
+    @DisplayName("manual updateAuthHeader() overrides a captured token")
+    void manualUpdateOverridesCapturedToken() {
+        JRestlyClient restlyClient = JRestlyClient.builder().baseUrl(baseUrl()).build();
+        TestController restlyController = restlyClient.get(TestController.class);
+
+        try {
+            stubFor(post(urlEqualTo("/api/login"))
+                    .willReturn(aResponse()
+                            .withStatus(200)
+                            .withHeader("access-token", "token-captured")
+                            .withBody("logged-in")));
+
+            restlyController.login("creds");
+
+            restlyClient.updateAuthHeader("Authorization", "token-manual");
+
+            Pair<String, String> authHeader = restlyClient.getModuleInfo().getAuthProvider().getAuthHeader();
+            assertNotNull(authHeader);
+            assertEquals("Authorization", authHeader.getKey());
+            assertEquals("token-manual", authHeader.getValue());
+
+            stubFor(get(urlEqualTo("/api/auth-check"))
+                    .willReturn(aResponse()
+                            .withStatus(200)
+                            .withHeader("Content-Type", "application/json")
+                            .withBody("{\"id\":1,\"name\":\"item\",\"description\":\"ok\"}")));
+
+            restlyController.getAuthorized();
+
+            verify(getRequestedFor(urlEqualTo("/api/auth-check"))
+                    .withHeader("Authorization", equalTo("token-manual")));
+        } finally {
+            restlyClient.close();
+        }
+    }
+
+    @Test
+    @DisplayName("fresh capture overrides manual update, failed capture keeps the active token")
+    void captureAfterManualUpdate() {
+        JRestlyClient restlyClient = JRestlyClient.builder().baseUrl(baseUrl()).build();
+        TestController restlyController = restlyClient.get(TestController.class);
+        AuthProvider authProvider = restlyClient.getModuleInfo().getAuthProvider();
+
+        try {
+            stubFor(post(urlEqualTo("/api/login"))
+                    .willReturn(aResponse()
+                            .withStatus(200)
+                            .withHeader("access-token", "token-fresh")
+                            .withBody("logged-in")));
+
+            restlyController.login("creds");
+            assertEquals("token-fresh", authProvider.getAuthHeader().getValue());
+
+            restlyClient.updateAuthHeader("Authorization", "token-manual");
+            assertEquals("token-manual", authProvider.getAuthHeader().getValue());
+
+            stubFor(post(urlEqualTo("/api/login"))
+                    .willReturn(aResponse()
+                            .withStatus(200)
+                            .withBody("logged-in-without-token")));
+
+            restlyController.login("creds");
+            assertEquals("token-manual", authProvider.getAuthHeader().getValue());
+
+            stubFor(post(urlEqualTo("/api/login"))
+                    .willReturn(aResponse()
+                            .withStatus(200)
+                            .withHeader("access-token", "token-new")
+                            .withBody("logged-in-again")));
+
+            restlyController.login("creds");
+            assertEquals("token-new", authProvider.getAuthHeader().getValue());
+        } finally {
+            restlyClient.close();
+        }
     }
 }

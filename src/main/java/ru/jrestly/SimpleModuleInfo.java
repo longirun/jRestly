@@ -152,6 +152,8 @@ public class SimpleModuleInfo implements ModuleInfo {
         private final String headerValue;
         private String responseHeaderName;
         private String responseHeaderValue;
+        private String manualHeaderName;
+        private String manualHeaderValue;
 
         SimpleAuthProvider() {
             this.headerName = null;
@@ -165,6 +167,9 @@ public class SimpleModuleInfo implements ModuleInfo {
 
         @Override
         public Pair<String, String> getAuthHeader() {
+            if (manualHeaderName != null && manualHeaderValue != null) {
+                return new ImmutablePair<>(manualHeaderName, manualHeaderValue);
+            }
             if (responseHeaderName != null && responseHeaderValue != null) {
                 return new ImmutablePair<>(responseHeaderName, responseHeaderValue);
             }
@@ -177,11 +182,19 @@ public class SimpleModuleInfo implements ModuleInfo {
         @Override
         public void setHeaders(List<Pair<String, String>> headers) {
             if (responseHeaderName != null) {
-                this.responseHeaderValue = headers.stream()
+                String capturedHeader = headers.stream()
                         .filter(h -> responseHeaderName.equalsIgnoreCase(h.getKey()))
                         .findFirst()
                         .map(Pair::getValue)
                         .orElse(null);
+
+                // a successful capture means a fresh login: it legitimately overrides a manual update,
+                // while a failed one keeps the working manual token intact
+                if (capturedHeader != null) {
+                    this.manualHeaderName = null;
+                    this.manualHeaderValue = null;
+                }
+                this.responseHeaderValue = capturedHeader;
             }
         }
 
@@ -191,8 +204,14 @@ public class SimpleModuleInfo implements ModuleInfo {
         }
 
         @Override
+        public void updateAuthHeader(String name, String value) {
+            this.manualHeaderName = name;
+            this.manualHeaderValue = value;
+        }
+
+        @Override
         public boolean isAuthorized() {
-            return headerName != null || responseHeaderValue != null;
+            return headerName != null || responseHeaderValue != null || manualHeaderValue != null;
         }
     }
 }

@@ -5,15 +5,14 @@ import org.apache.commons.lang3.tuple.Pair;
 import ru.jrestly.AuthProvider;
 
 import java.util.List;
-import java.util.stream.Collectors;
 
 public abstract class AuthHeaderProvider implements AuthProvider {
     protected String headerName;
-    protected String value;
+    protected String headerValue;
 
     @Override
     public void setHeaders(List<Pair<String, String>> headers) {
-        this.value = headers
+        this.headerValue = headers
                 .stream()
                 .filter(header -> headerName.equalsIgnoreCase(header.getKey()))
                 .findFirst()
@@ -23,8 +22,8 @@ public abstract class AuthHeaderProvider implements AuthProvider {
 
     @Override
     public Pair<String, String> getAuthHeader() {
-        if (headerName != null && value != null) {
-            return new ImmutablePair<>(headerName, value);
+        if (headerName != null && headerValue != null) {
+            return new ImmutablePair<>(headerName, headerValue);
         }
 
         return null;
@@ -33,5 +32,11 @@ public abstract class AuthHeaderProvider implements AuthProvider {
     @Override
     public void setHeaderName(String name) {
         this.headerName = name;
+    }
+
+    @Override
+    public void updateAuthHeader(String name, String value) {
+        this.headerName = name;
+        this.headerValue = value;
     }
 }

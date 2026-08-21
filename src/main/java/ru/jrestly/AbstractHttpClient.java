@@ -103,4 +103,8 @@ public abstract class AbstractHttpClient {
     public ModuleInfo getModuleInfo() {
         return moduleInfo;
     }
+
+    public void updateAuthHeader(String name, String value) {
+        moduleInfo.getAuthProvider().updateAuthHeader(name, value);
+    }
 }
