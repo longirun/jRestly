@@ -4,6 +4,8 @@ import org.apache.commons.lang3.tuple.Pair;
 import ru.jrestly.AbstractHttpClient;
 import ru.jrestly.ModuleInfo;
 
+import java.util.List;
+
 public class TestApiClient extends AbstractHttpClient {
 
     public TestApiClient(ModuleInfo moduleInfo) {
@@ -12,9 +14,9 @@ public class TestApiClient extends AbstractHttpClient {
 
     @Override
     protected void login() {
-        Pair<String, String> authHeader = moduleInfo.getAuthProvider().getAuthHeader();
-        if (authHeader != null) {
-            moduleInfo.getEnvironment().setAuthDetails(authHeader);
+        List<Pair<String, String>> authHeaders = moduleInfo.getAuthProvider().getAuthHeaders();
+        if (!authHeaders.isEmpty()) {
+            moduleInfo.getEnvironment().setAuthDetails(authHeaders.get(0));
         }
     }
 }

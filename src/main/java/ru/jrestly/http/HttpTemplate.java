@@ -50,7 +50,7 @@ public class HttpTemplate {
     private HttpMethod httpMethod;
     private ContentType contentType;
     private List<Pair<String, String>> headers;
-    private Consumer<List<Pair<String, String>>> headersConsumer;
+    private Consumer<List<Pair<String, String>>> authDetailsConsumer;
     private List<NameValuePair> requestParams;
     private HttpEntity entity;
     private List<FormBodyPart> multipartFormParts;
@@ -92,8 +92,8 @@ public class HttpTemplate {
                         .map(header -> new ImmutablePair<>(header.getName(), header.getValue()))
                         .collect(Collectors.toList());
 
-                if (headersConsumer != null) {
-                    headersConsumer.accept(responseHeaders);
+                if (authDetailsConsumer != null) {
+                    authDetailsConsumer.accept(responseHeaders);
                 }
             }
 
@@ -189,8 +189,8 @@ public class HttpTemplate {
         this.headers = headers;
     }
 
-    public void setHeadersConsumer(Consumer<List<Pair<String, String>>> headersConsumer) {
-        this.headersConsumer = headersConsumer;
+    public void setAuthDetailsConsumer(Consumer<List<Pair<String, String>>> authDetailsConsumer) {
+        this.authDetailsConsumer = authDetailsConsumer;
     }
 
     public void setRequestParams(List<NameValuePair> requestParams) {
@@ -365,8 +365,8 @@ public class HttpTemplate {
         return headers;
     }
 
-    public Consumer<List<Pair<String, String>>> getHeadersConsumer() {
-        return headersConsumer;
+    public Consumer<List<Pair<String, String>>> getAuthDetailsConsumer() {
+        return authDetailsConsumer;
     }
 
     public List<NameValuePair> getRequestParams() {

@@ -28,10 +28,7 @@ class RequestHeadersTest extends BaseWireMockTest {
     @DisplayName("Auth header is added when provider is authorized")
     void authHeaderIsSentWhenAuthorized() {
         moduleInfo.getTestAuthProvider().setAuthorized(true);
-        moduleInfo.getTestAuthProvider().setHeaderName("Authorization");
-        moduleInfo.getTestAuthProvider().setHeaders(
-                java.util.List.of(org.apache.commons.lang3.tuple.Pair.of("Authorization", "Bearer test-token"))
-        );
+        moduleInfo.getTestAuthProvider().updateAuthHeader("Authorization", "Bearer test-token");
 
         stubFor(get(urlEqualTo("/api/auth-check"))
                 .willReturn(aResponse()

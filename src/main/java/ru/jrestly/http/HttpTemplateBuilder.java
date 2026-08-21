@@ -79,7 +79,7 @@ public class HttpTemplateBuilder {
         result.setHttpMethod(getRequestMethod());
         result.setContentType(contentType);
         result.setHeaders(createHeaders());
-        result.setHeadersConsumer(getCookiesConsumer());
+        result.setAuthDetailsConsumer(getAuthDetailsConsumer());
         if (!ContentType.MULTIPART_FORM_DATA.equals(contentType) && !ContentType.APPLICATION_FORM_URLENCODED.equals(contentType)) {
             result.setRequestParams(createRequestParams());
         }
@@ -116,7 +116,7 @@ public class HttpTemplateBuilder {
         result.setHttpMethod(HttpMethod.GET);
         result.setContentType(ContentType.WILDCARD);
         result.setHeaders(createHeaders());
-        result.setHeadersConsumer(oldTemplate.getHeadersConsumer());
+        result.setAuthDetailsConsumer(oldTemplate.getAuthDetailsConsumer());
         result.setRequestParams(null);
         result.setEntity(null);
         result.setReturnType(oldTemplate.getTypeReference());
@@ -167,10 +167,7 @@ public class HttpTemplateBuilder {
     private List<Pair<String, String>> createHeaders() {
         List<Pair<String, String>> result = new ArrayList<>();
 
-        Pair<String, String> authHeader = moduleInfo.getAuthProvider().getAuthHeader();
-        if (authHeader != null) {
-            result.add(authHeader);
-        }
+        result.addAll(moduleInfo.getAuthProvider().getAuthHeaders());
 
         if (method != null) {
             Parameter[] parameters = method.getParameters();
@@ -254,14 +251,15 @@ public class HttpTemplateBuilder {
         }
     }
 
-    private Consumer<List<Pair<String, String>>> getCookiesConsumer() {
+    private Consumer<List<Pair<String, String>>> getAuthDetailsConsumer() {
         if (method.isAnnotationPresent(SetAuthDetails.class)) {
+            String headerName = method.getAnnotation(SetAuthDetails.class).headerName();
             AuthProvider authProvider = moduleInfo.getAuthProvider();
-            authProvider.setHeaderName(method.getAnnotation(SetAuthDetails.class).headerName());
-            return authProvider::setHeaders;
-        } else {
-            return null;
+
+            return responseHeaders -> authProvider.captureAuthDetails(headerName, responseHeaders);
         }
+
+        return null;
     }
 
     private List<NameValuePair> createRequestParams() {

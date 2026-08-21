@@ -6,37 +6,44 @@ import ru.jrestly.AuthProvider;
 
 import java.util.List;
 
-public abstract class AuthHeaderProvider implements AuthProvider {
-    protected String headerName;
-    protected String headerValue;
+public class AuthHeaderProvider implements AuthProvider {
 
-    @Override
-    public void setHeaders(List<Pair<String, String>> headers) {
-        this.headerValue = headers
-                .stream()
-                .filter(header -> headerName.equalsIgnoreCase(header.getKey()))
-                .findFirst()
-                .map(Pair::getValue)
-                .orElse(null);
+    private final String initialHeaderName;
+    private final String initialHeaderValue;
+
+    private String headerName;
+    private String headerValue;
+
+    public AuthHeaderProvider() {
+        this(null, null);
+    }
+
+    public AuthHeaderProvider(String headerName, String headerValue) {
+        this.initialHeaderName = headerName;
+        this.initialHeaderValue = headerValue;
     }
 
     @Override
-    public Pair<String, String> getAuthHeader() {
+    public List<Pair<String, String>> getAuthHeaders() {
         if (headerName != null && headerValue != null) {
-            return new ImmutablePair<>(headerName, headerValue);
+            return List.of(new ImmutablePair<>(headerName, headerValue));
         }
 
-        return null;
-    }
+        if (initialHeaderName != null && initialHeaderValue != null) {
+            return List.of(new ImmutablePair<>(initialHeaderName, initialHeaderValue));
+        }
 
-    @Override
-    public void setHeaderName(String name) {
-        this.headerName = name;
+        return List.of();
     }
 
     @Override
     public void updateAuthHeader(String name, String value) {
         this.headerName = name;
         this.headerValue = value;
+    }
+
+    @Override
+    public boolean isAuthorized() {
+        return initialHeaderName != null || headerValue != null;
     }
 }

@@ -1,11 +1,9 @@
 package ru.jrestly;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.apache.commons.lang3.tuple.Pair;
+import ru.jrestly.http.AuthHeaderProvider;
 import ru.jrestly.util.Mapper;
-
-import java.util.List;
 
 public class SimpleModuleInfo implements ModuleInfo {
 
@@ -21,8 +19,8 @@ public class SimpleModuleInfo implements ModuleInfo {
         this.name = builder.name;
         this.baseUrl = builder.baseUrl;
         this.authProvider = builder.authHeaderName != null
-                ? new SimpleAuthProvider(builder.authHeaderName, builder.authHeaderValue)
-                : new SimpleAuthProvider();
+                ? new AuthHeaderProvider(builder.authHeaderName, builder.authHeaderValue)
+                : new AuthHeaderProvider();
         this.objectMapper = builder.objectMapper;
         this.connectTimeout = builder.connectTimeout;
         this.socketTimeout = builder.socketTimeout;
@@ -144,74 +142,6 @@ public class SimpleModuleInfo implements ModuleInfo {
         @Override
         public void setAuthDetails(Pair<String, String> authDetails) {
             this.authDetails = authDetails;
-        }
-    }
-
-    private static class SimpleAuthProvider implements AuthProvider {
-        private final String headerName;
-        private final String headerValue;
-        private String responseHeaderName;
-        private String responseHeaderValue;
-        private String manualHeaderName;
-        private String manualHeaderValue;
-
-        SimpleAuthProvider() {
-            this.headerName = null;
-            this.headerValue = null;
-        }
-
-        SimpleAuthProvider(String headerName, String headerValue) {
-            this.headerName = headerName;
-            this.headerValue = headerValue;
-        }
-
-        @Override
-        public Pair<String, String> getAuthHeader() {
-            if (manualHeaderName != null && manualHeaderValue != null) {
-                return new ImmutablePair<>(manualHeaderName, manualHeaderValue);
-            }
-            if (responseHeaderName != null && responseHeaderValue != null) {
-                return new ImmutablePair<>(responseHeaderName, responseHeaderValue);
-            }
-            if (headerName != null && headerValue != null) {
-                return new ImmutablePair<>(headerName, headerValue);
-            }
-            return null;
-        }
-
-        @Override
-        public void setHeaders(List<Pair<String, String>> headers) {
-            if (responseHeaderName != null) {
-                String capturedHeader = headers.stream()
-                        .filter(h -> responseHeaderName.equalsIgnoreCase(h.getKey()))
-                        .findFirst()
-                        .map(Pair::getValue)
-                        .orElse(null);
-
-                // a successful capture means a fresh login: it legitimately overrides a manual update,
-                // while a failed one keeps the working manual token intact
-                if (capturedHeader != null) {
-                    this.manualHeaderName = null;
-                    this.manualHeaderValue = null;
-                }
-                this.responseHeaderValue = capturedHeader;
-            }
-        }
-
-        @Override
-        public void setHeaderName(String name) {
-            this.responseHeaderName = name;
-        }
-
-        @Override
-        public void updateAuthHeader(String name, String value) {
-            this.manualHeaderName = name;
-            this.manualHeaderValue = value;
-        }
-
-        @Override
-        public boolean isAuthorized() {
-            return headerName != null || responseHeaderValue != null || manualHeaderValue != null;
         }
     }
 }

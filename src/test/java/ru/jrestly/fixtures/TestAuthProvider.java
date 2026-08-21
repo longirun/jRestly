@@ -1,10 +1,6 @@
 package ru.jrestly.fixtures;
 
-import org.apache.commons.lang3.tuple.Pair;
-import ru.jrestly.AuthProvider;
 import ru.jrestly.http.AuthHeaderProvider;
-
-import java.util.List;
 
 public class TestAuthProvider extends AuthHeaderProvider {
 
@@ -16,12 +12,6 @@ public class TestAuthProvider extends AuthHeaderProvider {
 
     public TestAuthProvider(boolean authorized) {
         this.authorized = authorized;
-    }
-
-    @Override
-    public Pair<String, String> getAuthHeader() {
-        Pair<String, String> localHeader = super.getAuthHeader();
-        return localHeader != null ? localHeader : null;
     }
 
     @Override
