@@ -36,7 +36,6 @@ import ru.jrestly.annotation.RequestParam;
 import ru.jrestly.annotation.SetAuthDetails;
 
 import java.io.File;
-import java.io.UnsupportedEncodingException;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Parameter;
@@ -67,7 +66,7 @@ public class HttpTemplateBuilder {
         this.controller = controller;
     }
 
-    public HttpTemplate build() throws JsonProcessingException, UnsupportedEncodingException {
+    public HttpTemplate build() throws JsonProcessingException {
         HttpTemplate result = new HttpTemplate();
         ContentType contentType = getContentType();
 
@@ -89,7 +88,7 @@ public class HttpTemplateBuilder {
         if (ContentType.APPLICATION_JSON.equals(contentType)) {
             entity = createJsonEntity(contentType);
         } else if (ContentType.APPLICATION_FORM_URLENCODED.equals(contentType)) {
-            entity = createUrlEncodedEntity(contentType);
+            entity = createUrlEncodedEntity();
         } else if (ContentType.MULTIPART_FORM_DATA.equals(contentType)) {
             MultipartEntityBuilder multipartFormBuilder = createMultipartFormBuilder(contentType);
             entity = multipartFormBuilder.build();
@@ -382,7 +381,7 @@ public class HttpTemplateBuilder {
         return builder;
     }
 
-    private UrlEncodedFormEntity createUrlEncodedEntity(ContentType contentType) throws UnsupportedEncodingException {
+    private UrlEncodedFormEntity createUrlEncodedEntity() {
         RequestType requestType = null;
         if (method.isAnnotationPresent(Post.class)) {
             requestType = method.getAnnotation(Post.class).requestType();
@@ -403,7 +402,7 @@ public class HttpTemplateBuilder {
 
         List<NameValuePair> params = createRequestParams();
 
-        return new UrlEncodedFormEntity(params);
+        return new UrlEncodedFormEntity(params, StandardCharsets.UTF_8);
     }
 
     private TypeReference<?> createTypeReference(Type returnType) {

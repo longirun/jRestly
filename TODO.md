@@ -15,7 +15,7 @@
 - [x] URL-encode path variables in HttpTemplateBuilder
 - [x] `@ExpectStatus(statuses = {…})` for success-status validation: strict validation of response status code. By default, any non-2xx status (not listed in `@OnError`) throws `UnexpectedStatusException` with the raw body. Decided NOT to implement `Response<T>` wrapper — jRestly API stays transparent (return type = user's type)
 - [x] `JRestlyClient.updateAuthHeader(name, value)` — a semantic way to update the auth token after `login()`, instead of `authProvider.setHeaderName(...)` + `setHeaders(List.of(Pair.of(...)))`
-- [ ] `UrlEncodedFormEntity` in `createUrlEncodedEntity()` is created without specifying a charset → ISO-8859-1 by default. Non-ASCII credentials break. Should be `new UrlEncodedFormEntity(params, StandardCharsets.UTF_8)`
+- [x] `UrlEncodedFormEntity` in `createUrlEncodedEntity()` is created without specifying a charset → ISO-8859-1 by default. Non-ASCII credentials break. Should be `new UrlEncodedFormEntity(params, StandardCharsets.UTF_8)`
 
 ## Low Priority
 

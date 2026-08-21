@@ -46,4 +46,22 @@ class PostMethodTest extends BaseWireMockTest {
                 .withRequestBody(containing("field1=value1"))
                 .withRequestBody(containing("field2=value2")));
     }
+
+    @Test
+    @DisplayName("POST form-urlencoded percent-encodes non-ASCII parameters as UTF-8, not ISO-8859-1")
+    void postFormUrlEncodedNonAsciiParams() {
+        stubFor(post(urlEqualTo("/api/form"))
+                .willReturn(aResponse()
+                        .withStatus(200)
+                        .withBody("ok")));
+
+        String result = controller.submitForm("пароль123", "значение");
+
+        assertEquals("ok", result);
+
+        verify(postRequestedFor(urlEqualTo("/api/form"))
+                .withHeader("Content-Type", containing("application/x-www-form-urlencoded"))
+                .withRequestBody(containing("field1=%D0%BF%D0%B0%D1%80%D0%BE%D0%BB%D1%8C123"))
+                .withRequestBody(containing("field2=%D0%B7%D0%BD%D0%B0%D1%87%D0%B5%D0%BD%D0%B8%D0%B5")));
+    }
 }
