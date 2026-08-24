@@ -6,12 +6,14 @@ Plan derived from ADR-0001..0004 (`docs/0.5.0/`). The 0.4.0 improvement plan is 
 
 Gates for every step: WireMock suite green (`./gradlew test`), IDE inspections clean.
 
-## Step 1 — Codec SPI + Jackson adapter (ADR-0001)
+## Step 1 — Codec SPI + Jackson adapter (ADR-0001) ✅ DONE
 
-- [ ] Internal JSON codec SPI `ru.jrestly.json.JsonCodec` (serialize / deserialize / pretty-print)
-- [ ] JacksonCodec adapter in the same jar, Jackson as `compileOnly`; compact wire by default, pretty printing only for response logs
-- [ ] Codec resolution: explicit builder setting > classpath probe (jackson first) > fail fast with an actionable message
-- [ ] Explicit codec wiring on the builder / ModuleInfo surface replaces ObjectMapper
+> Done in `80ca2fd` ("remove Jackson dependency (part1)"). Verified 2026-08-24 by code inspection + IDE inspections (clean): `ru.jrestly.json.{JsonCodec, JacksonCodec, JsonCodecResolver}`, Jackson `compileOnly` (not in POM), resolution chain in `SimpleModuleInfo.Builder` (explicit > probe > fail fast), `util/Mapper.java` deleted, `ObjectMapper` out of the public API. Covered by `JsonCodecWireTest`, `JacksonCodecPrettyPrintTest`.
+
+- [x] Internal JSON codec SPI `ru.jrestly.json.JsonCodec` (serialize / deserialize / pretty-print)
+- [x] JacksonCodec adapter in the same jar, Jackson as `compileOnly`; compact wire by default, pretty printing only for response logs
+- [x] Codec resolution: explicit builder setting > classpath probe (jackson first) > fail fast with an actionable message
+- [x] Explicit codec wiring on the builder / ModuleInfo surface replaces ObjectMapper
 - Gate: POM contains no Jackson; suite green
 
 ## Step 2 — Small zero-dep replacements (ADR-0001)
@@ -33,7 +35,7 @@ Gates for every step: WireMock suite green (`./gradlew test`), IDE inspections c
 ## Step 4 — Release 0.5.0-rc1
 
 - [ ] README: single JitPack coordinate, "bring your own JSON codec — Jackson autodetected"
-- [ ] Version 0.5.0-rc1; POM metadata sanity check
+- [ ] Version 0.5.0-rc1; POM metadata sanity check — version already bumped in `build.gradle` (commit `80ca2fd`), ahead of Steps 2–3; tag only after they land
 - [ ] Smoke test: fresh Gradle project, jrestly + jackson-databind only, GET + POST against a stub
 - Gate: smoke passes; tag
 

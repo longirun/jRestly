@@ -8,6 +8,8 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import ru.jrestly.fixtures.DateTimeController;
 import ru.jrestly.fixtures.EventDto;
+import ru.jrestly.fixtures.NullableFieldController;
+import ru.jrestly.fixtures.NullableFieldDto;
 import ru.jrestly.fixtures.TestDto;
 import ru.jrestly.json.JacksonCodec;
 
@@ -37,6 +39,29 @@ class JsonCodecWireTest extends BaseWireMockTest {
         verify(postRequestedFor(urlEqualTo("/api/items"))
                 .withHeader("Content-Type", containing("application/json"))
                 .withRequestBody(equalTo("{\"id\":1,\"name\":\"value\",\"description\":\"compact wire\"}")));
+    }
+
+    @Test
+    @DisplayName("null field is serialized on the wire (default JsonInclude.ALWAYS, no config line needed)")
+    void nullFieldIsSerializedOnWire() {
+        stubFor(post(urlEqualTo("/api/nullable"))
+                .willReturn(aResponse()
+                        .withStatus(200)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody("{\"id\":1,\"name\":null}")));
+
+        NullableFieldController nullableController = client.get(NullableFieldController.class);
+        NullableFieldDto result = nullableController.createNullable(new NullableFieldDto(1L, null));
+
+        assertNotNull(result);
+        assertEquals(1L, result.id());
+
+        // Exact string match: the "name":null entry must be physically present in the
+        // compact wire body. This is the contract formerly pinned by the (no-op)
+        // setSerializationInclusion(ALWAYS) line in JacksonCodec.createDefault():
+        // a NON_NULL inclusion policy would silently drop the field and fail here.
+        verify(postRequestedFor(urlEqualTo("/api/nullable"))
+                .withRequestBody(equalTo("{\"id\":1,\"name\":null}")));
     }
 
     @Test
