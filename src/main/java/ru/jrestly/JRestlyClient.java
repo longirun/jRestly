@@ -1,6 +1,6 @@
 package ru.jrestly;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import ru.jrestly.json.JsonCodec;
 
 public class JRestlyClient extends AbstractHttpClient {
 
@@ -44,8 +44,8 @@ public class JRestlyClient extends AbstractHttpClient {
             return this;
         }
 
-        public Builder objectMapper(ObjectMapper objectMapper) {
-            moduleInfoBuilder.objectMapper(objectMapper);
+        public Builder jsonCodec(JsonCodec jsonCodec) {
+            moduleInfoBuilder.jsonCodec(jsonCodec);
             return this;
         }
 

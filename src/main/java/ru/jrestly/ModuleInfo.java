@@ -1,7 +1,7 @@
 package ru.jrestly;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import ru.jrestly.util.Mapper;
+import ru.jrestly.json.JsonCodec;
+import ru.jrestly.json.JsonCodecResolver;
 
 public interface ModuleInfo {
 
@@ -11,8 +11,8 @@ public interface ModuleInfo {
 
     AuthProvider getAuthProvider();
 
-    default ObjectMapper getObjectMapper() {
-        return Mapper.defaults();
+    default JsonCodec getJsonCodec() {
+        return JsonCodecResolver.resolve();
     }
 
     default int getConnectTimeout() {

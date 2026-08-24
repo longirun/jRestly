@@ -8,7 +8,7 @@ Gates for every step: WireMock suite green (`./gradlew test`), IDE inspections c
 
 ## Step 1 — Codec SPI + Jackson adapter (ADR-0001)
 
-- [ ] Internal codec SPI (serialize / deserialize / pretty-print, media type)
+- [ ] Internal JSON codec SPI `ru.jrestly.json.JsonCodec` (serialize / deserialize / pretty-print)
 - [ ] JacksonCodec adapter in the same jar, Jackson as `compileOnly`; compact wire by default, pretty printing only for response logs
 - [ ] Codec resolution: explicit builder setting > classpath probe (jackson first) > fail fast with an actionable message
 - [ ] Explicit codec wiring on the builder / ModuleInfo surface replaces ObjectMapper

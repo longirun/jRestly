@@ -1,7 +1,5 @@
 package ru.jrestly.http;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.core.type.TypeReference;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.apache.commons.lang3.tuple.Pair;
@@ -39,7 +37,6 @@ import java.io.File;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Parameter;
-import java.lang.reflect.Type;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -68,7 +65,7 @@ public class HttpTemplateBuilder {
         this.controller = controller;
     }
 
-    public HttpTemplate build() throws JsonProcessingException {
+    public HttpTemplate build() {
         requestMeta = resolveRequestMeta(method);
 
         HttpTemplate result = new HttpTemplate();
@@ -76,7 +73,7 @@ public class HttpTemplateBuilder {
 
         result.setLogger(LogManager.getLogger(controller));
         result.setModuleInfo(moduleInfo);
-        result.setObjectMapper(moduleInfo.getObjectMapper());
+        result.setJsonCodec(moduleInfo.getJsonCodec());
 
         result.setHttpClient(httpClient);
         result.setUrl(createUrl());
@@ -101,7 +98,7 @@ public class HttpTemplateBuilder {
         }
 
         result.setEntity(entity);
-        result.setReturnType(createTypeReference(method.getGenericReturnType()));
+        result.setReturnType(method.getGenericReturnType());
         result.setOnErrorParser(createOnErrorParser());
         result.setExpectStatuses(createExpectStatuses());
         result.setFollowRedirectsNumber(getFollowRedirectsNumber());
@@ -115,7 +112,7 @@ public class HttpTemplateBuilder {
         result.setLogger(oldTemplate.getLogger());
         result.setHttpClient(oldTemplate.getHttpClient());
         result.setModuleInfo(moduleInfo);
-        result.setObjectMapper(moduleInfo.getObjectMapper());
+        result.setJsonCodec(moduleInfo.getJsonCodec());
         result.setUrl(redirectUri);
         result.setHttpMethod(HttpMethod.GET);
         result.setContentType(ContentType.WILDCARD);
@@ -123,7 +120,7 @@ public class HttpTemplateBuilder {
         result.setAuthDetailsConsumer(oldTemplate.getAuthDetailsConsumer());
         result.setRequestParams(null);
         result.setEntity(null);
-        result.setReturnType(oldTemplate.getTypeReference());
+        result.setReturnType(oldTemplate.getReturnType());
         result.setOnErrorParser(oldTemplate.getOnErrorParser());
         result.setExpectStatuses(oldTemplate.getExpectStatuses());
         result.setFollowRedirectsNumber(oldTemplate.getFollowRedirectsNumber() - 1);
@@ -273,7 +270,7 @@ public class HttpTemplateBuilder {
         return result;
     }
 
-    private StringEntity createJsonEntity(ContentType contentType) throws JsonProcessingException {
+    private StringEntity createJsonEntity(ContentType contentType) {
         Object body = createBody(method, args);
         if (body == null) {
             return null;
@@ -281,7 +278,7 @@ public class HttpTemplateBuilder {
 
         String stringifiedBody = body instanceof String
                 ? (String) body
-                : moduleInfo.getObjectMapper().writeValueAsString(body);
+                : moduleInfo.getJsonCodec().serialize(body);
 
         StringEntity entity = new StringEntity(stringifiedBody, StandardCharsets.UTF_8);
         entity.setContentType(contentType.getMimeType());
@@ -341,15 +338,6 @@ public class HttpTemplateBuilder {
         List<NameValuePair> params = createRequestParams();
 
         return new UrlEncodedFormEntity(params, StandardCharsets.UTF_8);
-    }
-
-    private TypeReference<?> createTypeReference(Type returnType) {
-        return new TypeReference<>() {
-            @Override
-            public Type getType() {
-                return returnType;
-            }
-        };
     }
 
     private OnErrorParser createOnErrorParser() {

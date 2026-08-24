@@ -1,16 +1,16 @@
 package ru.jrestly;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.commons.lang3.tuple.Pair;
 import ru.jrestly.http.AuthHeaderProvider;
-import ru.jrestly.util.Mapper;
+import ru.jrestly.json.JsonCodec;
+import ru.jrestly.json.JsonCodecResolver;
 
 public class SimpleModuleInfo implements ModuleInfo {
 
     private final String name;
     private final String baseUrl;
     private final AuthProvider authProvider;
-    private final ObjectMapper objectMapper;
+    private final JsonCodec jsonCodec;
     private final int connectTimeout;
     private final int socketTimeout;
     private final int connectionRequestTimeout;
@@ -22,7 +22,7 @@ public class SimpleModuleInfo implements ModuleInfo {
         this.authProvider = builder.authHeaderName != null
                 ? new AuthHeaderProvider(builder.authHeaderName, builder.authHeaderValue)
                 : new AuthHeaderProvider();
-        this.objectMapper = builder.objectMapper;
+        this.jsonCodec = builder.jsonCodec;
         this.connectTimeout = builder.connectTimeout;
         this.socketTimeout = builder.socketTimeout;
         this.connectionRequestTimeout = builder.connectionRequestTimeout;
@@ -50,8 +50,8 @@ public class SimpleModuleInfo implements ModuleInfo {
     }
 
     @Override
-    public ObjectMapper getObjectMapper() {
-        return objectMapper;
+    public JsonCodec getJsonCodec() {
+        return jsonCodec;
     }
 
     @Override
@@ -79,7 +79,7 @@ public class SimpleModuleInfo implements ModuleInfo {
         private String baseUrl;
         private String authHeaderName;
         private String authHeaderValue;
-        private ObjectMapper objectMapper = Mapper.defaults();
+        private JsonCodec jsonCodec;
         private int connectTimeout = 5_000;
         private int socketTimeout = 30_000;
         private int connectionRequestTimeout = 5_000;
@@ -101,8 +101,8 @@ public class SimpleModuleInfo implements ModuleInfo {
             return this;
         }
 
-        public Builder objectMapper(ObjectMapper objectMapper) {
-            this.objectMapper = objectMapper;
+        public Builder jsonCodec(JsonCodec jsonCodec) {
+            this.jsonCodec = jsonCodec;
             return this;
         }
 
@@ -129,6 +129,9 @@ public class SimpleModuleInfo implements ModuleInfo {
         public SimpleModuleInfo build() {
             if (baseUrl == null || baseUrl.isBlank()) {
                 throw new IllegalStateException("baseUrl is required");
+            }
+            if (jsonCodec == null) {
+                jsonCodec = JsonCodecResolver.resolve();
             }
             return new SimpleModuleInfo(this);
         }

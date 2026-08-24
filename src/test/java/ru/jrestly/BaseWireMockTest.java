@@ -1,6 +1,5 @@
 package ru.jrestly;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.tomakehurst.wiremock.WireMockServer;
 import com.github.tomakehurst.wiremock.core.WireMockConfiguration;
 import org.junit.jupiter.api.AfterEach;
@@ -8,7 +7,6 @@ import org.junit.jupiter.api.BeforeEach;
 import ru.jrestly.fixtures.TestApiClient;
 import ru.jrestly.fixtures.TestController;
 import ru.jrestly.fixtures.TestModuleInfo;
-import ru.jrestly.util.Mapper;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.configureFor;
 
@@ -34,10 +32,6 @@ public abstract class BaseWireMockTest {
     void tearDown() {
         wireMockServer.stop();
         client.close();
-    }
-
-    protected ObjectMapper objectMapper() {
-        return Mapper.defaults();
     }
 
     protected String baseUrl() {

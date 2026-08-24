@@ -1,7 +1,5 @@
 package ru.jrestly.http;
 
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.apache.commons.lang3.tuple.Pair;
@@ -24,9 +22,11 @@ import org.apache.http.message.BasicHeader;
 import org.apache.http.protocol.HTTP;
 import org.apache.logging.log4j.Logger;
 import ru.jrestly.ModuleInfo;
+import ru.jrestly.json.JsonCodec;
 import ru.jrestly.util.IO;
 
 import java.io.IOException;
+import java.lang.reflect.Type;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
@@ -44,7 +44,7 @@ public class HttpTemplate {
 
     private CloseableHttpClient httpClient;
     private ModuleInfo moduleInfo;
-    private ObjectMapper objectMapper;
+    private JsonCodec jsonCodec;
 
     private String url;
     private HttpMethod httpMethod;
@@ -54,7 +54,7 @@ public class HttpTemplate {
     private List<NameValuePair> requestParams;
     private HttpEntity entity;
     private List<FormBodyPart> multipartFormParts;
-    private TypeReference<?> typeReference;
+    private Type returnType;
     private OnErrorParser onErrorParser;
     private List<Integer> expectStatuses;
     private Integer followRedirectsNumber;
@@ -125,7 +125,7 @@ public class HttpTemplate {
 
             if (onErrorParser != null && onErrorParser.canParse(statusCode)) {
                 Object errorObject = (payload != null)
-                        ? objectMapper.readValue(payload, onErrorParser.getErrorClass())
+                        ? jsonCodec.deserialize(payload, onErrorParser.getErrorClass())
                         : null;
                 throw new HandledException(errorObject, statusCode, responseHeaders);
             }
@@ -139,23 +139,23 @@ public class HttpTemplate {
                 return null;
             }
 
-            if (String.class.equals(typeReference.getType())) {
+            if (String.class.equals(returnType)) {
                 logger.info("Response size: {} bytes \n" + payload, payload.length());
                 return (T) payload;
             }
 
-            logger.info("Response size: {} bytes \n" + readPrettyPayload(payload), payload.length());
-            if (Void.class.equals(typeReference.getType())) {
+            logger.info("Response size: {} bytes \n" + jsonCodec.prettyPrint(payload), payload.length());
+            if (Void.class.equals(returnType)) {
                 return null;
             }
 
             //noinspection unchecked
-            return (T) objectMapper.readValue(payload, typeReference);
+            return (T) jsonCodec.deserialize(payload, returnType);
 
         } catch (IOException e) {
             String message = null;
             if (payload != null) {
-                message = readPrettyPayload(payload);
+                message = jsonCodec.prettyPrint(payload);
             } else if (bytes != null) {
                 message = new String(bytes, StandardCharsets.UTF_8);
             }
@@ -205,8 +205,8 @@ public class HttpTemplate {
         this.entity = entity;
     }
 
-    public void setReturnType(TypeReference<?> typeReference) {
-        this.typeReference = typeReference;
+    public void setReturnType(Type returnType) {
+        this.returnType = returnType;
     }
 
     public void setOnErrorParser(OnErrorParser onErrorParser) {
@@ -299,15 +299,6 @@ public class HttpTemplate {
         logger.info("Request: " + sb);
     }
 
-    private String readPrettyPayload(String payload) {
-        try {
-            Object value = objectMapper.readValue(payload, Object.class);
-            return objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(value);
-        } catch (IOException e) {
-            return payload;
-        }
-    }
-
     private void logResponseHeaders(CloseableHttpResponse response) {
         String headers = Arrays.stream(response.getAllHeaders())
                 .map(Object::toString)
@@ -345,8 +336,8 @@ public class HttpTemplate {
         this.moduleInfo = moduleInfo;
     }
 
-    public void setObjectMapper(ObjectMapper objectMapper) {
-        this.objectMapper = objectMapper;
+    public void setJsonCodec(JsonCodec jsonCodec) {
+        this.jsonCodec = jsonCodec;
     }
 
     public String getUrl() {
@@ -381,8 +372,8 @@ public class HttpTemplate {
         return multipartFormParts;
     }
 
-    public TypeReference<?> getTypeReference() {
-        return typeReference;
+    public Type getReturnType() {
+        return returnType;
     }
 
     public OnErrorParser getOnErrorParser() {
