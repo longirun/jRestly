@@ -60,13 +60,37 @@ public class JacksonCodec implements JsonCodec {
         mapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
         mapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
 
-        DateTimeFormatter dateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
-
-        JavaTimeModule module = new JavaTimeModule();
-        module.addSerializer(LocalDateTime.class, new LocalDateTimeSerializer(dateTimeFormatter));
-        module.addDeserializer(LocalDateTime.class, new LocalDateTimeDeserializer(dateTimeFormatter));
-        mapper.registerModule(module);
+        // java.time support is optional: only jackson-databind is required for autodetection.
+        // jsr310 types live in a nested class so that the JVM verifier does not resolve them
+        // while loading JacksonCodec itself (NoClassDefFoundError on a jsr310-free classpath)
+        if (isOnClasspath("com.fasterxml.jackson.datatype.jsr310.JavaTimeModule")) {
+            JavaTimeSupport.register(mapper);
+        }
 
         return mapper;
+    }
+
+    private static boolean isOnClasspath(String fqn) {
+        try {
+            Class.forName(fqn, false, JacksonCodec.class.getClassLoader());
+            return true;
+        } catch (ClassNotFoundException e) {
+            return false;
+        }
+    }
+
+    private static final class JavaTimeSupport {
+
+        private JavaTimeSupport() {
+        }
+
+        static void register(ObjectMapper mapper) {
+            DateTimeFormatter dateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+
+            JavaTimeModule module = new JavaTimeModule();
+            module.addSerializer(LocalDateTime.class, new LocalDateTimeSerializer(dateTimeFormatter));
+            module.addDeserializer(LocalDateTime.class, new LocalDateTimeDeserializer(dateTimeFormatter));
+            mapper.registerModule(module);
+        }
     }
 }

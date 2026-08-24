@@ -2,9 +2,9 @@
 
 [![](https://jitpack.io/v/longirun/jRestly.svg)](https://jitpack.io/#longirun/jRestly)
 
-A declarative HTTP client for Java. Define an interface, get a working client — no code generation, just a dynamic proxy over Apache HttpClient + Jackson.
+A declarative HTTP client for Java. Define an interface, get a working client — no code generation, just a dynamic proxy over `java.net.http.HttpClient` with a zero-dependency core.
 
-> **Status:** early development, current release v0.4.0. A 0.5.0 "zero-dependency core" rewrite on `java.net.http.HttpClient` with pluggable JSON/cookie SPI, first-class auth flows, and stricter RFC compliance is planned. See `ROADMAP.md`.
+> **Status:** early development, current release v0.5.0-rc1 — zero-dependency core with a pluggable JSON codec SPI. See `ROADMAP.md`.
 
 ## Features
 
@@ -17,7 +17,7 @@ A declarative HTTP client for Java. Define an interface, get a working client �
 - Strict status validation: any status not in `@OnError` and not in `@ExpectStatus` (or not 2xx when `@ExpectStatus` is absent) throws `UnexpectedStatusException` with the raw body. Use `@ExpectStatus(statuses = {202})` for strict 2xx contracts
 - Per-method redirect chasing: `@FollowRedirects(count = N)`
 - Auth state machine: `@Anonymous` (skip auth refresh), `@Authorization` (this is the login call), `@SetAuthDetails(headerName = …)` (capture token from response, reuse on subsequent calls)
-- Apache HttpClient 4 + Jackson 2 (configurable `ObjectMapper`)
+- Zero-dependency core on `java.net.http.HttpClient` (`System.Logger`, no runtime dependencies); bring your own JSON codec — Jackson 2 is autodetected from the classpath
 
 ## Installation
 
@@ -30,7 +30,9 @@ repositories {
 }
 
 dependencies {
-    implementation("com.github.longirun:jRestly:v0.4.0")
+    implementation("com.github.longirun:jRestly:v0.5.0-rc1")
+    // JSON codec is not bundled — bring your own; Jackson 2 is autodetected
+    implementation("com.fasterxml.jackson.core:jackson-databind:2.18.2")
 }
 ```
 
@@ -43,7 +45,9 @@ repositories {
 }
 
 dependencies {
-    implementation 'com.github.longirun:jRestly:v0.4.0'
+    implementation 'com.github.longirun:jRestly:v0.5.0-rc1'
+    // JSON codec is not bundled — bring your own; Jackson 2 is autodetected
+    implementation 'com.fasterxml.jackson.core:jackson-databind:2.18.2'
 }
 ```
 
@@ -60,11 +64,18 @@ dependencies {
 <dependency>
     <groupId>com.github.longirun</groupId>
     <artifactId>jRestly</artifactId>
-    <version>v0.4.0</version>
+    <version>v0.5.0-rc1</version>
+</dependency>
+<dependency>
+    <groupId>com.fasterxml.jackson.core</groupId>
+    <artifactId>jackson-databind</artifactId>
+    <version>2.18.2</version>
 </dependency>
 ```
 
 > Requires Java 21+ (compiled with `-parameters` flag).
+>
+> The core jar has no runtime dependencies: JSON serialization goes through the `ru.jrestly.json.JsonCodec` SPI. Jackson 2 on the classpath is autodetected; a custom codec can be wired explicitly via `JRestlyClient.builder().jsonCodec(...)`. Without a codec the client fails fast with an actionable message.
 
 ## Quick start
 
