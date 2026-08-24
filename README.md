@@ -4,7 +4,7 @@
 
 A declarative HTTP client for Java. Define an interface, get a working client — no code generation, just a dynamic proxy over Apache HttpClient + Jackson.
 
-> **Status:** early development. v0.1.0 is the initial publish. A v2 rewrite on `java.net.http.HttpClient` with pluggable JSON/cookie SPI, first-class auth flows, and stricter RFC compliance is planned. See `TODO.md`.
+> **Status:** early development, current release v0.4.0. A 0.5.0 "zero-dependency core" rewrite on `java.net.http.HttpClient` with pluggable JSON/cookie SPI, first-class auth flows, and stricter RFC compliance is planned. See `ROADMAP.md`.
 
 ## Features
 
@@ -12,6 +12,7 @@ A declarative HTTP client for Java. Define an interface, get a working client �
 - HTTP methods: `@Get`, `@Post`, `@Put`, `@Patch`, `@Delete`
 - Path variables (`@PathVariable` + `${var}`), query params (`@RequestParam`, `@RequestDefaultParam`), headers (`@RequestHeader`), request body (`@RequestBody`)
 - Content types: `application/json` (default), `application/x-www-form-urlencoded`, `multipart/form-data`
+- Multipart file uploads via `@MultipartFormFile(partName = …)`
 - Per-method typed error mapping: `@OnError(statuses = {…}, errorObject = X.class)` throws `HandledException` with the deserialized body
 - Strict status validation: any status not in `@OnError` and not in `@ExpectStatus` (or not 2xx when `@ExpectStatus` is absent) throws `UnexpectedStatusException` with the raw body. Use `@ExpectStatus(statuses = {202})` for strict 2xx contracts
 - Per-method redirect chasing: `@FollowRedirects(count = N)`
@@ -29,7 +30,7 @@ repositories {
 }
 
 dependencies {
-    implementation("com.github.longirun:jRestly:v0.1.0")
+    implementation("com.github.longirun:jRestly:v0.4.0")
 }
 ```
 
@@ -42,7 +43,7 @@ repositories {
 }
 
 dependencies {
-    implementation 'com.github.longirun:jRestly:v0.1.0'
+    implementation 'com.github.longirun:jRestly:v0.4.0'
 }
 ```
 
@@ -59,7 +60,7 @@ dependencies {
 <dependency>
     <groupId>com.github.longirun</groupId>
     <artifactId>jRestly</artifactId>
-    <version>v0.1.0</version>
+    <version>v0.4.0</version>
 </dependency>
 ```
 
@@ -71,7 +72,6 @@ Define a controller interface for the API you want to call:
 
 ```java
 import ru.jrestly.annotation.*;
-import ru.jrestly.http.RequestType;
 import java.util.List;
 
 public interface ItemApi {
