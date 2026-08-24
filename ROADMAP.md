@@ -26,13 +26,15 @@ Gates for every step: WireMock suite green (`./gradlew test`), IDE inspections c
 - [x] commons-io and commons-lang3 removed
 - Gate: POM has no commons / log4j entries; only HC4 (`httpclient`, `httpmime`) remains — it is removed in Step 3; suite green — commons/log4j confirmed out of `build.gradle`; `./gradlew test` run pending on the developer side before commit
 
-## Step 3 — java.net.http engine (ADR-0002)
+## Step 3 — java.net.http engine (ADR-0002) ✅ DONE
 
-- [ ] Internal wire model; template/builder on java.net.http; HC4 vocabulary removed
-- [ ] Redirect loop: 301/302/303 → GET, 307/308 → method + body, hop counter, final result returned to the caller (bug fix); RedirectTest updated
-- [ ] Own RFC 7578 multipart writer: file parts + text `@RequestParam` parts; text-part test added
-- [ ] urlencoded bodies via `URLEncoder`; timeout mapping (connect / per-request); connection-request timeout dropped
-- Gate: suite green including updated redirect + multipart tests
+> Implemented in the working tree (uncommitted at verification 2026-08-24; HEAD `d7f48a5` was a Step-1 follow-up). Verified by code inspection + IDE inspections (clean, 12 files): wire model `WireRequest`/`WireResponse`/`Param`; HC4 fully gone from `build.gradle` and `src/main` (zero `org.apache.http` imports; `http/HttpDelete.java` and `util/IO.java` deleted); manual redirect loop in `HttpTemplate.executeWithRedirects` on top of `HttpClient.Redirect.NEVER` — 301/302/303 → GET, 307/308 → method+body, hop counter, final response returned (bug fix), relative `Location` via `URI.resolve`; `MultipartWriter` (RFC 7578 framing, CRLF, closing delimiter, UUID boundary) + `MultipartPart.text/file` — the old `getDeclaredField("bodyParts")` reflection hack is gone; urlencoded via `URLEncoder`; connect timeout → `HttpClient.newBuilder`, socket → per-request `.timeout()`, connection-request dropped. Tests: RedirectTest rewritten (302/301/303/307 + hop-limit with `UnexpectedStatusException(302)` surfaced), MultipartTest text-part test added, PathVariableEncodingTest present.
+
+- [x] Internal wire model; template/builder on java.net.http; HC4 vocabulary removed
+- [x] Redirect loop: 301/302/303 → GET, 307/308 → method + body, hop counter, final result returned to the caller (bug fix); RedirectTest updated
+- [x] Own RFC 7578 multipart writer: file parts + text `@RequestParam` parts; text-part test added
+- [x] urlencoded bodies via `URLEncoder`; timeout mapping (connect / per-request); connection-request timeout dropped
+- Gate: suite green including updated redirect + multipart tests — 61/61 passed on 2026-08-24, including independent additions: RedirectNoFollowTest (no-follow without the annotation), RedirectMethodTest (307/PUT, 308/PATCH, relative Location), MultipartTest (Path param, Collection text parts)
 
 ## Step 4 — Release 0.5.0-rc1
 

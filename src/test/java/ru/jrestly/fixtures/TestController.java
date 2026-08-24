@@ -4,6 +4,7 @@ import ru.jrestly.annotation.*;
 import ru.jrestly.http.RequestType;
 
 import java.io.File;
+import java.nio.file.Path;
 import java.util.List;
 
 public interface TestController {
@@ -66,6 +67,14 @@ public interface TestController {
     @Get(path = "/api/redirect")
     String getWithRedirect();
 
+    @FollowRedirects(count = 3)
+    @Post(path = "/api/redirect-post")
+    String postWithRedirect(@RequestBody TestDto item);
+
+    @FollowRedirects(count = 3)
+    @Post(path = "/api/redirect-post-preserve")
+    TestDto postWithRedirectPreservingBody(@RequestBody TestDto item);
+
     @Authorization
     @SetAuthDetails(headerName = "access-token")
     @Post(path = "/api/auth/login")
@@ -99,4 +108,15 @@ public interface TestController {
 
     @Post(path = "/api/upload", requestType = RequestType.MULTIPART_FORM_DATA)
     String uploadFileObject(@MultipartFormFile(partName = "file") File file);
+
+    @Post(path = "/api/upload", requestType = RequestType.MULTIPART_FORM_DATA)
+    String uploadFileWithText(@MultipartFormFile(partName = "file") String filePath,
+                              @RequestParam(name = "comment") String comment);
+
+    @Post(path = "/api/upload", requestType = RequestType.MULTIPART_FORM_DATA)
+    String uploadFilePath(@MultipartFormFile(partName = "file") Path file);
+
+    @Post(path = "/api/upload", requestType = RequestType.MULTIPART_FORM_DATA)
+    String uploadFileWithTextParts(@MultipartFormFile(partName = "file") String filePath,
+                                   @RequestParam(name = "tags") List<String> tags);
 }

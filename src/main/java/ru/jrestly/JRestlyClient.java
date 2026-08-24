@@ -59,11 +59,6 @@ public class JRestlyClient extends AbstractHttpClient {
             return this;
         }
 
-        public Builder connectionRequestTimeout(int ms) {
-            moduleInfoBuilder.connectionRequestTimeout(ms);
-            return this;
-        }
-
         public Builder validateControllers(boolean validate) {
             moduleInfoBuilder.validateControllers(validate);
             return this;

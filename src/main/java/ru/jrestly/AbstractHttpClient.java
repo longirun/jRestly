@@ -1,16 +1,14 @@
 package ru.jrestly;
 
-import org.apache.http.client.config.RequestConfig;
-import org.apache.http.impl.client.CloseableHttpClient;
-import org.apache.http.impl.client.HttpClients;
 import ru.jrestly.annotation.Anonymous;
 import ru.jrestly.annotation.Authorization;
 import ru.jrestly.http.HttpTemplate;
 import ru.jrestly.http.HttpTemplateBuilder;
 
-import java.io.IOException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
+import java.net.http.HttpClient;
+import java.time.Duration;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -21,7 +19,7 @@ public abstract class AbstractHttpClient {
     protected final Map<Class<?>, Proxy> controllers = new HashMap<>();
 
     protected ModuleInfo moduleInfo;
-    protected CloseableHttpClient httpClient;
+    protected HttpClient httpClient;
 
     public AbstractHttpClient(ModuleInfo moduleInfo) {
         this.moduleInfo = moduleInfo;
@@ -37,17 +35,9 @@ public abstract class AbstractHttpClient {
     }
 
     protected void createConnection() {
-        RequestConfig config = RequestConfig.custom()
-                .setConnectTimeout(moduleInfo.getConnectTimeout())
-                .setSocketTimeout(moduleInfo.getSocketTimeout())
-                .setConnectionRequestTimeout(moduleInfo.getConnectionRequestTimeout())
-                .build();
-
-        this.httpClient = HttpClients.custom()
-                .setDefaultCookieStore(null)
-                .disableRedirectHandling()
-                .disableAuthCaching()
-                .setDefaultRequestConfig(config)
+        this.httpClient = HttpClient.newBuilder()
+                .connectTimeout(Duration.ofMillis(moduleInfo.getConnectTimeout()))
+                .followRedirects(HttpClient.Redirect.NEVER)
                 .build();
     }
 
@@ -55,11 +45,7 @@ public abstract class AbstractHttpClient {
     // the interface would provoke per-request try-with-resources usage
     public void close() {
         if (httpClient != null) {
-            try {
-                httpClient.close();
-            } catch (IOException e) {
-                logger.log(System.Logger.Level.ERROR, "Failed to close http connection", e);
-            }
+            httpClient.close();
         }
     }
 

@@ -10,7 +10,7 @@ The engine is Apache HttpClient 4.5 (EOL maintenance branch) and the template vo
 
 - `java.net.http.HttpClient` is the single engine. No transport SPI, no HC adapter — rejected as speculative generality; revisit via a new ADR on real demand.
 - An internal wire model (method, URI, headers, byte body / multipart parts) decouples template logic from the engine.
-- Redirects: manual loop with a hop counter; 301/302/303 → GET, 307/308 → method + body; the final response is returned to the caller — fixes the current bug (result discarded, caller got null; only 302 recognized).
+- Redirects: manual loop with a hop counter; 301/302/303 → GET, 307/308 → method + body; the final response is returned to the caller — fixes the current bug (result discarded, caller got null; only 302 recognized). On a cross-origin hop (scheme/host/port change) ambient auth headers supplied by the AuthProvider are dropped — matching browser/curl behavior (curl CVE-2018-1000120); explicit `@RequestHeader` values survive.
 - Multipart: own minimal RFC 7578 writer — file parts and text `@RequestParam` parts.
 - Timeouts: connect → HttpClient, socket → per-request; connection-request dropped (no pool-queue semantics in the JDK client).
 

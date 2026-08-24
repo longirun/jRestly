@@ -1,14 +1,5 @@
 package ru.jrestly.http;
 
-import org.apache.http.HttpEntity;
-import org.apache.http.NameValuePair;
-import org.apache.http.client.entity.UrlEncodedFormEntity;
-import org.apache.http.entity.ContentType;
-import org.apache.http.entity.StringEntity;
-import org.apache.http.entity.mime.FormBodyPart;
-import org.apache.http.entity.mime.MultipartEntityBuilder;
-import org.apache.http.impl.client.CloseableHttpClient;
-import org.apache.http.message.BasicNameValuePair;
 import ru.jrestly.AuthProvider;
 import ru.jrestly.ModuleInfo;
 import ru.jrestly.annotation.Delete;
@@ -28,29 +19,33 @@ import ru.jrestly.annotation.RequestParam;
 import ru.jrestly.annotation.SetAuthDetails;
 
 import java.io.File;
-import java.lang.reflect.Field;
+import java.io.IOException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Parameter;
 import java.net.URLEncoder;
+import java.net.http.HttpClient;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
+import java.util.UUID;
 import java.util.function.Consumer;
+import java.util.stream.Collectors;
 
 public class HttpTemplateBuilder {
-    protected final System.Logger logger = System.getLogger(getClass().getName());
 
     private final ModuleInfo moduleInfo;
-    private final CloseableHttpClient httpClient;
+    private final HttpClient httpClient;
     private final Method method;
     private final Object[] args;
     private final Class<?> controller;
 
     private RequestMeta requestMeta;
 
-    public HttpTemplateBuilder(ModuleInfo moduleInfo, CloseableHttpClient httpClient, Method method, Object[] args, Class<?> controller) {
+    public HttpTemplateBuilder(ModuleInfo moduleInfo, HttpClient httpClient, Method method, Object[] args, Class<?> controller) {
         this.moduleInfo = moduleInfo;
         this.httpClient = httpClient;
         this.method = method;
@@ -62,7 +57,7 @@ public class HttpTemplateBuilder {
         requestMeta = resolveRequestMeta(method);
 
         HttpTemplate result = new HttpTemplate();
-        ContentType contentType = resolveContentType(requestMeta.requestType());
+        RequestType requestType = requestMeta.requestType();
 
         result.setLogger(System.getLogger(controller.getName()));
         result.setModuleInfo(moduleInfo);
@@ -71,69 +66,40 @@ public class HttpTemplateBuilder {
         result.setHttpClient(httpClient);
         result.setUrl(createUrl());
         result.setHttpMethod(requestMeta.httpMethod());
-        result.setContentType(contentType);
+        result.setContentType(requestType.mime());
         result.setHeaders(createHeaders());
+        // names only: the redirect loop matches them case-insensitively when dropping
+        // ambient credentials on a cross-origin hop
+        result.setAuthHeaderNames(moduleInfo.getAuthProvider().getAuthHeaders().stream()
+                .map(Header::name)
+                .toList());
         result.setAuthDetailsConsumer(getAuthDetailsConsumer());
-        if (!ContentType.MULTIPART_FORM_DATA.equals(contentType) && !ContentType.APPLICATION_FORM_URLENCODED.equals(contentType)) {
+        if (!RequestType.MULTIPART_FORM_DATA.equals(requestType) && !RequestType.APPLICATION_FORM_URLENCODED.equals(requestType)) {
             result.setRequestParams(createRequestParams());
         }
 
-        HttpEntity entity = null;
-        if (ContentType.APPLICATION_JSON.equals(contentType)) {
-            entity = createJsonEntity(contentType);
-        } else if (ContentType.APPLICATION_FORM_URLENCODED.equals(contentType)) {
-            entity = createUrlEncodedEntity();
-        } else if (ContentType.MULTIPART_FORM_DATA.equals(contentType)) {
-            MultipartEntityBuilder multipartFormBuilder = createMultipartFormBuilder(contentType);
-            entity = multipartFormBuilder.build();
+        byte[] body = null;
+        List<MultipartPart> parts = null;
+        if (RequestType.APPLICATION_JSON.equals(requestType)) {
+            body = createJsonBody();
+        } else if (RequestType.APPLICATION_FORM_URLENCODED.equals(requestType)) {
+            body = createUrlEncodedBody();
+        } else if (RequestType.MULTIPART_FORM_DATA.equals(requestType)) {
+            parts = createMultipartParts();
 
-            result.setMultipartFormParts(getMultipartFormParts(multipartFormBuilder));
+            String boundary = "jrestly-" + UUID.randomUUID().toString().replace("-", "");
+            body = MultipartWriter.write(boundary, parts);
+            result.setContentType("multipart/form-data; boundary=" + boundary);
         }
 
-        result.setEntity(entity);
+        result.setBody(body);
+        result.setMultipartFormParts(parts);
         result.setReturnType(method.getGenericReturnType());
         result.setOnErrorParser(createOnErrorParser());
         result.setExpectStatuses(createExpectStatuses());
         result.setFollowRedirectsNumber(getFollowRedirectsNumber());
 
         return result;
-    }
-
-    public HttpTemplate buildFromRedirect(HttpTemplate oldTemplate, String redirectUri) {
-        HttpTemplate result = new HttpTemplate();
-
-        result.setLogger(oldTemplate.getLogger());
-        result.setHttpClient(oldTemplate.getHttpClient());
-        result.setModuleInfo(moduleInfo);
-        result.setJsonCodec(moduleInfo.getJsonCodec());
-        result.setUrl(redirectUri);
-        result.setHttpMethod(HttpMethod.GET);
-        result.setContentType(ContentType.WILDCARD);
-        result.setHeaders(createHeaders());
-        result.setAuthDetailsConsumer(oldTemplate.getAuthDetailsConsumer());
-        result.setRequestParams(null);
-        result.setEntity(null);
-        result.setReturnType(oldTemplate.getReturnType());
-        result.setOnErrorParser(oldTemplate.getOnErrorParser());
-        result.setExpectStatuses(oldTemplate.getExpectStatuses());
-        result.setFollowRedirectsNumber(oldTemplate.getFollowRedirectsNumber() - 1);
-
-        return result;
-    }
-
-    private List<FormBodyPart> getMultipartFormParts(MultipartEntityBuilder builder) {
-        try {
-            Field bodyParts = builder.getClass().getDeclaredField("bodyParts");
-            bodyParts.setAccessible(true);
-
-            //noinspection unchecked
-            return (List<FormBodyPart>) bodyParts.get(builder);
-
-        } catch (NoSuchFieldException | IllegalAccessException e) {
-            logger.log(System.Logger.Level.ERROR, "cannot get multiparts", e);
-
-            return null;
-        }
     }
 
     private String createUrl() {
@@ -159,9 +125,7 @@ public class HttpTemplateBuilder {
     }
 
     private List<Header> createHeaders() {
-        List<Header> result = new ArrayList<>();
-
-        result.addAll(moduleInfo.getAuthProvider().getAuthHeaders());
+        List<Header> result = new ArrayList<>(moduleInfo.getAuthProvider().getAuthHeaders());
 
         if (method != null) {
             Parameter[] parameters = method.getParameters();
@@ -201,15 +165,6 @@ public class HttpTemplateBuilder {
         throw new UnsupportedOperationException("No HTTP method annotation found on " + method);
     }
 
-    private ContentType resolveContentType(RequestType type) {
-        switch (type) {
-            case APPLICATION_JSON: return ContentType.APPLICATION_JSON;
-            case APPLICATION_FORM_URLENCODED: return ContentType.APPLICATION_FORM_URLENCODED;
-            case MULTIPART_FORM_DATA: return ContentType.MULTIPART_FORM_DATA;
-            default: throw new UnsupportedOperationException("Unknown request type: " + type);
-        }
-    }
-
     private Consumer<List<Header>> getAuthDetailsConsumer() {
         if (method.isAnnotationPresent(SetAuthDetails.class)) {
             String headerName = method.getAnnotation(SetAuthDetails.class).headerName();
@@ -221,9 +176,8 @@ public class HttpTemplateBuilder {
         return null;
     }
 
-    private List<NameValuePair> createRequestParams() {
-        List<NameValuePair> result = new ArrayList<>();
-        result.addAll(createRequestDefaultParams(requestMeta.defaultParams()));
+    private List<Param> createRequestParams() {
+        List<Param> result = new ArrayList<>(createRequestDefaultParams(requestMeta.defaultParams()));
 
         Parameter[] parameters = method.getParameters();
         for (int i = 0; i < parameters.length; i++) {
@@ -240,11 +194,11 @@ public class HttpTemplateBuilder {
                         : annotation.name();
 
                 if (args[i] instanceof Collection) {
-                    for (Object o : (Collection) args[i]) {
-                        result.add(new BasicNameValuePair(name, o.toString()));
+                    for (Object o : (Collection<?>) args[i]) {
+                        result.add(new Param(name, o.toString()));
                     }
                 } else {
-                    result.add(new BasicNameValuePair(name, args[i].toString()));
+                    result.add(new Param(name, args[i].toString()));
                 }
             }
         }
@@ -252,18 +206,17 @@ public class HttpTemplateBuilder {
         return result;
     }
 
-    private List<NameValuePair> createRequestDefaultParams(RequestDefaultParam[] params) {
-        List<NameValuePair> result = new ArrayList<>();
+    private List<Param> createRequestDefaultParams(RequestDefaultParam[] params) {
+        List<Param> result = new ArrayList<>();
 
         for (RequestDefaultParam param : params) {
-            NameValuePair item = new BasicNameValuePair(param.name(), param.value());
-            result.add(item);
+            result.add(new Param(param.name(), param.value()));
         }
 
         return result;
     }
 
-    private StringEntity createJsonEntity(ContentType contentType) {
+    private byte[] createJsonBody() {
         Object body = createBody(method, args);
         if (body == null) {
             return null;
@@ -273,10 +226,7 @@ public class HttpTemplateBuilder {
                 ? (String) body
                 : moduleInfo.getJsonCodec().serialize(body);
 
-        StringEntity entity = new StringEntity(stringifiedBody, StandardCharsets.UTF_8);
-        entity.setContentType(contentType.getMimeType());
-
-        return entity;
+        return stringifiedBody.getBytes(StandardCharsets.UTF_8);
     }
 
     private Object createBody(Method method, Object[] args){
@@ -294,31 +244,58 @@ public class HttpTemplateBuilder {
         return null;
     }
 
-    private MultipartEntityBuilder createMultipartFormBuilder(ContentType contentType) {
+    private List<MultipartPart> createMultipartParts() {
         if (!RequestType.MULTIPART_FORM_DATA.equals(requestMeta.requestType())) {
             throw new UnsupportedOperationException("Cannot create multipart entity");
         }
 
+        List<MultipartPart> parts = new ArrayList<>();
+
         Parameter[] parameters = method.getParameters();
-        if (parameters.length == 0) {
-            throw new UnsupportedOperationException("Multipart entity has no parts");
-        }
-
-        MultipartEntityBuilder builder = MultipartEntityBuilder.create();
-        builder.setContentType(contentType);
-        builder.setCharset(StandardCharsets.UTF_8);
-
         for (int i = 0; i < parameters.length; i++) {
             if (parameters[i].isAnnotationPresent(MultipartFormFile.class)) {
                 MultipartFormFile multipartAnnotation = parameters[i].getAnnotation(MultipartFormFile.class);
-                builder.addBinaryBody(multipartAnnotation.partName(), new File(args[i].toString()));
+                parts.add(createFilePart(multipartAnnotation.partName(), args[i]));
+            } else if (parameters[i].isAnnotationPresent(RequestParam.class)) {
+                if (args[i] == null) {
+                    continue;
+                }
+
+                Parameter parameter = parameters[i];
+                RequestParam annotation = parameter.getAnnotation(RequestParam.class);
+
+                String name = annotation.name().isEmpty()
+                        ? parameter.getName()
+                        : annotation.name();
+
+                if (args[i] instanceof Collection) {
+                    for (Object o : (Collection<?>) args[i]) {
+                        parts.add(MultipartPart.text(name, o.toString()));
+                    }
+                } else {
+                    parts.add(MultipartPart.text(name, args[i].toString()));
+                }
             }
         }
 
-        return builder;
+        return parts;
     }
 
-    private UrlEncodedFormEntity createUrlEncodedEntity() {
+    private MultipartPart createFilePart(String partName, Object arg) {
+        try {
+            Path path = arg instanceof File file
+                    ? file.toPath()
+                    : arg instanceof Path p
+                            ? p
+                            : Path.of(arg.toString());
+
+            return MultipartPart.file(partName, path.getFileName().toString(), Files.readAllBytes(path));
+        } catch (IOException e) {
+            throw new RuntimeException("Cannot read multipart file: " + arg, e);
+        }
+    }
+
+    private byte[] createUrlEncodedBody() {
         if (!RequestType.APPLICATION_FORM_URLENCODED.equals(requestMeta.requestType())) {
             throw new UnsupportedOperationException("Cannot create urlencoded entity");
         }
@@ -328,9 +305,12 @@ public class HttpTemplateBuilder {
             throw new UnsupportedOperationException("Urlencoded method has no parameters");
         }
 
-        List<NameValuePair> params = createRequestParams();
-
-        return new UrlEncodedFormEntity(params, StandardCharsets.UTF_8);
+        return createRequestParams().stream()
+                .map(param -> URLEncoder.encode(param.name(), StandardCharsets.UTF_8)
+                        + "="
+                        + URLEncoder.encode(param.value(), StandardCharsets.UTF_8))
+                .collect(Collectors.joining("&"))
+                .getBytes(StandardCharsets.UTF_8);
     }
 
     private OnErrorParser createOnErrorParser() {

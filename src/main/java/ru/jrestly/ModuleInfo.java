@@ -23,10 +23,6 @@ public interface ModuleInfo {
         return 30_000;
     }
 
-    default int getConnectionRequestTimeout() {
-        return 5_000;
-    }
-
     default boolean isValidateControllers() {
         return true;
     }

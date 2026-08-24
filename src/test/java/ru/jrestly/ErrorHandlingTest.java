@@ -27,8 +27,9 @@ class ErrorHandlingTest extends BaseWireMockTest {
         assertEquals("Invalid request", error.message());
 
         assertEquals(400, exception.getStatusCode());
+        // header names are case-insensitive; over HTTP/2 they arrive lowercase
         assertTrue(exception.getResponseHeaders().stream()
-                .anyMatch(h -> "Content-Type".equals(h.name())
+                .anyMatch(h -> "Content-Type".equalsIgnoreCase(h.name())
                         && "application/json".equals(h.value())));
     }
 
@@ -48,6 +49,6 @@ class ErrorHandlingTest extends BaseWireMockTest {
 
         assertEquals(404, exception.getStatusCode());
         assertTrue(exception.getResponseHeaders().stream()
-                .anyMatch(h -> "Content-Type".equals(h.name())));
+                .anyMatch(h -> "Content-Type".equalsIgnoreCase(h.name())));
     }
 }
