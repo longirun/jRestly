@@ -28,8 +28,8 @@ class ErrorHandlingTest extends BaseWireMockTest {
 
         assertEquals(400, exception.getStatusCode());
         assertTrue(exception.getResponseHeaders().stream()
-                .anyMatch(h -> "Content-Type".equals(h.getKey())
-                        && "application/json".equals(h.getValue())));
+                .anyMatch(h -> "Content-Type".equals(h.name())
+                        && "application/json".equals(h.value())));
     }
 
     @Test
@@ -48,6 +48,6 @@ class ErrorHandlingTest extends BaseWireMockTest {
 
         assertEquals(404, exception.getStatusCode());
         assertTrue(exception.getResponseHeaders().stream()
-                .anyMatch(h -> "Content-Type".equals(h.getKey())));
+                .anyMatch(h -> "Content-Type".equals(h.name())));
     }
 }

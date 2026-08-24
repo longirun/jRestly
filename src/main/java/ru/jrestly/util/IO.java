@@ -5,6 +5,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.charset.Charset;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 
@@ -26,6 +27,10 @@ public class IO {
             buf = bos.toByteArray();
         }
         return buf;
+    }
+
+    public static String readString(InputStream is, Charset charset) throws IOException {
+        return new String(readBytes(is), charset);
     }
 
     public static void saveToFile(byte[] bytes, String path) throws IOException {

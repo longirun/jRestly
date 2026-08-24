@@ -1,12 +1,12 @@
 package ru.jrestly.fixtures;
 
-import org.apache.commons.lang3.tuple.Pair;
 import ru.jrestly.Environment;
+import ru.jrestly.http.Header;
 
-public class TestEnvironment implements Environment<Pair<String, String>> {
+public class TestEnvironment implements Environment<Header> {
 
     private final String baseUrl;
-    private Pair<String, String> authDetails;
+    private Header authDetails;
 
     public TestEnvironment(String baseUrl) {
         this.baseUrl = baseUrl;
@@ -18,12 +18,12 @@ public class TestEnvironment implements Environment<Pair<String, String>> {
     }
 
     @Override
-    public Pair<String, String> getAuthDetails() {
+    public Header getAuthDetails() {
         return authDetails;
     }
 
     @Override
-    public void setAuthDetails(Pair<String, String> authDetails) {
+    public void setAuthDetails(Header authDetails) {
         this.authDetails = authDetails;
     }
 }

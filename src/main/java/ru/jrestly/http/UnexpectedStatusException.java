@@ -1,7 +1,5 @@
 package ru.jrestly.http;
 
-import org.apache.commons.lang3.tuple.Pair;
-
 import java.util.List;
 
 /**
@@ -17,7 +15,7 @@ public class UnexpectedStatusException extends HandledException {
 
     private final String rawBody;
 
-    public UnexpectedStatusException(int statusCode, String rawBody, List<Pair<String, String>> responseHeaders) {
+    public UnexpectedStatusException(int statusCode, String rawBody, List<Header> responseHeaders) {
         super(null, statusCode, responseHeaders);
         this.rawBody = rawBody == null ? "" : rawBody;
     }

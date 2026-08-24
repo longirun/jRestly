@@ -1,8 +1,8 @@
 package ru.jrestly.fixtures;
 
-import org.apache.commons.lang3.tuple.Pair;
 import ru.jrestly.AbstractHttpClient;
 import ru.jrestly.ModuleInfo;
+import ru.jrestly.http.Header;
 
 import java.util.List;
 
@@ -14,7 +14,7 @@ public class TestApiClient extends AbstractHttpClient {
 
     @Override
     protected void login() {
-        List<Pair<String, String>> authHeaders = moduleInfo.getAuthProvider().getAuthHeaders();
+        List<Header> authHeaders = moduleInfo.getAuthProvider().getAuthHeaders();
         if (!authHeaders.isEmpty()) {
             moduleInfo.getEnvironment().setAuthDetails(authHeaders.get(0));
         }

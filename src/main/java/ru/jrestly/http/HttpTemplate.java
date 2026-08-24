@@ -1,9 +1,5 @@
 package ru.jrestly.http;
 
-import org.apache.commons.io.IOUtils;
-import org.apache.commons.lang3.tuple.ImmutablePair;
-import org.apache.commons.lang3.tuple.Pair;
-import org.apache.http.Header;
 import org.apache.http.HttpEntity;
 import org.apache.http.NameValuePair;
 import org.apache.http.client.methods.CloseableHttpResponse;
@@ -20,7 +16,6 @@ import org.apache.http.entity.mime.FormBodyPart;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.message.BasicHeader;
 import org.apache.http.protocol.HTTP;
-import org.apache.logging.log4j.Logger;
 import ru.jrestly.ModuleInfo;
 import ru.jrestly.json.JsonCodec;
 import ru.jrestly.util.IO;
@@ -30,17 +25,14 @@ import java.lang.reflect.Type;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
-import java.util.Map;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 public class HttpTemplate {
-    private Logger logger;
+    private System.Logger logger;
 
     private CloseableHttpClient httpClient;
     private ModuleInfo moduleInfo;
@@ -49,8 +41,8 @@ public class HttpTemplate {
     private String url;
     private HttpMethod httpMethod;
     private ContentType contentType;
-    private List<Pair<String, String>> headers;
-    private Consumer<List<Pair<String, String>>> authDetailsConsumer;
+    private List<Header> headers;
+    private Consumer<List<Header>> authDetailsConsumer;
     private List<NameValuePair> requestParams;
     private HttpEntity entity;
     private List<FormBodyPart> multipartFormParts;
@@ -64,9 +56,9 @@ public class HttpTemplate {
 
         HttpRequestBase httpRequest = createRequest(uri);
 
-        List<Header> headers = createHeaders();
-
-        headers.forEach(httpRequest::addHeader);
+        if (headers != null) {
+            headers.forEach(header -> httpRequest.addHeader(header.name(), header.value()));
+        }
 
         if (entity != null) {
             ((HttpEntityEnclosingRequestBase) httpRequest).setEntity(entity);
@@ -78,7 +70,7 @@ public class HttpTemplate {
         try {
             logRequest(httpRequest);
         } catch (IOException e) {
-            logger.error("Cannot log request", e);
+            logger.log(System.Logger.Level.ERROR, "Cannot log request", e);
         }
 
         String payload = null;
@@ -86,10 +78,10 @@ public class HttpTemplate {
 
         try (CloseableHttpResponse response = httpClient.execute(httpRequest)) {
 
-            List<Pair<String, String>> responseHeaders = null;
+            List<Header> responseHeaders = null;
             if (response.getAllHeaders() != null) {
                 responseHeaders = Arrays.stream(response.getAllHeaders())
-                        .map(header -> new ImmutablePair<>(header.getName(), header.getValue()))
+                        .map(header -> new Header(header.getName(), header.getValue()))
                         .collect(Collectors.toList());
 
                 if (authDetailsConsumer != null) {
@@ -101,12 +93,12 @@ public class HttpTemplate {
 
             if (followRedirectsNumber != null) {
                 if (followRedirectsNumber <= 0) {
-                    logger.info("Too many redirects");
+                    logger.log(System.Logger.Level.INFO, "Too many redirects");
                 } else {
                     String redirectUri = getRedirectUri(response);
 
                     if (redirectUri != null) {
-                        logger.info("Following redirect to: " + redirectUri);
+                        logger.log(System.Logger.Level.INFO, "Following redirect to: " + redirectUri);
 
                         HttpTemplate httpTemplate = new HttpTemplateBuilder(moduleInfo, httpClient, null, null, null)
                                 .buildFromRedirect(this, redirectUri);
@@ -135,16 +127,16 @@ public class HttpTemplate {
             }
 
             if (payload == null) {
-                logger.info("No response.");
+                logger.log(System.Logger.Level.INFO, "No response.");
                 return null;
             }
 
             if (String.class.equals(returnType)) {
-                logger.info("Response size: {} bytes \n" + payload, payload.length());
+                logger.log(System.Logger.Level.INFO, "Response size: " + payload.length() + " bytes\n" + payload);
                 return (T) payload;
             }
 
-            logger.info("Response size: {} bytes \n" + jsonCodec.prettyPrint(payload), payload.length());
+            logger.log(System.Logger.Level.INFO, "Response size: " + payload.length() + " bytes\n" + jsonCodec.prettyPrint(payload));
             if (Void.class.equals(returnType)) {
                 return null;
             }
@@ -159,13 +151,13 @@ public class HttpTemplate {
             } else if (bytes != null) {
                 message = new String(bytes, StandardCharsets.UTF_8);
             }
-            logger.error("Failed to parse payload\n" + (message == null ? "" : message));
+            logger.log(System.Logger.Level.ERROR, "Failed to parse payload\n" + (message == null ? "" : message));
 
             throw new RuntimeException(e);
         }
     }
 
-    public void setLogger(Logger logger) {
+    public void setLogger(System.Logger logger) {
         this.logger = logger;
     }
 
@@ -185,11 +177,11 @@ public class HttpTemplate {
         this.contentType = contentType;
     }
 
-    public void setHeaders(List<Pair<String, String>> headers) {
+    public void setHeaders(List<Header> headers) {
         this.headers = headers;
     }
 
-    public void setAuthDetailsConsumer(Consumer<List<Pair<String, String>>> authDetailsConsumer) {
+    public void setAuthDetailsConsumer(Consumer<List<Header>> authDetailsConsumer) {
         this.authDetailsConsumer = authDetailsConsumer;
     }
 
@@ -250,18 +242,6 @@ public class HttpTemplate {
         }
     }
 
-    private List<Header> createHeaders() {
-        List<Header> result = new ArrayList<>();
-
-        if (headers != null) {
-            for (Map.Entry<String, String> cookie : headers) {
-                result.add(new BasicHeader(cookie.getKey(), cookie.getValue()));
-            }
-        }
-
-        return result;
-    }
-
     protected void logRequest(HttpRequestBase httpRequest) throws IOException {
         StringBuilder sb = new StringBuilder();
         sb.append(httpRequest.toString());
@@ -289,14 +269,14 @@ public class HttpTemplate {
                     sb.append("Sending size: ").append(entity.getContentLength());
                 } else {
                     StringEntity stringEntity = (StringEntity) entity;
-                    sb.append(IOUtils.toString(stringEntity.getContent(), StandardCharsets.UTF_8));
+                    sb.append(IO.readString(stringEntity.getContent(), StandardCharsets.UTF_8));
                 }
             } else {
                 sb.append("No request body");
             }
         }
 
-        logger.info("Request: " + sb);
+        logger.log(System.Logger.Level.INFO, "Request: " + sb);
     }
 
     private void logResponseHeaders(CloseableHttpResponse response) {
@@ -304,7 +284,7 @@ public class HttpTemplate {
                 .map(Object::toString)
                 .collect(Collectors.joining("\n"));
 
-        logger.info("Response: {}\n{}", response.getStatusLine().toString(), headers);
+        logger.log(System.Logger.Level.INFO, "Response: " + response.getStatusLine() + "\n" + headers);
     }
 
     private String getRedirectUri(CloseableHttpResponse response) {
@@ -320,11 +300,11 @@ public class HttpTemplate {
             }
         }
 
-        logger.info("Redirect uri not found");
+        logger.log(System.Logger.Level.INFO, "Redirect uri not found");
         return null;
     }
 
-    public Logger getLogger() {
+    public System.Logger getLogger() {
         return logger;
     }
 
@@ -352,11 +332,11 @@ public class HttpTemplate {
         return contentType;
     }
 
-    public List<Pair<String, String>> getHeaders() {
+    public List<Header> getHeaders() {
         return headers;
     }
 
-    public Consumer<List<Pair<String, String>>> getAuthDetailsConsumer() {
+    public Consumer<List<Header>> getAuthDetailsConsumer() {
         return authDetailsConsumer;
     }
 

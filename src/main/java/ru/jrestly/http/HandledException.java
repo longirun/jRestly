@@ -1,7 +1,5 @@
 package ru.jrestly.http;
 
-import org.apache.commons.lang3.tuple.Pair;
-
 import java.util.Collections;
 import java.util.List;
 
@@ -9,9 +7,9 @@ public class HandledException extends RuntimeException {
 
   private final Object details;
   private final int statusCode;
-  private final List<Pair<String, String>> responseHeaders;
+  private final List<Header> responseHeaders;
 
-  public HandledException(Object details, int statusCode, List<Pair<String, String>> responseHeaders) {
+  public HandledException(Object details, int statusCode, List<Header> responseHeaders) {
     super("HTTP " + statusCode);
 
     this.details = details;
@@ -30,7 +28,7 @@ public class HandledException extends RuntimeException {
     return statusCode;
   }
 
-  public List<Pair<String, String>> getResponseHeaders() {
+  public List<Header> getResponseHeaders() {
     return responseHeaders;
   }
 }

@@ -15,11 +15,6 @@ dependencies {
     implementation 'org.apache.httpcomponents:httpmime:4.5.14'
     compileOnly 'com.fasterxml.jackson.core:jackson-databind:2.18.2'
     compileOnly 'com.fasterxml.jackson.datatype:jackson-datatype-jsr310:2.18.2'
-    implementation 'commons-io:commons-io:2.18.0'
-    implementation 'org.apache.commons:commons-lang3:3.17.0'
-    implementation 'org.apache.logging.log4j:log4j-api:2.24.1'
-    implementation 'org.apache.logging.log4j:log4j-core:2.24.1'
-    runtimeOnly 'org.apache.logging.log4j:log4j-slf4j2-impl:2.24.1'
 
     testImplementation 'com.fasterxml.jackson.core:jackson-databind:2.18.2'
     testImplementation 'com.fasterxml.jackson.datatype:jackson-datatype-jsr310:2.18.2'
@@ -27,6 +22,10 @@ dependencies {
     testImplementation 'org.junit.jupiter:junit-jupiter'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
     testImplementation 'org.wiremock:wiremock-standalone:3.12.1'
+
+    // main code logs via System.Logger; the log4j backend stays a test-runtime concern
+    testRuntimeOnly 'org.apache.logging.log4j:log4j-core:2.24.1'
+    testRuntimeOnly 'org.apache.logging.log4j:log4j-jul:2.24.1'
 }
 
 java {
@@ -40,6 +39,11 @@ compileJava {
     options.compilerArgs << '-parameters'
 }
 
+compileTestJava {
+    // @PathVariable name-fallback reads parameter names; tests exercise that branch too
+    options.compilerArgs << '-parameters'
+}
+
 jar {
     manifest {
         attributes(
@@ -50,6 +54,7 @@ jar {
 
 test {
     useJUnitPlatform()
+    systemProperty 'java.util.logging.manager', 'org.apache.logging.log4j.jul.LogManager'
 }
 
 publishing {

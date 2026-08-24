@@ -39,7 +39,7 @@ class StatusHandlingTest extends BaseWireMockTest {
         assertEquals(200, exception.getStatusCode());
         assertTrue(exception.getRawBody().contains("already"));
         assertTrue(exception.getResponseHeaders().stream()
-                .anyMatch(h -> "Content-Type".equals(h.getKey())));
+                .anyMatch(h -> "Content-Type".equals(h.name())));
     }
 
     @Test

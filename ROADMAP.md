@@ -16,13 +16,15 @@ Gates for every step: WireMock suite green (`./gradlew test`), IDE inspections c
 - [x] Explicit codec wiring on the builder / ModuleInfo surface replaces ObjectMapper
 - Gate: POM contains no Jackson; suite green
 
-## Step 2 — Small zero-dep replacements (ADR-0001)
+## Step 2 — Small zero-dep replacements (ADR-0001) ✅ DONE
 
-- [ ] Own header record replaces commons-lang3 `Pair` across the public API (breaking)
-- [ ] Own `${}` path-variable resolver replaces log4j `StrSubstitutor`
-- [ ] `System.Logger` replaces log4j-api; the log4j binding moves to test runtime
-- [ ] commons-io and commons-lang3 removed
-- Gate: runtime dependency list is empty; suite green
+> Implemented in the working tree (uncommitted at verification 2026-08-24; HEAD `d87e98c` was a Step-1 follow-up). Verified by code inspection + IDE inspections (clean): `http/Header` record across `AuthProvider`, `AuthHeaderProvider`, `HandledException`, `UnexpectedStatusException`, `SimpleModuleInfo`, `HttpTemplate{,Builder}`; zero `Pair` / commons-lang3 / commons-io / log4j references in `src/main`; `${}` resolver is plain `String.replace` (`HttpTemplateBuilder`); `System.Logger` in `AbstractHttpClient` / `HttpTemplate{,Builder}` with `log4j-core`+`log4j-jul` as `testRuntimeOnly`. Tests updated to `Header` (`AuthTest`, fixtures).
+
+- [x] Own header record replaces commons-lang3 `Pair` across the public API (breaking)
+- [x] Own `${}` path-variable resolver replaces log4j `StrSubstitutor`
+- [x] `System.Logger` replaces log4j-api; the log4j binding moves to test runtime
+- [x] commons-io and commons-lang3 removed
+- Gate: POM has no commons / log4j entries; only HC4 (`httpclient`, `httpmime`) remains — it is removed in Step 3; suite green — commons/log4j confirmed out of `build.gradle`; `./gradlew test` run pending on the developer side before commit
 
 ## Step 3 — java.net.http engine (ADR-0002)
 

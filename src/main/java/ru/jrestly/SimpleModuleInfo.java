@@ -1,7 +1,7 @@
 package ru.jrestly;
 
-import org.apache.commons.lang3.tuple.Pair;
 import ru.jrestly.http.AuthHeaderProvider;
+import ru.jrestly.http.Header;
 import ru.jrestly.json.JsonCodec;
 import ru.jrestly.json.JsonCodecResolver;
 
@@ -137,9 +137,9 @@ public class SimpleModuleInfo implements ModuleInfo {
         }
     }
 
-    private static class SimpleEnvironment implements Environment<Pair<String, String>> {
+    private static class SimpleEnvironment implements Environment<Header> {
         private final String url;
-        private Pair<String, String> authDetails;
+        private Header authDetails;
 
         SimpleEnvironment(String url) {
             this.url = url;
@@ -151,12 +151,12 @@ public class SimpleModuleInfo implements ModuleInfo {
         }
 
         @Override
-        public Pair<String, String> getAuthDetails() {
+        public Header getAuthDetails() {
             return authDetails;
         }
 
         @Override
-        public void setAuthDetails(Pair<String, String> authDetails) {
+        public void setAuthDetails(Header authDetails) {
             this.authDetails = authDetails;
         }
     }

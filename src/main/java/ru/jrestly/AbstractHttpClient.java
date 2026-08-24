@@ -3,8 +3,6 @@ package ru.jrestly;
 import org.apache.http.client.config.RequestConfig;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClients;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 import ru.jrestly.annotation.Anonymous;
 import ru.jrestly.annotation.Authorization;
 import ru.jrestly.http.HttpTemplate;
@@ -18,7 +16,7 @@ import java.util.List;
 import java.util.Map;
 
 public abstract class AbstractHttpClient {
-    protected final Logger logger = LogManager.getLogger(getClass());
+    protected final System.Logger logger = System.getLogger(getClass().getName());
 
     protected final Map<Class<?>, Proxy> controllers = new HashMap<>();
 
@@ -60,7 +58,7 @@ public abstract class AbstractHttpClient {
             try {
                 httpClient.close();
             } catch (IOException e) {
-                logger.error("Failed to close http connection", e);
+                logger.log(System.Logger.Level.ERROR, "Failed to close http connection", e);
             }
         }
     }
@@ -99,8 +97,9 @@ public abstract class AbstractHttpClient {
             throw new ControllerValidationException(classInterface, problems);
         }
 
-        logger.warn("Controller {} is invalid, eager validation is disabled; failing methods will throw on call: {}",
-                classInterface.getName(), problems);
+        logger.log(System.Logger.Level.WARNING,
+                "Controller " + classInterface.getName()
+                        + " is invalid, eager validation is disabled; failing methods will throw on call: " + problems);
     }
 
     protected boolean isLoginInBackgroundNeeded(Method method) {

@@ -1,7 +1,5 @@
 package ru.jrestly.http;
 
-import org.apache.commons.lang3.tuple.ImmutablePair;
-import org.apache.commons.lang3.tuple.Pair;
 import ru.jrestly.AuthProvider;
 
 import java.util.List;
@@ -24,13 +22,13 @@ public class AuthHeaderProvider implements AuthProvider {
     }
 
     @Override
-    public List<Pair<String, String>> getAuthHeaders() {
+    public List<Header> getAuthHeaders() {
         if (headerName != null && headerValue != null) {
-            return List.of(new ImmutablePair<>(headerName, headerValue));
+            return List.of(new Header(headerName, headerValue));
         }
 
         if (initialHeaderName != null && initialHeaderValue != null) {
-            return List.of(new ImmutablePair<>(initialHeaderName, initialHeaderValue));
+            return List.of(new Header(initialHeaderName, initialHeaderValue));
         }
 
         return List.of();

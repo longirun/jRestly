@@ -1,8 +1,5 @@
 package ru.jrestly.http;
 
-import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.lang3.tuple.ImmutablePair;
-import org.apache.commons.lang3.tuple.Pair;
 import org.apache.http.HttpEntity;
 import org.apache.http.NameValuePair;
 import org.apache.http.client.entity.UrlEncodedFormEntity;
@@ -12,9 +9,6 @@ import org.apache.http.entity.mime.FormBodyPart;
 import org.apache.http.entity.mime.MultipartEntityBuilder;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.message.BasicNameValuePair;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-import org.apache.logging.log4j.core.lookup.StrSubstitutor;
 import ru.jrestly.AuthProvider;
 import ru.jrestly.ModuleInfo;
 import ru.jrestly.annotation.Delete;
@@ -43,11 +37,10 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
-import java.util.Map;
 import java.util.function.Consumer;
 
 public class HttpTemplateBuilder {
-    protected final Logger logger = LogManager.getLogger(getClass());
+    protected final System.Logger logger = System.getLogger(getClass().getName());
 
     private final ModuleInfo moduleInfo;
     private final CloseableHttpClient httpClient;
@@ -71,7 +64,7 @@ public class HttpTemplateBuilder {
         HttpTemplate result = new HttpTemplate();
         ContentType contentType = resolveContentType(requestMeta.requestType());
 
-        result.setLogger(LogManager.getLogger(controller));
+        result.setLogger(System.getLogger(controller.getName()));
         result.setModuleInfo(moduleInfo);
         result.setJsonCodec(moduleInfo.getJsonCodec());
 
@@ -137,7 +130,7 @@ public class HttpTemplateBuilder {
             return (List<FormBodyPart>) bodyParts.get(builder);
 
         } catch (NoSuchFieldException | IllegalAccessException e) {
-            logger.error("cannot get multiparts", e);
+            logger.log(System.Logger.Level.ERROR, "cannot get multiparts", e);
 
             return null;
         }
@@ -151,12 +144,12 @@ public class HttpTemplateBuilder {
             if (parameters[i].isAnnotationPresent(PathVariable.class)) {
                 PathVariable pathAnnotation = parameters[i].getAnnotation(PathVariable.class);
 
-                String name = StringUtils.isEmpty(pathAnnotation.name())
+                String name = pathAnnotation.name().isEmpty()
                         ? parameters[i].getName()
                         : pathAnnotation.name();
 
                 String encodedValue = URLEncoder.encode(args[i].toString(), StandardCharsets.UTF_8).replace("+", "%20");
-                path = StrSubstitutor.replace(path, Map.of(name, encodedValue));
+                path = path.replace("${" + name + "}", encodedValue);
             }
         }
 
@@ -165,8 +158,8 @@ public class HttpTemplateBuilder {
                 : path;
     }
 
-    private List<Pair<String, String>> createHeaders() {
-        List<Pair<String, String>> result = new ArrayList<>();
+    private List<Header> createHeaders() {
+        List<Header> result = new ArrayList<>();
 
         result.addAll(moduleInfo.getAuthProvider().getAuthHeaders());
 
@@ -175,7 +168,7 @@ public class HttpTemplateBuilder {
             for (int i = 0; i < parameters.length; i++) {
                 if (parameters[i].isAnnotationPresent(RequestHeader.class)) {
                     RequestHeader headerAnnotation = parameters[i].getAnnotation(RequestHeader.class);
-                    result.add(new ImmutablePair<>(headerAnnotation.name(), args[i].toString()));
+                    result.add(new Header(headerAnnotation.name(), args[i].toString()));
                 }
             }
         }
@@ -217,7 +210,7 @@ public class HttpTemplateBuilder {
         }
     }
 
-    private Consumer<List<Pair<String, String>>> getAuthDetailsConsumer() {
+    private Consumer<List<Header>> getAuthDetailsConsumer() {
         if (method.isAnnotationPresent(SetAuthDetails.class)) {
             String headerName = method.getAnnotation(SetAuthDetails.class).headerName();
             AuthProvider authProvider = moduleInfo.getAuthProvider();
@@ -242,7 +235,7 @@ public class HttpTemplateBuilder {
                 Parameter parameter = parameters[i];
                 RequestParam annotation = parameter.getAnnotation(RequestParam.class);
 
-                String name = StringUtils.isEmpty(annotation.name())
+                String name = annotation.name().isEmpty()
                         ? parameter.getName()
                         : annotation.name();
 

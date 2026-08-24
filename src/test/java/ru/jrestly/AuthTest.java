@@ -1,10 +1,10 @@
 package ru.jrestly;
 
-import org.apache.commons.lang3.tuple.Pair;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import ru.jrestly.fixtures.TestController;
 import ru.jrestly.fixtures.TestDto;
+import ru.jrestly.http.Header;
 
 import java.util.List;
 
@@ -41,10 +41,10 @@ class AuthTest extends BaseWireMockTest {
 
         assertEquals("logged-in", result);
 
-        List<Pair<String, String>> authHeaders = moduleInfo.getTestAuthProvider().getAuthHeaders();
+        List<Header> authHeaders = moduleInfo.getTestAuthProvider().getAuthHeaders();
         assertEquals(1, authHeaders.size());
-        assertEquals("access-token", authHeaders.get(0).getKey());
-        assertEquals("captured-token-123", authHeaders.get(0).getValue());
+        assertEquals("access-token", authHeaders.get(0).name());
+        assertEquals("captured-token-123", authHeaders.get(0).value());
     }
 
     @Test
@@ -98,10 +98,10 @@ class AuthTest extends BaseWireMockTest {
 
             restlyClient.updateAuthHeader("Authorization", "token-manual");
 
-            List<Pair<String, String>> authHeaders = restlyClient.getModuleInfo().getAuthProvider().getAuthHeaders();
+            List<Header> authHeaders = restlyClient.getModuleInfo().getAuthProvider().getAuthHeaders();
             assertEquals(1, authHeaders.size());
-            assertEquals("Authorization", authHeaders.get(0).getKey());
-            assertEquals("token-manual", authHeaders.get(0).getValue());
+            assertEquals("Authorization", authHeaders.get(0).name());
+            assertEquals("token-manual", authHeaders.get(0).value());
 
             stubFor(get(urlEqualTo("/api/auth-check"))
                     .willReturn(aResponse()
@@ -133,10 +133,10 @@ class AuthTest extends BaseWireMockTest {
                             .withBody("logged-in")));
 
             restlyController.login("creds");
-            assertEquals("token-fresh", authProvider.getAuthHeaders().get(0).getValue());
+            assertEquals("token-fresh", authProvider.getAuthHeaders().get(0).value());
 
             restlyClient.updateAuthHeader("Authorization", "token-manual");
-            assertEquals("token-manual", authProvider.getAuthHeaders().get(0).getValue());
+            assertEquals("token-manual", authProvider.getAuthHeaders().get(0).value());
 
             stubFor(post(urlEqualTo("/api/login"))
                     .willReturn(aResponse()
@@ -144,7 +144,7 @@ class AuthTest extends BaseWireMockTest {
                             .withBody("logged-in-without-token")));
 
             restlyController.login("creds");
-            assertEquals("token-manual", authProvider.getAuthHeaders().get(0).getValue());
+            assertEquals("token-manual", authProvider.getAuthHeaders().get(0).value());
 
             stubFor(post(urlEqualTo("/api/login"))
                     .willReturn(aResponse()
@@ -153,7 +153,7 @@ class AuthTest extends BaseWireMockTest {
                             .withBody("logged-in-again")));
 
             restlyController.login("creds");
-            assertEquals("token-new", authProvider.getAuthHeaders().get(0).getValue());
+            assertEquals("token-new", authProvider.getAuthHeaders().get(0).value());
         } finally {
             restlyClient.close();
         }
