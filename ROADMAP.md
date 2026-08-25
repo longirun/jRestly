@@ -43,7 +43,20 @@ Gates for every step: WireMock suite green (`./gradlew test`), IDE inspections c
 - [x] README: single JitPack coordinate, "bring your own JSON codec — Jackson autodetected"
 - [x] Version 0.5.0-rc1; POM metadata sanity check — version already bumped in `build.gradle` (commit `80ca2fd`), ahead of Steps 2–3
 - [x] Smoke test: fresh Gradle project, jrestly + jackson-databind only, GET + POST against a stub — staged & compiled; `SMOKE OK` run log to be captured by developer/tester
-- Gate: smoke passes
+- Gate: smoke passes — confirmed: tester suite 61/61 green on 2026-08-24; cycle closed by `310fd62` + `53f19d9`
+
+## Cycle 0.5.0 — COMPLETE ✅ (2026-08-24)
+
+> Tester suite 61/61 green (incl. tester-added `RedirectNoFollowTest`, `RedirectMethodTest` — 307/PUT, 308/PATCH, relative Location — and extra `MultipartTest` cases). Final commits: `bb39ada`/`756fe0c` (Steps 2–3), `310fd62` (Step 4 finalize + `JacksonCodecDefaultsTest`, `JsonCodecResolverTest`), `53f19d9` (bump 0.5.1). Tags: `v0.5.0`, `v0.5.1`.
+
+Deviations plan → fact:
+
+1. **Version bumped early** — `0.5.0-rc1` in `build.gradle` already at `80ca2fd` (Step 1), ahead of Steps 2–3. No harm: intermediate builds were local-only.
+2. **rc1 strategy dropped at release** — instead of tagging `v0.5.0-rc1` the cycle shipped straight as `v0.5.0`, immediately followed by `v0.5.1`. Rationale: tester-green suite + smoke made an RC lap redundant.
+3. **jsr310 became optional** (beyond plan) — `JacksonCodec` probes for `jackson-datatype-jsr310` and registers `JavaTimeSupport` only when present, so a `jackson-databind`-only consumer works; verified by smoke.
+4. **Test coverage grew beyond plan** — tester's redirect/multipart cases + `JacksonCodecDefaultsTest`/`JsonCodecResolverTest` landed with the finalize commit.
+
+Known carry-over quirks (accepted, non-blocking): `logRequest` body logging skips PUT (POST/PATCH/DELETE only); `Void.class.equals(returnType)` instead of also checking `void.class` (masked by the empty-payload early return). Post-0.5.0 shortlist unchanged (ADR-0003).
 
 ## Post-0.5.0 shortlist (not scheduled — see ADR-0003)
 

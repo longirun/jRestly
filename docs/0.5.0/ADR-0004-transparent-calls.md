@@ -1,6 +1,6 @@
 # ADR-0004: Transparent method calls as the API contract
 
-> 2026-08-21 · Accepted (retroactive — the decision emerged during `@ExpectStatus` work in 0.4.0; recorded to preserve the rationale)
+> 2026-08-21 · Accepted (retroactive — the decision emerged during `@ExpectStatus` work in 0.4.0; recorded to preserve the rationale) · ✅ Preserved through the 0.5.0 rewrite (2026-08-24): transparent calls, per-method `@OnError`/`@ExpectStatus` contract intact on the new engine.
 
 ## Context
 

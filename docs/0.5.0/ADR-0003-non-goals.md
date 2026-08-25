@@ -1,6 +1,6 @@
 # ADR-0003: Non-goals
 
-> 2026-08-21 · Accepted
+> 2026-08-21 · Accepted · ✅ Held through 0.5.0 (2026-08-24): none of the non-goals entered the core; shortlist (retry, `CompletableFuture`, Gson/Moshi adapters) remains post-0.5.0.
 
 ## Context
 

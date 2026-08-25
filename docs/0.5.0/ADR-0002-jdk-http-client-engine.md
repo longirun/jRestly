@@ -1,6 +1,6 @@
 # ADR-0002: java.net.http — the only HTTP engine
 
-> 2026-08-21 · Accepted
+> 2026-08-21 · Accepted · ✅ Implemented in 0.5.0 (2026-08-24): `java.net.http` sole engine via `WireRequest`/`WireResponse`; manual redirect loop (301/302/303→GET, 307/308→method+body, hop counter, final response returned); own RFC 7578 `MultipartWriter`; tester suite 61/61 incl. redirect semantics.
 
 ## Context
 

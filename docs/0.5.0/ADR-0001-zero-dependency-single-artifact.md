@@ -1,6 +1,6 @@
 # ADR-0001: Zero runtime dependencies, single artifact
 
-> 2026-08-21 · Accepted
+> 2026-08-21 · Accepted · ✅ Implemented in 0.5.0 (2026-08-24): codec SPI + zero-dep purge done in Steps 1–2; POM ships zero `<dependencies>` (verified); Jackson `compileOnly` + classpath probe; jsr310 additionally made optional.
 
 ## Context
 
