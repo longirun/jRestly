@@ -6,6 +6,7 @@ import ru.jrestly.annotation.Delete;
 import ru.jrestly.annotation.ExpectStatus;
 import ru.jrestly.annotation.FollowRedirects;
 import ru.jrestly.annotation.Get;
+import ru.jrestly.annotation.HttpVersion;
 import ru.jrestly.annotation.MultipartFormFile;
 import ru.jrestly.annotation.OnError;
 import ru.jrestly.annotation.Patch;
@@ -98,6 +99,7 @@ public class HttpTemplateBuilder {
         result.setOnErrorParser(createOnErrorParser());
         result.setExpectStatuses(createExpectStatuses());
         result.setFollowRedirectsNumber(getFollowRedirectsNumber());
+        result.setHttpVersion(getHttpVersion());
 
         return result;
     }
@@ -340,6 +342,14 @@ public class HttpTemplateBuilder {
     private Integer getFollowRedirectsNumber() {
         if (method.isAnnotationPresent(FollowRedirects.class)) {
             return method.getAnnotation(FollowRedirects.class).count();
+        }
+
+        return null;
+    }
+
+    private HttpClient.Version getHttpVersion() {
+        if (method.isAnnotationPresent(HttpVersion.class)) {
+            return method.getAnnotation(HttpVersion.class).value();
         }
 
         return null;

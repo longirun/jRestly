@@ -3,6 +3,8 @@ package ru.jrestly;
 import ru.jrestly.json.JsonCodec;
 import ru.jrestly.json.JsonCodecResolver;
 
+import java.net.http.HttpClient;
+
 public interface ModuleInfo {
 
     String getName();
@@ -21,6 +23,10 @@ public interface ModuleInfo {
 
     default int getSocketTimeout() {
         return 30_000;
+    }
+
+    default HttpClient.Version getHttpVersion() {
+        return HttpClient.Version.HTTP_2;
     }
 
     default boolean isValidateControllers() {

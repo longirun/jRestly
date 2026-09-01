@@ -37,6 +37,7 @@ public abstract class AbstractHttpClient {
     protected void createConnection() {
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofMillis(moduleInfo.getConnectTimeout()))
+                .version(moduleInfo.getHttpVersion())
                 .followRedirects(HttpClient.Redirect.NEVER)
                 .build();
     }

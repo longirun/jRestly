@@ -2,6 +2,8 @@ package ru.jrestly;
 
 import ru.jrestly.json.JsonCodec;
 
+import java.net.http.HttpClient;
+
 public class JRestlyClient extends AbstractHttpClient {
 
     public JRestlyClient(ModuleInfo moduleInfo) {
@@ -56,6 +58,11 @@ public class JRestlyClient extends AbstractHttpClient {
 
         public Builder socketTimeout(int ms) {
             moduleInfoBuilder.socketTimeout(ms);
+            return this;
+        }
+
+        public Builder httpVersion(HttpClient.Version httpVersion) {
+            moduleInfoBuilder.httpVersion(httpVersion);
             return this;
         }
 

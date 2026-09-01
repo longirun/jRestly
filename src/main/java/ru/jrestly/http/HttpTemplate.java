@@ -37,6 +37,7 @@ public class HttpTemplate {
     private OnErrorParser onErrorParser;
     private List<Integer> expectStatuses;
     private Integer followRedirectsNumber;
+    private HttpClient.Version httpVersion;
 
     @SuppressWarnings("unchecked")
     public <T> T exchange() {
@@ -156,6 +157,10 @@ public class HttpTemplate {
     private WireResponse send(WireRequest request) throws IOException, InterruptedException {
         HttpRequest.Builder builder = HttpRequest.newBuilder(request.uri())
                 .timeout(Duration.ofMillis(moduleInfo.getSocketTimeout()));
+
+        if (httpVersion != null) {
+            builder.version(httpVersion);
+        }
 
         if (request.headers() != null) {
             for (Header header : request.headers()) {
@@ -358,6 +363,10 @@ public class HttpTemplate {
 
     public void setFollowRedirectsNumber(Integer followRedirectsNumber) {
         this.followRedirectsNumber = followRedirectsNumber;
+    }
+
+    public void setHttpVersion(HttpClient.Version httpVersion) {
+        this.httpVersion = httpVersion;
     }
 
     public void setModuleInfo(ModuleInfo moduleInfo) {
