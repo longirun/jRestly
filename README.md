@@ -4,7 +4,7 @@
 
 A declarative HTTP client for Java. Define an interface, get a working client — no code generation, just a dynamic proxy over `java.net.http.HttpClient` with a zero-dependency core.
 
-> **Status:** early development, current release v0.5.1 — zero-dependency core with a pluggable JSON codec SPI. See `ROADMAP.md`.
+> **Status:** early development, current release v0.5.2 — zero-dependency core with a pluggable JSON codec SPI. See `ROADMAP.md`.
 
 ## Features
 
@@ -31,7 +31,7 @@ repositories {
 }
 
 dependencies {
-    implementation("com.github.longirun:jRestly:v0.5.1")
+    implementation("com.github.longirun:jRestly:v0.5.2")
     // JSON codec is not bundled — bring your own; Jackson 2 is autodetected
     implementation("com.fasterxml.jackson.core:jackson-databind:2.18.2")
 }
@@ -46,7 +46,7 @@ repositories {
 }
 
 dependencies {
-    implementation 'com.github.longirun:jRestly:v0.5.1'
+    implementation 'com.github.longirun:jRestly:v0.5.2'
     // JSON codec is not bundled — bring your own; Jackson 2 is autodetected
     implementation 'com.fasterxml.jackson.core:jackson-databind:2.18.2'
 }
@@ -65,7 +65,7 @@ dependencies {
 <dependency>
     <groupId>com.github.longirun</groupId>
     <artifactId>jRestly</artifactId>
-    <version>v0.5.1</version>
+    <version>v0.5.2</version>
 </dependency>
 <dependency>
     <groupId>com.fasterxml.jackson.core</groupId>

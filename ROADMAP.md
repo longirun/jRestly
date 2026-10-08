@@ -58,6 +58,33 @@ Deviations plan → fact:
 
 Known carry-over quirks (accepted, non-blocking): `logRequest` body logging skips PUT (POST/PATCH/DELETE only); `Void.class.equals(returnType)` instead of also checking `void.class` (masked by the empty-payload early return). Post-0.5.0 shortlist unchanged (ADR-0003).
 
+## Cycle 0.5.2 — HTTP version pinning — COMPLETE ✅ (2026-09-01)
+
+> Documented retroactively (2026-10): the cycle ran through the usual developer/tester separation but was never recorded here. Client-wide default `httpVersion(HttpClient.Version)` on `JRestlyClient.Builder` (delegates to `SimpleModuleInfo.Builder`, `Objects.requireNonNull` fail-fast; `ModuleInfo.getHttpVersion()` defaults to `HTTP_2`), applied on `HttpClient.newBuilder().version(...)` in `AbstractHttpClient`. Per-method override `@HttpVersion(...)` resolves in `HttpTemplateBuilder` into `HttpTemplate` and is applied per-request via `builder.version(...)` when present — a method without the annotation inherits the client-level version. Commit `35f80e9`, tag `v0.5.2`. Tests: `HttpVersionConfigTest` (builder/ModuleInfo contract, NPE fail-fast, defaults), `HttpTemplateVersionResolveTest` (annotation → template resolution), `HttpVersionPinningTest` (WireMock pinning + `@HttpVersion` + redirect-with-version).
+
+## Multipart gaps — found in the field (2026-10)
+
+A real-world consumer multipart API (N files per request, per-file validation report) surfaced three gaps.
+Confirmed by source inspection of the annotation-driven flow (`HttpTemplateBuilder.createMultipartParts` / `createFilePart`)
+plus a live consumer test suite: everything except the arbitrary-file-count case works
+through the annotations, that case falls back to `MultipartWriter.write` + `java.net.http.HttpClient` directly.
+
+- [ ] **N files per request.** `@MultipartFormFile` yields exactly one part per annotated parameter; the `Collection`
+      branch exists only for text `@RequestParam` parts. A request with an arbitrary number of files is impossible
+      without one annotated parameter per file. Proposal: allow `@MultipartFormFile` on `Collection<Path>` / `Path[]` /
+      varargs — one part per element, wire filename from the element's `getFileName()` (same semantics as single-file today).
+- [ ] **In-memory file parts.** `createFilePart` accepts only `File`/`Path`/`String`-as-path and does `Files.readAllBytes`,
+      so synthetic content (0-byte, oversized, generated) must be written to a temp file first. Proposal: `byte[]` support
+      with an explicit name, e.g. `@MultipartFormFile(partName = "files", fileName = "x.jpg") byte[] content` —
+      a `byte[]` has no name of its own, so the attribute is required.
+- [ ] **Part Content-Type is never set.** `MultipartPart.contentType` stays `null` in the annotation flow, so file parts
+      hit the wire without a Content-Type header. APIs that validate content-type before filename extension will reject
+      everything. Proposal: derive from the filename extension (small built-in mime map) with an optional override attribute.
+
+Wire mechanics that proved correct in the field (no change needed): RFC 7578 framing incl. closing delimiter,
+explicit `@Post(requestType = MULTIPART_FORM_DATA)` opt-in, wire filename = disk file name (servers validating
+by extension depend on it), `void` return + 204, `HandledException.getStatusCode()` for precise status asserts.
+
 ## Post-0.5.0 shortlist (not scheduled — see ADR-0003)
 
 - Retry with backoff (integrates with `@OnError` semantics)
