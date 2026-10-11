@@ -4,6 +4,9 @@ import ru.jrestly.json.JsonCodec;
 
 import java.net.http.HttpClient;
 
+/**
+ * Factory for declarative HTTP API proxies.
+ */
 public class JRestlyClient extends AbstractHttpClient {
 
     public JRestlyClient(ModuleInfo moduleInfo) {
@@ -23,6 +26,9 @@ public class JRestlyClient extends AbstractHttpClient {
     protected void login() {
     }
 
+    /**
+     * Returns a cached proxy implementation for the given interface.
+     */
     @SuppressWarnings("unchecked")
     public <T> T get(Class<T> controllerClass) {
         return (T) controllers.computeIfAbsent(controllerClass, this::createController);

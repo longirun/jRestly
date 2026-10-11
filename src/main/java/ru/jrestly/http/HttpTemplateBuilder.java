@@ -20,18 +20,17 @@ import ru.jrestly.annotation.RequestParam;
 import ru.jrestly.annotation.SetAuthDetails;
 
 import java.io.File;
-import java.io.IOException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Parameter;
 import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
+import java.util.Objects;
 import java.util.UUID;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
@@ -69,8 +68,7 @@ public class HttpTemplateBuilder {
         result.setHttpMethod(requestMeta.httpMethod());
         result.setContentType(requestType.mime());
         result.setHeaders(createHeaders());
-        // names only: the redirect loop matches them case-insensitively when dropping
-        // ambient credentials on a cross-origin hop
+        // Header names to drop on cross-origin redirects
         result.setAuthHeaderNames(moduleInfo.getAuthProvider().getAuthHeaders().stream()
                 .map(Header::name)
                 .toList());
@@ -89,8 +87,8 @@ public class HttpTemplateBuilder {
             parts = createMultipartParts();
 
             String boundary = "jrestly-" + UUID.randomUUID().toString().replace("-", "");
-            body = MultipartWriter.write(boundary, parts);
             result.setContentType("multipart/form-data; boundary=" + boundary);
+            result.setMultipartBoundary(boundary);
         }
 
         result.setBody(body);
@@ -257,7 +255,14 @@ public class HttpTemplateBuilder {
         for (int i = 0; i < parameters.length; i++) {
             if (parameters[i].isAnnotationPresent(MultipartFormFile.class)) {
                 MultipartFormFile multipartAnnotation = parameters[i].getAnnotation(MultipartFormFile.class);
-                parts.add(createFilePart(multipartAnnotation.partName(), args[i]));
+                String partName = multipartAnnotation.partName();
+                String explicitContentType = multipartAnnotation.contentType().isEmpty()
+                        ? null
+                        : multipartAnnotation.contentType();
+
+                for (Object value : multipartFileValues(args[i])) {
+                    parts.add(createFilePart(partName, value, explicitContentType));
+                }
             } else if (parameters[i].isAnnotationPresent(RequestParam.class)) {
                 if (args[i] == null) {
                     continue;
@@ -283,18 +288,46 @@ public class HttpTemplateBuilder {
         return parts;
     }
 
-    private MultipartPart createFilePart(String partName, Object arg) {
-        try {
-            Path path = arg instanceof File file
-                    ? file.toPath()
-                    : arg instanceof Path p
-                            ? p
-                            : Path.of(arg.toString());
-
-            return MultipartPart.file(partName, path.getFileName().toString(), Files.readAllBytes(path));
-        } catch (IOException e) {
-            throw new RuntimeException("Cannot read multipart file: " + arg, e);
+    private MultipartPart createFilePart(String partName, Object arg, String explicitContentType) {
+        if (arg instanceof FileContent content) {
+            return MultipartPart.file(partName, content.fileName(), explicitContentType,
+                    content.content(), content.contentLength());
         }
+        if (arg instanceof byte[]) {
+            throw new IllegalArgumentException(
+                    "A bare byte[] cannot be a multipart file: the wire file name cannot be derived from it. "
+                            + "Wrap in-memory bytes in FileContent.of(fileName, bytes)");
+        }
+        Path path = arg instanceof File file
+                ? file.toPath()
+                : arg instanceof Path p
+                        ? p
+                        : arg instanceof String str
+                                ? Path.of(str)
+                                : null;
+        if (path == null) {
+            throw new IllegalArgumentException(
+                    "Unsupported multipart file argument of type " + arg.getClass().getName()
+                            + ". Expected Path, File, String, or FileContent");
+        }
+        if (path.getFileName() == null) {
+            throw new IllegalArgumentException("Path must have a file name: " + path);
+        }
+        return MultipartPart.file(partName, path.getFileName().toString(), explicitContentType, path, null);
+    }
+
+    // Unpacks collections, arrays, and varargs into individual part values
+    private static List<?> multipartFileValues(Object arg) {
+        if (arg == null) {
+            return List.of();
+        }
+        if (arg instanceof Collection<?> collection) {
+            return collection.stream().filter(Objects::nonNull).toList();
+        }
+        if (arg instanceof Object[] array) {
+            return Arrays.stream(array).filter(Objects::nonNull).toList();
+        }
+        return List.of(arg);
     }
 
     private byte[] createUrlEncodedBody() {

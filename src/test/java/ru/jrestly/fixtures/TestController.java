@@ -1,9 +1,11 @@
 package ru.jrestly.fixtures;
 
 import ru.jrestly.annotation.*;
+import ru.jrestly.http.FileContent;
 import ru.jrestly.http.RequestType;
 
 import java.io.File;
+import java.net.http.HttpClient;
 import java.nio.file.Path;
 import java.util.List;
 
@@ -119,4 +121,42 @@ public interface TestController {
     @Post(path = "/api/upload", requestType = RequestType.MULTIPART_FORM_DATA)
     String uploadFileWithTextParts(@MultipartFormFile(partName = "file") String filePath,
                                    @RequestParam(name = "tags") List<String> tags);
+
+    @Post(path = "/api/upload", requestType = RequestType.MULTIPART_FORM_DATA)
+    String uploadFileContent(@MultipartFormFile(partName = "file") FileContent file);
+
+    @Post(path = "/api/upload", requestType = RequestType.MULTIPART_FORM_DATA)
+    @HttpVersion(HttpClient.Version.HTTP_1_1) // chunked transfer encoding is HTTP/1.1 semantics
+    String uploadFileContentFromStream(@MultipartFormFile(partName = "file") FileContent file);
+
+    @Post(path = "/api/upload", requestType = RequestType.MULTIPART_FORM_DATA)
+    String uploadFileContentFromPath(@MultipartFormFile(partName = "file") FileContent file);
+
+    @Post(path = "/api/upload", requestType = RequestType.MULTIPART_FORM_DATA)
+    @FollowRedirects(count = 1)
+    String uploadFileContentFollowRedirect(@MultipartFormFile(partName = "file") FileContent file);
+
+    @Post(path = "/api/upload", requestType = RequestType.MULTIPART_FORM_DATA)
+    String uploadFilePaths(@MultipartFormFile(partName = "file") List<Path> files);
+
+    @Post(path = "/api/upload", requestType = RequestType.MULTIPART_FORM_DATA)
+    String uploadFileContents(@MultipartFormFile(partName = "file") List<FileContent> files);
+
+    @Post(path = "/api/upload", requestType = RequestType.MULTIPART_FORM_DATA)
+    String uploadMixedFiles(@MultipartFormFile(partName = "file") List<Object> files);
+
+    @Post(path = "/api/upload", requestType = RequestType.MULTIPART_FORM_DATA)
+    String uploadFilePathVarargs(@MultipartFormFile(partName = "file") Path... files);
+
+    @Post(path = "/api/upload", requestType = RequestType.MULTIPART_FORM_DATA)
+    String uploadFilePathArray(@MultipartFormFile(partName = "file") Path[] files);
+
+    @Post(path = "/api/upload", requestType = RequestType.MULTIPART_FORM_DATA)
+    String uploadFileContentTyped(@MultipartFormFile(partName = "file", contentType = "application/xml") FileContent file);
+
+    @Post(path = "/api/upload", requestType = RequestType.MULTIPART_FORM_DATA)
+    String uploadFileContentsTyped(@MultipartFormFile(partName = "files", contentType = "text/xml") List<FileContent> files);
+
+    @Post(path = "/api/upload", requestType = RequestType.MULTIPART_FORM_DATA)
+    String uploadFileContentQuoted(@MultipartFormFile(partName = "a\"b") FileContent file);
 }

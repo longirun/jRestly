@@ -8,8 +8,9 @@ import java.util.List;
  * decoupled from both the template layer and the HTTP engine.
  * <p>
  * For multipart requests {@code contentType} carries the boundary parameter
- * and {@code body} is the pre-rendered multipart payload; {@code parts} is
- * kept alongside solely for request logging.
+ * and {@code body} is unused; the payload is rendered per send from
+ * {@code parts} + {@code boundary} as a streaming publisher, so a redirect
+ * re-send gets a fresh body.
  */
 public record WireRequest(
         HttpMethod method,
@@ -17,6 +18,7 @@ public record WireRequest(
         List<Header> headers,
         String contentType,
         byte[] body,
-        List<MultipartPart> parts
+        List<MultipartPart> parts,
+        String boundary
 ) {
 }

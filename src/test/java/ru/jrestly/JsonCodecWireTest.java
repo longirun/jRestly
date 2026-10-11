@@ -56,10 +56,7 @@ class JsonCodecWireTest extends BaseWireMockTest {
         assertNotNull(result);
         assertEquals(1L, result.id());
 
-        // Exact string match: the "name":null entry must be physically present in the
-        // compact wire body. This is the contract formerly pinned by the (no-op)
-        // setSerializationInclusion(ALWAYS) line in JacksonCodec.createDefault():
-        // a NON_NULL inclusion policy would silently drop the field and fail here.
+        // Exact match: verify null fields are explicitly serialized (NON_NULL inclusion is not used)
         verify(postRequestedFor(urlEqualTo("/api/nullable"))
                 .withRequestBody(equalTo("{\"id\":1,\"name\":null}")));
     }
@@ -99,7 +96,7 @@ class JsonCodecWireTest extends BaseWireMockTest {
                         .withHeader("Content-Type", "application/json")
                         .withBody("{\"id\":9,\"created_at\":\"2026-08-24T12:34:56\"}")));
 
-        // Migration path for users of the former objectMapper(...) builder method
+        // Custom ObjectMapper configured with snake_case naming strategy
         ObjectMapper snakeCaseMapper = new ObjectMapper()
                 .setPropertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE)
                 .registerModule(new JavaTimeModule())

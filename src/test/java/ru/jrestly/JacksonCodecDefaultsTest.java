@@ -16,10 +16,10 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * Unit-level pins for {@link JacksonCodec#defaults()} and the explicit-mapper constructor.
+ * Unit tests for {@link JacksonCodec#defaults()} and the explicit-mapper constructor.
  * <p>
- * The jsr310-free classpath scenario (Step 4 fix: jsr310 types isolated in the nested
- * JavaTimeSupport class) is verified separately via a fresh Gradle project smoke test and
+ * The jsr310-free classpath scenario (jsr310 types isolated in the nested
+ * JavaTimeSupport class) is verified separately via an isolated smoke test and
  * cannot be reproduced here: the test classpath always carries jackson-datatype-jsr310.
  */
 class JacksonCodecDefaultsTest {

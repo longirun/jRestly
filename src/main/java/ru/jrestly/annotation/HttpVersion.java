@@ -6,8 +6,12 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 import java.net.http.HttpClient;
 
+/**
+ * Overrides the HTTP protocol version for this method.
+ */
 @Target(ElementType.METHOD)
 @Retention(RetentionPolicy.RUNTIME)
 public @interface HttpVersion {
+    /** HTTP protocol version to use. */
     HttpClient.Version value();
 }

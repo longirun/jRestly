@@ -62,28 +62,26 @@ Known carry-over quirks (accepted, non-blocking): `logRequest` body logging skip
 
 > Documented retroactively (2026-10): the cycle ran through the usual developer/tester separation but was never recorded here. Client-wide default `httpVersion(HttpClient.Version)` on `JRestlyClient.Builder` (delegates to `SimpleModuleInfo.Builder`, `Objects.requireNonNull` fail-fast; `ModuleInfo.getHttpVersion()` defaults to `HTTP_2`), applied on `HttpClient.newBuilder().version(...)` in `AbstractHttpClient`. Per-method override `@HttpVersion(...)` resolves in `HttpTemplateBuilder` into `HttpTemplate` and is applied per-request via `builder.version(...)` when present — a method without the annotation inherits the client-level version. Commit `35f80e9`, tag `v0.5.2`. Tests: `HttpVersionConfigTest` (builder/ModuleInfo contract, NPE fail-fast, defaults), `HttpTemplateVersionResolveTest` (annotation → template resolution), `HttpVersionPinningTest` (WireMock pinning + `@HttpVersion` + redirect-with-version).
 
-## Multipart gaps — found in the field (2026-10)
+## Cycle 0.6.0 — multipart authoring & streaming — COMPLETE ✅ (2026-10-11)
 
-A real-world consumer multipart API (N files per request, per-file validation report) surfaced three gaps.
-Confirmed by source inspection of the annotation-driven flow (`HttpTemplateBuilder.createMultipartParts` / `createFilePart`)
-plus a live consumer test suite: everything except the arbitrary-file-count case works
-through the annotations, that case falls back to `MultipartWriter.write` + `java.net.http.HttpClient` directly.
+> Source of truth (decisions, stages, verification gates, deviations, status): [`docs/0.6.0/ADR-0005-multipart-authoring-streaming.md`](docs/0.6.0/ADR-0005-multipart-authoring-streaming.md).
 
-- [ ] **N files per request.** `@MultipartFormFile` yields exactly one part per annotated parameter; the `Collection`
-      branch exists only for text `@RequestParam` parts. A request with an arbitrary number of files is impossible
-      without one annotated parameter per file. Proposal: allow `@MultipartFormFile` on `Collection<Path>` / `Path[]` /
-      varargs — one part per element, wire filename from the element's `getFileName()` (same semantics as single-file today).
-- [ ] **In-memory file parts.** `createFilePart` accepts only `File`/`Path`/`String`-as-path and does `Files.readAllBytes`,
-      so synthetic content (0-byte, oversized, generated) must be written to a temp file first. Proposal: `byte[]` support
-      with an explicit name, e.g. `@MultipartFormFile(partName = "files", fileName = "x.jpg") byte[] content` —
-      a `byte[]` has no name of its own, so the attribute is required.
-- [ ] **Part Content-Type is never set.** `MultipartPart.contentType` stays `null` in the annotation flow, so file parts
-      hit the wire without a Content-Type header. APIs that validate content-type before filename extension will reject
-      everything. Proposal: derive from the filename extension (small built-in mime map) with an optional override attribute.
+Provenance: field findings from a real consumer (2026-10) — N files per request, in-memory parts, part Content-Type.
+Diagnosis correction (2026-10-08): file parts DO carry a Content-Type today — always `application/octet-stream`
+via `MultipartPart.file()`; the real gap is the hardcoded type, not a missing header. Deeper finding: the whole
+multipart path materializes the body in memory (`Files.readAllBytes` + one-body `byte[]`) — no streaming even for
+disk files. Wire mechanics that proved correct in the field (no change needed): RFC 7578 framing incl. closing
+delimiter, explicit `@Post(requestType = MULTIPART_FORM_DATA)` opt-in, wire filename = disk file name, `void`
+return + 204, `HandledException.getStatusCode()` for precise status asserts.
 
-Wire mechanics that proved correct in the field (no change needed): RFC 7578 framing incl. closing delimiter,
-explicit `@Post(requestType = MULTIPART_FORM_DATA)` opt-in, wire filename = disk file name (servers validating
-by extension depend on it), `void` return + 204, `HandledException.getStatusCode()` for precise status asserts.
+Key decisions (ADR-0005):
+- Two buckets: bare `File`/`Path`/`String` = disk sugar, new `FileContent` interface = universal value (the annotation never names a file).
+- Streaming body via `BodyPublishers.concat` (exact Content-Length when all parts known-length, chunked otherwise).
+- `MultipartWriter.write` removed (breaking — bypass users migrate to `FileContent`).
+- Mime map + `contentType()` override for part Content-Type.
+
+> Implemented, verified by code inspection + IDE inspections (clean) + full WireMock suite green (2026-10-11), tag `v0.6.0`.
+> `MultipartBodyPublisher` over `BodyPublishers.concat` (per-part `[headers, content, CRLF]` + closing delimiter; exact Content-Length when every length is known — including a custom `ofStream(supplier, length)` filling the JDK gap; chunked otherwise; a fresh publisher per send, so a 307/308 re-send gets a live stream and keeps the boundary). `FileContent` — open SPI with four factories (`of(Path)`, `of(name, byte[])`, `of(name, supplier)`, `of(name, supplier, length)`); accepted on collections/arrays/varargs (one part per element, `byte[]` counts as one in-memory file, null argument/elements yield no parts, order = parameter then element). Part Content-Type: 20-entry mime map (lowercase `Locale.ROOT` match, unknown → `application/octet-stream`) + `contentType()` override per parameter. Framing hardened (tester finding, pre-existing since 0.5.0): RFC 2045 quoted-string escaping of `name`/`filename` (`\` → `\\`, `"` → `\"`), CR/LF rejected in the `MultipartPart` compact constructor. Deviations (2, recorded in ADR-0005): `FileContent` is an open SPI instead of sealed — pluggability over shape hiding; quoted-string escaping — landed with this cycle instead of a Known Gap. Tests: `MultipartTest` (wire byte-identical regression vs the pre-streaming writer, 4 MiB stream with exact Content-Length, chunked, escaping, CR/LF) + tester's `MultipartIndependentTest` (SPI contract, boundary format/uniqueness, mixed lengths, empty content, failing supplier, lazy disk reads, UTF-8 names, mime spot checks, ordering, null elements, empty varargs, redirect re-send).
 
 ## Post-0.5.0 shortlist (not scheduled — see ADR-0003)
 

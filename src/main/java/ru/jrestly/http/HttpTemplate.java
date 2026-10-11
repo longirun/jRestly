@@ -33,6 +33,7 @@ public class HttpTemplate {
     private List<Param> requestParams;
     private byte[] body;
     private List<MultipartPart> multipartFormParts;
+    private String multipartBoundary;
     private Type returnType;
     private OnErrorParser onErrorParser;
     private List<Integer> expectStatuses;
@@ -41,7 +42,7 @@ public class HttpTemplate {
 
     @SuppressWarnings("unchecked")
     public <T> T exchange() {
-        WireRequest request = new WireRequest(httpMethod, createUri(), headers, contentType, body, multipartFormParts);
+        WireRequest request = new WireRequest(httpMethod, createUri(), headers, contentType, body, multipartFormParts, multipartBoundary);
 
         logRequest(request);
 
@@ -102,11 +103,8 @@ public class HttpTemplate {
         }
     }
 
-    /**
-     * Manual redirect loop (the JDK client's built-in handling is disabled):
-     * 301/302/303 downgrade to GET and drop the body, 307/308 re-send the
-     * method and body unchanged. The final response is returned to the caller.
-     */
+    // Handles redirects according to HTTP spec:
+    // 301/302/303 downgrade to GET and drop the body; 307/308 re-send the method and body.
     private WireResponse executeWithRedirects(WireRequest request) throws IOException, InterruptedException {
         int hopsLeft = followRedirectsNumber == null ? 0 : followRedirectsNumber;
 
@@ -124,8 +122,8 @@ public class HttpTemplate {
             URI nextUri = request.uri().resolve(location);
             List<Header> nextHeaders = request.headers();
             if (isCrossOrigin(request.uri(), nextUri)) {
-                // ambient credentials must not leak to another origin (curl CVE-2018-1000120);
-                // explicit @RequestHeader values stay — the caller placed them deliberately
+                // Drop default client auth headers on cross-origin redirects to prevent credential leakage.
+                // Explicit @RequestHeader values are preserved as intentionally set by the caller.
                 nextHeaders = dropAuthHeaders(nextHeaders);
                 logger.log(System.Logger.Level.INFO,
                         "Cross-origin redirect to " + nextUri + ", auth headers dropped");
@@ -140,7 +138,8 @@ public class HttpTemplate {
                     nextHeaders,
                     preserveMethod ? request.contentType() : null,
                     preserveMethod ? request.body() : null,
-                    preserveMethod ? request.parts() : null);
+                    preserveMethod ? request.parts() : null,
+                    preserveMethod ? request.boundary() : null);
 
             hopsLeft--;
 
@@ -174,10 +173,7 @@ public class HttpTemplate {
         if (request.method() == HttpMethod.GET && request.body() == null) {
             builder.GET();
         } else {
-            builder.method(request.method().name(),
-                    request.body() == null
-                            ? HttpRequest.BodyPublishers.noBody()
-                            : HttpRequest.BodyPublishers.ofByteArray(request.body()));
+            builder.method(request.method().name(), bodyPublisher(request));
         }
 
         long start = System.nanoTime();
@@ -194,6 +190,16 @@ public class HttpTemplate {
                 .toList();
 
         return new WireResponse(response.statusCode(), headers, response.body());
+    }
+
+    // a fresh publisher per send: stream suppliers are single-use, a redirect re-send must get a live body
+    private HttpRequest.BodyPublisher bodyPublisher(WireRequest request) {
+        if (request.parts() != null) {
+            return MultipartBodyPublisher.of(request.boundary(), request.parts());
+        }
+        return request.body() == null
+                ? HttpRequest.BodyPublishers.noBody()
+                : HttpRequest.BodyPublishers.ofByteArray(request.body());
     }
 
     private String redirectLocation(WireResponse response) {
@@ -267,26 +273,34 @@ public class HttpTemplate {
             sb.append(headers);
         }
 
-        if (Arrays.asList(HttpMethod.POST, HttpMethod.PATCH, HttpMethod.DELETE).contains(httpMethod)) {
+        if (Arrays.asList(HttpMethod.POST, HttpMethod.PATCH, HttpMethod.DELETE).contains(request.method())) {
             sb.append("\n");
 
-            if (contentType != null && contentType.contains("multipart/form-data")) {
-                if (multipartFormParts != null) {
-                    sb.append(multipartFormParts.stream()
+            if (request.contentType() != null && request.contentType().contains("multipart/form-data")) {
+                if (request.parts() != null) {
+                    sb.append(request.parts().stream()
                             .map(part -> "name=" + part.name()
                                     + (part.filename() == null ? "" : ", filename=" + part.filename()))
                             .collect(Collectors.joining(", ")));
                     sb.append("\n");
                 }
-                sb.append("Sending size: ").append(body == null ? 0 : body.length);
-            } else if (body != null) {
-                sb.append(new String(body, StandardCharsets.UTF_8));
+                sb.append("Sending size: ").append(multipartSendSize(request));
+            } else if (request.body() != null) {
+                sb.append(new String(request.body(), StandardCharsets.UTF_8));
             } else {
                 sb.append("No request body");
             }
         }
 
         logger.log(System.Logger.Level.INFO, "Request: " + sb);
+    }
+
+    private String multipartSendSize(WireRequest request) {
+        if (request.parts() == null) {
+            return "0";
+        }
+        long size = MultipartBodyPublisher.of(request.boundary(), request.parts()).contentLength();
+        return size >= 0 ? String.valueOf(size) : "unknown (chunked)";
     }
 
     private void logResponse(WireResponse response, long elapsedMs) {
@@ -343,6 +357,10 @@ public class HttpTemplate {
 
     public void setMultipartFormParts(List<MultipartPart> multipartFormParts) {
         this.multipartFormParts = multipartFormParts;
+    }
+
+    public void setMultipartBoundary(String multipartBoundary) {
+        this.multipartBoundary = multipartBoundary;
     }
 
     public void setBody(byte[] body) {

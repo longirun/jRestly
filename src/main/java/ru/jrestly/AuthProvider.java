@@ -17,8 +17,7 @@ public interface AuthProvider {
     void updateAuthHeader(String name, String value);
 
     default void captureAuthDetails(String headerName, List<Header> responseHeaders) {
-        // a missing header means the login response did not carry auth details:
-        // no-op keeps the currently active token instead of silently deauthorizing the client
+        // If the header is absent from the response, retain the existing auth token
         responseHeaders.stream()
                 .filter(header -> headerName.equalsIgnoreCase(header.name()))
                 .findFirst()
