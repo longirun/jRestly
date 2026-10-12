@@ -29,9 +29,13 @@ import java.lang.reflect.Type;
  *   <li>unknown JSON properties are ignored on deserialization.</li>
  * </ul>
  *
- * <p>Targets modern Gson ({@code java.time} is serialized reflectively on
- * pre-2.14 versions, natively on 2.14+ without {@code --add-opens}); the
- * pinned compile/test version is 2.14.0.
+ * <p>Requires Gson 2.8.3+ — the lazy pretty twin relies on
+ * {@code Gson.newBuilder()}, which landed in 2.8.3; the pinned compile/test
+ * version is 2.14.0. {@code java.time} values have no dedicated adapter
+ * before 2.14 and fall through to Gson's general reflective path (on modern
+ * JDKs that reflects into the JDK's private fields, so {@code --add-opens}
+ * may be needed); 2.14+ ships a native adapter with a frozen wire format
+ * instead.
  *
  * <p>{@code deserialize}/{@code serialize} fail with an unchecked
  * {@link JsonSyntaxException} naming the target, the original Gson

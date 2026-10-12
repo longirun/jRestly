@@ -21,7 +21,7 @@ import java.util.Objects;
  * {@link JsonCodec} backed by a Jackson {@link ObjectMapper}.
  *
  * <p>Instances are created either from an explicit mapper (used as is, never
- * reconfigured) or via the {@code defaults(...)} factories, which configure:
+ * reconfigured) or via the {@code defaults(...)} factories, which result in:
  * <ul>
  *   <li>compact JSON on the wire (no pretty printing),</li>
  *   <li>{@code FAIL_ON_UNKNOWN_PROPERTIES} disabled,</li>
@@ -36,6 +36,12 @@ import java.util.Objects;
  *       separator are accepted, with or without fractional seconds
  *       (1–9 digits).</li>
  * </ul>
+ *
+ * <p>Targets Jackson 2.x (a Jackson 3 would need a new adapter revision,
+ * ADR-0001); the pinned compile/test version is 2.18.2.
+ *
+ * <p>Instances are thread-safe: {@code ObjectMapper} is thread-safe once
+ * configured, and a codec never reconfigures its mapper.
  */
 public class JacksonCodec implements JsonCodec {
 

@@ -1,6 +1,6 @@
 # ADR-0007: Gson and Moshi codec adapters (classpath probe chain)
 
-> 2026-10-13 · Proposed · concept step of the "Gson / Moshi codec adapters" epic (DRAFT). Implementation follows in Steps 1–4; this ADR is the source of truth for the design decisions, the test strategy, and the Javadoc contract.
+> 2026-10-13 · Proposed · concept step of the "Gson / Moshi codec adapters" epic (DRAFT). Implementation follows in Steps 2–6 (adapters, resolver, Javadoc contract, README); this ADR is the source of truth for the design decisions, the test strategy, and the Javadoc contract.
 
 ## Context
 
@@ -79,9 +79,14 @@ already allows it). Revisit only on demand.
 
 ### Aspect 3: java.time — optional add-on, same pattern as jsr310
 
-- **Gson:** `java.time` support is in the core artifact (reflective-style
-  on pre-2.14 versions, a native frozen adapter on 2.14+ — same wire
-  format); no second probe needed.
+- **Gson:** `java.time` support is in the core artifact; no second probe
+  needed. Refinement (Step 5, 2026-10-13, pinned against the 2.13.1 tag):
+  pre-2.14 versions have **no dedicated java.time adapters at all** (no
+  `java.time` anywhere in the main sources) — `LocalDateTime` & co. fall
+  through to Gson's general reflective path (on modern JDKs: reflection
+  into the JDK's private fields, so `--add-opens` may be needed); 2.14+
+  ships a native adapter that freezes that reflective output as the wire
+  format.
 - **Moshi:** core has no `java.time` adapters. **Correction (Step 2,
   2026-10-13, pinned against 1.15.2):** the assumed `moshi-adapters`
   add-on (`com.squareup.moshi.adapter.JavaTime`) is a **phantom** —
@@ -130,8 +135,17 @@ Implementation per library:
   `prettyPrint` is best-effort; instances must be thread-safe (they are
   shared across all calls of a client).
 - **Each adapter's class Javadoc** states: which external library + minimum
-  version it targets (Gson 2.8+; Moshi 1.x), what `defaults()` configures
-  (and what it deliberately does not), and its date/time behavior.
+  version it targets (**Gson 2.8.3+** — correction, Step 5, 2026-10-13,
+  pinned against the tags: the lazy pretty twin relies on
+  `Gson.newBuilder()`, which landed in 2.8.3, not 2.8.0 as originally
+  assumed; Moshi 1.x; Jackson 2.x per ADR-0001), what `defaults()`
+  configures (and what it deliberately does not), and its date/time
+  behavior. Done in Step 5 (2026-10-13): `JsonCodec` carries the
+  normative interface-level Javadoc (unchecked wrapping in the adapter's
+  own exception family, `Type` honored, top-level `null` → JSON `null`,
+  best-effort `prettyPrint`, thread-safety) and all three adapters state
+  library + minimum version, `defaults()` scope, date/time behavior and
+  thread-safety.
 
 ### Aspect 6: Test strategy (and the one real wrinkle)
 
@@ -172,7 +186,8 @@ Implementation per library:
   must stay dependency-free (re-verified at each step's gate).
 - README: "Jackson 2 is autodetected" becomes "Jackson, Gson, or Moshi is
   autodetected" (status line, the three install-snippet comments, and the
-  SPI note in one place) — done in Step 4, still referencing the last tag
+  SPI note in one place) — due in Step 6 (the concept stage estimated the
+  epic as "Steps 1–4"; the step list grew), still referencing the last tag
   per the "no tags" agreement.
 - Date behavior intentionally differs across adapters (Jackson default
   space-separated vs Gson frozen reflective-style objects vs Moshi: no

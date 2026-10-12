@@ -48,9 +48,25 @@
       Moshi 1.15.2: конкретные platform-коллекции (`Map.of(...)` →
       `ImmutableCollections$Map1`) отшиваются («Moshi only supports the
       collection interfaces by default») — в ADR Known gaps
-- [ ] Javadoc-контракт: интерфейс `JsonCodec` — normative-level Javadoc
-      (unchecked wrapping, generics, best-effort prettyPrint, thread-safety),
-      у каждого адаптера — минимум версии либы + поведение дата/времени
+- [x] Javadoc-контракт (сессия #14): интерфейс `JsonCodec` —
+      normative-level Javadoc (unchecked wrapping в семье исключений
+      либы — «UncheckedIOException-style»: Jackson UncheckedIOException,
+      Gson JsonSyntaxException, Moshi JsonDataException; message называет
+      тип значения, cause — исходное; `Type` уважается, включая генерики;
+      top-level `null` → JSON `null` и обратно; best-effort prettyPrint;
+      thread-safety — обещание, на которое либа опирается, включая
+      user-кодеки) + method-level Javadoc всех трёх методов. Адаптеры:
+      Jackson 2.x (ADR-0001, пин 2.18.2, thread-safety: ObjectMapper
+      thread-safe после конфигурации), **Gson 2.8.3+** — реальность-пин
+      (pretty-twin строится через `Gson.newBuilder()` — API 2.8.3+;
+      проверено по тегам 2.8.0/2.8.1/2.8.2/2.8.3. До 2.14 у Gson нет ни
+      одного java.time-адаптера — java.time падает в общий рефлективный
+      путь, на современных JDK нужен `--add-opens`; пин 2.14.0), Moshi
+      1.x (пин 1.15.2 — сверено, было). + пин `serialize(null) → "null"`
+      в JacksonCodecDefaultsTest (контракт теперь закреплён тестом во
+      всех трёх кодеках). ADR-0007: Aspect 3 (java.time pre-2.14 по тегу
+      2.13.1), Aspect 5 (Gson 2.8.3+ + отметка выполнения), нумерация
+      шагов (заголовок, Consequences: README = шаг 6)
 - [ ] README: «Jackson 2 is autodetected» → «Jackson, Gson or Moshi is
       autodetected» (статус-строка, комменты трёх блоков установки, SPI-нот)
 - [ ] Gate: `./gradlew test` зелёный + POM без runtime-зависимостей

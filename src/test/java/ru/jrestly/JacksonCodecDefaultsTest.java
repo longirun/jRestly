@@ -171,6 +171,13 @@ class JacksonCodecDefaultsTest {
     }
 
     @Test
+    @DisplayName("null handling: serialize(null) is 'null', deserialize('null') is null (JsonCodec contract)")
+    void nullHandling() {
+        assertEquals("null", codec.serialize(null));
+        assertNull(codec.deserialize("null", TestDto.class));
+    }
+
+    @Test
     @DisplayName("defaults() ignores unknown JSON properties (FAIL_ON_UNKNOWN_PROPERTIES disabled)")
     void defaultsIgnoreUnknownProperties() {
         EventDto back = codec.deserialize(
