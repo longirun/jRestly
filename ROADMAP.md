@@ -150,6 +150,25 @@ String/Void, non-blocking dispatch with a 750 ms delayed stub, `@OnError` and
 unexpected-status failure causes, transport-fault cause, async 302 redirect).
 Suite 145/145 green.
 
+## java.time ISO-8601 wire format (option A) — COMPLETE ✅ (2026-10-12, unreleased)
+
+> Maintainer's mailbox decision (2026-10-12): option A — *configurable* format,
+> default stays classic (byte-compatible), no tag; version bumped 0.6.1 → 0.6.2
+> (releases paused). Session #7 (agent-loop).
+
+`JacksonCodec` gained a public nested enum `LocalDateTimeFormat`
+(`SPACE` — the classic `yyyy-MM-dd HH:mm:ss`, the default; `ISO_8601` —
+`yyyy-MM-dd'T'HH:mm:ss`) and a factory `defaults(LocalDateTimeFormat)`.
+The no-arg `defaults()` delegates to `SPACE`, so existing consumers stay
+byte-identical. Both modes share the same optional fractional-seconds tail
+(printed only when the value carries sub-second precision) and the same
+LENIENT parser — in every mode both the `T` and the space separator parse,
+so a legacy space-based server keeps working in ISO mode on read.
+
+Tests: `JacksonCodecDefaultsTest` +5 (ISO `T` output pin, ISO fractional
+precision + nanosecond round-trip, classic parse in ISO mode, `SPACE` ≡
+`defaults()` byte-identity, null fail-fast). Suite 150/150 green.
+
 ## Post-0.5.0 shortlist (not scheduled — see ADR-0003)
 
 - Retry with backoff (integrates with `@OnError` semantics)
@@ -157,5 +176,5 @@ Suite 145/145 green.
 - Gson / Moshi codec adapters (classpath probe chain extension)
 
 Carry-over decision (maintainer, 2026-10-12): `JacksonCodec` serializer output
-should also learn ISO-8601 `T` — a deliberate breaking change of the
-`java.time` wire format, queued as the next small step (see DRAFT.md).
+should also learn ISO-8601 `T`. Resolved as option A (configurable,
+non-breaking) — done, section above.

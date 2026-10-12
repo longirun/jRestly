@@ -113,6 +113,64 @@ class JacksonCodecDefaultsTest {
     }
 
     @Test
+    @DisplayName("defaults(ISO_8601) serializes LocalDateTime with the ISO 'T' separator; the default stays classic")
+    void isoDefaultsSerializeWithTSeparator() {
+        JacksonCodec iso = JacksonCodec.defaults(JacksonCodec.LocalDateTimeFormat.ISO_8601);
+        LocalDateTime value = LocalDateTime.of(2026, 8, 24, 12, 34, 56);
+
+        assertEquals("\"2026-08-24T12:34:56\"", iso.serialize(value),
+                "ISO mode must print the 'T' separator");
+        assertEquals("\"2026-08-24 12:34:56\"", codec.serialize(value),
+                "the no-arg default must remain byte-compatible with the classic format");
+    }
+
+    @Test
+    @DisplayName("defaults(ISO_8601) preserves sub-second precision: fractional tail is emitted only when present")
+    void isoDefaultsPreserveFractionalSeconds() {
+        JacksonCodec iso = JacksonCodec.defaults(JacksonCodec.LocalDateTimeFormat.ISO_8601);
+
+        LocalDateTime withNanos = LocalDateTime.of(2026, 8, 24, 12, 34, 56, 987_654_321);
+        assertEquals("\"2026-08-24T12:34:56.987654321\"", iso.serialize(withNanos),
+                "nanos must not be silently truncated on the wire");
+        assertEquals(withNanos, iso.deserialize("\"2026-08-24T12:34:56.987654321\"", LocalDateTime.class),
+                "full round-trip at nanosecond precision");
+
+        // Sub-millisecond values are trimmed to significant digits, no trailing zeros
+        LocalDateTime millis = LocalDateTime.of(2026, 8, 24, 12, 34, 56, 1_000_000);
+        assertEquals("\"2026-08-24T12:34:56.001\"", iso.serialize(millis));
+    }
+
+    @Test
+    @DisplayName("defaults(ISO_8601) still deserializes the classic space separator (lenient parser is unchanged)")
+    void isoDefaultsStillParseClassicSpaceSeparator() {
+        JacksonCodec iso = JacksonCodec.defaults(JacksonCodec.LocalDateTimeFormat.ISO_8601);
+        LocalDateTime expected = LocalDateTime.of(2026, 10, 8, 9, 25, 53, 123_456_000);
+
+        assertEquals(expected, iso.deserialize("\"2026-10-08 09:25:53.123456\"", LocalDateTime.class),
+                "legacy space-separator payloads must keep parsing in ISO mode");
+        assertEquals(expected, iso.deserialize("\"2026-10-08T09:25:53.123456\"", LocalDateTime.class));
+    }
+
+    @Test
+    @DisplayName("defaults(SPACE) is byte-identical to defaults()")
+    void spaceDefaultsAreByteIdenticalToDefault() {
+        JacksonCodec space = JacksonCodec.defaults(JacksonCodec.LocalDateTimeFormat.SPACE);
+
+        for (LocalDateTime value : new LocalDateTime[] {
+                LocalDateTime.of(2026, 8, 24, 12, 34, 56),
+                LocalDateTime.of(2026, 8, 24, 12, 34, 56, 987_654_321),
+                LocalDateTime.of(2026, 8, 24, 12, 34, 56, 1_000_000)}) {
+            assertEquals(codec.serialize(value), space.serialize(value));
+        }
+    }
+
+    @Test
+    @DisplayName("defaults(format) fails fast on a null format")
+    void defaultsFailFastOnNullFormat() {
+        assertThrows(NullPointerException.class, () -> JacksonCodec.defaults(null));
+    }
+
+    @Test
     @DisplayName("defaults() ignores unknown JSON properties (FAIL_ON_UNKNOWN_PROPERTIES disabled)")
     void defaultsIgnoreUnknownProperties() {
         EventDto back = codec.deserialize(

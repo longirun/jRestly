@@ -15,25 +15,54 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeFormatterBuilder;
 import java.time.temporal.ChronoField;
+import java.util.Objects;
 
 /**
  * {@link JsonCodec} backed by a Jackson {@link ObjectMapper}.
  *
  * <p>Instances are created either from an explicit mapper (used as is, never
- * reconfigured) or via {@link #defaults()}, which configures:
+ * reconfigured) or via the {@code defaults(...)} factories, which configure:
  * <ul>
  *   <li>compact JSON on the wire (no pretty printing),</li>
  *   <li>{@code FAIL_ON_UNKNOWN_PROPERTIES} disabled,</li>
  *   <li>java.time support when {@code jackson-datatype-jsr310} is on the
- *       classpath: {@link LocalDateTime} serializes as
- *       {@code yyyy-MM-dd HH:mm:ss} (a fractional-seconds tail
+ *       classpath: {@link LocalDateTime} serializes in the format chosen via
+ *       {@link LocalDateTimeFormat} (the default
+ *       {@link LocalDateTimeFormat#SPACE} prints
+ *       {@code yyyy-MM-dd HH:mm:ss}, a fractional-seconds tail
  *       {@code .SSSSSSSSS} is appended only when the value carries
- *       sub-second precision) and deserializes leniently — both the classic
- *       space separator and the ISO-8601 {@code T} separator are accepted,
- *       with or without fractional seconds (1–9 digits).</li>
+ *       sub-second precision) and deserializes leniently in every mode —
+ *       both the classic space separator and the ISO-8601 {@code T}
+ *       separator are accepted, with or without fractional seconds
+ *       (1–9 digits).</li>
  * </ul>
  */
 public class JacksonCodec implements JsonCodec {
+
+    /**
+     * {@code LocalDateTime} serialization ("wire") formats available from the
+     * {@code defaults(...)} factories. Deserialization is lenient in every
+     * mode and is unaffected by the choice: both the space separator and the
+     * ISO-8601 {@code T} separator parse, with or without fractional seconds.
+     */
+    public enum LocalDateTimeFormat {
+
+        /**
+         * The historical jRestly wire format: {@code yyyy-MM-dd HH:mm:ss}
+         * with an optional fractional-seconds tail (printed only when the
+         * value carries sub-second precision). The default of
+         * {@link #defaults()}; second-precision values serialize
+         * byte-identically to the pre-0.6.1 output.
+         */
+        SPACE,
+
+        /**
+         * ISO-8601 with the {@code T} date-time separator:
+         * {@code yyyy-MM-dd'T'HH:mm:ss} with the same optional
+         * fractional-seconds tail as {@link #SPACE}.
+         */
+        ISO_8601
+    }
 
     private final ObjectMapper mapper;
 
@@ -41,8 +70,27 @@ public class JacksonCodec implements JsonCodec {
         this.mapper = mapper;
     }
 
+    /**
+     * A default codec whose {@link LocalDateTime} values use the classic
+     * {@link LocalDateTimeFormat#SPACE} wire format (byte-compatible with the
+     * historical output).
+     */
     public static JacksonCodec defaults() {
-        return new JacksonCodec(createDefault());
+        return defaults(LocalDateTimeFormat.SPACE);
+    }
+
+    /**
+     * A default codec with the given {@code LocalDateTime} wire format.
+     * All other settings match {@link #defaults()}; deserialization stays
+     * lenient in every mode.
+     *
+     * @param localDateTimeFormat the serialization format for
+     *        {@link LocalDateTime}; never {@code null}
+     * @throws NullPointerException if the format is {@code null}
+     */
+    public static JacksonCodec defaults(LocalDateTimeFormat localDateTimeFormat) {
+        Objects.requireNonNull(localDateTimeFormat, "localDateTimeFormat");
+        return new JacksonCodec(createDefault(localDateTimeFormat));
     }
 
     @Override
@@ -74,7 +122,7 @@ public class JacksonCodec implements JsonCodec {
         }
     }
 
-    private static ObjectMapper createDefault() {
+    private static ObjectMapper createDefault(LocalDateTimeFormat localDateTimeFormat) {
         ObjectMapper mapper = new ObjectMapper();
         mapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
         mapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
@@ -83,7 +131,7 @@ public class JacksonCodec implements JsonCodec {
         // jsr310 types live in a nested class so that the JVM verifier does not resolve them
         // while loading JacksonCodec itself (NoClassDefFoundError on a jsr310-free classpath)
         if (isOnClasspath("com.fasterxml.jackson.datatype.jsr310.JavaTimeModule")) {
-            JavaTimeSupport.register(mapper);
+            JavaTimeSupport.register(mapper, localDateTimeFormat);
         }
 
         return mapper;
@@ -104,13 +152,25 @@ public class JacksonCodec implements JsonCodec {
         }
 
         /**
-         * Wire format for printing: {@code yyyy-MM-dd HH:mm:ss} with an
-         * optional fractional-seconds tail. The tail is omitted entirely when
-         * the value has second precision, so such values serialize
-         * byte-identically to the historical fixed pattern.
+         * Wire format for printing in {@link LocalDateTimeFormat#SPACE} mode:
+         * {@code yyyy-MM-dd HH:mm:ss} with an optional fractional-seconds
+         * tail. The tail is omitted entirely when the value has second
+         * precision, so such values serialize byte-identically to the
+         * historical fixed pattern.
          */
-        static final DateTimeFormatter WIRE = new DateTimeFormatterBuilder()
+        static final DateTimeFormatter SPACE_WIRE = new DateTimeFormatterBuilder()
                 .appendPattern("yyyy-MM-dd HH:mm:ss")
+                .optionalStart().appendFraction(ChronoField.NANO_OF_SECOND, 0, 9, true).optionalEnd()
+                .toFormatter();
+
+        /**
+         * Wire format for printing in {@link LocalDateTimeFormat#ISO_8601}
+         * mode: ISO-8601 with the {@code T} date-time separator,
+         * {@code yyyy-MM-dd'T'HH:mm:ss}, with the same optional
+         * fractional-seconds tail as {@link #SPACE_WIRE}.
+         */
+        static final DateTimeFormatter ISO_WIRE = new DateTimeFormatterBuilder()
+                .appendPattern("yyyy-MM-dd'T'HH:mm:ss")
                 .optionalStart().appendFraction(ChronoField.NANO_OF_SECOND, 0, 9, true).optionalEnd()
                 .toFormatter();
 
@@ -128,9 +188,13 @@ public class JacksonCodec implements JsonCodec {
                 .optionalStart().appendFraction(ChronoField.NANO_OF_SECOND, 0, 9, true).optionalEnd()
                 .toFormatter();
 
-        static void register(ObjectMapper mapper) {
+        static void register(ObjectMapper mapper, LocalDateTimeFormat format) {
+            DateTimeFormatter wire = switch (format) {
+                case SPACE -> SPACE_WIRE;
+                case ISO_8601 -> ISO_WIRE;
+            };
             JavaTimeModule module = new JavaTimeModule();
-            module.addSerializer(LocalDateTime.class, new LocalDateTimeSerializer(WIRE));
+            module.addSerializer(LocalDateTime.class, new LocalDateTimeSerializer(wire));
             module.addDeserializer(LocalDateTime.class, new LocalDateTimeDeserializer(LENIENT));
             mapper.registerModule(module);
         }
