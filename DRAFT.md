@@ -13,10 +13,13 @@
 
 - [x] Концепт: ADR-0007 — порядок проб, приоритет, форма адаптеров,
       Javadoc-контракт `JsonCodec`, тестовая стратегия (сессия #10)
-- [ ] `GsonCodec` (compileOnly `com.google.code.gson:gson`, версия — latest
-      stable на момент шага): `defaults()` = plain `GsonBuilder().create()`,
-      lazy pretty twin, `GsonCodecTest` (round-trips, java.time pin,
-      prettyPrint best-effort)
+- [x] `GsonCodec` (compileOnly `com.google.code.gson:gson`, запинен **2.14.0** =
+      latest stable, сессия #11): `defaults()` = plain `GsonBuilder().create()`,
+      lazy pretty twin, `GsonCodecTest` (12 тестов: round-trips, java.time-пин —
+      Gson 2.14 зафиксировал рефлексивное представление `{"date":{...},"time":{...}}`
+      (не ISO!), `Date` → строка локала с секундной точностью, prettyPrint
+      best-effort). Обёртка ошибок — `JsonSyntaxException` (Gson-семья, а не
+      UncheckedIOException: cause — не IOException)
 - [ ] `MoshiCodec` (compileOnly `com.squareup.moshi:moshi`): `defaults()` =
       `new Moshi.Builder().build()` + опциональный проб `moshi-adapters`
       (паттерн jsr310 из JacksonCodec), prettyPrint через JsonWriter,

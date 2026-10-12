@@ -59,10 +59,14 @@ used for jsr310 inside `JacksonCodec` is not needed at the adapter level.
 - **Gson:** plain `new GsonBuilder().create()` — Gson's own semantics, no
   reconfiguration (least surprise: an explicit `new Gson()` user and a
   `defaults()` user see the same output). Consequences, documented in
-  Javadoc: `java.util.Date` → millisecond timestamp (Gson native),
-  `LocalDateTime` → ISO-8601 (Gson ships built-in `java.time` adapters since
-  2.8.0 — verify against the pinned version in Step 1, add a
-  `GsonCodecTest` round-trip pin either way).
+  Javadoc — verified against the pinned version in Step 1, pinned by
+  `GsonCodecTest`: `java.util.Date` → locale-formatted string (Gson's
+  default `DateFormat` style, round-trips to the same instant),
+  `LocalDateTime` → the frozen reflective-style representation
+  `{"date":{"year","month","day"},"time":{"hour","minute","second","nano"}}`
+  (Gson 2.14 froze the pre-2.14 reflective output for compatibility;
+  deliberately not ISO-8601 — hosts needing ISO bring a custom `Gson` or a
+  custom `JsonCodec`).
 - **Moshi:** `new Moshi.Builder().build()` plus the optional
   `moshi-adapters` probe — see Aspect 3.
 
@@ -74,8 +78,9 @@ already allows it). Revisit only on demand.
 
 ### Aspect 3: java.time — optional add-on, same pattern as jsr310
 
-- **Gson:** `java.time` support is in the core artifact (2.8.0+); no second
-  probe needed.
+- **Gson:** `java.time` support is in the core artifact (reflective-style
+  on pre-2.14 versions, a native frozen adapter on 2.14+ — same wire
+  format); no second probe needed.
 - **Moshi:** core has no `java.time` adapters; they live in the separate
   `moshi-adapters` artifact (`com.squareup.moshi.adapter.JavaTime`).
   `MoshiCodec.defaults()` probes for it and registers `JavaTime` only when
@@ -118,7 +123,7 @@ Implementation per library:
   the 0.5.0 gate); `testImplementation` for both **plus**
   `com.squareup.moshi:moshi-adapters` so the optional-probe path is
   exercised. Versions: latest stable at implementation time
-  (Gson 2.13.x / Moshi 1.15.x as of 2026-10).
+  (Gson pinned at 2.14.0 in Step 1, 2026-10-13; Moshi pinned in Step 2).
 - New `GsonCodecTest` and `MoshiCodecTest` mirror the scope of
   `JacksonCodecDefaultsTest`: serialize/deserialize round-trips incl.
   generics, `LocalDateTime` behavior pins, null handling, `prettyPrint`
@@ -145,8 +150,9 @@ Implementation per library:
   SPI note in one place) — done in Step 4, still referencing the last tag
   per the "no tags" agreement.
 - Date behavior intentionally differs across adapters (Jackson default
-  space-separated vs Gson/Moshi ISO-8601): each adapter's Javadoc is the
-  contract, and a mixed-classpath host always gets Jackson anyway (Aspect 1).
+  space-separated vs Gson frozen reflective-style objects vs Moshi
+  ISO-8601): each adapter's Javadoc is the contract, and a mixed-classpath
+  host always gets Jackson anyway (Aspect 1).
 - `JsonCodec` interface Javadoc is a new normative surface: user-supplied
   custom codecs are now *documented* to need thread-safety (they should
   already, but this makes it a promise the library relies on).
@@ -156,7 +162,9 @@ Implementation per library:
 - No adapters for other JSON libraries (fastjson, kotlinx-serialization,
   …): the chain is a fixed, ordered list for 0.x — extensibility comes via
   the explicit-codec knob, not via configuration.
-- Gson's built-in `java.util.Date` → millis output is Gson's semantics, not
-  a jRestly choice; documented, not fought.
+- Gson's built-in `java.util.Date` → locale-string output is Gson's
+  semantics, not a jRestly choice; documented, not fought. Same for the
+  frozen non-ISO `java.time` representation — a Gson 2.14 compatibility
+  decision.
 - `moshi-adapters` is a second optional artifact for a Moshi host to get
   first-class `java.time` — mirrors jsr310, accepted.
