@@ -1,46 +1,37 @@
-# Handover Note: Сессия 3 (LocalDateTime — эпик закрыт)
+# Handover Note: Сессия 4 (дистилляция цикла 0.6.1)
 
 ## Что сделано в этой сессии
-- **Эпик DRAFT.md (LocalDateTime в JacksonCodec) закрыт.**
-  - `JacksonCodec.JavaTimeSupport`: два форматтера.
-    `WIRE` — serializer: `yyyy-MM-dd HH:mm:ss` + опциональный хвост `.SSSSSSSSS`
-    (через `appendFraction(NANO_OF_SECOND, 0, 9, true)`; при нулевых наносекундах
-    хвост не печатается → байт-в-байт обратно совместимо).
-    `LENIENT` — deserializer: `'T'` или `' '` (оба опциональны), `HH:mm:ss`,
-    дробная часть 1–9 цифр опционально.
-  - Тесты: `JacksonCodecDefaultsTest` 11 тестов (2 переписаны — они закрепляли баг:
-    «truncate nanos» и «ISO rejected» — +4 новых), `JsonCodecWireTest` +1 энд-ту-энд
-    (ISO с дробью из ответа сервера).
-  - **135/135 зелёные** (полный `./gradlew test`).
-- Дневник: `.agent/days/2026-10-12.md` (кофе + заметки сессии #3).
-- Ответ Антону в mailbox (18:35).
+- **ROADMAP.md:** новый раздел «Cycle 0.6.1 — java.time wire contract — COMPLETE»:
+  проблема, решение (WIRE/LENIENT), тесты, `f7a4c47`, открытый вопрос про ADR-0006.
+- **DRAFT.md:** переписан под «рабочее место для следующего эпика» + кандидаты
+  (ADR-0006, retry/backoff, CompletableFuture, Gson/Moshi).
+- **Релиз:** `build.gradle` 0.6.0 → 0.6.1, аннотированный тег `v0.6.1`.
+- **Mailbox:** ответил Антону (1000 потоков = init-скрипт снят; повторил вопрос про ADR-0006).
+- **Проверка окружения:** полный `./gradlew test` БЕЗ init-скрипта — 135/135 (13 сек).
+- **Остаток чек-листа:** проверил цепочку `JsonCodecResolver` / `SimpleModuleInfo.Builder`
+  (explicit > classpath-probe > fail-fast) — норм, правок нет.
+- Коммит: docs (ROADMAP, DRAFT, mailbox, дневник, last_session, счётчик) + build.gradle.
 
 ## Контекст для следующей сессии
 
-### Окружение (ВАЖНО — прочитай прежде чем гнать тесты)
-1. `GRADLE_USER_HOME=/workspace/cache/gradle` root-owned (нет sudo). Используй:
-   `GRADLE_USER_HOME=/tmp/opencode/gradle-home ./gradlew ...`
-   (кэш зависимостей там есть, демон жив — сборка минуты).
-2. Контейнер: `pids.max = 150`, `nproc = 4`. Полный `./gradlew test` без init-скрипта
-   падает НЕОПРЕДЕЛЁННО (EAGAIN / unable to create native thread). Используй:
-   `GRADLE_USER_HOME=/tmp/opencode/gradle-home ./gradlew test --init-script /tmp/opencode/init-smallcpu.gradle`
-   Init-скрипт: `-XX:ActiveProcessorCount=2 -XX:+UseSerialGC` на test-JVM.
-   `/tmp` может не пережить ребут контейнера — если файла нет, пересоздай (см. дневник).
+### Окружение
+1. `GRADLE_USER_HOME=/tmp/opencode/gradle-home ./gradlew ...` (кэш зависимостей и
+   демон живут там). `/tmp` не переживает ребут контейнера — пересоздай, если пропало.
+2. **`pids.max` теперь 1000** (Антон поднял с 150). Полный `./gradlew test` идёт
+   БЕЗ init-скрипта. `/tmp/opencode/init-smallcpu.gradle` — резерв на случай
+   регрессии лимита.
 3. Демон Gradle переживает падения тестов — просто перезапускай.
+4. Ветка — `agent-loop` (в записке сессии #3 ошибочно `agent/infinite`).
 
-### Что логично делать дальше (моя оценка)
-1. **Дистилляция в ROADMAP.md**: добавить цикл «0.6.1 — java.time wire contract»
-   (кратко: что решено, тесты, теги — после коммита) и почистить DRAFT.md
-   (черновик завершён — перенести в docs/ или просто зачистить по образцу прошлого).
-2. **Вопрос Антону в mailbox** — я спросил, нужен ли отдельный ADR на wire-контракт
-   java.time (сейчас решение живёт в Javadoc + тестах). Жду его ответа; если «да» —
-   писать `docs/0.6.x/ADR-0006-java-time-wire-contract.md`.
-3. Открытые мелочи из ROADMAP (Post-0.5.0 shortlist): retry with backoff,
-   `CompletableFuture`, Gson/Moshi адаптеры — не срочные.
-4. Если хочется кода: проверить, что `JsonCodecResolver` корректно ведёт себя при
-   `defaults()` (не читал в этой сессии, тесты зелёные).
+### Что логично делать дальше
+1. **Жду ответа Антона по ADR-0006** (java.time wire contract). Если «да» — писать
+   `docs/0.6.x/ADR-0006-java-time-wire-contract.md`; сырьё уже собрано: ROADMAP
+   cycle 0.6.1 + Javadoc `JacksonCodec` + 11 тестов.
+2. Иначе — брать эпик из кандидатов в DRAFT.md. Моя оценка: retry with backoff —
+   самая содержательная фича из shortlist (нужен концепт, интеграция с `@OnError`).
+3. Открытых ниток по коду нет: `JsonCodecResolver` проверен, suite зелёный,
+   релиз вынесен (0.6.1).
 
 ### Состояние git
-- Коммит этой сессии: код (JacksonCodec + 2 test-класса), DRAFT.md,
-  .agent/ (дневник, last_session, mailbox, счётчик).
-- Всё на `agent/infinite`.
+- HEAD: коммит сессии #4 (ROADMAP, DRAFT, build.gradle, .agent/), тег `v0.6.1`.
+- Всё на `agent-loop`.

@@ -83,6 +83,35 @@ Key decisions (ADR-0005):
 > Implemented, verified by code inspection + IDE inspections (clean) + full WireMock suite green (2026-10-11), tag `v0.6.0`.
 > `MultipartBodyPublisher` over `BodyPublishers.concat` (per-part `[headers, content, CRLF]` + closing delimiter; exact Content-Length when every length is known — including a custom `ofStream(supplier, length)` filling the JDK gap; chunked otherwise; a fresh publisher per send, so a 307/308 re-send gets a live stream and keeps the boundary). `FileContent` — open SPI with four factories (`of(Path)`, `of(name, byte[])`, `of(name, supplier)`, `of(name, supplier, length)`); accepted on collections/arrays/varargs (one part per element, `byte[]` counts as one in-memory file, null argument/elements yield no parts, order = parameter then element). Part Content-Type: 20-entry mime map (lowercase `Locale.ROOT` match, unknown → `application/octet-stream`) + `contentType()` override per parameter. Framing hardened (tester finding, pre-existing since 0.5.0): RFC 2045 quoted-string escaping of `name`/`filename` (`\` → `\\`, `"` → `\"`), CR/LF rejected in the `MultipartPart` compact constructor. Deviations (2, recorded in ADR-0005): `FileContent` is an open SPI instead of sealed — pluggability over shape hiding; quoted-string escaping — landed with this cycle instead of a Known Gap. Tests: `MultipartTest` (wire byte-identical regression vs the pre-streaming writer, 4 MiB stream with exact Content-Length, chunked, escaping, CR/LF) + tester's `MultipartIndependentTest` (SPI contract, boundary format/uniqueness, mixed lengths, empty content, failing supplier, lazy disk reads, UTF-8 names, mime spot checks, ordering, null elements, empty varargs, redirect re-send).
 
+## Cycle 0.6.1 — java.time wire contract — COMPLETE ✅ (2026-10-12)
+
+> Follow-up to 0.6.0: `JacksonCodec` now round-trips `LocalDateTime` sub-second precision
+> and accepts ISO-8601 input. No new SPI surface — the change is contained in
+> `JacksonCodec.JavaTimeSupport`. Commit `f7a4c47`, tag `v0.6.1`.
+
+Problem (reported in `TODO.md` pre-0.6.0, fixed after release): the 0.5.0 contract
+serialized `LocalDateTime` as `yyyy-MM-dd HH:mm:ss` — silently truncating nanoseconds —
+and rejected the standard ISO-8601 `T` separator on input.
+
+Decision:
+- **Serializer: wire-compatible, precision-preserving.** `yyyy-MM-dd HH:mm:ss` plus an
+  optional `.SSSSSSSSS` fraction (`DateTimeFormatterBuilder.appendFraction(NANO_OF_SECOND, 0, 9, true)`
+  inside `optionalStart/End`) — the fraction prints only when non-zero, so second-precision
+  values travel the wire byte-for-byte as before.
+- **Deserializer: lenient.** Separator `T` or space (both optional), optional 1–9 digit
+  fraction. Rejected: date without time, lowercase `t`, missing seconds — each covered by a test.
+- Space separator kept as the wire default on purpose: byte-level backward compatibility with
+  existing consumers is worth more than "ideal" ISO output. Switching output to `T` is a
+  deliberate breaking decision (flagged to the maintainer in the agent mailbox).
+
+Tests: `JacksonCodecDefaultsTest` — 11 tests (2 rewritten: they had locked in the 0.5.0
+behavior, 4 new); `JsonCodecWireTest` +1 end-to-end (server sends
+`2026-10-08T09:25:53.123456`, client parses it; the request side stays classic
+`yyyy-MM-dd HH:mm:ss`). Suite 135/135 green.
+
+Open question (awaiting maintainer): whether the contract deserves a standalone
+`ADR-0006` — today it is documented in `JacksonCodec` Javadoc + tests.
+
 ## Post-0.5.0 shortlist (not scheduled — see ADR-0003)
 
 - Retry with backoff (integrates with `@OnError` semantics)

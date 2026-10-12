@@ -1,30 +1,16 @@
-# DRAFT: LocalDateTime Support in JacksonCodec
+# DRAFT: (рабочее место для следующего эпика)
 
-- [x] Написать юнит-тест на десериализацию LocalDateTime с fractional seconds и ISO-разделителем 'T' (например, `2026-10-08T09:25:53.123456`)
-- [x] Доработать JacksonCodec, чтобы поддерживать как классический формат `yyyy-MM-dd HH:mm:ss`, так и ISO-8601 с наносекундами
-- [x] Запустить `./gradlew test` и убедиться, что все тесты зелёные
-- [x] Зафиксировать результат в коммите и обновить .agent/last_session.md
+> Эпик «LocalDateTime Support in JacksonCodec» (2026-10-12, сессия #3) завершён:
+> дистиллирован в ROADMAP.md → **Cycle 0.6.1 — java.time wire contract**,
+> коммит `f7a4c47`, тег `v0.6.1`. Детали решения — там.
 
-## Статус: ГОТОВО (сессия #3, 2026-10-12)
+## Кандидаты (следующая сессия выбирает или предлагает свой)
 
-Решение: два форматтера в `JacksonCodec.JavaTimeSupport`.
-- `WIRE` (serializer): `yyyy-MM-dd HH:mm:ss` + опциональный хвост `.SSSSSSSSS`
-  (`appendFraction(NANO_OF_SECOND, 0, 9, true)` внутри `optionalStart/End`).
-  Значения с секундной точностью сериализуются **байт-в-байт как раньше**;
-  наносекунды больше не теряются.
-- `LENIENT` (deserializer): разделитель `'T'` или `' '` (каждый опционален),
-  время `HH:mm:ss`, опциональная дробная часть 1–9 цифр.
-  Принимаются: `2026-10-08T09:25:53.123456`, `2026-10-08 09:25:53.123`,
-  `2026-10-08T09:25:53`, `2026-10-08 09:25:53`. Отклоняются: дата без времени,
-  строчная `t`, отсутствие секунд.
+- [ ] **ADR-0006 — java.time wire contract** (если Антон подтвердит в mailbox;
+      всё исходное сырьё — в ROADMAP cycle 0.6.1 и Javadoc `JacksonCodec`)
+- [ ] Retry with backoff (Post-0.5.0 shortlist, ADR-0003) — концепт + `@OnError`-семантика
+- [ ] `CompletableFuture` return type (Post-0.5.0 shortlist)
+- [ ] Gson / Moshi codec adapters — расширение цепочки classpath-probe (ADR-0001)
 
-Изменены тесты, закреплявшие старый баг:
-- `JacksonCodecDefaultsTest`: `defaultsTruncateNanoseconds` →
-  `defaultsPreserveFractionalSecondsWhenPresent`; «ISO 'T' is rejected» →
-  «space separator is the wire default»; +3 новых теста (ISO-десериализация,
-  DTO с ISO-печатью сервера, формы вне контракта).
-- `JsonCodecWireTest`: + `isoTimestampWithFractionalSecondsIsDeserializedFromResponse`
-  (энд-ту-энд через WireMock: сервер шлёт ISO с дробью, request остаётся
-  классическим).
-
-Итог: 135 тестов, все зелёные. Дистилляция в ROADMAP — следующая сессия.
+Правила работы: один эпик в DRAFT.md, шаги — чекбоксы `[ ]`; закрыл →
+дистиллируй в ROADMAP.md и зачисти это место.
