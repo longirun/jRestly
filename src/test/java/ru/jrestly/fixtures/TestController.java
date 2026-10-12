@@ -8,6 +8,7 @@ import java.io.File;
 import java.net.http.HttpClient;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 
 public interface TestController {
 
@@ -17,8 +18,14 @@ public interface TestController {
     @Get(path = "/api/items/${slug}")
     TestDto getItemBySlug(@PathVariable(name = "slug") String slug);
 
+    @Get(path = "/api/items/${id}")
+    CompletableFuture<TestDto> getItemAsync(@PathVariable(name = "id") Long id);
+
     @Get(path = "/api/items")
     List<TestDto> getItems(@RequestParam(name = "page") Integer page);
+
+    @Get(path = "/api/items")
+    CompletableFuture<List<TestDto>> getItemsAsync(@RequestParam(name = "page") Integer page);
 
     @Get(path = "/api/search")
     List<TestDto> searchItems(@RequestParam(name = "q") String query, @RequestParam(name = "limit") Integer limit);
@@ -29,11 +36,20 @@ public interface TestController {
     @Get(path = "/api/raw")
     String getRaw();
 
+    @Get(path = "/api/raw")
+    CompletableFuture<String> getRawAsync();
+
     @Get(path = "/api/nothing")
     void getNothing();
 
+    @Get(path = "/api/nothing")
+    CompletableFuture<Void> getNothingAsync();
+
     @Post(path = "/api/items")
     TestDto createItem(@RequestBody TestDto item);
+
+    @Post(path = "/api/items")
+    CompletableFuture<TestDto> createItemAsync(@RequestBody TestDto item);
 
     @Post(path = "/api/form", requestType = RequestType.APPLICATION_FORM_URLENCODED)
     String submitForm(@RequestParam(name = "field1") String field1, @RequestParam(name = "field2") String field2);
@@ -54,6 +70,10 @@ public interface TestController {
     @OnError(statuses = {400, 404}, errorObject = TestErrorDto.class)
     TestDto getWithError();
 
+    @Get(path = "/api/error")
+    @OnError(statuses = {400, 404}, errorObject = TestErrorDto.class)
+    CompletableFuture<TestDto> getWithErrorAsync();
+
     @Get(path = "/api/auth-check")
     TestDto getAuthorized();
 
@@ -68,6 +88,10 @@ public interface TestController {
     @FollowRedirects(count = 3)
     @Get(path = "/api/redirect")
     String getWithRedirect();
+
+    @FollowRedirects(count = 3)
+    @Get(path = "/api/redirect")
+    CompletableFuture<String> getWithRedirectAsync();
 
     @FollowRedirects(count = 3)
     @Post(path = "/api/redirect-post")
@@ -100,6 +124,12 @@ public interface TestController {
 
     @Get(path = "/api/server-error")
     TestDto getServerError();
+
+    @Get(path = "/api/server-error")
+    CompletableFuture<TestDto> getServerErrorAsync();
+
+    @Get(path = "/api/server-error")
+    CompletableFuture<TestDto> getServerErrorFaultAsync();
 
     @Delete(path = "/api/items/${id}/silent")
     @ExpectStatus(statuses = {204})

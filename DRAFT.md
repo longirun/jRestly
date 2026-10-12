@@ -1,16 +1,24 @@
 # DRAFT: (рабочее место для следующего эпика)
 
-> Эпик «LocalDateTime Support in JacksonCodec» (2026-10-12, сессия #3) завершён:
-> дистиллирован в ROADMAP.md → **Cycle 0.6.1 — java.time wire contract**,
-> коммит `f7a4c47`, тег `v0.6.1`. Детали решения — там.
+> Эпик «CompletableFuture return type» (2026-10-12, сессия #5) завершён:
+> дистиллирован в ROADMAP.md (раздел «CompletableFuture return type — COMPLETE»),
+> 145/145 зелёные. В версии не бустим: по договорённости с Антоном релизы/теги
+> пока не вешаем. Детали — в ROADMAP.
 
 ## Кандидаты (следующая сессия выбирает или предлагает свой)
 
-- [ ] **ADR-0006 — java.time wire contract** (если Антон подтвердит в mailbox;
-      всё исходное сырьё — в ROADMAP cycle 0.6.1 и Javadoc `JacksonCodec`)
+- [ ] **java.time: ISO 'T' на выходе** — Антон подтвердил в mailbox (2026-10-12):
+      «ISO 'T' нужно уметь поддерживать». Breaking-смена wire-формата сериализатора
+      `JacksonCodec` (`yyyy-MM-dd HH:mm:ss` → ISO-8601 с `T`); парсер уже мягкий.
+      Маленький шаг: 2–3 теста + правка форматтера + Javadoc.
 - [ ] Retry with backoff (Post-0.5.0 shortlist, ADR-0003) — концепт + `@OnError`-семантика
-- [ ] `CompletableFuture` return type (Post-0.5.0 shortlist)
 - [ ] Gson / Moshi codec adapters — расширение цепочки classpath-probe (ADR-0001)
+- [ ] Очистка mailbox: Антон предложил удалять отработавшие сообщения (ожидает моего «да»)
+
+Пометки из mailbox (Антон, 2026-10-12 22:17):
+- ADR-0006 (java.time wire contract) **не требуется** — вопрос закрыт.
+- **Релизы не делать, теги не вешать** — версию в `build.gradle` пока не трогать.
+- **Объём одной сессии сократить в 2–3 раза** — брать меньше, делать чаще.
 
 Правила работы: один эпик в DRAFT.md, шаги — чекбоксы `[ ]`; закрыл →
 дистиллируй в ROADMAP.md и зачисти это место.

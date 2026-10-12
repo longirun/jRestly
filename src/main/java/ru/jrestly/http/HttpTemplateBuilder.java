@@ -22,6 +22,8 @@ import ru.jrestly.annotation.SetAuthDetails;
 import java.io.File;
 import java.lang.reflect.Method;
 import java.lang.reflect.Parameter;
+import java.lang.reflect.ParameterizedType;
+import java.lang.reflect.Type;
 import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.nio.charset.StandardCharsets;
@@ -31,6 +33,7 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
 import java.util.UUID;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
@@ -93,13 +96,25 @@ public class HttpTemplateBuilder {
 
         result.setBody(body);
         result.setMultipartFormParts(parts);
-        result.setReturnType(method.getGenericReturnType());
+        resolveReturnType(result, method.getGenericReturnType());
         result.setOnErrorParser(createOnErrorParser());
         result.setExpectStatuses(createExpectStatuses());
         result.setFollowRedirectsNumber(getFollowRedirectsNumber());
         result.setHttpVersion(getHttpVersion());
 
         return result;
+    }
+
+    // CompletableFuture<T> methods run non-blockingly on the client executor;
+    // T itself (a class or parameterized type, including Void) is the wire contract
+    private static void resolveReturnType(HttpTemplate result, Type genericReturnType) {
+        if (genericReturnType instanceof ParameterizedType parameterized
+                && CompletableFuture.class.equals(parameterized.getRawType())) {
+            result.setAsync(true);
+            result.setReturnType(parameterized.getActualTypeArguments()[0]);
+        } else {
+            result.setReturnType(genericReturnType);
+        }
     }
 
     private String createUrl() {

@@ -109,11 +109,53 @@ behavior, 4 new); `JsonCodecWireTest` +1 end-to-end (server sends
 `2026-10-08T09:25:53.123456`, client parses it; the request side stays classic
 `yyyy-MM-dd HH:mm:ss`). Suite 135/135 green.
 
-Open question (awaiting maintainer): whether the contract deserves a standalone
-`ADR-0006` — today it is documented in `JacksonCodec` Javadoc + tests.
+Open question: whether the contract deserves a standalone `ADR-0006` — resolved
+by the maintainer on 2026-10-12 (mailbox): not required; Javadoc + tests suffice.
+
+## CompletableFuture return type — COMPLETE ✅ (2026-10-12, unreleased)
+
+> From the Post-0.5.0 shortlist (ADR-0003). Session #5 (agent-loop). No version
+> bump / tag — per maintainer agreement releases are paused.
+
+Controller methods may now declare `CompletableFuture<T>` as their return type
+(`T` = any wire type the synchronous twin supports, including `Void`, `String`,
+raw and generic). The call is dispatched non-blockingly through
+`HttpClient.sendAsync` (the client's default executor) and the future completes
+with exactly what the synchronous twin would return; failures carry the same
+exception types — `HandledException` / `UnexpectedStatusException` /
+`RuntimeException(transport)` — as the cause of the future's exceptional
+completion (standard JDK semantics: `join()` → `CompletionException` cause,
+`get()` → `ExecutionException` cause).
+
+Implementation (no new public API surface):
+- `HttpTemplateBuilder.resolveReturnType` detects `CompletableFuture<T>` on the
+  method's generic return type and unwraps `T` as the wire contract; the raw
+  method return type is what the proxy hands the caller.
+- `HttpTemplate` gained an `async` flag + `exchangeAsync`; the response tail
+  (auth-details capture, logging, `@OnError`, status check, decoding) is
+  extracted into a shared `processResponse` used by both paths.
+- Redirect following is shared: the hop decision moved into `nextHop` (used by
+  the sync loop and the async chain, recursion bounded by `@FollowRedirects`);
+  `send` split into `toHttpRequest` / `toWireResponse` / `logPerHop` + a new
+  `sendAsync` twin.
+
+Gotcha recorded: on JDK 21 a `thenApply` that throws stores the raw exception
+and `join()` wraps it in `CompletionException`; an `exceptionally` function
+receives the failure already CE-wrapped and, if it rethrows a CE, the layer is
+doubled. Hence the async tail rethrows the *raw* cause — the user sees exactly
+one CE layer, whose cause is the synchronous twin's exception.
+
+Tests: `CompletableFutureReturnTest` — 10 tests (decoded body/list/POST/raw
+String/Void, non-blocking dispatch with a 750 ms delayed stub, `@OnError` and
+unexpected-status failure causes, transport-fault cause, async 302 redirect).
+Suite 145/145 green.
 
 ## Post-0.5.0 shortlist (not scheduled — see ADR-0003)
 
 - Retry with backoff (integrates with `@OnError` semantics)
-- `CompletableFuture` return type
+- ~~`CompletableFuture` return type~~ — done 2026-10-12, section above
 - Gson / Moshi codec adapters (classpath probe chain extension)
+
+Carry-over decision (maintainer, 2026-10-12): `JacksonCodec` serializer output
+should also learn ISO-8601 `T` — a deliberate breaking change of the
+`java.time` wire format, queued as the next small step (see DRAFT.md).
