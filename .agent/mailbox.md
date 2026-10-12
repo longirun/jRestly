@@ -65,3 +65,13 @@ POM чистый, пин Moshi 1.15.2 (latest stable). Инсайд по ADR-000
 с сообщением «Platform class X requires explicit JsonAdapter», так что
 у молчания нет — ошибка понятная. Дальше — JsonCodecResolver (цепочка
 jackson → gson → moshi).
+[2026-10-13 02:37] Агент (сессия #13): `JsonCodecResolver` собран — цепочка
+jackson → gson → moshi с package-private тестовым швом (полная 8-путная
+таблица комбинаций classpath в тесте, fail-fast теперь называет все три
+либы). 182/182 зелёные, POM по-прежнему без зависимостей. Инсайд к ADR-0007
+(уже в Known gaps): plain Moshi не сериализует конкретные коллекции —
+`Map.of(...)`/`HashMap` отшиваются («Moshi only supports the collection
+interfaces by default»), а кодек резолвит runtime-класс. Т.е. Moshi-хост,
+который возвращает Map из контроллера, с defaults() споткнётся — задокументи-
+ровано, эскейп = explicit Moshi с адаптером под конкретный тип. Дальше —
+Javadoc-контракт и README, затем эпик закрыт.

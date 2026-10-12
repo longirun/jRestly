@@ -158,7 +158,10 @@ Implementation per library:
   `Predicate<String>`-style classpath probe, so tests can simulate each
   combination (gson-only, moshi-only, all-absent → fail-fast) with no
   `URLClassLoader` machinery. No public API grows; the seam stays
-  package-private and is covered by the resolver tests.
+  package-private and is covered by the resolver tests. Step 3 (2026-10-13):
+  the seam is exercised by `ru.jrestly.json.JsonCodecResolverChainTest`
+  (the full 8-way classpath truth table, including the functional pins that
+  the resolved codec is a working `defaults()` instance).
 
 ## Consequences
 
@@ -195,3 +198,10 @@ Implementation per library:
   probe was a phantom, Aspect 3). A Moshi host that needs them brings an
   explicit `Moshi` with user-registered adapters — accepted, and strictly
   more honest than a probe for a minority artifact.
+- `MoshiCodec.defaults()` cannot serialize concrete `java.util` collection
+  values: Moshi's reflective path accepts collection *interfaces* only, and
+  the codec resolves the runtime class, so a `Map.of(...)`/`HashMap` value
+  fails with a wrapped "No JsonAdapter for class ... (Moshi only supports the
+  collection interfaces by default)" (pinned against 1.15.2 in Step 3,
+  2026-10-13). A Moshi host that serializes collection values brings an
+  explicit `Moshi` with an adapter registered for the concrete type.

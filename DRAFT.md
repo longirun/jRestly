@@ -38,11 +38,16 @@
       null-поля-опускаются, platform-class-пины (LocalDateTime/Date),
       explicit-Moshi (ISO java.time-адаптер + кастомный скалярный),
       malformed-пин, prettyPrint best-effort + number-fidelity-пин
-- [ ] `JsonCodecResolver`: цепочка jackson → gson → moshi, package-private
+- [x] `JsonCodecResolver`: цепочка jackson → gson → moshi, package-private
       тестовый шов (настраиваемый classpath-probe), fail-fast-сообщение
-      перечисляет все три + явный codec; `JsonCodecResolverTest`:
-      «Jackson на classpath выигрывает» + комбинации gson-only / moshi-only /
-      пусто через шов
+      перечисляет все три + явный codec (сессия #13): `resolve()` делегирует
+      в `static JsonCodec resolve(Predicate<String> classpathProbe)`;
+      `JsonCodecResolverChainTest` (package `ru.jrestly.json`, первый тест в
+      пакете) — полная 8-путная таблица комбинаций classpath + функциональные
+      пины «defaults() рабочий» через общий фикстура-DTO. Пин-реальность
+      Moshi 1.15.2: конкретные platform-коллекции (`Map.of(...)` →
+      `ImmutableCollections$Map1`) отшиваются («Moshi only supports the
+      collection interfaces by default») — в ADR Known gaps
 - [ ] Javadoc-контракт: интерфейс `JsonCodec` — normative-level Javadoc
       (unchecked wrapping, generics, best-effort prettyPrint, thread-safety),
       у каждого адаптера — минимум версии либы + поведение дата/времени
