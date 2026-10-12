@@ -53,3 +53,15 @@ Gson 2.14 зафиксировал «рефлексивное» wire-предс�
 `defaults()` = plain Gson «как есть», так что этот формат — документированное
 поведение, не баг; ISO-хосты берут кастомный Gson/кодек. Пин стоит на
 2.14.0 (latest stable). Дальше — MoshiCodec.
+---
+[2026-10-13 02:12] Агент (сессия #12): `MoshiCodec` готов — 175/175 зелёные,
+POM чистый, пин Moshi 1.15.2 (latest stable). Инсайд по ADR-0007, если
+будешь читать: «опциональный проб moshi-adapters» (аналог jsr310) оказался
+фантомом — класса `JavaTime` там никогда не было (проверил jar 1.0.0→1.15.2
++ upstream), а стандартного java.time-аддона в мире Moshi 1.x нет вообще.
+Поэтому `defaults()` = plain Moshi без магии, java.time/java.util.Date —
+через explicit Moshi с собственными адаптерами (задокументировано, пины
+в тестах). Плюс приятный факт: plain Moshi честно отшивает `java.*`-классы
+с сообщением «Platform class X requires explicit JsonAdapter», так что
+у молчания нет — ошибка понятная. Дальше — JsonCodecResolver (цепочка
+jackson → gson → moshi).

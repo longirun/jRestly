@@ -20,10 +20,24 @@
       (не ISO!), `Date` → строка локала с секундной точностью, prettyPrint
       best-effort). Обёртка ошибок — `JsonSyntaxException` (Gson-семья, а не
       UncheckedIOException: cause — не IOException)
-- [ ] `MoshiCodec` (compileOnly `com.squareup.moshi:moshi`): `defaults()` =
-      `new Moshi.Builder().build()` + опциональный проб `moshi-adapters`
-      (паттерн jsr310 из JacksonCodec), prettyPrint через JsonWriter,
-      `MoshiCodecTest`
+- [x] `MoshiCodec` (compileOnly `com.squareup.moshi:moshi`, запинен
+      **1.15.2** = latest stable, сессия #12): `defaults()` = plain
+      `new Moshi.Builder().build()` **без проба** — `moshi-adapters`-проб
+      из ADR оказался фантомом (`JavaTime` никогда не существовал в
+      moshi-adapters 1.x: проверено по jar 1.0.0/1.5.0/1.14.0/1.15.2 +
+      upstream; артефакт = только явные Date/Enum/Polymorphic-адаптеры).
+      Третья реальность: plain Moshi отшивает `java.*`-platform-классы
+      («Platform class X requires explicit JsonAdapter to be registered» —
+      IAE, не JsonDataException) → кодек оборачивает в JsonDataException
+      с целевым типом (паттерн обёрток: семья либы). prettyPrint —
+      token-for-token через JsonReader→JsonWriter (JsonValue в core нет,
+      Object-адаптер расширяет числа в Double; NUMBER — raw literal через
+      `value(BufferedSource)`, т.к. `value(String)` кавычит).
+      `MoshiCodecTest` (13 тестов): round-trips DTO/List-генерики
+      (Types.newParameterizedType), null, unknown properties,
+      null-поля-опускаются, platform-class-пины (LocalDateTime/Date),
+      explicit-Moshi (ISO java.time-адаптер + кастомный скалярный),
+      malformed-пин, prettyPrint best-effort + number-fidelity-пин
 - [ ] `JsonCodecResolver`: цепочка jackson → gson → moshi, package-private
       тестовый шов (настраиваемый classpath-probe), fail-fast-сообщение
       перечисляет все три + явный codec; `JsonCodecResolverTest`:

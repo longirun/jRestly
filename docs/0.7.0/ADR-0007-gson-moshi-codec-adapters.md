@@ -67,8 +67,9 @@ used for jsr310 inside `JacksonCodec` is not needed at the adapter level.
   (Gson 2.14 froze the pre-2.14 reflective output for compatibility;
   deliberately not ISO-8601 — hosts needing ISO bring a custom `Gson` or a
   custom `JsonCodec`).
-- **Moshi:** `new Moshi.Builder().build()` plus the optional
-  `moshi-adapters` probe — see Aspect 3.
+- **Moshi:** plain `new Moshi.Builder().build()` — no add-on probe (the
+  original `moshi-adapters` probe was a phantom, see Aspect 3, corrected
+  against Moshi 1.15.2 in Step 2, 2026-10-13).
 
 No `LocalDateTimeFormat`-style knobs in this epic: Gson/Moshi both default to
 ISO-8601 for `LocalDateTime`, so a jRestly-specific format knob would be
@@ -81,13 +82,23 @@ already allows it). Revisit only on demand.
 - **Gson:** `java.time` support is in the core artifact (reflective-style
   on pre-2.14 versions, a native frozen adapter on 2.14+ — same wire
   format); no second probe needed.
-- **Moshi:** core has no `java.time` adapters; they live in the separate
-  `moshi-adapters` artifact (`com.squareup.moshi.adapter.JavaTime`).
-  `MoshiCodec.defaults()` probes for it and registers `JavaTime` only when
-  present — byte-for-byte the same pattern as
-  `JacksonCodec.JavaTimeSupport` and the jsr310 probe. The Javadoc contract
-  says: "a Moshi-only host without `moshi-adapters` works, but `java.time`
-  fields are not first-class".
+- **Moshi:** core has no `java.time` adapters. **Correction (Step 2,
+  2026-10-13, pinned against 1.15.2):** the assumed `moshi-adapters`
+  add-on (`com.squareup.moshi.adapter.JavaTime`) is a **phantom** —
+  `JavaTime` never existed in `moshi-adapters` (checked the 1.0.0, 1.5.0,
+  1.14.0 and 1.15.2 jars plus the upstream tree). That artifact contains
+  only explicitly-registered adapters: `Rfc3339DateJsonAdapter`
+  (`java.util.Date`), `EnumJsonAdapter` (1.14+),
+  `PolymorphicJsonAdapterFactory` (1.14+). There is **no standard
+  java.time add-on in the Moshi 1.x world at all**, so a probe for it
+  would be a bet on a minority artifact; `MoshiCodec.defaults()` stays a
+  plain builder, and the escape hatch for `java.time`/`java.util.Date`
+  fields is an explicit `Moshi` with user-registered adapters passed to
+  `MoshiCodec(Moshi)`. Second pinned reality: a plain `Moshi` instance
+  rejects `java.*` platform classes for its reflective class adapter
+  outright (`IllegalArgumentException`: "Platform class X requires
+  explicit JsonAdapter to be registered") — `MoshiCodec` wraps that (and
+  the data-exception family) in a `JsonDataException` naming the target.
 
 ### Aspect 4: `prettyPrint` per adapter
 
@@ -98,10 +109,16 @@ Implementation per library:
   per-instance, so re-creating it per call would allocate on every logged
   response. Lazy (not eager) because an explicit-constructor user who never
   logs responses pays nothing.
-- **Moshi:** re-print through `JsonValue` + an indented `JsonWriter`
-  (verify the exact idiom — `JsonUtils` or a manual writer — against the
-  pinned version in Step 2; no extra instance to cache beyond the writer
-  configuration).
+- **Moshi:** verified against 1.15.2 (Step 2): `JsonValue` does not
+  exist in Moshi core (only the `JsonValueWriter` interface), and the
+  tree-based `Object` adapter widens every number to a `Double`
+  (`"a": 1` would re-print as `"a": 1.0`). `MoshiCodec.prettyPrint`
+  therefore re-prints **token for token** through a `JsonReader` into an
+  indented `JsonWriter`: numbers pass through as their raw literal via
+  `JsonWriter.value(BufferedSource)` (`value(String)` would quote them —
+  another pinned gotcha), strings via `value(String)`, everything else
+  through the typed accessors. No state to cache; scratch buffers are
+  per-call.
 
 ### Aspect 5: Javadoc contract (the part DRAFT called out explicitly)
 
@@ -120,14 +137,18 @@ Implementation per library:
 
 - `build.gradle`: `compileOnly` for `com.google.code.gson:gson` and
   `com.squareup.moshi:moshi` (verify the POM still ships zero dependencies —
-  the 0.5.0 gate); `testImplementation` for both **plus**
-  `com.squareup.moshi:moshi-adapters` so the optional-probe path is
-  exercised. Versions: latest stable at implementation time
-  (Gson pinned at 2.14.0 in Step 1, 2026-10-13; Moshi pinned in Step 2).
+  the 0.5.0 gate); `testImplementation` for both. `moshi-adapters` is
+  **not** a dependency: its probe was dropped in Step 2 (Aspect 3
+  correction), and the explicit-Moshi test paths use hand-rolled adapters
+  instead. Versions: latest stable at implementation time (Gson pinned at
+  2.14.0 in Step 1; Moshi pinned at 1.15.2 in Step 2, 2026-10-13).
 - New `GsonCodecTest` and `MoshiCodecTest` mirror the scope of
   `JacksonCodecDefaultsTest`: serialize/deserialize round-trips incl.
-  generics, `LocalDateTime` behavior pins, null handling, `prettyPrint`
+  generics, date/time behavior pins, null handling, `prettyPrint`
   (best-effort: valid input → indented output; garbage → unchanged).
+  `MoshiCodecTest` (13 tests, Step 2) additionally pins the plain-Moshi
+  platform-class rejection for `java.time`/`java.util.Date` and the
+  number-literal fidelity of the token-based `prettyPrint`.
 - The existing `JsonCodecResolverTest` keeps its Jackson pin — with all three
   libraries on the test classpath, the chain head (Jackson) must win. That
   test's assertions are the "priority" spec.
@@ -143,16 +164,19 @@ Implementation per library:
 
 - Hosts with Gson or Moshi (and nothing else) get a working client with zero
   configuration — the promise of ADR-0001's probe chain is finally complete.
-- +2 `compileOnly` artifacts; +3 `testImplementation` artifacts; POM must
-  stay dependency-free (re-verified at each step's gate).
+- +2 `compileOnly` artifacts; +2 `testImplementation` artifacts (the
+  `moshi-adapters` test dependency was dropped in Step 2 — Aspect 3); POM
+  must stay dependency-free (re-verified at each step's gate).
 - README: "Jackson 2 is autodetected" becomes "Jackson, Gson, or Moshi is
   autodetected" (status line, the three install-snippet comments, and the
   SPI note in one place) — done in Step 4, still referencing the last tag
   per the "no tags" agreement.
 - Date behavior intentionally differs across adapters (Jackson default
-  space-separated vs Gson frozen reflective-style objects vs Moshi
-  ISO-8601): each adapter's Javadoc is the contract, and a mixed-classpath
-  host always gets Jackson anyway (Aspect 1).
+  space-separated vs Gson frozen reflective-style objects vs Moshi: no
+  date/time support out of the box — `java.*` platform classes are
+  rejected until an adapter is registered): each adapter's Javadoc is the
+  contract, and a mixed-classpath host always gets Jackson anyway
+  (Aspect 1).
 - `JsonCodec` interface Javadoc is a new normative surface: user-supplied
   custom codecs are now *documented* to need thread-safety (they should
   already, but this makes it a promise the library relies on).
@@ -166,5 +190,8 @@ Implementation per library:
   semantics, not a jRestly choice; documented, not fought. Same for the
   frozen non-ISO `java.time` representation — a Gson 2.14 compatibility
   decision.
-- `moshi-adapters` is a second optional artifact for a Moshi host to get
-  first-class `java.time` — mirrors jsr310, accepted.
+- `java.time`/`java.util.Date` are not first-class in `MoshiCodec.defaults()`
+  — there is no standard Moshi 1.x add-on to probe (the `moshi-adapters`
+  probe was a phantom, Aspect 3). A Moshi host that needs them brings an
+  explicit `Moshi` with user-registered adapters — accepted, and strictly
+  more honest than a probe for a minority artifact.

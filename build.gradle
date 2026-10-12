@@ -14,10 +14,12 @@ dependencies {
     compileOnly 'com.fasterxml.jackson.core:jackson-databind:2.18.2'
     compileOnly 'com.fasterxml.jackson.datatype:jackson-datatype-jsr310:2.18.2'
     compileOnly 'com.google.code.gson:gson:2.14.0'
+    compileOnly 'com.squareup.moshi:moshi:1.15.2'
 
     testImplementation 'com.fasterxml.jackson.core:jackson-databind:2.18.2'
     testImplementation 'com.fasterxml.jackson.datatype:jackson-datatype-jsr310:2.18.2'
     testImplementation 'com.google.code.gson:gson:2.14.0'
+    testImplementation 'com.squareup.moshi:moshi:1.15.2'
     testImplementation platform('org.junit:junit-bom:5.10.0')
     testImplementation 'org.junit.jupiter:junit-jupiter'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
