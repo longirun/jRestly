@@ -86,6 +86,28 @@ class JsonCodecWireTest extends BaseWireMockTest {
     }
 
     @Test
+    @DisplayName("default codec tolerates ISO-8601 servers: 'T' separator with fractional seconds in the response")
+    void isoTimestampWithFractionalSecondsIsDeserializedFromResponse() {
+        stubFor(post(urlEqualTo("/api/events"))
+                .willReturn(aResponse()
+                        .withStatus(200)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody("{\"id\":7,\"createdAt\":\"2026-10-08T09:25:53.123456\"}")));
+
+        DateTimeController dateTimeController = client.get(DateTimeController.class);
+        EventDto result = dateTimeController.createEvent(new EventDto(7L, LocalDateTime.of(2026, 8, 24, 12, 34, 56)));
+
+        // Response direction: ISO-8601 'T' with fractional seconds must parse (the reported bug)
+        assertNotNull(result);
+        assertEquals(7L, result.id());
+        assertEquals(LocalDateTime.of(2026, 10, 8, 9, 25, 53, 123_456_000), result.createdAt());
+
+        // Request direction stays on the classic wire format
+        verify(postRequestedFor(urlEqualTo("/api/events"))
+                .withRequestBody(equalTo("{\"id\":7,\"createdAt\":\"2026-08-24 12:34:56\"}")));
+    }
+
+    @Test
     @DisplayName("custom JacksonCodec reaches the wire: snake_case mapper renames camelCase fields")
     void customCodecReachesWireWithSnakeCase() {
         LocalDateTime createdAt = LocalDateTime.of(2026, 8, 24, 12, 34, 56);

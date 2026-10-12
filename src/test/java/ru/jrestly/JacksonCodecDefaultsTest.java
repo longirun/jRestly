@@ -38,22 +38,25 @@ class JacksonCodecDefaultsTest {
     }
 
     @Test
-    @DisplayName("defaults() truncates nanoseconds: the pattern has second precision in both directions")
-    void defaultsTruncateNanoseconds() {
+    @DisplayName("defaults() preserves sub-second precision: fractional tail is emitted only when present")
+    void defaultsPreserveFractionalSecondsWhenPresent() {
         LocalDateTime withNanos = LocalDateTime.of(2026, 8, 24, 12, 34, 56, 987_654_321);
 
         String json = codec.serialize(withNanos);
-        assertEquals("\"2026-08-24 12:34:56\"", json,
-                "nanos must not be emitted by the yyyy-MM-dd HH:mm:ss pattern");
+        assertEquals("\"2026-08-24 12:34:56.987654321\"", json,
+                "nanos must not be silently truncated on the wire");
 
         LocalDateTime back = codec.deserialize(json, LocalDateTime.class);
-        assertEquals(LocalDateTime.of(2026, 8, 24, 12, 34, 56), back,
-                "nanos are lost by design: second precision");
+        assertEquals(withNanos, back, "full round-trip at nanosecond precision");
+
+        // Sub-millisecond values are trimmed to significant digits, no trailing zeros
+        LocalDateTime millis = LocalDateTime.of(2026, 8, 24, 12, 34, 56, 1_000_000);
+        assertEquals("\"2026-08-24 12:34:56.001\"", codec.serialize(millis));
     }
 
     @Test
-    @DisplayName("defaults() round-trips a DTO with LocalDateTime; ISO 'T' input is rejected")
-    void defaultsRoundTripDtoAndRejectIsoSeparator() {
+    @DisplayName("defaults() round-trips a DTO with LocalDateTime; the space separator is the wire default")
+    void defaultsRoundTripDtoWithSpaceSeparator() {
         EventDto event = new EventDto(7L, LocalDateTime.of(2026, 8, 24, 12, 34, 56));
 
         String json = codec.serialize(event);
@@ -62,10 +65,51 @@ class JacksonCodecDefaultsTest {
         EventDto back = codec.deserialize(json, EventDto.class);
         assertEquals(event, back);
 
-        // The custom pattern is really wired in (not the ISO default of JavaTimeModule):
-        // the ISO 'T' separator must not parse
+        // The custom wire format is really wired in (not the ISO default of JavaTimeModule):
+        // a bare date has no time part and must not parse
         assertThrows(UncheckedIOException.class,
-                () -> codec.deserialize("{\"id\":7,\"createdAt\":\"2026-08-24T12:34:56\"}", EventDto.class));
+                () -> codec.deserialize("{\"id\":7,\"createdAt\":\"2026-08-24\"}", EventDto.class));
+    }
+
+    @Test
+    @DisplayName("defaults() deserializes LocalDateTime with ISO 'T' separator and fractional seconds")
+    void defaultsDeserializeIsoSeparatorWithFractionalSeconds() {
+        LocalDateTime expected = LocalDateTime.of(2026, 10, 8, 9, 25, 53, 123_456_000);
+
+        assertEquals(expected, codec.deserialize("\"2026-10-08T09:25:53.123456\"", LocalDateTime.class),
+                "ISO-8601 with 'T' and fractional digits must parse");
+        assertEquals(expected, codec.deserialize("\"2026-10-08 09:25:53.123456\"", LocalDateTime.class),
+                "classic space separator with fractional digits must parse");
+        assertEquals(LocalDateTime.of(2026, 10, 8, 9, 25, 53),
+                codec.deserialize("\"2026-10-08T09:25:53\"", LocalDateTime.class),
+                "ISO-8601 without fractional seconds must parse");
+        assertEquals(LocalDateTime.of(2026, 10, 8, 9, 25, 53),
+                codec.deserialize("\"2026-10-08 09:25:53\"", LocalDateTime.class),
+                "classic format without fractional seconds must parse");
+    }
+
+    @Test
+    @DisplayName("defaults() deserializes a DTO whose server sent ISO-8601 with fractional seconds")
+    void defaultsDeserializeDtoWithIsoFractionalTimestamp() {
+        EventDto back = codec.deserialize(
+                "{\"id\":7,\"createdAt\":\"2026-10-08T09:25:53.123456\"}", EventDto.class);
+
+        assertEquals(7L, back.id());
+        assertEquals(LocalDateTime.of(2026, 10, 8, 9, 25, 53, 123_456_000), back.createdAt());
+    }
+
+    @Test
+    @DisplayName("defaults() still rejects shapes outside the wire contract (bare date, lowercase 't', missing seconds)")
+    void defaultsRejectShapesOutsideWireContract() {
+        assertThrows(UncheckedIOException.class,
+                () -> codec.deserialize("\"2026-10-08\"", LocalDateTime.class),
+                "a bare date has no time part");
+        assertThrows(UncheckedIOException.class,
+                () -> codec.deserialize("\"2026-10-08t09:25:53\"", LocalDateTime.class),
+                "lowercase 't' is not an accepted separator");
+        assertThrows(UncheckedIOException.class,
+                () -> codec.deserialize("\"2026-10-08 09:25\"", LocalDateTime.class),
+                "seconds are required");
     }
 
     @Test
