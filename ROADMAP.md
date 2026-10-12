@@ -88,6 +88,10 @@ Key decisions (ADR-0005):
 > Follow-up to 0.6.0: `JacksonCodec` now round-trips `LocalDateTime` sub-second precision
 > and accepts ISO-8601 input. No new SPI surface — the change is contained in
 > `JacksonCodec.JavaTimeSupport`. Commit `f7a4c47`, tag `v0.6.1`.
+>
+> README (session #8, agent-loop): status line and all three install blocks now
+> point at `v0.6.1`, the last tag; `0.6.2` coordinates deliberately not
+> published — no tag for it yet (releases paused per maintainer agreement).
 
 Problem (reported in `TODO.md` pre-0.6.0, fixed after release): the 0.5.0 contract
 serialized `LocalDateTime` as `yyyy-MM-dd HH:mm:ss` — silently truncating nanoseconds —
@@ -169,11 +173,70 @@ Tests: `JacksonCodecDefaultsTest` +5 (ISO `T` output pin, ISO fractional
 precision + nanosecond round-trip, classic parse in ISO mode, `SPACE` ≡
 `defaults()` byte-identity, null fail-fast). Suite 150/150 green.
 
+## Gson / Moshi codec adapters — COMPLETE ✅ (2026-10-13, unreleased)
+
+> From the Post-0.5.0 shortlist (ADR-0003). Sessions #10–#16 (agent-loop).
+> Design decisions, test strategy and the Javadoc contract:
+> [`docs/0.7.0/ADR-0007-gson-moshi-codec-adapters.md`](docs/0.7.0/ADR-0007-gson-moshi-codec-adapters.md).
+> No version bump / tag — releases paused per maintainer agreement (0.6.2 in `build.gradle`).
+
+The probe chain promised by ADR-0001 is complete: `jackson-databind` **or**
+`gson` **or** `moshi` on the classpath is now enough to get a working client.
+Public API and POM unchanged (adapters are `compileOnly`); the explicit
+`jsonCodec(...)` knob always wins over the probe.
+
+Key decisions and reality-pins (ADR-0007):
+- **Probe chain jackson → gson → moshi**, first hit wins — a fixed order for
+  predictability: a mixed-classpath host always gets Jackson, the library the
+  wire contract was designed around. `JsonCodecResolver.resolve()` delegates
+  to a package-private overload taking a pluggable classpath probe (the
+  project's only test seam for this chain); `JsonCodecResolverChainTest`
+  covers the full 8-way classpath truth table plus functional "the resolved
+  `defaults()` works" pins.
+- **Adapter shape mirrors `JacksonCodec`**: the constructor takes the library
+  instance as-is, `defaults()` factory, and each adapter is loaded only after
+  its probe passed, so a Gson-free or Moshi-free classpath never loads the
+  adapter class (no `NoClassDefFoundError`).
+- **`GsonCodec` (pinned 2.14.0)**: plain `GsonBuilder().create()`,
+  lazy-cached pretty twin. Minimum Gson **2.8.3+** — the twin relies on
+  `Gson.newBuilder()`, which landed in 2.8.3 (pinned against the 2.8.0–2.8.3
+  tags; the concept had assumed 2.8.0). Reality pin: Gson 2.14 froze the
+  pre-2.14 reflective `java.time` output as the wire format (non-ISO
+  `{"date":{...},"time":{...}}`; `Date` → locale string, second precision).
+- **`MoshiCodec` (pinned 1.15.2)**: plain builder, token-for-token prettyPrint
+  through `JsonReader` → indented `JsonWriter` (number literals preserved via
+  `value(BufferedSource)` — Moshi's `value(String)` would quote them). The
+  concept's `moshi-adapters` probe turned out to be a **phantom** — `JavaTime`
+  never existed in that artifact (checked 1.0.0→1.15.2 jars + upstream); there
+  is no standard java.time add-on in the Moshi 1.x world, so `defaults()`
+  stays plain and `java.time`/`java.util.Date` go through an explicit `Moshi`
+  with user-registered adapters.
+- **Plain Moshi rejects what Gson/Jackson accept**: `java.*` platform classes
+  and concrete `java.util` collection classes (`Map.of(...)`, `HashMap`) with
+  a clear `IllegalArgumentException`. The codec wraps it in a
+  `JsonDataException` naming the target type. Accepted known gap: a Moshi host
+  that serializes collection values brings an explicit `Moshi` with an
+  adapter registered for the concrete type.
+- **`JsonCodec` gained its first normative interface-level Javadoc** — the
+  contract every adapter (current or future, including user-supplied codecs)
+  must meet: unchecked wrapping in the adapter's own exception family (Jackson
+  `UncheckedIOException`, Gson `JsonSyntaxException`, Moshi
+  `JsonDataException`; the message names the target type, the cause is
+  preserved), `Type` honored including generics, top-level `null` → JSON
+  `null` (pinned in all three codec test suites), best-effort `prettyPrint`,
+  thread-safety.
+- **README**: status line, the three install-snippet comments and the SPI
+  note now uniformly say "Jackson 2, Gson, or Moshi is autodetected".
+
+Tests: `GsonCodecTest` (12), `MoshiCodecTest` (13),
+`JsonCodecResolverChainTest` (7), `JacksonCodecDefaultsTest` +1 (top-level null
+pin). Suite **183/183** green; generated POM dependency-free (0.6.2).
+
 ## Post-0.5.0 shortlist (not scheduled — see ADR-0003)
 
 - Retry with backoff (integrates with `@OnError` semantics)
 - ~~`CompletableFuture` return type~~ — done 2026-10-12, section above
-- Gson / Moshi codec adapters (classpath probe chain extension)
+- ~~Gson / Moshi codec adapters (classpath probe chain extension)~~ — done 2026-10-13, section above
 
 Carry-over decision (maintainer, 2026-10-12): `JacksonCodec` serializer output
 should also learn ISO-8601 `T`. Resolved as option A (configurable,
