@@ -18,7 +18,7 @@ A declarative HTTP client for Java. Define an interface, get a working client �
 - Per-method redirect chasing: `@FollowRedirects(count = N)`
 - HTTP version pinning: client-wide `httpVersion(HttpClient.Version.HTTP_1_1)` on the builder, per-method override `@HttpVersion(HttpClient.Version.HTTP_1_1)` (default is `HTTP_2`)
 - Auth state machine: `@Anonymous` (skip auth refresh), `@Authorization` (this is the login call), `@SetAuthDetails(headerName = …)` (capture token from response, reuse on subsequent calls)
-- Zero-dependency core on `java.net.http.HttpClient` (`System.Logger`, no runtime dependencies); bring your own JSON codec — Jackson 2 is autodetected from the classpath
+- Zero-dependency core on `java.net.http.HttpClient` (`System.Logger`, no runtime dependencies); bring your own JSON codec — Jackson 2, Gson, or Moshi is autodetected from the classpath
 
 ## Installation
 
@@ -32,7 +32,7 @@ repositories {
 
 dependencies {
     implementation("com.github.longirun:jRestly:v0.6.1")
-    // JSON codec is not bundled — bring your own; Jackson 2 is autodetected
+    // JSON codec is not bundled — bring your own; Jackson 2, Gson, or Moshi is autodetected
     implementation("com.fasterxml.jackson.core:jackson-databind:2.18.2")
 }
 ```
@@ -47,7 +47,7 @@ repositories {
 
 dependencies {
     implementation 'com.github.longirun:jRestly:v0.6.1'
-    // JSON codec is not bundled — bring your own; Jackson 2 is autodetected
+    // JSON codec is not bundled — bring your own; Jackson 2, Gson, or Moshi is autodetected
     implementation 'com.fasterxml.jackson.core:jackson-databind:2.18.2'
 }
 ```
@@ -67,6 +67,7 @@ dependencies {
     <artifactId>jRestly</artifactId>
     <version>v0.6.1</version>
 </dependency>
+<!-- JSON codec is not bundled — bring your own; Jackson 2, Gson, or Moshi is autodetected -->
 <dependency>
     <groupId>com.fasterxml.jackson.core</groupId>
     <artifactId>jackson-databind</artifactId>
@@ -76,7 +77,7 @@ dependencies {
 
 > Requires Java 21+ (compiled with `-parameters` flag).
 >
-> The core jar has no runtime dependencies: JSON serialization goes through the `ru.jrestly.json.JsonCodec` SPI. Jackson 2 on the classpath is autodetected; a custom codec can be wired explicitly via `JRestlyClient.builder().jsonCodec(...)`. Without a codec the client fails fast with an actionable message.
+> The core jar has no runtime dependencies: JSON serialization goes through the `ru.jrestly.json.JsonCodec` SPI. Jackson 2, Gson, or Moshi on the classpath is autodetected; a custom codec can be wired explicitly via `JRestlyClient.builder().jsonCodec(...)`. Without a codec the client fails fast with an actionable message.
 
 ## Quick start
 

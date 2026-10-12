@@ -67,8 +67,12 @@
       всех трёх кодеках). ADR-0007: Aspect 3 (java.time pre-2.14 по тегу
       2.13.1), Aspect 5 (Gson 2.8.3+ + отметка выполнения), нумерация
       шагов (заголовок, Consequences: README = шаг 6)
-- [ ] README: «Jackson 2 is autodetected» → «Jackson, Gson or Moshi is
-      autodetected» (статус-строка, комменты трёх блоков установки, SPI-нот)
+- [x] README (сессия #15): «Jackson 2 is autodetected» → «Jackson 2, Gson,
+      or Moshi is autodetected» — фича-буллет (статус-строка), комменты
+      ВСЕХ ТРЁХ блоков установки (Kotlin/Groovy/Maven) + SPI-нот. Мелочь-
+      гигиена: ADR-0007 обещал «three install-snippet comments», а коммент
+      был только у двух Gradle-блоков — в Maven добавлен XML-коммент (теперь
+      три, консистентно). 183/183 зелёные, POM 0 зависимостей
 - [ ] Gate: `./gradlew test` зелёный + POM без runtime-зависимостей
       (проверить `pom-default.xml`) + дистилляция в ROADMAP.md
 
