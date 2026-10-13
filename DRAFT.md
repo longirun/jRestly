@@ -1,4 +1,4 @@
-# DRAFT: warnings и модернизация (ADR-0013) — шаг 5 идёт: ModuleInfo закрыт, 72→62 (сессия #51)
+# DRAFT: warnings и модернизация (ADR-0013) — шаг 5 идёт: WireRequest закрыт, 62→55 (сессия #52)
 
 > Свободный ход после 0.7.0-цикла: кандидат №1 (warnings/рефакторинг-аудит,
 > fallback с #30) открыт как эпик. Сессия #41 — сам аудит (кандидат так и
@@ -101,9 +101,15 @@
       codec — по `JsonCodecResolver.resolve()`), 5 000/30 000 ms,
       HTTP_2, validation up front (формулировки 1:1 из
       `SimpleModuleInfo`), getRetryPolicy — только `@return`;
-      ноль кода). Остаток (25 файлов): `WireRequest` 7,
-      `OnErrorParser` 7, `HttpMethod` 6, `RequestType` 5, 4 файла
-      × 3
+      ноль кода). Сессия #52 закрыла `WireRequest` 7
+      (62→55; поверхность 0 — `@param` у 7 record-компонентов; ноль
+      кода; факты сверены по `HttpTemplate`: `nextHop` — rewrite
+      method/uri/payload на redirect-хопе (307/308 — preserve),
+      cross-origin — drop default auth headers; `toHttpRequest` —
+      contentType шлётся когда non-null; `bodyPublisher` — parts →
+      fresh streaming publisher per send, body → ofByteArray / null
+      → noBody). Остаток (24 файла): `OnErrorParser` 7,
+      `HttpMethod` 6, `RequestType` 5, 4 файла × 3
       (JacksonCodec/WireResponse/HttpTemplateBuilder/AuthHeaderProvider),
       8 × 2, 9 × 1.
 - [ ] Шаг 6 — gate: `javadoc { Xdoclint=all, Werror }` в build.gradle,
