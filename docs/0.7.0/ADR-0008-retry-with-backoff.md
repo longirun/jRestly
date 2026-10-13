@@ -251,8 +251,12 @@ faults.
 - ~~`Retry-After` HTTP-date form (RFC 9110 allows it) — v1 honors integer
   seconds only.~~ — **closed:** fixed per ADR-0009 candidate 3 (HTTP-date /
   IMF-fixdate → `max(0, date − now)`; the seam unified on milliseconds).
-- The **asctime** form of `Retry-After` is not parsed (obsolete per RFC 9110,
-  no zone — treated as absent, pure jitter) — micro-gap from ADR-0009.
+- ~~The **asctime** form of `Retry-After` is not parsed (obsolete per RFC
+  9110, no zone — treated as absent, pure jitter) — micro-gap from
+  ADR-0009.~~ — **closed:** per ADR-0010 both obsolete forms (RFC 850 and
+  asctime(3) — the micro-gap's actual scope, corrected there) are now
+  parsed: RFC 9110 requires a recipient to accept all three HTTP-date
+  formats, and the asctime zone (UTC) is the RFC's own assumption.
 - A payload decode failure on the **final** response (codec exception inside
   `processResponse`) is not retried — v1 retries transport and status only
   (reaffirmed, with its three arguments, by ADR-0009 candidate 4).

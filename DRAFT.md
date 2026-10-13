@@ -19,9 +19,15 @@
       ответа. Reopening = новый ADR (правило ADR-0003: «reopening known gap =
       новый ADR»), спорные места: новый failure-kind в retry-цикле vs
       «classified exactly once», типизация финального исключения.
-- **`Retry-After` asctime** (микро-gap, ADR-0009) — obsolete per RFC 9110,
+- **`Retry-After` asctime** (micro-gap, ADR-0009) — ~~obsolete per RFC 9110,
       без zone; фикс = кастомный formatter + допущение zone. Дёшево, но и
-      редкость.
+      редкость.~~ **Закрыто (сессия #28, ADR-0010):** реальность-чек
+      (`RFC_1123_DATE_TIME` парсит только IMF-fixdate — 9-й «ADR vs
+      реальность») показал, что gap накрывал ОБЕ устаревшие формы (RFC 850
+      + asctime(3)); RFC 9110 §5.6.7 требует приёмщика принимать все три
+      формата, а zone для asctime (UTC) — допущение самого RFC. Обе формы
+      теперь парсятся (static final formatters + pivot 80–99 для
+      2-значного года + collapse пробелов asctime); 239→242 теста.
 - **Остаток Known gaps ADR-0008** (принятые, non-blocking, скорее доки, чем
       код): `InterruptedException` never retried (уже в Javadoc), no circuit
       breaker / per-status attempt caps / metrics (non-goals ADR-0003 —

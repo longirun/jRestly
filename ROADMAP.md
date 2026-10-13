@@ -265,7 +265,8 @@ Key decisions (ADR-0008):
   (`times = 1`) is the explicit off-switch.
 - **Backoff** — exponential with a cap, **full jitter** (a fixed curve is
   the equal-boundary special case, no separate mode); `Retry-After`
-  (integer seconds; the HTTP-date form is an accepted known gap) sets a
+  (integer seconds; the HTTP-date form added in 0.x polish, ADR-0009, and
+  the obsolete date forms in ADR-0010) sets a
   **deterministic** `max(bound, retryAfter)` wait with no jitter — the
   server's hint asserts recovery time. The math is a pure package-private
   seam with an injectable `Random` (deterministic jitter in tests).
@@ -336,7 +337,12 @@ Key decisions and reality-pins (ADR-0009):
   The seam is unified on milliseconds — `RetryPolicy.nextDelayMillis` now
   takes `retryAfterMillis` (package-private, no ABI break; the body is a
   plain `Math.max(bound, retryAfterMillis)`). **asctime** (obsolete per RFC
-  9110, no zone) is deliberately unparsed — new micro-gap. 8th "ADR vs
+  9110, no zone) is deliberately unparsed — new micro-gap. (Session #28
+  corrected the micro-gap's scope — `RFC_1123_DATE_TIME` accepts
+  IMF-fixdate only, so BOTH obsolete forms, RFC 850 and asctime(3), were
+  unparsed — and closed it per ADR-0010: both are now parsed, as RFC 9110
+  requires, with the asctime zone (UTC) prescribed by the RFC itself.) 8th
+  "ADR vs
   reality" fix: the concept's "null-valued → null (unchanged)" was actually an
   uncaught NPE (`value.trim()` under `catch NumberFormatException`) —
   normalized to absent.
@@ -356,7 +362,8 @@ retry).
 Tests: `HttpTemplateLoggingTest` (7 units — log capture through the public
 `setLogger` seam; on this JDK `System.Logger` is an interface),
 `HttpTemplateRetryAfterTest` (8 units — both forms, past-date floor,
-garbage / asctime / absent → null), `PutMethodTest` end-to-end log capture
+garbage / absent → null; the obsolete RFC 850 and asctime(3) forms were
+added by ADR-0010), `PutMethodTest` end-to-end log capture
 (+1), `GetMethodTest` +2 (`void` / `Void` with a non-empty 200 body → null),
 `CompletableFutureReturnTest` +1 (async pin), `RetryTest` +1 wall-clock
 integration (IMF-fixdate 3 s in the future → elapsed ≥ 2 s),

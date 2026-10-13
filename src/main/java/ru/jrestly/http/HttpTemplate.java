@@ -12,10 +12,12 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
@@ -50,10 +52,25 @@ public class HttpTemplate {
     private static final Set<HttpMethod> BODY_LOGGING_METHODS =
             Set.of(HttpMethod.POST, HttpMethod.PATCH, HttpMethod.DELETE, HttpMethod.PUT);
 
-    // ADR-0009 candidate 3: the HTTP-date form of Retry-After (IMF-fixdate +
-    // rfc1123, the two live RFC 9110 date grammars); asctime is obsolete and
-    // not parsed
+    // ADR-0009 candidate 3 + ADR-0010: the HTTP-date form of Retry-After.
+    // All three RFC 9110 date grammars are honored — a recipient that parses
+    // an HTTP-date "MUST accept all three HTTP-date formats" (RFC 9110,
+    // 5.6.7): the live IMF-fixdate plus the obsolete RFC 850 and asctime(3)
+    // forms. asctime carries no zone — "values in the asctime format are
+    // assumed to be in UTC" (RFC 9110), so the UTC zone is prescribed, not
+    // assumed by us.
     private static final DateTimeFormatter RETRY_AFTER_HTTP_DATE = DateTimeFormatter.RFC_1123_DATE_TIME;
+    // RFC 850 without the weekday prefix — the full weekday name is validated
+    // separately (RETRY_AFTER_RFC850_WEEKDAYS) but not parsed as a field: as
+    // a parsed EEEE field, java.time cross-checks it against the date and
+    // trips on the two-digit-year mapping before the pivot below can fix it
+    private static final DateTimeFormatter RETRY_AFTER_RFC850_DATE =
+            DateTimeFormatter.ofPattern("dd-MMM-yy HH:mm:ss zzz", Locale.ENGLISH);
+    private static final Set<String> RETRY_AFTER_RFC850_WEEKDAYS =
+            Set.of("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday");
+    private static final DateTimeFormatter RETRY_AFTER_ASCTIME_DATE =
+            DateTimeFormatter.ofPattern("EEE MMM d HH:mm:ss yyyy", Locale.ENGLISH)
+                    .withZone(ZoneOffset.UTC);
 
     private System.Logger logger;
 
@@ -285,12 +302,12 @@ public class HttpTemplate {
     }
 
     // Both RFC 9110 forms of Retry-After (ADR-0009 candidate 3): delta-seconds
-    // -> seconds x 1000 (as before, in milliseconds); HTTP-date
-    // (IMF-fixdate / RFC 1123) -> max(0, date - now) — a past date means "you
-    // may have retried already", the floor mirrors the integer form, where a
-    // small value never shrinks the max(bound, ...) below the bound. Absent,
-    // null-valued, or unparseable — null (pure jitter). The obsolete asctime
-    // form is deliberately not parsed (no zone; a micro-gap, ADR-0009).
+    // -> seconds x 1000 (as before, in milliseconds); HTTP-date — all three
+    // RFC 9110 date grammars (IMF-fixdate, then the obsolete RFC 850 and
+    // asctime(3) forms per ADR-0010) -> max(0, date - now) — a past date
+    // means "you may have retried already", the floor mirrors the integer
+    // form, where a small value never shrinks the max(bound, ...) below the
+    // bound. Absent, null-valued, or unparseable — null (pure jitter).
     // Package-private seam — the unit tests exercise the parser directly.
     static Long retryAfterDelayMillis(WireResponse response) {
         if (response == null) {
@@ -315,14 +332,54 @@ public class HttpTemplate {
         try {
             return Long.valueOf(value) * 1_000L;
         } catch (NumberFormatException e) {
-            // not delta-seconds — try the HTTP-date form below
+            // not delta-seconds — try the HTTP-date forms below
+        }
+        // All three RFC 9110 HTTP-date grammars (ADR-0010): the live
+        // IMF-fixdate first, then the two obsolete forms — the formats are
+        // mutually exclusive by grammar (comma placement, zone, field order),
+        // so the try order is just the RFC's presentation order.
+        try {
+            return delayFromParsedDate(ZonedDateTime.parse(value, RETRY_AFTER_HTTP_DATE));
+        } catch (DateTimeParseException e) {
+            // not IMF-fixdate — try the obsolete RFC 850 form
+        }
+        // The RFC 850 form starts with a full weekday name — validate it,
+        // then parse the rest (see the RETRY_AFTER_RFC850_DATE note)
+        String rfc850Body = value;
+        int comma = value.indexOf(',');
+        if (comma > 0 && RETRY_AFTER_RFC850_WEEKDAYS.contains(value.substring(0, comma))) {
+            rfc850Body = value.substring(comma + 1).trim();
         }
         try {
-            long dateMillis = ZonedDateTime.parse(value, RETRY_AFTER_HTTP_DATE).toInstant().toEpochMilli();
-            return Math.max(0L, dateMillis - System.currentTimeMillis());
+            return delayFromParsedDate(
+                    pivotRfc850Year(ZonedDateTime.parse(rfc850Body, RETRY_AFTER_RFC850_DATE)));
+        } catch (DateTimeParseException e) {
+            // not RFC 850 — try the obsolete asctime(3) form
+        }
+        try {
+            // asctime may carry a double space before a one-digit day (the
+            // RFC 9110 example does) — collapse runs of spaces for this
+            // attempt only; a one- or two-digit day parses either way
+            return delayFromParsedDate(
+                    ZonedDateTime.parse(value.replaceAll("\\s{2,}", " "), RETRY_AFTER_ASCTIME_DATE));
         } catch (DateTimeParseException e) {
             return null;
         }
+    }
+
+    // A parsed HTTP-date sets a deterministic lower bound: a past date means
+    // "you may have retried already" and is floored at 0 (mirrors the integer
+    // form, where a small value never shrinks the max(bound, ...) below the
+    // bound)
+    private static long delayFromParsedDate(ZonedDateTime date) {
+        return Math.max(0L, date.toInstant().toEpochMilli() - System.currentTimeMillis());
+    }
+
+    // java.time maps a two-digit year to the current century (94 -> 2094);
+    // the classic pivot that legacy parsers used (80-99 -> previous century)
+    // is applied after parsing, so 94 reads as 1994
+    private static ZonedDateTime pivotRfc850Year(ZonedDateTime date) {
+        return date.getYear() % 100 > 80 ? date.minusYears(100) : date;
     }
 
     // Async twin: same hop semantics, chained over sendAsync

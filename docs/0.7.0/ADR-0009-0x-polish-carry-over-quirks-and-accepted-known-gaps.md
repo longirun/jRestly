@@ -163,10 +163,14 @@ one line).
   - The parameter stays `Long` (not `Duration`): the seam's contract is
     "header-derived lower bound or null", and `Long` milliseconds keeps the
     existing `null`-absence encoding without a new wrapper allocation.
-- **asctime (obsolete):** deliberately not accepted. RFC 9110 marks asctime
-  obsolete; it carries no zone (receivers "may" treat it as UTC), and accepting
-  it means a custom formatter plus a zone assumption for a dying form. Treated
-  as unparseable → `null`, recorded as a micro-gap below.
+- **Obsolete forms (RFC 850 and asctime(3)):** deliberately not accepted.
+  RFC 9110 marks them obsolete; asctime carries no zone (receivers "may"
+  treat it as UTC), and accepting them means a custom formatter plus a zone
+  assumption for a dying form. Treated as unparseable → `null`, recorded as
+  a micro-gap below. *(Superseded by ADR-0010: the micro-gap actually
+  covered BOTH obsolete forms — `RFC_1123_DATE_TIME` accepts IMF-fixdate
+  only — and both are now parsed; the RFC prescribes the asctime zone (UTC)
+  and requires recipients to accept all three formats.)*
 - **Contract impact:** a previously ignored header form now sets a
   deterministic lower bound on the wait — for users with retry enabled whose
   server sends the date form, the wait becomes `max(bound, date − now)` instead
@@ -213,7 +217,8 @@ one line).
   gate distillation, with a pointer here.
 - ADR-0008 Known gaps: the HTTP-date line is **closed** (fixed per this ADR);
   the payload-decode line is **reaffirmed** with a pointer here; one new
-  micro-gap is added (asctime).
+  micro-gap is added (asctime — scope corrected and closed in ADR-0010: it
+  covered both obsolete forms, and they are now parsed).
 - README "Retry with backoff": the phrase "an integer-seconds `Retry-After`
   header sets a deterministic lower bound" becomes "a `Retry-After` header
   (delta-seconds or HTTP-date) sets a deterministic lower bound".
@@ -227,8 +232,10 @@ one line).
 
 ## Known gaps (accepted, updated)
 
-- The **asctime** form of `Retry-After` (obsolete per RFC 9110) is not parsed —
-  treated as absent (pure jitter).
+- ~~The **asctime** form of `Retry-After` (obsolete per RFC 9110) is not
+  parsed — treated as absent (pure jitter).~~ — **closed per ADR-0010:**
+  both obsolete forms (RFC 850 + asctime(3) — the scope correction is
+  there) are now parsed.
 - A payload decode failure on the **final** response is not retried (reaffirmed
   from ADR-0008; see Candidate 4 above).
 - All other ADR-0008 Known gaps stand unchanged.

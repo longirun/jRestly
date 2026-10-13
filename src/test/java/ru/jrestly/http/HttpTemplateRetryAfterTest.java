@@ -8,6 +8,7 @@ import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
+import java.util.Locale;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -16,7 +17,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * Unit tests for {@code HttpTemplate.retryAfterDelayMillis} — the
  * {@code Retry-After} parser and its unit (ADR-0009 candidate 3): both RFC 9110
- * forms honored, the lower bound in milliseconds. No WireMock — the seam is
+ * forms honored, the lower bound in milliseconds; all three RFC 9110 HTTP-date
+ * grammars (ADR-0010), the obsolete ones included. No WireMock — the seam is
  * package-private on purpose, exactly as the backoff-math seam in
  * {@link RetryPolicyTest}.
  */
@@ -34,8 +36,11 @@ class HttpTemplateRetryAfterTest {
 
         Long delay = HttpTemplate.retryAfterDelayMillis(withRetryAfter("Retry-After", value));
 
-        assertTrue(delay >= 59_000 && delay <= 60_000,
-                "expected a delta in [59000, 60000] ms, got " + delay);
+        // [58_000, 60_000]: the wire form carries second granularity, so the
+        // formatted instant can be up to a second earlier than the intended
+        // one (plus the time the test itself takes)
+        assertTrue(delay >= 58_000 && delay <= 60_000,
+                "expected a delta in [58000, 60000] ms, got " + delay);
     }
 
     @Test
@@ -62,10 +67,41 @@ class HttpTemplateRetryAfterTest {
     }
 
     @Test
-    @DisplayName("asctime (obsolete per RFC 9110) is deliberately not parsed -> null (micro-gap)")
-    void asctimeIsNotParsed() {
-        assertNull(HttpTemplate.retryAfterDelayMillis(
-                withRetryAfter("Retry-After", "Wed Oct 21 07:45:00 2026")));
+    @DisplayName("obsolete form (ADR-0010): RFC 850 date, the RFC example (1994) -> floored at 0")
+    void rfc850DateInThePastIsFlooredAtZero() {
+        assertEquals(0L, HttpTemplate.retryAfterDelayMillis(
+                withRetryAfter("Retry-After", "Sunday, 06-Nov-94 08:49:37 GMT")));
+    }
+
+    @Test
+    @DisplayName("obsolete form (ADR-0010): RFC 850 date 60 s in the future -> a positive delta near 60 s")
+    void rfc850DateInTheFutureIsAPositiveDelta() {
+        String value = ZonedDateTime.ofInstant(Instant.now().plusSeconds(60), ZoneOffset.UTC)
+                .format(DateTimeFormatter.ofPattern("EEEE, dd-MMM-yy HH:mm:ss zzz", Locale.ENGLISH));
+
+        Long delay = HttpTemplate.retryAfterDelayMillis(withRetryAfter("Retry-After", value));
+
+        assertTrue(delay >= 58_000 && delay <= 60_000,
+                "expected a delta in [58000, 60000] ms, got " + delay);
+    }
+
+    @Test
+    @DisplayName("obsolete form (ADR-0010): asctime(3), the RFC example (double space, no zone -> UTC per RFC) -> 0")
+    void asctimeInThePastIsFlooredAtZero() {
+        assertEquals(0L, HttpTemplate.retryAfterDelayMillis(
+                withRetryAfter("Retry-After", "Sun Nov  6 08:49:37 1994")));
+    }
+
+    @Test
+    @DisplayName("obsolete form (ADR-0010): asctime(3) 60 s in the future -> a positive delta near 60 s")
+    void asctimeInTheFutureIsAPositiveDelta() {
+        String value = ZonedDateTime.ofInstant(Instant.now().plusSeconds(60), ZoneOffset.UTC)
+                .format(DateTimeFormatter.ofPattern("EEE MMM d HH:mm:ss yyyy", Locale.ENGLISH));
+
+        Long delay = HttpTemplate.retryAfterDelayMillis(withRetryAfter("Retry-After", value));
+
+        assertTrue(delay >= 58_000 && delay <= 60_000,
+                "expected a delta in [58000, 60000] ms, got " + delay);
     }
 
     @Test

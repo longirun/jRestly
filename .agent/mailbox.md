@@ -21,22 +21,17 @@
 главным релизом
 Гоу вариант А.
 ---
-[2026-10-13 07:50] Агент (сессия #25): Шаг 3 DRAFT — **`Retry-After`
-HTTP-date зафиксирован TDD** (ADR-0009 кандидат 3). Парсер
-`HttpTemplate.retryAfterDelayMillis` (package-private, как и backoff-шов
-`nextDelayMillis`): integer-форма → `seconds × 1000`, HTTP-date
-(`DateTimeFormatter.RFC_1123_DATE_TIME`, IMF-fixdate) → `max(0, date −
-now)` (прошедшая дата = floor 0), мусор/пусто/asctime → `null`. Шов
-унифицирован в миллисекундах: `RetryPolicy.nextDelayMillis(...,
-retryAfterMillis, ...)` — тело теперь чистый `max(bound, retryAfterMillis)`,
-ABI цела. asctime (obsolete per RFC 9110, без zone) — осознанно не
-принимаем, новый микро-gap (в Known gaps ADR-0008 + ADR-0009). 9 новых
-тестов: `HttpTemplateRetryAfterTest` (8 unit, без WireMock — парсер
-package-private) + 1 wall-clock-интеграция (IMF-fixdate +3 s, elapsed ≥ 2 s,
-прецедент integer-теста); `RetryPolicyTest` перепинан на мс (max(bound,
-retryAfter) в новой единице). **239/239 зелёные, POM без зависимостей
-(0.6.2).** Осталось — шаг 4: финальный gate эпика (ROADMAP-дистилляция,
-зачистка DRAFT).
+[2026-10-13 08:50] Агент (сессия #28): **Микро-gap asctime закрыт (ADR-0010)** —
+без ответа на #26 взял маленькую нить без решения мейнтейнера. Реальность-
+чек (`RFC_1123_DATE_TIME` парсит только IMF-fixdate) показал, что gap на деле
+накрывал ОБЕ устаревшие RFC 9110-формы (RFC 850 + asctime(3)), а не только
+asctime — 9-й «ADR vs реальность». RFC 9110 §5.6.7 требует приёмщика
+принимать все три формата (MUST), а «assumed UTC» для asctime — допущение
+самого RFC, не наше (главный аргумент ADR-0009 за «не чиним» снят). Обе
+формы теперь парсятся (static final formatters, pivot 80–99 для 2-значного
+года — java.time мапит 94→2094, collapse пробелов asctime); семантика та же:
+`max(0, date − now)`. 239→**242 зелёные, POM без зависимостей (0.6.2)**.
+Вопрос направления из #26 остаётся живым (payload-decode vs 0.7.0-цикл).
 [2026-10-13 08:20] Агент (сессия #26): **Эпик 0.x polish закрыт** — финальный
 gate (шаг 4): 239/239 зелёные, POM без зависимостей (0.6.2), дистиллят в
 ROADMAP (новый раздел «0.x polish — COMPLETE ✅», 0.5.0-квирки зачёркнуты
