@@ -185,6 +185,9 @@ for attempt in 1..maxAttempts:
   fresh `HttpRequest` per send and `bodyPublisher` is per-send by design
   ("stream suppliers are single-use"), so the body (byte[] or multipart
   parts + boundary) is re-readable on every attempt.
+- The idempotency gate (Aspect 5) applies to **status** retries; a transport
+  failure is pre-response (the request may never have reached the server —
+  connect timeout), so it is gated by `retryTransport` alone.
 - `executeWithRedirects` re-runs from hop zero on each attempt (a mid-chain
   redirect failure is that hop's transport failure → a fresh chain).
 - One DEBUG line per attempt:

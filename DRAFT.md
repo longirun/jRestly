@@ -35,12 +35,29 @@
       валидация: `maxAttempts ≥ 1`, backoff'ы non-negative и
       `initial ≤ max`, статусы в `[100, 599]`, коллекция копируется
       (LinkedHashSet → unmodifiable). `isEnabled()` — предикат для контура.
-- [ ] Код: sync-retry-контур в `HttpTemplate` (транспорт + статусы,
+- [x] Код: sync-retry-контур в `HttpTemplate` (транспорт + статусы,
       `@OnError`-терминальность по умолчанию, `Retry-After`, DEBUG-лог) +
       клиентский уровень (default method в `ModuleInfo`, `retry(...)` в
       обоих builders) + `RetryTest` (WireMock: 503→503→200, исчерпание,
       transport-fault, неретраемый 404, `@OnError`-терминальность,
-      идемпотентность, `Retry-After`)
+      идемпотентность, `Retry-After`). Сделано в сессии #19 (198→208):
+      `executeWithRetries` об `executeWithRedirects` — цикл по raw-ответам
+      (ADR Aspect 6 буквально: `IOException` → retryTransport и не last;
+      `InterruptedException` → fail fast; статус → `isRetryableStatus`);
+      `processResponse` не тронут — один раз на финале. `isRetryableStatus`
+      — те же предикаты, что у `processResponse`: expected → `@OnError`-
+      терминальность (если не `retryOnErrorStatuses`) → retryable set →
+      идемпотентность POST/PATCH. `Retry-After` — только integer-seconds
+      (HTTP-date — known gap); DEBUG-лог в формулировке ADR; sleep через
+      `Thread.sleep`, jitter — `ThreadLocalRandom.current()` в шов.
+      Клиентский уровень: default method `ModuleInfo.getRetryPolicy()` →
+      `off()` (non-breaking), `retry(...)` в `SimpleModuleInfo.Builder` и
+      `JRestlyClient.Builder` (проксирование по прецеденту `httpVersion`);
+      `off()` — shared constant (политика читается на каждом запросе —
+      без аллокаций на hot path). RetryTest: 10 интеграций (ADR Aspect 7,
+      сценарии 1–7 и 10 + «off by default»), WireMock-scenarios для
+      последовательных статусов и fault; backoff'ы 10–50 ms, Retry-After
+      проверяется wall-clock'ом (elapsed ≥ 1 s).
 - [ ] Код: аннотация `@Retry` (per-method override, `nonIdempotent`,
       `times = 1` — явный off-switch) + wiring в `HttpTemplateBuilder` +
       тесты (приоритет override, POST через `nonIdempotent`,

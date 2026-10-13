@@ -16,6 +16,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
@@ -57,6 +58,7 @@ public class HttpTemplate {
     private List<Integer> expectStatuses;
     private Integer followRedirectsNumber;
     private HttpClient.Version httpVersion;
+    private RetryPolicy retryPolicy = RetryPolicy.off();
 
     /**
      * Executes the call and returns the decoded result. For
@@ -76,7 +78,7 @@ public class HttpTemplate {
 
         try {
             long start = System.nanoTime();
-            WireResponse response = executeWithRedirects(request);
+            WireResponse response = executeWithRetries(request);
             return processResponse(request, response, start);
         } catch (IOException e) {
             logger.log(System.Logger.Level.ERROR,
@@ -184,6 +186,99 @@ public class HttpTemplate {
 
         logExhaustedRedirects(response);
         return response;
+    }
+
+    // ADR-0008 Aspect 3+6: the retry loop operates on the RAW response, before
+    // processResponse runs, so auth-capture, logging, @OnError decoding, and
+    // the status check fire exactly once, on the final response. A disabled
+    // policy is a straight pass-through — off-by-default users see no change.
+    // Re-sending the same WireRequest is safe: toHttpRequest builds a fresh
+    // HttpRequest per send with a per-send body publisher.
+    private WireResponse executeWithRetries(WireRequest request) throws IOException, InterruptedException {
+        if (!retryPolicy.isEnabled()) {
+            return executeWithRedirects(request);
+        }
+
+        int maxAttempts = retryPolicy.maxAttempts();
+
+        for (int attempt = 1; ; attempt++) {
+            boolean last = attempt == maxAttempts;
+
+            WireResponse response;
+            String failure;
+            try {
+                response = executeWithRedirects(request);
+                failure = "HTTP " + response.statusCode();
+            } catch (InterruptedException e) {
+                // the caller's thread was interrupted — fail fast, never retried
+                throw e;
+            } catch (IOException e) {
+                if (last || !retryPolicy.isRetryTransport()) {
+                    throw e;
+                }
+                response = null;
+                failure = e.getClass().getSimpleName();
+            }
+
+            if (response != null && (last || !isRetryableStatus(response))) {
+                return response;
+            }
+
+            scheduleRetry(attempt, maxAttempts, failure, response);
+        }
+    }
+
+    // One DEBUG line per failed attempt, then the wait: full jitter over
+    // [0, bound], or the deterministic max(bound, Retry-After) when the
+    // failed response carries the integer-seconds header (ADR-0008 Aspect 4)
+    private void scheduleRetry(int attempt, int maxAttempts, String failure, WireResponse response) throws InterruptedException {
+        long delayMillis = retryPolicy.nextDelayMillis(attempt, retryAfterSeconds(response), ThreadLocalRandom.current());
+        logger.log(System.Logger.Level.DEBUG,
+                "Attempt " + attempt + "/" + maxAttempts + " failed: " + failure + " — retrying in " + delayMillis + " ms");
+        if (delayMillis > 0) {
+            Thread.sleep(delayMillis);
+        }
+    }
+
+    // The loop's failure predicate — the exact decisions processResponse makes,
+    // so "what the loop calls a failure" and "what processResponse calls a
+    // failure" cannot drift apart (ADR-0008 Aspect 3)
+    private boolean isRetryableStatus(WireResponse response) {
+        int status = response.statusCode();
+
+        if (isExpectedStatus(status)) {
+            return false; // success — the loop ends
+        }
+        if (onErrorParser != null && onErrorParser.canParse(status) && !retryPolicy.isRetryOnErrorStatuses()) {
+            return false; // a declared @OnError status is a terminal contract by default
+        }
+        if (!retryPolicy.getRetryableStatuses().contains(status)) {
+            return false; // not in the retryable set — a bare 404 is a deterministic client error
+        }
+        return retryPolicy.isRetryNonIdempotent() || !isNonIdempotent(httpMethod);
+    }
+
+    // RFC 9110: of this library's methods, POST and PATCH are non-idempotent
+    private static boolean isNonIdempotent(HttpMethod method) {
+        return method == HttpMethod.POST || method == HttpMethod.PATCH;
+    }
+
+    // The integer-seconds form of Retry-After only (the HTTP-date form is a
+    // known gap, ADR-0008); absent, null-valued, or unparseable — null
+    private static Long retryAfterSeconds(WireResponse response) {
+        if (response == null) {
+            return null;
+        }
+        for (Header header : response.headers()) {
+            if (header.name() != null && header.name().equalsIgnoreCase("Retry-After")) {
+                try {
+                    return Long.valueOf(header.value().trim());
+                } catch (NumberFormatException e) {
+                    return null;
+                }
+            }
+        }
+        return null;
     }
 
     // Async twin: same hop semantics, chained over sendAsync
@@ -499,6 +594,10 @@ public class HttpTemplate {
 
     public void setHttpVersion(HttpClient.Version httpVersion) {
         this.httpVersion = httpVersion;
+    }
+
+    public void setRetryPolicy(RetryPolicy retryPolicy) {
+        this.retryPolicy = retryPolicy;
     }
 
     public void setModuleInfo(ModuleInfo moduleInfo) {

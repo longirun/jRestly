@@ -74,6 +74,10 @@ public interface TestController {
     @OnError(statuses = {400, 404}, errorObject = TestErrorDto.class)
     CompletableFuture<TestDto> getWithErrorAsync();
 
+    @Get(path = "/api/rate-limited")
+    @OnError(statuses = {429}, errorObject = TestErrorDto.class)
+    TestDto getRateLimited();
+
     @Get(path = "/api/auth-check")
     TestDto getAuthorized();
 

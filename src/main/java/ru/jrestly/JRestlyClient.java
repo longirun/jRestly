@@ -1,5 +1,6 @@
 package ru.jrestly;
 
+import ru.jrestly.http.RetryPolicy;
 import ru.jrestly.json.JsonCodec;
 
 import java.net.http.HttpClient;
@@ -74,6 +75,11 @@ public class JRestlyClient extends AbstractHttpClient {
 
         public Builder validateControllers(boolean validate) {
             moduleInfoBuilder.validateControllers(validate);
+            return this;
+        }
+
+        public Builder retry(RetryPolicy retryPolicy) {
+            moduleInfoBuilder.retry(retryPolicy);
             return this;
         }
 

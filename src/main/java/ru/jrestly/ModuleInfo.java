@@ -2,6 +2,7 @@ package ru.jrestly;
 
 import ru.jrestly.json.JsonCodec;
 import ru.jrestly.json.JsonCodecResolver;
+import ru.jrestly.http.RetryPolicy;
 
 import java.net.http.HttpClient;
 
@@ -31,5 +32,15 @@ public interface ModuleInfo {
 
     default boolean isValidateControllers() {
         return true;
+    }
+
+    /**
+     * The client-level retry policy (ADR-0008). A default method so
+     * existing implementors are not broken; {@code off()} by default, so
+     * enabling retry is an opt-in and the failure timing of existing
+     * modules does not change.
+     */
+    default RetryPolicy getRetryPolicy() {
+        return RetryPolicy.off();
     }
 }

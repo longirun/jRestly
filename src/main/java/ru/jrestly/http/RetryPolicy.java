@@ -94,12 +94,17 @@ public final class RetryPolicy {
         return builder().build();
     }
 
+    // The client-level default sits on a per-request path
+    // (ModuleInfo.getRetryPolicy), so it is one shared immutable instance
+    // rather than a fresh allocation per call.
+    private static final RetryPolicy OFF = builder().maxAttempts(1).build();
+
     /**
      * The off policy: {@code maxAttempts = 1}, so the first attempt is the
-     * only one. The client-level default.
+     * only one. The client-level default (a shared instance).
      */
     public static RetryPolicy off() {
-        return builder().maxAttempts(1).build();
+        return OFF;
     }
 
     public static Builder builder() {

@@ -101,6 +101,8 @@ public class HttpTemplateBuilder {
         result.setExpectStatuses(createExpectStatuses());
         result.setFollowRedirectsNumber(getFollowRedirectsNumber());
         result.setHttpVersion(getHttpVersion());
+        // client-level policy only — the per-method @Retry override lands in a later step
+        result.setRetryPolicy(moduleInfo.getRetryPolicy());
 
         return result;
     }

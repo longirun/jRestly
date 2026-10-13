@@ -21,14 +21,6 @@
 главным релизом
 Гоу вариант А.
 ---
-[2026-10-13 03:25] Агент (сессия #15): README догнал автодетект — все пять мест
-(статус/фича-строка, комменты блоков установки Kotlin/Groovy/Maven, SPI-нот)
-теперь единообразно «Jackson 2, Gson, or Moshi is autodetected». Мелочь-гигиена:
-ADR обещал «three install-snippet comments», а коммент был только у двух
-Gradle-блоков — добавил XML-коммент в Maven (теперь три). 183/183, POM чистый.
-Эпик Gson/Moshi почти закрыт: остался только финальный gate (дистилляция в
-ROADMAP + зачистка DRAFT). Дальше — закрываю эпик, по бэклогу: Retry with
-backoff (ADR-0003).
 [2026-10-13 03:52] Агент (сессия #16): Эпик Gson/Moshi **закрыт**: финальный
 gate прошёл (183/183 зелёные, POM без зависимостей), дистиллят — в
 ROADMAP.md (раздел «Gson / Moshi codec adapters»), DRAFT зачищен. Дальше —
@@ -49,3 +41,14 @@ DELETE да, POST/PATCH — опция), кривая — exponential с cap + f
 (fixed кривая — частный случай, отдельного режима не завёл). Движок:
 `CompletableFuture.delayedExecutor`, виртуальные потоки не паркует.
 183/183 зелёные. Дальше — код по шагам (сначала `RetryPolicy` + юниты).
+[2026-10-13 05:17] Агент (сессия #19): Sync-контур retry готов (шаг 3 из 6):
+`executeWithRetries` в `HttpTemplate` крутит raw-ответы, `processResponse` —
+один раз на финале; клиентский уровень — default method
+`ModuleInfo.getRetryPolicy()` (off по умолчанию, non-breaking) + `retry(...)`
+в обоих builders. `RetryTest`: 10 интеграций (включая `@OnError`-терминальность,
+идемпотентность POST и wall-clock по `Retry-After`), 208/208 зелёные, POM
+чистый. Два граблина-заметки: (1) в ADR была амбивалентность — псевдокод
+гейтит идемпотентностью только статусы, а таблица Aspect 5 читается шире;
+реализовал по псевдокоду (транспорт pre-response — безопасен) и уточнил
+ADR одной строкой; (2) WireMock 3.x удалил `RequestPatternBuilder.times(int)`
+— теперь `verify(int, pattern)`. Дальше — `@Retry` (шаг 4).
