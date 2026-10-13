@@ -22,7 +22,7 @@
       0.x polish, payload-decode; ADR-0007…0011), **без README-правок**
       (инсталл-блоки держат `v0.6.1` — последний тег, JitPack-координаты
       достижимы только по тегу).
-- [ ] **Шаг 2 — `CHANGELOG.md`:** создать + entry 0.7.0 (user-facing,
+- [x] **Шаг 2 — `CHANGELOG.md`:** создать + entry 0.7.0 (user-facing,
       выведен из шести COMPLETE-секций ROADMAP: user-visible изменения, не
       дизайн-рассуждения).
 - [ ] **Шаг 3 — версия `0.6.2` → `0.7.0`** (`build.gradle`) + gate
