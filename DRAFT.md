@@ -1,21 +1,43 @@
-# DRAFT: после 0.7.0-цикла — свободный ход, эпик не открыт (сессия #39)
+# DRAFT: warnings и модернизация (ADR-0013) — аудит закрыт, шаги 2–6 впереди (сессия #41)
 
-> Эпик **0.7.0-цикл (ADR-0012)** закрыт в сессии #39 (4/4 шагов; дистиллят —
-> ROADMAP-секция «Cycle 0.7.0 — COMPLETE ✅ (unreleased)»). Known-gaps-бэклог
-> выработан: 0.7.0 собран (версия в `build.gradle`, без гит-тега —
-> JitPack-координаты остаются на `v0.6.1`), первый `CHANGELOG.md` в корне,
-> ROADMAP зачтён. Дальше — свободный ход: кандидаты ниже, следующий эпик
-> открывается по выбору (кандидат №1 — warnings/рефакторинг-аудит).
+> Свободный ход после 0.7.0-цикла: кандидат №1 (warnings/рефакторинг-аудит,
+> fallback с #30) открыт как эпик. Сессия #41 — сам аудит (кандидат так и
+> требовал: сначала «что именно», потом план): замеры по `javac -Xlint:all`
+> (12 warnings: 9 main / 3 test), `javadoc -Xdoclint=all` (100 warnings —
+> все missing-comment/@param/@return), идеомы Java 21 (устаревших фрагментов
+> нет — pattern-matching/arrow-switch/records на месте; 2 build-level
+> модернизации: `options.release`, javadoc-gate), hot path (новых находок
+> нет). ADR-0013 (`docs/0.8.0/` — папка следующего цикла создана при
+> открытии, версионная метка провизорная) = findings + scope-решения; шаги
+> ниже.
 
-## Кандидаты на следующий шаг/эпик (активная зона)
+## Эпик: warnings и модернизация (ADR-0013)
 
-- **Warnings/рефакторинг-аудит** (fallback №1 с #30, до сих пор не взят):
-  компиляционные warnings, Java 21-идиомы на старых фрагментах, лоск в
-  тестах. Не релиз-цикл — чистая чистка без новой поверхности; при открытии
-  как эпик — ADR-0013 (свободен, следующий номер) в папке `docs/`
-  следующего цикла.
-- (Остальные кандидаты — в ROADMAP, «Post-0.5.0 shortlist» и
-  «После цикла»-строки COMPLETE-секций; новых не появилось.)
+- [x] Шаг 1 — аудит и scope (ADR-0013, сессия #41): замеры, findings,
+      решения D1–D4 (каждый warning чинится; suppress — точечный, с
+      рационалом; javadoc — все 100 + gate `-Xdoclint=all`/`-Werror` в
+      build.gradle; `release = 21`; hot path — чист).
+- [ ] Шаг 2 — main + build: 5 sites (serial — `@Serial` UID +
+      class-`@SuppressWarnings` на трёх exception'ах; rawtypes →
+      `Class<?>[]`; this-escape — точечный suppress с рационалом на
+      `createConnection`; `//noinspection` → `@SuppressWarnings` в
+      `HandledException.getDetails`) + `options.release = 21` вместо
+      source/targetCompatibility.
+- [ ] Шаг 3 — test: generic-override `TestModuleInfo.getEnvironment`
+      (+suppress); 2× `causeOf` → один общий helper в
+      `ru.jrestly.fixtures` (+suppress) — лоск тестов.
+- [ ] Шаг 4 — javadoc, нормативная поверхность: 3 exception'а,
+      `AuthProvider`, `Environment`, `FileContent`, `MultipartPart`,
+      `@return` у verb-аннотаций (Delete/Get/… — по таблице ADR-0013).
+- [ ] Шаг 5 — javadoc, остальное: `HttpTemplate` (17),
+      `AbstractHttpClient` (15), wire-модель, `HttpMethod`,
+      `AuthHeaderProvider`, `ControllerValidator`, `GsonCodec`, остаток.
+- [ ] Шаг 6 — gate: `javadoc { Xdoclint=all, Werror }` в build.gradle,
+      полный ре-аудит (`-Xlint:all` → 0, javadoc → 0), дистилляция в
+      ROADMAP.
+
+Кандидаты «после эпика» — в ROADMAP (known-gaps выработан; новых не
+появилось).
 
 ## Постоянная нить (не эпик, не чекбокс)
 
@@ -51,6 +73,11 @@
       кандидаты поднимаются в активную зону — следующий ход выбирается из
       них, а DRAFT с пустым эпиком «без кандидатов» — антипаттерн (эпик
       открывается из кандидата, не из ничего).
+- **Аудит-сессия = измерения + scope, без кода** (сессия #41, прецедент
+      концепт-шагов): каждый site просмотреть по коду, решения — в ADR с
+      рационалом (suppress — точечный, не blanket), замеры — gate-снимок
+      сессии (пересчитывать на шаге, который трогает, не читать из ADR);
+      «устаревших фрагментов нет» — тоже finding (записать, что проверено).
 
 Пометки из mailbox (актуальные на 2026-10-13):
 - **Вопрос направления (#26) — закрыт** (Антон, 11:20: предпочтения нет,

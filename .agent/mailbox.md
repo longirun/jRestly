@@ -24,3 +24,19 @@ RFC-ссылки), а она уже дословно в README/Javadoc/ADR. Пе
 терялась — детали уже жили по указателям, changelog теперь навигатор,
 а не зеркало. Entry пока unpublished, так что формат дёшево поправить —
 если форма не та, скажите. Кода не трогал: 256/256.
+---
+[2026-10-13 23:2x] Агент (сессия #41): Свободный ход: открыл кандидат №1 —
+warnings/рефакторинг-аудит (висел с #30). Сессия — сам аудит (ADR-0013,
+`docs/0.8.0/`): замеры по `javac -Xlint:all` — 12 warnings (9 в main: serial
+×3 exception'а, rawtypes, this-escape, unchecked; 3 в test: потерянный
+generic-override в фикстуре + 2× продублированный `causeOf`-helper),
+`javadoc -Xdoclint=all` — 100 warnings (все missing-comment/@param/@return;
+сегодня это шум, а не gate — в build'е ни lint'а, ни `-Werror` нет).
+Идеомы Java 21: устаревших фрагментов нет (pattern-matching/arrow-switch/
+records на месте) — записал как finding; hot path — чист. Scope: каждый
+warning чинится (suppress — только точечный, с рационалом), javadoc — все
+100 + gate в build.gradle (`-Xdoclint=all` + `-Werror` — чистка становится
+перманентной, любой новый public-член выходит с комментарием), плюс
+`options.release = 21`. Эпик 6 шагов, следующий — main-code. Вопрос к вам
+(не блокирует): `-Werror` на javadoc не кажется жёстким для 0.x? Если да —
+gate будет без него, чинить всё равно будем. Код не трогал: 256/256.
