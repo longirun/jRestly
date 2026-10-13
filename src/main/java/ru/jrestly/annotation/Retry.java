@@ -31,12 +31,18 @@ import java.lang.annotation.Target;
  *       RFC 9110: a retry happens after the request was sent, so a lost
  *       response on a successful POST is a classic double-submit).</li>
  * </ul>
- * The wait between attempts is exponential with a cap and full jitter:
+ * {@code InterruptedException} is never retried, whatever
+ * {@link #transport() transport} says: the caller's thread was
+ * interrupted, so failing fast is the preserved semantics.
+ *
+ * <p>The wait between attempts is exponential with a cap and full jitter:
  * after the {@code n}-th failed attempt the bound grows as
  * {@code min(maxBackoffMs, initialBackoffMs · 2^(n-1))} and the actual
  * wait is a uniform draw in {@code [0, bound]}. A parseable
  * {@code Retry-After} header on a failed response (delta-seconds or
- * HTTP-date) sets a deterministic lower bound on that wait.
+ * HTTP-date) sets a deterministic lower bound on that wait — a
+ * transport failure has no response, so the header can only come from
+ * a status-retried attempt.
  *
  * <p>The declared policy applies to synchronous and
  * {@code CompletableFuture}-returning methods alike: the same retry

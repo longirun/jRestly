@@ -261,9 +261,10 @@ faults.
   `processResponse`) is not retried — v1 retries transport and status only
   (reaffirmed, with its three arguments, by ADR-0009 candidate 4).
 - `InterruptedException` is never retried, even with
-  `retryTransport = true` (documented in Javadoc).
+  `retryTransport = true` (documented in the `RetryPolicy` and `@Retry`
+  Javadoc and the README).
 - No circuit breaker, no per-status attempt caps, no metrics —
   ADR-0003's non-goals stand.
 - The deterministic-jitter seam is package-private (test-only).
 - `Retry-After` applies to status retries only (transport failures have no
-  response headers).
+  response headers; stated in the `@Retry` Javadoc and the README).

@@ -29,10 +29,15 @@
       теперь парсятся (static final formatters + pivot 80–99 для
       2-значного года + collapse пробелов asctime); 239→242 теста.
 - **Остаток Known gaps ADR-0008** (принятые, non-blocking, скорее доки, чем
-      код): `InterruptedException` never retried (уже в Javadoc), no circuit
-      breaker / per-status attempt caps / metrics (non-goals ADR-0003 —
-      держим как non-goals), `Retry-After` только для status-retries,
-      backoff-шов package-private.
+      код): `InterruptedException` never retried, no circuit breaker /
+      per-status attempt caps / metrics (non-goals ADR-0003 — держим как
+      non-goals), `Retry-After` только для status-retries, backoff-шов
+      package-private. **Доки-аудит (сессия #29): свёрстано с реальностью
+      и доведено до единообразия** — заметка про `InterruptedException`
+      была только в Javadoc `RetryPolicy`, доведена до Javadoc `@Retry`
+      (самодостаточная поверхность) и README; «Retry-After — только для
+      status-retries» был лишь подразумеваем — прописан явно там же; шов
+      задокументирован в Javadoc самого шва; non-goals — без изменений.
 - **Контур следующего цикла** — `docs/0.7.0/` уже несёт ADR-0007/0008/0009;
       в 0.6.2 без тега накопились пять unreleased-наборов (CompletableFuture,
       ISO option A, Gson/Moshi, Retry with backoff, 0.x polish). Вопрос о
