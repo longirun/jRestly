@@ -287,9 +287,10 @@ method), `retry(...)` on `JRestlyClient.Builder` and
 with backoff" section.
 
 Tests: `RetryPolicyTest` (15 units — curve, cap, jitter bounds,
-`Retry-After` branches, validation, copy semantics), `RetryTest` (10
+`Retry-After` branches, validation, copy semantics), `RetryTest` (11
 WireMock integrations — sequential-status scenarios, transport fault,
-`@OnError` terminality, idempotency, `Retry-After` wall-clock),
+`@OnError` terminality, idempotency, `Retry-After` wall-clock in both
+forms — the HTTP-date pin is from 0.x polish),
 `RetryAnnotationTest` (6 — off-switch vs enabled client, self-contained
 replacements, POST via `nonIdempotent`, custom status sets),
 `RetryAsyncTest` (5 — the async twin, typed join cause on exhaustion).
@@ -361,14 +362,17 @@ retry).
 
 Tests: `HttpTemplateLoggingTest` (7 units — log capture through the public
 `setLogger` seam; on this JDK `System.Logger` is an interface),
-`HttpTemplateRetryAfterTest` (8 units — both forms, past-date floor,
+`HttpTemplateRetryAfterTest` (11 units — delta-seconds, all three
+HTTP-date forms (IMF-fixdate, RFC 850, asctime(3)), past-date floor,
 garbage / absent → null; the obsolete RFC 850 and asctime(3) forms were
 added by ADR-0010), `PutMethodTest` end-to-end log capture
 (+1), `GetMethodTest` +2 (`void` / `Void` with a non-empty 200 body → null),
 `CompletableFutureReturnTest` +1 (async pin), `RetryTest` +1 wall-clock
 integration (IMF-fixdate 3 s in the future → elapsed ≥ 2 s),
-`RetryPolicyTest` re-pinned on milliseconds. Suite **239/239** green;
-generated POM dependency-free (0.6.2).
+`RetryPolicyTest` re-pinned on milliseconds. Suite **242/242** green
+(the epic's own gate was 239/239; ADR-0010 / session #28 replaced the
+single obsolete-form pin with four, one per form); generated POM
+dependency-free (0.6.2).
 
 ## Post-0.5.0 shortlist (not scheduled — see ADR-0003)
 
