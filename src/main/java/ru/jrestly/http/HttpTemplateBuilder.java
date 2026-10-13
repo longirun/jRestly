@@ -421,6 +421,7 @@ public class HttpTemplateBuilder {
                     .retryTransport(retry.transport())
                     .retryOnErrorStatuses(retry.onErrorStatuses())
                     .retryNonIdempotent(retry.nonIdempotent())
+                    .retryDecodeFailures(retry.retryDecodeFailures())
                     .build();
         }
 

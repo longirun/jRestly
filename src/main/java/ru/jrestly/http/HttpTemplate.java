@@ -231,6 +231,10 @@ public class HttpTemplate {
     // policy is a straight pass-through — off-by-default users see no change.
     // Re-sending the same WireRequest is safe: toHttpRequest builds a fresh
     // HttpRequest per send with a per-send body publisher.
+    // ADR-0011 Aspect 2: when the distinct decode opt-in is on, a
+    // status-acceptable response is additionally checked by the side-effect-
+    // free decode probe — the third failure-kind (transport / status /
+    // decode) — without breaking the "classified exactly once" property.
     private WireResponse executeWithRetries(WireRequest request) throws IOException, InterruptedException {
         if (!retryPolicy.isEnabled()) {
             return executeWithRedirects(request);
@@ -258,6 +262,22 @@ public class HttpTemplate {
             }
 
             if (response != null && (last || !isRetryableStatus(response))) {
+                // ADR-0011 Aspect 2: the status logic accepted the response, but
+                // a complete body the codec cannot bind is still not final when
+                // the distinct decode opt-in is on. The probe is the payload-
+                // decode branch of processResponse reproduced side-effect-free,
+                // so the side-effectful tail still runs exactly once, on the
+                // truly final response. On the last attempt it is not called at
+                // all — the final processResponse throws the codec's own
+                // unchecked exception (ADR-0011 Aspect 3: no new type).
+                if (!last && retryPolicy.isRetryDecodeFailures()) {
+                    try {
+                        probePayloadDecode(response);
+                    } catch (RuntimeException e) {
+                        scheduleRetry(attempt, maxAttempts, "decode (" + e.getClass().getSimpleName() + ")", response);
+                        continue;
+                    }
+                }
                 return response;
             }
 

@@ -32,10 +32,22 @@
       `HttpTemplateDecodeProbeTest` (7 юнитов, stub-кодек, template без
       logger/auth — side-effect-free зафиксировано формой фикстуры) +
       `RetryPolicyTest` +1 (default off).
-- [ ] **Шаг 3 — sync-wiring** (`executeWithRetries`: decode-ось в final-
+- [x] **Шаг 3 — sync-wiring** (`executeWithRetries`: decode-ось в final-
       условии + decode-DEBUG-строка) + интеграции ADR-0011 Aspect 7 сценарии
       1–5 (200-мусор→200-норма, exhaustion-typing, default-off = zero-change,
-      `@OnError` вне scope, «classified exactly once» — auth-capture один раз).
+      `@OnError` вне scope, «classified exactly once» — auth-capture один раз)
+      (сессия #33): decode-ось — `!last && isRetryDecodeFailures()` → probe;
+      codec-исключение → DEBUG `decode (<тип>)` + `continue` (строка
+      `scheduleRetry` принимает failure-тип по ADR Aspect 3); `.retryDecode-
+      Failures(...)` в `resolveRetryPolicy()` (атрибут перестал быть dead
+      code); `RetryDecodeTest` (5 интеграций) + `TestAuthProvider`-счётчик
+      capture (replace-семантика скрывала двойной вызов — «exactly once»
+      проверяется только счётчиком) + метод `@Retry(retryDecodeFailures)` +
+      `@SetAuthDetails` в `RetryController`; finding: сценарий 4 —
+      malformed error-body бросает codec-исключение в `@OnError`-ветке
+      `processResponse` ДО `HandledException` (первая строка ADR-0011 Known
+      gaps — закреплена интеграцией: 1 запрос + `UncheckedIOException`);
+      250→255/255.
 - [ ] **Шаг 4 — async-tвин** (`attemptAsync`: decode-ось через
       `delayedExecutor`) + интеграция 6.
 - [ ] **Шаг 5 — Javadoc-контракт** (`RetryPolicy`/`@Retry`/`ModuleInfo`,

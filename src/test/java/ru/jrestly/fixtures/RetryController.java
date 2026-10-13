@@ -5,6 +5,7 @@ import ru.jrestly.annotation.OnError;
 import ru.jrestly.annotation.Post;
 import ru.jrestly.annotation.RequestBody;
 import ru.jrestly.annotation.Retry;
+import ru.jrestly.annotation.SetAuthDetails;
 
 import java.util.concurrent.CompletableFuture;
 
@@ -48,4 +49,12 @@ public interface RetryController {
     @Retry(times = 2, initialBackoffMs = 10, maxBackoffMs = 20, statuses = {501})
     @Get(path = "/api/server-error")
     TestDto getWithCustomStatuses();
+
+    // The decode axis (ADR-0011) + @SetAuthDetails: "classified exactly once"
+    // — the auth-capture consumer must fire exactly once across the whole
+    // decode-retry, on the truly final response only
+    @Retry(times = 2, initialBackoffMs = 10, maxBackoffMs = 50, retryDecodeFailures = true)
+    @SetAuthDetails(headerName = "access-token")
+    @Get(path = "/api/decode-auth")
+    TestDto getDecodeAuth();
 }
