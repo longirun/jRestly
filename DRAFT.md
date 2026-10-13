@@ -1,4 +1,4 @@
-# DRAFT: warnings и модернизация (ADR-0013) — шаг 5 идёт: JRestlyClient закрыт, 86→72 (сессия #50)
+# DRAFT: warnings и модернизация (ADR-0013) — шаг 5 идёт: ModuleInfo закрыт, 72→62 (сессия #51)
 
 > Свободный ход после 0.7.0-цикла: кандидат №1 (warnings/рефакторинг-аудит,
 > fallback с #30) открыт как эпик. Сессия #41 — сам аудит (кандидат так и
@@ -85,9 +85,25 @@
       `SimpleModuleInfo.Builder`; authHeader-описание урезано до
       фактов, не зависящих от subclass-`login()` — у `JRestlyClient`
       `login()` no-op), `build()` (два ISE-путя: baseUrl + codec не
-      найден — факт из `JsonCodecResolver.resolve()`)). Остаток
-      (26 файлов): `ModuleInfo` 10, `WireRequest` 7, `OnErrorParser`
-      7, `HttpMethod` 6, `RequestType` 5, 4 файла × 3
+      найден — факт из `JsonCodecResolver.resolve()`)). Сессия #51
+      закрыла `ModuleInfo` 10 (72→62; поверхность 0 — сама
+      нормативная поверхность: класс (модульная конфигурация — всё,
+      из чего строится клиент: identity, окружение, auth-заголовки,
+      codec, таймауты, версия протокола, валидация контроллеров,
+      retry; обе реализации — `SimpleModuleInfo` #49 и forwarder
+      `JRestlyClient.Builder` #50 — теперь опираются на эти
+      описания), getName, getEnvironment (`@param <T>`; base URL +
+      типизированные auth-детали — по `Environment`), getAuthProvider
+      (роль в клиенте сверена по `AbstractHttpClient`/
+      `HttpTemplateBuilder`: isAuthorized → background login,
+      updateAuthHeader → login, getAuthHeaders → в каждый запрос),
+      4 default'а — codec (SPI-фоллбэк jackson→gson→moshi + ISE без
+      codec — по `JsonCodecResolver.resolve()`), 5 000/30 000 ms,
+      HTTP_2, validation up front (формулировки 1:1 из
+      `SimpleModuleInfo`), getRetryPolicy — только `@return`;
+      ноль кода). Остаток (25 файлов): `WireRequest` 7,
+      `OnErrorParser` 7, `HttpMethod` 6, `RequestType` 5, 4 файла
+      × 3
       (JacksonCodec/WireResponse/HttpTemplateBuilder/AuthHeaderProvider),
       8 × 2, 9 × 1.
 - [ ] Шаг 6 — gate: `javadoc { Xdoclint=all, Werror }` в build.gradle,
