@@ -58,10 +58,26 @@
       сценарии 1–7 и 10 + «off by default»), WireMock-scenarios для
       последовательных статусов и fault; backoff'ы 10–50 ms, Retry-After
       проверяется wall-clock'ом (elapsed ≥ 1 s).
-- [ ] Код: аннотация `@Retry` (per-method override, `nonIdempotent`,
+- [x] Код: аннотация `@Retry` (per-method override, `nonIdempotent`,
       `times = 1` — явный off-switch) + wiring в `HttpTemplateBuilder` +
       тесты (приоритет override, POST через `nonIdempotent`,
-      `@OnError`-opt-in, 429→429→200)
+      `@OnError`-opt-in, 429→429→200). Сделано в сессии #20 (208→214):
+      `ru.jrestly.annotation.Retry` — self-contained policy по ADR Aspect 2
+      (при presence заменяет клиентскую целиком, no merge; default
+      `times = 1` = явный off-switch — интерпретация «presence =
+      self-contained, times=1 = off» зафиксирована в Javadoc аннотации);
+      wiring — `HttpTemplateBuilder.resolveRetryPolicy()` (есть `@Retry` →
+      `RetryPolicy.Builder` из атрибутов, валидация `IllegalStateException`
+      уже в builder'е; иначе — `moduleInfo.getRetryPolicy()`), аллокация
+      политики на запрос — только для аннотированных методов (house style
+      per-request build). Фикстура — отдельный `RetryController` (прецедент
+      `HttpVersionController`); `RetryAnnotationTest`: 6 интеграций (bare
+      `@Retry` перебивает enabled-клиент → 1 запрос; self-contained
+      429→429→200 при off-клиенте → 3; POST через `nonIdempotent` → 3;
+      `onErrorStatuses`-opt-in 429→429→200 → 3; exhaustion с declared 429 →
+      типизированный `HandledException`, 3 запроса; `statuses={501}` —
+      кастомный статус ретраится → 2). Javadoc `RetryPolicy` обновлён
+      («later step» → реализовано).
 - [ ] Код: async-твин (контур над `sendAsync`, неблокирующий backoff через
       `CompletableFuture.delayedExecutor`, маппинг исключений без изменений)
       + тесты retry на `CompletableFuture`-методах

@@ -21,14 +21,6 @@
 главным релизом
 Гоу вариант А.
 ---
-[2026-10-13 03:52] Агент (сессия #16): Эпик Gson/Moshi **закрыт**: финальный
-gate прошёл (183/183 зелёные, POM без зависимостей), дистиллят — в
-ROADMAP.md (раздел «Gson / Moshi codec adapters»), DRAFT зачищен. Дальше —
-следующий кандидат из shortlist'а ADR-0003: **Retry with backoff** (концепт
-ADR-0008; ключевой вопрос — интеграция с `@OnError`). Мелочь-гигиена:
-почистил mailbox по согласованному правилу — убраны решённые обмены
-(#8→«приведи в порядок» и статусы #12–#13; их инсайты уже в ADR-0007 и
-дневниках), оставил последние три моих сообщения.
 [2026-10-13 04:15] Агент (сессия #17): Концепт **Retry with backoff** готов
 (ADR-0008, `docs/0.7.0/`). Главное решение по твоему вопросу из ADR-0003
 («интегрируется с @OnError»): retry идёт **до** классификации — цикл крутит
@@ -52,3 +44,17 @@ DELETE да, POST/PATCH — опция), кривая — exponential с cap + f
 реализовал по псевдокоду (транспорт pre-response — безопасен) и уточнил
 ADR одной строкой; (2) WireMock 3.x удалил `RequestPatternBuilder.times(int)`
 — теперь `verify(int, pattern)`. Дальше — `@Retry` (шаг 4).
+[2026-10-13 05:45] Агент (сессия #20): `@Retry` готов (шаг 4 из 6): публичная
+поверхность retry закрыта с обеих сторон — клиент (`retry(RetryPolicy)`, off
+по умолчанию) и метод (self-contained аннотация, presence = замена клиентской
+политики целиком, no field-by-field merge). Один осознанный выбор, который
+хотел показать: default `times = 1` — то есть **bare `@Retry` = явный
+off-switch** (метод никогда не ретраит, даже у клиента с включённым retry);
+реальный retry всегда объявлен явно (`times >= 2`). Альтернатива (bare =
+retry с дефолтами) отвергнута: аннотация-тихая-изменёнка противоречит
+0.x-дисциплине «retry is a choice». Валидация атрибутов — через тот же
+`RetryPolicy.Builder` (`IllegalStateException`, нового кода нет).
+`RetryAnnotationTest`: 6 интеграций (off-switch vs enabled-клиент,
+429→429→200 self-contained, POST через `nonIdempotent`, `@OnError`-opt-in,
+typed exhaustion, custom `statuses`). 214/214 зелёные, POM чистый.
+Дальше — async-твин (шаг 5: `CompletableFuture.delayedExecutor`).

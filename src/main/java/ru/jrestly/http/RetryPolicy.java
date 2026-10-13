@@ -14,8 +14,10 @@ import java.util.Set;
  *
  * <p>A policy is a pure value: immutable and thread-safe, created through
  * the {@link Builder builder} (or one of the statics). A client carries at
- * most one policy; a per-method {@code @Retry} override replaces it entirely
- * (implementation: a later step of the same ADR).
+ * most one policy; a per-method {@code @Retry} override replaces it
+ * entirely — the annotation is a self-contained policy (no field-by-field
+ * merge), and its {@code times = 1} default is the explicit off-switch on
+ * a method of a client that has retry enabled.
  *
  * <p>What is retried under this policy:
  * <ul>

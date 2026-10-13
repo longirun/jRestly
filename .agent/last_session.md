@@ -1,148 +1,122 @@
-# Handover Note: Сессия 19 (sync-retry-контур + клиентский уровень + RetryTest — шаг 3 retry-эпика)
+# Handover Note: Сессия 20 (@Retry аннотация + wiring + тесты — шаг 4 retry-эпика)
 
 ## Что сделано в этой сессии
-- **Sync-контур в `HttpTemplate`** (DRAFT-шаг 3 `[x]`, 198→208 тестов):
-  - `executeWithRetries(WireRequest)` об `executeWithRedirects` — ADR Aspect
-    6 буквально: цикл `attempt 1..maxAttempts` по raw-ответам;
-    `IOException` → retry если `retryTransport` и не last (иначе — вверх);
-    `InterruptedException` → fail fast (никогда не ретрается); статус →
-    `isRetryableStatus`. Disabled policy — straight pass-through
-    (`executeWithRedirects`), zero behavior change для off-пользователей.
-  - `processResponse` не тронут (ADR Aspect 3): auth-capture, лог,
-    `@OnError`-декодинг, статус-чек — один раз на финальном ответе.
-  - `isRetryableStatus` — предикаты ровно те, что у `processResponse`
-    («не могут расхождение»): `isExpectedStatus` (2xx / `@ExpectStatus`)
-    → успех; `onErrorParser.canParse(status)` → терминально по умолчанию
-    (escape hatch `retryOnErrorStatuses`); затем retryable set; затем
-    идемпотентность — POST/PATCH только через `retryNonIdempotent`
-    (RFC 9110).
-  - `scheduleRetry` — одна DEBUG-строка на attempt в формулировке ADR
-    (`Attempt 1/3 failed: HTTP 503 — retrying in 213 ms`) + sleep
-    (`Thread.sleep`, 0 ms — без системного call); jitter —
-    `ThreadLocalRandom.current()` в package-private шов.
-  - `retryAfterSeconds(WireResponse)` — integer-seconds только,
-    case-insensitive, trim; HTTP-date/non-integer → null (known gap);
-    для transport-failure (response == null) → null.
-  - `setRetryPolicy` + поле с default `RetryPolicy.off()`.
-- **Клиентский уровень:** default method `ModuleInfo.getRetryPolicy()` →
-  `RetryPolicy.off()` (non-breaking — публичный интерфейс, чужие
-  имплементаторы не ломаются); `SimpleModuleInfo` — поле + getter +
-  `Builder.retry(RetryPolicy)` (requireNonNull, стиль `httpVersion`);
-  `JRestlyClient.Builder.retry(...)` — проксирование в
-  `moduleInfoBuilder` (форма прецедента `httpVersion`).
-  `HttpTemplateBuilder.build()`: `result.setRetryPolicy(moduleInfo.
-  getRetryPolicy())` — пока только клиентский уровень; комментарий в коде
-  помечает, что `@Retry`-override за шагом 4.
-- **Аллокация на hot path:** `getRetryPolicy()` вызывается на каждом
-  запросе (proxy → build'ер на каждый вызов) → `RetryPolicy.off()` стал
-  shared constant `OFF` (immutable — безопасно); `RetryPolicyTest`
-  прогнал без изменений (identity не проверял).
-- **`RetryTest`** (10 интеграций, `ru.jrestly`, `BaseWireMockTest`):
-  off by default (503 → 1 запрос); 503→503→200 (3 запроса); исчерпание
-  (UnexpectedStatusException, 3 запроса); transport-fault
-  (`withFault(CONNECTION_RESET_BY_PEER)` → 200, 2 запроса); неретраемый
-  404 (1 запрос); `@OnError`-терминальность (429, `@OnError({429})` →
-  1 запрос, typed HandledException, не Unexpected); opt-in
-  `retryOnErrorStatuses` (429→429→200, 3 запроса); идемпотентность POST
-  (503 → 1 запрос по умолчанию; с `retryNonIdempotent` — 3 запроса);
-  `Retry-After: 1` на 429 (elapsed ≥ 1 s wall-clock, 2 запроса).
-  Последовательные статусы/fault — через WireMock-scenarios
-  (`inScenario` + `whenScenarioStateIs` + `willSetStateTo`). Backoff'ы
-  10–50 ms; класс целиком ~1.5 s.
-- **Фикстуры:** `TestModuleInfo` — `setRetryPolicy` + override
-  `getRetryPolicy` (default off); `TestController` — новый
-  `getRateLimited()` с `@OnError(statuses = {429}, errorObject =
-  TestErrorDto.class)` (для сценариев 5–6).
-- **ADR-0008: одна строка в Aspect 6** — идемпотентный гейт (Aspect 5)
-  применяется только к status-retries; транспорт гейтится
-  `retryTransport`'ом (pre-response: запрос мог не дойти — connect
-  timeout, ретрай безопасен даже для POST). Амбивалентность была в самом
-  ADR (псевдокод Aspect 6 vs таблица Aspect 5) — реализация по
-  псевдокоду, ADR уточнён.
-- **Гейты:** `./gradlew test --rerun` — **208/208** (198 + 10; 0
-  failures/0 errors по XML, 17 с, тёплый кэш); POM (`pom-default.xml`) —
-  **0 `<dependency>`**, 0.6.2 (build.gradle не трогал).
-- **Mailbox:** заметка #19 (контур + грабли WireMock 3.x + решение
-  амбивалентности). Гигиена: удалено моё #15 (решено — README/статус
-  эпика уже в ROADMAP/DRAFT/дневниках), остались последние три моих
-  (#16, #17, #19).
+- **`ru.jrestly.annotation.Retry`** (новый публичный API, DRAFT-шаг 4 `[x]`,
+  208→214 тестов): `@Target(METHOD)`, `@Retention(RUNTIME)`; атрибуты по ADR
+  Aspect 2 — `times` (default **1**), `initialBackoffMs` (200),
+  `maxBackoffMs` (5_000), `statuses` ({408,429,500,502,503,504}),
+  `transport` (true), `onErrorStatuses` (false), `nonIdempotent` (false).
+  Нормативный Javadoc: self-contained policy (presence заменяет клиентскую
+  целиком, no merge), off-switch, что ретрается, backoff-кривая, Retry-After.
+- **Интерпретация флажка из #19 зафиксирована:** presence = self-contained
+  policy, default `times = 1` = off; любое настоящее retry-объявление пишет
+  `times >= 2` явно. Альтернатива (default 3, bare = retry с дефолтами)
+  отвергнута — bare-аннотация, меняющая поведение, против 0.x «retry is a
+  choice». В ADR строки про default не было → решение записано в Javadoc
+  аннотации (source of truth для API), в ADR не лез.
+- **Wiring** — `HttpTemplateBuilder.resolveRetryPolicy()`: presence `@Retry`
+  → `RetryPolicy.Builder` из атрибутов (валидация — готовая
+  `IllegalStateException` из builder'а; нового кода валидации нет), иначе —
+  `moduleInfo.getRetryPolicy()`. Коммент-заглушка из #19 заменена.
+  Аллокация: политика строится на запрос только для аннотированных методов
+  (house style per-request build, как `createOnErrorParser`); остальные
+  методы — shared `off()` без аллокаций.
+- **Фикстура** — `RetryController` (отдельный интерфейс, прецедент
+  `HttpVersionController`; TestController уже ~60 методов): 5 методов по
+  ролям — bare `@Retry` (off-switch), self-contained GET `/api/rate-limited`,
+  POST `nonIdempotent`, `@OnError({429})` + `onErrorStatuses=true`,
+  `statuses={501}` (custom set). Backoff'ы 10–50 ms.
+- **`RetryAnnotationTest`** (6 интеграций, зелёные с первого прогона):
+  bare `@Retry` перебивает enabled-клиент (503 → 1 запрос; ADR сценарий 8 +
+  закреплён default times=1); self-contained 429→429→200 при off-клиенте
+  (3 запроса — «presence = self-contained»); POST через `nonIdempotent`
+  (503→503→200, 3 запроса — вторая половина ADR-сценария 7);
+  `onErrorStatuses`-opt-in (429→429→200, 3 запроса); exhaustion с declared
+  429 → типизированный `HandledException` (не UnexpectedStatusException,
+  3 запроса — вторая половина ADR-сценария 6); `statuses={501}` — 501
+  ретраится (2 запроса; замена дефолтного семейства, не merge).
+- **Javadoc `RetryPolicy`:** «(implementation: a later step of the same
+  ADR)» → «the annotation is a self-contained policy … times = 1 default is
+  the explicit off-switch» (заглушка устарела — шаг реализован).
+- **Гейты:** `./gradlew test --rerun` — **214/214** (208 + 6; 0
+  failures/0 errors по XML); POM (`pom-default.xml`) — **0 `<dependency>`**,
+  0.6.2.
+- **Mailbox:** заметка #20 (поверхность закрыта с обеих сторон + осознанный
+  выбор default times=1). Гигиена: удалено моё #16 (решено — эпик закрыт,
+  инсайты в ROADMAP/DRAFT/дневниках), остались #17 (живая нитка — ответ на
+  ADR-0003 «интегрируется с @OnError»), #19 и новое #20.
 
-## Контекст для следующей сессии (#20)
+## Контекст для следующей сессии (#21)
 
 ### Вводные Антона (накопленные, актуально на 2026-10-13)
 1. **Объём сессии — в 2–3 раза меньше:** один маленький шаг.
 2. **Версии — по нашему усмотрению, теги — не вешать** (последний тег
    v0.6.1, версия в build.gradle 0.6.2).
 3. **Гигиена проекта — за агентом**: mailbox коротким, расхождения —
-   чинить сразу. (Новых сообщений Антона не было — mailbox тиш после
-   моего #19 ~05:17.)
+   чинить сразу. (Mailbox тиш после моего #20 ~05:45.)
 
 ### Что логично делать дальше
-1. **Следующий шаг — `@Retry` (шаг 4 из DRAFT):** аннотация
-   `ru.jrestly.annotation.Retry` (`@Target(METHOD)`, `@Retention(RUNTIME)`)
-   с атрибутами по ADR Aspect 2: `times` (default 1 — off-switch… см.
-   ниже), `initialBackoffMs` (default 200), `maxBackoffMs` (default
-   5000), `statuses` (default {408,429,500,502,503,504}), `transport`
-   (default true), `onErrorStatuses` (default false), `nonIdempotent`
-   (default false). Самостоятельная политика — полностью заменяет
-   клиентскую при наличии аннотации (no field-by-field merge).
-   Wiring: в `HttpTemplateBuilder.build()` заменить прямое
-   `moduleInfo.getRetryPolicy()` на resolve: есть `@Retry` → собрать
-   `RetryPolicy` из аннотации, иначе — `moduleInfo.getRetryPolicy()`
-   (комментарий-заглушка уже стоит). Валидация — через `RetryPolicy.
-   Builder` (Исключение IllegalStateException уже готово). Тесты:
-   приоритет override (client-policy включён + `@Retry(times=1)` →
-   1 запрос — ADR сценарий 8), POST через `nonIdempotent = true`,
-   `@OnError`-opt-in через аннотацию, 429→429→200. Мелочь: default
-   `times = 1` в ADR — «explicit off-switch», но сам presence
-   аннотации с times=1 = off — проверить формулировку при реализации
-   (presence = self-contained policy, times=1 = off).
-   Фикстуры: метод с `@Retry` — добавить в `TestController` или в
-   отдельный интерфейс (решил на шаге — TestController уже плотный).
-2. Дальше: async-твин (шаг 5 — контур над `sendAsync`,
-   `CompletableFuture.delayedExecutor`, маппинг исключений без
-   изменений; ADR сценарий 9), Javadoc/README/финальный gate (шаг 6).
+1. **Следующий шаг — async-твин (шаг 5 из DRAFT):** контур над
+   `sendAsync` (ADR Aspect 6: «the same loop chained over
+   `sendAsync`; the backoff wait runs on
+   `CompletableFuture.delayedExecutor` (non-blocking — no parked virtual
+   thread per retry), and exchangeAsync's final exception mapping is
+   untouched»). Скорее всего: `exchangeAsync`/async-контур
+   `HttpTemplate` — найти, где сейчас async идёт (поиск:
+   `sendAsync`, `isAsync()` в `HttpTemplate`/`AbstractHttpClient`),
+   дублировать sync-цикл `executeWithRetries` в async-форме (chain:
+   attempt → catch/thenCompose → delayedExecutor(nextDelay) → retry;
+   `Retry-After` — тот же `max()`-правило; `InterruptedException` —
+   маппинг без изменений, как в sync). Тесты — ADR сценарий 9:
+   `CompletableFuture`-метод, 503 → 200 → `join()` возвращает значение,
+   2 запроса (в `RetryAnnotationTest`/`RetryTest` рядом с sync-тестами —
+   решение на шаге; fixture-методы с `CompletableFuture`-возвратом уже
+   есть у `TestController`: `getServerErrorAsync` и т.п.).
+2. Потом финальный: Javadoc-контракт + README («Retry with backoff» —
+   ADR Consequences: feature bullet + короткая usage-секция) + финальный
+   gate (тесты, POM, дистилляция эпика в ROADMAP, зачистка DRAFT).
 
 ### Грабли прошлых сессий (актуальный набор)
 - **ADR-концепт может «пересчитать» реальность** — проверять по jar/
-  тегам/исходникам на шаге, править ADR обратно (4 раза у кодеков).
-  Обратный случай: **код может не удержать обещание ADR** — тесты
-  пишут по букве ADR. Третий «вид» в #19: **амбивалентность в самом
-  ADR** (псевдокод vs таблица) — реализация по псевдокоду + строка
-  в ADR.
+  тегам/исходникам на шаге, править ADR обратно (4 раза у кодеков);
+  **код может не удержать обещание ADR** — тесты по букве ADR;
+  **амбивалентность в самом ADR** — реализация по псевдокоду + строка
+  в ADR (#19).
 - **Чужие API — только по jar/javap/исходникам; min-версии — по тегам.**
-  Multi-release jar'ы: корневой класс — заглушка. Новый пин #19:
-  **WireMock 3.x — `verify(int, pattern)`, `RequestPatternBuilder.times
-  (int)` удалено** (standalone 3.12.1, javap).
+  Multi-release jar'ы: корневой класс — заглушка. WireMock 3.x —
+  `verify(int, pattern)`, `times(int)` удалено.
 - **UP-DATE ≠ мой прогон**: `./gradlew test --rerun`.
 - **POM-гейт:** `build/publications/mavenJava/pom-default.xml` (0
   `<dependency>`).
-- **Подсчёт тестов:** shell-цикл по XML (`build/test-results/test/`);
-  python3 в контейнере ЕСТЬ (проверено в #19 — первый вариант сработал;
-  sed-парсинг — запасной).
+- **Подсчёт тестов:** python3 НЕ пережил ребут (пропал, как и
+  GRADLE_USER_HOME) — grep-цикл по XML-заголовкам:
+  `tests=`, `failures=`, `errors=` из первых строк каждого
+  `build/test-results/test/*.xml`.
 - **Даты/поведение сторонних либ — только по пину.**
 - **Parallel-сессии:** перед правкой памяти/коммитом — `stat` mtime,
   `ps` на чужие процессы, `git log`.
 - **Преценденты решают споры о поверхности** (httpVersion: module default
-  + per-method override, override replaces — retry повторяет форму).
-- **Аллокации на hot path**: политика читается на каждом запросе —
-  default'ы делать shared constants (прецедент: `RetryPolicy.off()`).
+  + per-method override, override replaces — retry повторил форму
+  ровно).
+- **Аллокации на hot path**: default'ы — shared constants
+  (`RetryPolicy.off()`); per-request build — только для аннотированных
+  методов.
+- **GRADLE_USER_HOME=/tmp/opencode/gradle-home** — если кэш стёрся
+  (ребут), первый прогон дня качает зависимости заново (~50 с).
 
 ### Окружение
-1. `GRADLE_USER_HOME=/tmp/opencode/gradle-home ./gradlew ...` (кэш жив;
-   `/tmp` не переживает ребут — каталог пересоздавать, первый прогон
-   дня качает зависимости заново ~50 с).
+1. `GRADLE_USER_HOME=/tmp/opencode/gradle-home ./gradlew ...`.
 2. `pids.max = 1000`. Полный `./gradlew test` БЕЗ init-скрипта.
 3. Ветка `agent-loop`. Демон Gradle переживает падения тестов.
 4. Коммиты агента: `longirun-agent <sinyagovsky@gmail.com>`; счётчик
-   сессий подкручивает harness (сейчас 19 → после этой 20).
+   сессий подкручивает harness (сейчас 20 → после этой 21).
 5. Часы контейнера: UTC+4; mailbox-время — местное.
 6. `docs/` — ADR-папки по версиям цикла: `0.5.0/`, `0.6.0/`, `0.7.0/`
-   (ADR-0007 — Gson/Moshi, ADR-0008 — retry; следующий ADR — туда же).
+   (ADR-0007 — Gson/Moshi, ADR-0008 — retry).
 
 ### Состояние git
-- HEAD: коммит сессии #19 (sync-контур + клиентский уровень + RetryTest
-  + ADR-строка + DRAFT + память) поверх 1f2e9d6 (сессия #18).
+- HEAD: коммит сессии #20 (@Retry + wiring + RetryAnnotationTest +
+  RetryPolicy Javadoc + DRAFT + память) поверх 0e3ee7e (сессия #19).
 - Всё на `agent-loop`. Последний тег `v0.6.1` — дальше теги за Антоном.
 - Версия в build.gradle: **0.6.2** (без тега, релизы на паузе).
-- Тесты: **208/208**.
+- Тесты: **214/214**.

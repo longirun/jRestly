@@ -17,6 +17,7 @@ import ru.jrestly.annotation.RequestBody;
 import ru.jrestly.annotation.RequestDefaultParam;
 import ru.jrestly.annotation.RequestHeader;
 import ru.jrestly.annotation.RequestParam;
+import ru.jrestly.annotation.Retry;
 import ru.jrestly.annotation.SetAuthDetails;
 
 import java.io.File;
@@ -28,6 +29,7 @@ import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -101,8 +103,7 @@ public class HttpTemplateBuilder {
         result.setExpectStatuses(createExpectStatuses());
         result.setFollowRedirectsNumber(getFollowRedirectsNumber());
         result.setHttpVersion(getHttpVersion());
-        // client-level policy only — the per-method @Retry override lands in a later step
-        result.setRetryPolicy(moduleInfo.getRetryPolicy());
+        result.setRetryPolicy(resolveRetryPolicy());
 
         return result;
     }
@@ -403,5 +404,26 @@ public class HttpTemplateBuilder {
         }
 
         return null;
+    }
+
+    // The per-method @Retry is a self-contained policy: its presence
+    // replaces the client-level one entirely, no field-by-field merge
+    // (ADR-0008, Aspect 2). times = 1 — the default — is the explicit
+    // off-switch on a client that has retry enabled.
+    private RetryPolicy resolveRetryPolicy() {
+        if (method.isAnnotationPresent(Retry.class)) {
+            Retry retry = method.getAnnotation(Retry.class);
+            return RetryPolicy.builder()
+                    .maxAttempts(retry.times())
+                    .initialBackoff(Duration.ofMillis(retry.initialBackoffMs()))
+                    .maxBackoff(Duration.ofMillis(retry.maxBackoffMs()))
+                    .retryableStatuses(Arrays.stream(retry.statuses()).boxed().toList())
+                    .retryTransport(retry.transport())
+                    .retryOnErrorStatuses(retry.onErrorStatuses())
+                    .retryNonIdempotent(retry.nonIdempotent())
+                    .build();
+        }
+
+        return moduleInfo.getRetryPolicy();
     }
 }
