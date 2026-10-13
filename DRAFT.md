@@ -1,4 +1,4 @@
-# DRAFT: warnings и модернизация (ADR-0013) — шаг 4 закрыт, шаг 5 идёт (сессия #46)
+# DRAFT: warnings и модернизация (ADR-0013) — шаг 5 идёт: HttpTemplate закрыт, 140→115 (сессия #47)
 
 > Свободный ход после 0.7.0-цикла: кандидат №1 (warnings/рефакторинг-аудит,
 > fallback с #30) открыт как эпик. Сессия #41 — сам аудит (кандидат так и
@@ -48,13 +48,18 @@
       `./gradlew test --rerun` — 256/256 (36 классов). Уточнение: «100»
       в ADR-0013 — было потолком javadoc-тула (100/run без `Xmaxwarns`);
       истинный baseline 237 (поправка зафиксирована в ADR-0013).
-- [ ] Шаг 5 — javadoc, остальное (140 warnings, замер #46 — реальный,
+- [ ] Шаг 5 — javadoc, остальное (115 warnings, замер #47 — реальный,
       не capped). Сессия #46 закрыла контрактную пару `RetryPolicy` 25
       + `Retry` 8 (173→140; обе поверхности — 0; fluent-`@return` —
-      house-style «this builder, for chaining»). Остаток (30 файлов):
-      `HttpTemplate` 25, `AbstractHttpClient` 15, `SimpleModuleInfo` 14,
-      `JRestlyClient` 14, `ModuleInfo` 10, `WireRequest` 7,
-      `OnErrorParser` 7, `HttpMethod` 6, `RequestType` 5, далее 4 файла
+      house-style «this builder, for chaining»). Сессия #47 закрыла
+      `HttpTemplate` 25 (140→115; поверхность 0 — `exchange`
+      `@param <T>`/`@return`, явный no-arg конструктор с Javadoc
+      (единственная кодовая правка шага — «default constructor» требует
+      именно его), `logRequest`-hook, 21 сеттер; null-семантика
+      сверена по `HttpTemplateBuilder.build()`). Остаток (29 файлов):
+      `AbstractHttpClient` 15, `SimpleModuleInfo` 14, `JRestlyClient` 14,
+      `ModuleInfo` 10, `WireRequest` 7, `OnErrorParser` 7,
+      `HttpMethod` 6, `RequestType` 5, далее 4 файла
       × 3 (JacksonCodec/WireResponse/HttpTemplateBuilder/
       AuthHeaderProvider), 8 × 2, 9 × 1.
 - [ ] Шаг 6 — gate: `javadoc { Xdoclint=all, Werror }` в build.gradle,

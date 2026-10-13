@@ -97,9 +97,23 @@ public class HttpTemplate {
     private RetryPolicy retryPolicy = RetryPolicy.off();
 
     /**
+     * Creates an empty template. Not intended for direct use: instances
+     * are assembled by {@link HttpTemplateBuilder} and populated through
+     * the {@code set*} setters before {@link #exchange()} runs.
+     */
+    public HttpTemplate() {
+    }
+
+    /**
      * Executes the call and returns the decoded result. For
      * {@code CompletableFuture<T>} return types the returned value is the
      * future itself; see {@link #exchangeAsync(WireRequest, long)}.
+     *
+     * @param <T> the type the controller method declares as its return type
+     * @return the payload decoded to {@code T} by the JSON codec, the raw
+     *         body when {@code T} is {@link String}, {@code null} when the
+     *         method returns {@code void}/{@link Void}, or the future
+     *         itself when the method returns {@code CompletableFuture<T>}
      */
     @SuppressWarnings("unchecked")
     public <T> T exchange() {
@@ -698,6 +712,17 @@ public class HttpTemplate {
         return URLEncoder.encode(value, StandardCharsets.UTF_8).replace("+", "%20");
     }
 
+    /**
+     * Logs the outgoing request at INFO — the method, URI and headers,
+     * plus a body section for the methods that carry one (POST, PATCH,
+     * DELETE, PUT; GET and HEAD log without a body). Runs once per call,
+     * before dispatch; redirect hops are logged per-hop at DEBUG.
+     *
+     * <p>Protected hook: a subclass may override it to observe or extend
+     * the request log.
+     *
+     * @param request the wire request about to be sent
+     */
     protected void logRequest(WireRequest request) {
         StringBuilder sb = new StringBuilder();
         sb.append(request.method()).append(" ").append(request.uri());
@@ -756,86 +781,223 @@ public class HttpTemplate {
         return statusCode >= 200 && statusCode < 300;
     }
 
+    /**
+     * The logger the call logs through — request/response lines, redirect
+     * hops and retry attempts.
+     *
+     * @param logger the logger (always set by the builder)
+     */
     public void setLogger(System.Logger logger) {
         this.logger = logger;
     }
 
+    /**
+     * The HTTP client the call is dispatched through (sync send or
+     * {@code sendAsync}).
+     *
+     * @param httpClient the client (always set by the builder)
+     */
     public void setHttpClient(HttpClient httpClient) {
         this.httpClient = httpClient;
     }
 
+    /**
+     * The fully resolved request URL: the method path against the
+     * environment's base URL, with {@code @PathVariable} placeholders
+     * substituted, or the absolute URL declared on the method annotation.
+     *
+     * @param url the resolved URL
+     */
     public void setUrl(String url) {
         this.url = url;
     }
 
+    /**
+     * The HTTP method of the call.
+     *
+     * @param httpMethod the method
+     */
     public void setHttpMethod(HttpMethod httpMethod) {
         this.httpMethod = httpMethod;
     }
 
+    /**
+     * The Content-Type of the request body, or {@code null} for a
+     * body-less call. For multipart requests it carries the
+     * {@code multipart/form-data} type with the per-call boundary.
+     *
+     * @param contentType the type, or {@code null}
+     */
     public void setContentType(String contentType) {
         this.contentType = contentType;
     }
 
+    /**
+     * The headers the request carries: the client's auth headers plus the
+     * values bound to {@code @RequestHeader} parameters.
+     *
+     * @param headers the headers
+     */
     public void setHeaders(List<Header> headers) {
         this.headers = headers;
     }
 
+    /**
+     * The names of the headers that carry credentials — dropped from the
+     * request on a cross-origin redirect so they are not leaked to another
+     * origin.
+     *
+     * @param authHeaderNames the header names (may be empty)
+     */
     public void setAuthHeaderNames(List<String> authHeaderNames) {
         this.authHeaderNames = authHeaderNames;
     }
 
+    /**
+     * The callback that captures the auth details from each response (an
+     * {@code @SetAuthDetails} token), or {@code null} when the method
+     * declares none.
+     *
+     * @param authDetailsConsumer the callback, or {@code null}
+     */
     public void setAuthDetailsConsumer(Consumer<List<Header>> authDetailsConsumer) {
         this.authDetailsConsumer = authDetailsConsumer;
     }
 
+    /**
+     * The query parameters appended to the URL (URL-encoded), or
+     * {@code null} for the request types that encode their parameters into
+     * the body (multipart, urlencoded).
+     *
+     * @param requestParams the parameters, or {@code null}
+     */
     public void setRequestParams(List<Param> requestParams) {
         this.requestParams = requestParams;
     }
 
+    /**
+     * The parts of the multipart body, or {@code null} for non-multipart
+     * calls.
+     *
+     * @param multipartFormParts the parts, or {@code null}
+     */
     public void setMultipartFormParts(List<MultipartPart> multipartFormParts) {
         this.multipartFormParts = multipartFormParts;
     }
 
+    /**
+     * The boundary of the multipart body, or {@code null} for
+     * non-multipart calls.
+     *
+     * @param multipartBoundary the boundary, or {@code null}
+     */
     public void setMultipartBoundary(String multipartBoundary) {
         this.multipartBoundary = multipartBoundary;
     }
 
+    /**
+     * The request body bytes, or {@code null} for body-less calls and for
+     * multipart calls (whose body is the parts).
+     *
+     * @param body the body, or {@code null}
+     */
     public void setBody(byte[] body) {
         this.body = body;
     }
 
+    /**
+     * The type the controller method declares as its return type — what the
+     * response payload is decoded to: bound by the JSON codec, returned raw
+     * for {@code String}, discarded for {@code void}/{@code Void}. For
+     * {@code CompletableFuture}-returning methods it is the future's type
+     * argument.
+     *
+     * @param returnType the declared type
+     */
     public void setReturnType(Type returnType) {
         this.returnType = returnType;
     }
 
+    /**
+     * Whether the method returns {@code CompletableFuture<T>}: the call is
+     * dispatched non-blockingly via {@code sendAsync} and {@link #exchange()}
+     * returns the future itself.
+     *
+     * @param async true for {@code CompletableFuture}-returning methods; the
+     *              builder sets it only in that case (the field default is
+     *              {@code false})
+     */
     public void setAsync(boolean async) {
         this.async = async;
     }
 
+    /**
+     * The {@code @OnError} parser of the method, or {@code null} when the
+     * method declares none: a matching status decodes the payload into the
+     * error class and surfaces as a {@link HandledException}.
+     *
+     * @param onErrorParser the parser, or {@code null}
+     */
     public void setOnErrorParser(OnErrorParser onErrorParser) {
         this.onErrorParser = onErrorParser;
     }
 
+    /**
+     * The status codes the call accepts, or {@code null} for the default
+     * (any 2xx).
+     *
+     * @param expectStatuses the accepted statuses, or {@code null}
+     */
     public void setExpectStatuses(List<Integer> expectStatuses) {
         this.expectStatuses = expectStatuses;
     }
 
+    /**
+     * The maximum number of redirect hops the call follows, or
+     * {@code null} to follow none.
+     *
+     * @param followRedirectsNumber the hop count, or {@code null}
+     */
     public void setFollowRedirectsNumber(Integer followRedirectsNumber) {
         this.followRedirectsNumber = followRedirectsNumber;
     }
 
+    /**
+     * The HTTP version of the request, or {@code null} for the client's
+     * default.
+     *
+     * @param httpVersion the version, or {@code null}
+     */
     public void setHttpVersion(HttpClient.Version httpVersion) {
         this.httpVersion = httpVersion;
     }
 
+    /**
+     * The retry policy of the call — the method's {@code @Retry} policy
+     * when the method declares one, otherwise the client-level policy.
+     *
+     * @param retryPolicy the policy
+     */
     public void setRetryPolicy(RetryPolicy retryPolicy) {
         this.retryPolicy = retryPolicy;
     }
 
+    /**
+     * The module info the call reads: the socket timeout applied to every
+     * request.
+     *
+     * @param moduleInfo the module info (always set by the builder)
+     */
     public void setModuleInfo(ModuleInfo moduleInfo) {
         this.moduleInfo = moduleInfo;
     }
 
+    /**
+     * The JSON codec that decodes the response payload and the
+     * {@code @OnError} error objects.
+     *
+     * @param jsonCodec the codec (always set by the builder)
+     */
     public void setJsonCodec(JsonCodec jsonCodec) {
         this.jsonCodec = jsonCodec;
     }
