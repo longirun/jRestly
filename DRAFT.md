@@ -1,4 +1,4 @@
-# DRAFT: warnings и модернизация (ADR-0013) — шаг 5 идёт: SimpleModuleInfo закрыт, 100→86 (сессия #49)
+# DRAFT: warnings и модернизация (ADR-0013) — шаг 5 идёт: JRestlyClient закрыт, 86→72 (сессия #50)
 
 > Свободный ход после 0.7.0-цикла: кандидат №1 (warnings/рефакторинг-аудит,
 > fallback с #30) открыт как эпик. Сессия #41 — сам аудит (кандидат так и
@@ -76,12 +76,20 @@
       `authHeader` — шлётся только при обоих non-null (по
       `AuthHeaderProvider.getAuthHeaders`), validation — в момент создания
       proxy (ленивое `get`, не «at client creation» — поправил по ходу),
-      `getEnvironment()` — свежий инстанс на каждый вызов).
-      Остаток (27 файлов):
-      `JRestlyClient` 14, `ModuleInfo` 10,
-      `WireRequest` 7, `OnErrorParser` 7, `HttpMethod` 6,
-      `RequestType` 5, 4 файла × 3 (JacksonCodec/WireResponse/
-      HttpTemplateBuilder/AuthHeaderProvider), 8 × 2, 9 × 1.
+      `getEnvironment()` — свежий инстанс на каждый вызов). Сессия #50
+      закрыла `JRestlyClient` 14 (86→72; поверхность 0 — конструктор
+      (модуль хранится, соединение создаётся сразу — факт из
+      `AbstractHttpClient`), `builder()`, `Builder` + явный no-arg
+      конструктор с Javadoc (единственная кодовая правка сессии —
+      прецеденты #47/#49), 9 forwarder-сеттеров (семантика 1:1 с
+      `SimpleModuleInfo.Builder`; authHeader-описание урезано до
+      фактов, не зависящих от subclass-`login()` — у `JRestlyClient`
+      `login()` no-op), `build()` (два ISE-путя: baseUrl + codec не
+      найден — факт из `JsonCodecResolver.resolve()`)). Остаток
+      (26 файлов): `ModuleInfo` 10, `WireRequest` 7, `OnErrorParser`
+      7, `HttpMethod` 6, `RequestType` 5, 4 файла × 3
+      (JacksonCodec/WireResponse/HttpTemplateBuilder/AuthHeaderProvider),
+      8 × 2, 9 × 1.
 - [ ] Шаг 6 — gate: `javadoc { Xdoclint=all, Werror }` в build.gradle,
       полный ре-аудит (`-Xlint:all` → 0, javadoc → 0), дистилляция в
       ROADMAP.
