@@ -21,23 +21,6 @@
 главным релизом
 Гоу вариант А.
 ---
-[2026-10-13 07:26] Агент (сессия #24): Шаг 2 DRAFT — **два 0.5.0-квирка
-по ADR-0009 зафиксированы TDD**. (1) PUT теперь в request-лог гейте
-(было POST/PATCH/DELETE — PUT не логировал даже "No request body";
-`Arrays.asList` на каждый запрос → `Set.of` static final — аллокация с
-hot path убрана). (2) `void.class` в `processResponse` — единственное
-настоящее behavior-изменение эпика: `void`-метод с непустым телом
-теперь возвращает null и отбрасывает тело, а не падает в кодек.
-Ключевая находка: квирк **кодек-зависим** — дефолтный Jackson 2.18.2
-тихо декодирует `void.class` в `null` (пин был бы зелёным и до фикса),
-Gson 2.14.0 и Moshi 1.15.2 бросают `IllegalArgumentException`
-(`cannot handle void` / `Cannot serialize abstract class void`) — ценность
-пина в контрактности, ADR-0009 поправлен. 11 новых тестов: log-capture
-через public `setLogger`-шов (7 unit без WireMock + 1 end-to-end
-интеграция через `LoggingTestClient`) + пины void/Void/async
-non-empty-body. **230/230 зелёные, POM без зависимостей (0.6.2).**
-Дальше — шаг 3: `Retry-After` HTTP-date (RFC 1123 парсер, шов в
-миллисекундах).
 [2026-10-13 07:50] Агент (сессия #25): Шаг 3 DRAFT — **`Retry-After`
 HTTP-date зафиксирован TDD** (ADR-0009 кандидат 3). Парсер
 `HttpTemplate.retryAfterDelayMillis` (package-private, как и backoff-шов
@@ -54,3 +37,17 @@ package-private) + 1 wall-clock-интеграция (IMF-fixdate +3 s, elapsed 
 retryAfter) в новой единице). **239/239 зелёные, POM без зависимостей
 (0.6.2).** Осталось — шаг 4: финальный gate эпика (ROADMAP-дистилляция,
 зачистка DRAFT).
+[2026-10-13 08:20] Агент (сессия #26): **Эпик 0.x polish закрыт** — финальный
+gate (шаг 4): 239/239 зелёные, POM без зависимостей (0.6.2), дистиллят в
+ROADMAP (новый раздел «0.x polish — COMPLETE ✅», 0.5.0-квирки зачёркнуты
+с указателем на ADR-0009), DRAFT зачищен. Итого по эпикам за день:
+Gson/Moshi (#9–#16), Retry with backoff (#17–#22) и 0.x polish (#23–#26) —
+все три закрыты, Post-0.5.0 shortlist выработан целиком. **Вопрос
+направления:** остаток бэклога — known gaps (payload-decode retry —
+reaffirmed, asctime — микро-gap, остальное ADR-0008 — принятые non-blocking).
+Варианты: (a) payload-decode retry (концепт ADR-0010, спорное место —
+«classified exactly once» из ADR-0008), (b) подготовка 0.7.0-цикла/релиза
+(в 0.6.2 без тега уже пять unreleased-наборов), (c) твоё третье. Пока в
+DRAFT осознанная пауза (known-gaps-триаж) — не открыл эпик самовольно:
+payload-decode только что reaffirmed gap'ом, самовольный reopening на
+gate-сессии был бы flip-flop.

@@ -1,32 +1,36 @@
-# DRAFT: 0.x polish — carry-over quirks and accepted known gaps
+# DRAFT: Known gaps triage — осознанная пауза после 0.x polish
 
-> Эпик открыт в сессии #22 (2026-10-13) после закрытия эпика
-> Retry with backoff (дистиллят — раздел «Retry with backoff» в ROADMAP.md;
-> концепт и все пины — ADR-0008 в `docs/0.7.0/`). Post-0.5.0 shortlist
-> (ADR-0003) полностью выработан — все три кандидата закрыты; следующая
-> работа — трек-остатки, задокументированные в ROADMAP («Known carry-over
-> quirks» 0.5.0) и в Known gaps ADR-0008. Норма объёма: по одному шагу за
+> Эпик «0.x polish — carry-over quirks and accepted known gaps» закрыт в
+> сессии #26 (2026-10-13, финальный gate): дистиллят — раздел «0.x polish —
+> COMPLETE ✅» в ROADMAP.md, концепт и все пины — ADR-0009 в `docs/0.7.0/`,
+> 0.5.0-квирки в ROADMAP зачёркнуты с указателем. Post-0.5.0 shortlist
+> (ADR-0003) выработан целиком, трек-остатки 0.5.0 закрыты. Новое эпик
+> осознанно **не открыто**: бэклог сузился до known gaps, а первый
+> содержательный из них (payload-decode retry) только что reaffirmed
+> gap'ом в ADR-0009 — самовольный reopening на gate-сессии был бы flip-flop.
+> Направление (новая фича vs 0.7.0-цикл) — вопрос уровня мейнтейнера,
+> отправлен в mailbox (сессия #26). Норма объёма прежняя: по одному шагу за
 > сессию.
 
-## Шаги эпика
+## Кандидаты known gaps (триаж, не эпик — без чекбоксов до открытия)
 
-- [x] Концепт: ADR-0009 (`docs/0.7.0/`) — scope-решение, что в пол и что
-      остаётся gap'ом: (1) `logRequest` логирует тело только для
-      POST/PATCH/DELETE — PUT пропущен (carry-over 0.5.0, подтверждено по
-      коду в сессии #22: `HttpTemplate.logRequest`); (2)
-      `processResponse` проверяет только `Void.class`, не
-      `void.class` (скрыто early-return на пустом payload — 204;
-      `void`-метод с непустым телом упадёт в кодек); (3) `Retry-After`
-      HTTP-date-форма (Known gap ADR-0008: v1 — integer-seconds only);
-      (4) payload-decode failure на финальном ответе не ретраится (Known
-      gap ADR-0008: v1 — транспорт и статусы). Для каждого: чиним/оставляем,
-      форма фикса, влияние на wire/behavior-контракт, тестовая стратегия.
-      Правило ADR-0003: reopening known gap = новый ADR.
-- [x] Код: фиксы 0.5.0-квирков (logging PUT + `void.class`) + тесты.
-- [x] Код: `Retry-After` HTTP-date (решение ADR-0009: HTTP-date чиним,
-      payload-decode остаётся gap'ом) + тесты.
-- [ ] Финальный gate (тесты зелёные, POM без зависимостей, дистилляция в
-      ROADMAP, зачистка DRAFT).
+- **Payload-decode retry** (reaffirmed gap — ADR-0009 кандидат 4, Known gaps
+      ADR-0008) — самый содержательный остаток: ретрай сбоев декода финального
+      ответа. Reopening = новый ADR (правило ADR-0003: «reopening known gap =
+      новый ADR»), спорные места: новый failure-kind в retry-цикле vs
+      «classified exactly once», типизация финального исключения.
+- **`Retry-After` asctime** (микро-gap, ADR-0009) — obsolete per RFC 9110,
+      без zone; фикс = кастомный formatter + допущение zone. Дёшево, но и
+      редкость.
+- **Остаток Known gaps ADR-0008** (принятые, non-blocking, скорее доки, чем
+      код): `InterruptedException` never retried (уже в Javadoc), no circuit
+      breaker / per-status attempt caps / metrics (non-goals ADR-0003 —
+      держим как non-goals), `Retry-After` только для status-retries,
+      backoff-шов package-private.
+- **Контур следующего цикла** — `docs/0.7.0/` уже несёт ADR-0007/0008/0009;
+      в 0.6.2 без тега накопились пять unreleased-наборов (CompletableFuture,
+      ISO option A, Gson/Moshi, Retry with backoff, 0.x polish). Вопрос о
+      0.7.0-цикле/релизе — у Антона (mailbox #26).
 
 ## Постоянная нить (не эпик, не чекбокс)
 
@@ -46,4 +50,6 @@
   нити» выше в силе.
 
 Правила работы: один эпик в DRAFT.md, шаги — чекбоксы `[ ]`; закрыл →
-дистиллируй в ROADMAP.md и зачисти это место.
+дистиллируй в ROADMAP.md и зачисти это место. (Пауза-триаж — легитимное
+состояние DRAFT: эпик не изобретаем, пока мейнтейнер не выбрал направление
+или триаж сам не покажет очевидного кандидата.)

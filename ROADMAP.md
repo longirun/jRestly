@@ -56,7 +56,7 @@ Deviations plan → fact:
 3. **jsr310 became optional** (beyond plan) — `JacksonCodec` probes for `jackson-datatype-jsr310` and registers `JavaTimeSupport` only when present, so a `jackson-databind`-only consumer works; verified by smoke.
 4. **Test coverage grew beyond plan** — tester's redirect/multipart cases + `JacksonCodecDefaultsTest`/`JsonCodecResolverTest` landed with the finalize commit.
 
-Known carry-over quirks (accepted, non-blocking): `logRequest` body logging skips PUT (POST/PATCH/DELETE only); `Void.class.equals(returnType)` instead of also checking `void.class` (masked by the empty-payload early return). Post-0.5.0 shortlist unchanged (ADR-0003).
+Known carry-over quirks (accepted, non-blocking): ~~`logRequest` body logging skips PUT (POST/PATCH/DELETE only)~~ and ~~`Void.class.equals(returnType)` instead of also checking `void.class` (masked by the empty-payload early return)~~ — both fixed, see the "0.x polish" section below (ADR-0009). Post-0.5.0 shortlist unchanged (ADR-0003).
 
 ## Cycle 0.5.2 — HTTP version pinning — COMPLETE ✅ (2026-09-01)
 
@@ -293,6 +293,75 @@ WireMock integrations — sequential-status scenarios, transport fault,
 replacements, POST via `nonIdempotent`, custom status sets),
 `RetryAsyncTest` (5 — the async twin, typed join cause on exhaustion).
 Suite **219/219** green.
+
+## 0.x polish — carry-over quirks and accepted known gaps — COMPLETE ✅ (2026-10-13, unreleased)
+
+> Track leftovers: the 0.5.0 "Known carry-over quirks" line above (both quirks
+> now fixed) and the ADR-0008 Known gaps. Sessions #23–#26 (agent-loop). Scope
+> decisions, fix shapes and the test strategy:
+> [`docs/0.7.0/ADR-0009-0x-polish-carry-over-quirks-and-accepted-known-gaps.md`](docs/0.7.0/ADR-0009-0x-polish-carry-over-quirks-and-accepted-known-gaps.md).
+> No version bump / tag — releases paused per maintainer agreement (0.6.2 in
+> `build.gradle`).
+
+Four candidates went in, four scope decisions came out (ADR-0009): two fixed,
+one fixed with a new micro-gap, one consciously left on the books. No new
+public API — every fix lands inside `HttpTemplate` / `RetryPolicy` on seams
+that are already package-private or public by design.
+
+Key decisions and reality-pins (ADR-0009):
+- **PUT request-body logging skip — FIXED.** The body-log gate in
+  `HttpTemplate.logRequest` is now a `private static final`
+  `Set.of(POST, PATCH, DELETE, PUT)` — the per-request `Arrays.asList`
+  allocation on the hot path is gone, and a PUT body (and even the "No request
+  body" fallback) finally reaches the INFO log. GET/HEAD stay out on purpose:
+  RFC 9110 makes a GET body legal but its semantics are undefined — fix the
+  named quirk, don't invent policy. Bonus fact from the code check:
+  `logRequest` runs once per `exchange()` call, *before* the retry loop, so
+  retries never duplicate the request log.
+- **`void.class` in `processResponse` — FIXED (the epic's only real behavior
+  change).** One line, `|| void.class.equals(returnType)` after the String
+  check: a `void` method with a non-empty body on an expected status now gets
+  the `Void` form's semantics (null, body discarded) instead of reaching the
+  codec. Reality pin: the quirk is **codec-dependent** — default Jackson
+  2.18.2 is lenient (`readValue` of `void.class` → null, so the pin passes
+  even pre-fix), Gson 2.14.0 throws `IllegalArgumentException: cannot handle
+  void`, Moshi 1.15.2 throws `IllegalArgumentException: Cannot serialize
+  abstract class void`. The pin's value is making the pass a library
+  contract, not catching a red.
+- **`Retry-After` HTTP-date — FIXED.** `HttpTemplate.retryAfterSeconds`
+  became `retryAfterDelayMillis` (package-private, the backoff-seam pattern —
+  unit-testable without WireMock): delta-seconds → `seconds × 1000`; HTTP-date
+  (`DateTimeFormatter.RFC_1123_DATE_TIME`, IMF-fixdate) → `max(0, date −
+  now)`, a past date floored at 0; absent / unparseable → null (pure jitter).
+  The seam is unified on milliseconds — `RetryPolicy.nextDelayMillis` now
+  takes `retryAfterMillis` (package-private, no ABI break; the body is a
+  plain `Math.max(bound, retryAfterMillis)`). **asctime** (obsolete per RFC
+  9110, no zone) is deliberately unparsed — new micro-gap. 8th "ADR vs
+  reality" fix: the concept's "null-valued → null (unchanged)" was actually an
+  uncaught NPE (`value.trim()` under `catch NumberFormatException`) —
+  normalized to absent.
+- **Payload-decode retry — LEAVE (reaffirmed with its three arguments):**
+  transient truncation already surfaces as `IOException` and is
+  transport-retried; a decode-failure retry collides with ADR-0008's
+  "classified exactly once" (the loop would need a new failure kind to keep a
+  successful `HandledException` terminal); and 0.x discipline keeps the typed
+  codec exception. Reopening still requires a new ADR (ADR-0003 rule).
+
+User-visible changes, exactly three, all in the direction the documentation
+already implied: PUT bodies appear in the INFO request log; a `void` method
+with a non-empty body no longer throws a codec exception; the HTTP-date form
+of `Retry-After` now bounds the retry wait (only for users who opted into
+retry).
+
+Tests: `HttpTemplateLoggingTest` (7 units — log capture through the public
+`setLogger` seam; on this JDK `System.Logger` is an interface),
+`HttpTemplateRetryAfterTest` (8 units — both forms, past-date floor,
+garbage / asctime / absent → null), `PutMethodTest` end-to-end log capture
+(+1), `GetMethodTest` +2 (`void` / `Void` with a non-empty 200 body → null),
+`CompletableFutureReturnTest` +1 (async pin), `RetryTest` +1 wall-clock
+integration (IMF-fixdate 3 s in the future → elapsed ≥ 2 s),
+`RetryPolicyTest` re-pinned on milliseconds. Suite **239/239** green;
+generated POM dependency-free (0.6.2).
 
 ## Post-0.5.0 shortlist (not scheduled — see ADR-0003)
 
