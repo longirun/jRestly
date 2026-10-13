@@ -257,9 +257,13 @@ faults.
   asctime(3) — the micro-gap's actual scope, corrected there) are now
   parsed: RFC 9110 requires a recipient to accept all three HTTP-date
   formats, and the asctime zone (UTC) is the RFC's own assumption.
-- A payload decode failure on the **final** response (codec exception inside
-  `processResponse`) is not retried — v1 retries transport and status only
-  (reaffirmed, with its three arguments, by ADR-0009 candidate 4).
+- ~~A payload decode failure on the **final** response (codec exception
+  inside `processResponse`) is not retried — v1 retries transport and status
+  only (reaffirmed, with its three arguments, by ADR-0009 candidate 4).~~ —
+  **closed:** per ADR-0011 the loop gained a third failure-kind (decode)
+  behind the distinct opt-in `retryDecodeFailures` — a status-acceptable
+  response whose body the codec cannot bind is retried, and candidate 4's
+  three arguments hold as properties of that design.
 - `InterruptedException` is never retried, even with
   `retryTransport = true` (documented in the `RetryPolicy` and `@Retry`
   Javadoc and the README).

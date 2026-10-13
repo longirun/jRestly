@@ -34,7 +34,10 @@ import java.util.Set;
  *       only when {@link #isRetryDecodeFailures() retryDecodeFailures} is
  *       on (default off — unlike the axes above, the decode probe runs on
  *       every <em>success</em> response, so enabling the general retry
- *       stays a zero change on the success path);</li>
+ *       stays a zero change on the success path); when attempts are
+ *       exhausted on an unbindable body, the final failure is the codec's
+ *       own unchecked exception — the same one the caller sees without
+ *       retry (no new type, no wrapping);</li>
  *   <li>statuses a method declares in {@code @OnError}: only when
  *       {@link #isRetryOnErrorStatuses() retryOnErrorStatuses} is on
  *       (default off — a declared status is a terminal contract by

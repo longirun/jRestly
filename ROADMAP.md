@@ -353,6 +353,10 @@ Key decisions and reality-pins (ADR-0009):
   "classified exactly once" (the loop would need a new failure kind to keep a
   successful `HandledException` terminal); and 0.x discipline keeps the typed
   codec exception. Reopening still requires a new ADR (ADR-0003 rule).
+  **Reopened by ADR-0011** (session #31; section below) — the design there
+  resolves all three arguments (a side-effect-free probe keeps "classified
+  exactly once"; the transport argument is narrowed to *incomplete* bodies;
+  the codec's own exception holds as a property of the design).
 
 User-visible changes, exactly three, all in the direction the documentation
 already implied: PUT bodies appear in the INFO request log; a `void` method
@@ -372,6 +376,69 @@ integration (IMF-fixdate 3 s in the future → elapsed ≥ 2 s),
 `RetryPolicyTest` re-pinned on milliseconds. Suite **242/242** green
 (the epic's own gate was 239/239; ADR-0010 / session #28 replaced the
 single obsolete-form pin with four, one per form); generated POM
+dependency-free (0.6.2).
+
+## Payload-decode retry — COMPLETE ✅ (2026-10-13, unreleased)
+
+> The last substantive feature of the known-gaps backlog — the 0.7.0 cycle
+> now packages a **complete** retry contract (transport + status + decode).
+> Sessions #31–#35 (agent-loop). Design decisions and the test strategy:
+> [`docs/0.7.0/ADR-0011-retry-payload-decode-failure.md`](docs/0.7.0/ADR-0011-retry-payload-decode-failure.md).
+> No version bump / tag — releases paused per maintainer agreement (0.6.2
+> in `build.gradle`).
+
+The payload-decode known gap (ADR-0008, reaffirmed by ADR-0009 candidate 4)
+is reopened by ADR-0011 and closed: a status-acceptable response whose body
+the codec cannot bind — the bytes arrived in full but do not fit the
+declared type — is now the retry loop's **third failure-kind** (transport /
+status / decode), retried under a separate opt-in.
+
+Key decisions (ADR-0011):
+- **A distinct opt-in, `retryDecodeFailures` (default `false`)** — a
+  `RetryPolicy` builder attribute + an `@Retry` attribute, self-contained as
+  the rest of the annotation is. The decode probe runs on every *success*
+  response (the other axes only ever touch a failed one), so the axis does
+  not ride the general enable: "enable retry" stays a zero behavior change
+  on the success path.
+- **"Classified exactly once" preserved by a side-effect-free probe** — the
+  loop runs `probePayloadDecode` (a package-private seam that reproduces
+  *only* the payload-decode branch of `processResponse` — no auth-consumer,
+  no logger, no exception object), not `processResponse` itself; the
+  side-effectful tail still fires exactly once, on the final response. The
+  scope (success path only — `@OnError` and unexpected statuses classify
+  before the payload decode) falls out of the probe's shape, with no
+  special case.
+- **The final exception is the codec's own unchecked exception** — no new
+  class, no wrapping: when attempts are exhausted on an unbindable body,
+  `processResponse` throws exactly what the caller would see without retry.
+  ADR-0009 candidate 4's "0.x discipline" argument now holds as a property
+  of the design, not a reason to leave the gap.
+- **ADR-0009's transport argument sharpened, not contradicted** — transport
+  retry covers *incomplete* bodies (a mid-stream cutoff is an
+  `IOException`); decode retry covers the *complete-but-unbindable*
+  residual. Complementary, not redundant.
+- **Uniform across sync/async** — the async circuit mirrors the sync branch
+  in `attemptAsync` (the probe is a plain synchronous call in the handle
+  callback; the wait runs on `CompletableFuture.delayedExecutor` as for the
+  other axes); `exchangeAsync`'s final exception mapping is untouched.
+
+Public surface: `RetryPolicy`'s `retryDecodeFailures` builder attribute +
+`isRetryDecodeFailures()`, `@Retry.retryDecodeFailures`, and one
+package-private probe seam (test-only). README "Retry with backoff" gained
+the decode-failure paragraph and the feature-bullet mention; the
+`RetryPolicy` / `@Retry` / `ModuleInfo` Javadoc state the decode axis
+inside the sync/async uniformity contract.
+
+Tests: `HttpTemplateDecodeProbeTest` (7 units — the probe's branches with a
+stub `JsonCodec`; `assertSame` on the codec's exception instance: no
+wrapping, no new type, pinned at unit level; the fixture is deliberately
+bare — no logger, no auth consumer — so "side-effect-free" is pinned by the
+fixture's shape), `RetryPolicyTest` +1 (the flag defaults off in every
+static and the builder setter works), `RetryDecodeTest` (6 WireMock
+integrations — malformed-then-good `200` on the sync and async circuits,
+exhaustion typing (the codec's own `UncheckedIOException`), default-off
+zero change, `@OnError` out of scope, "classified exactly once" through an
+auth-capture counter). Suite **256/256** green; generated POM
 dependency-free (0.6.2).
 
 ## Post-0.5.0 shortlist (not scheduled — see ADR-0003)

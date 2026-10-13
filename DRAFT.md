@@ -1,69 +1,14 @@
-# DRAFT: Payload-decode retry — reopen the last substantive known gap (ADR-0011)
+# DRAFT: осознанная пауза — known-gaps-бэклог выработан, следующий ход — 0.7.0-цикл (сессия #35)
 
-> Эпик открыт в сессии #31 (2026-10-13). Вопрос направления из mailbox (#26,
-> 08:20) Антон снял 11:20: предпочтения нет — «исходить из
-> стратегического планирования — что выгоднее для долгосрочного развития».
-> Стратегический разбор (payload-decode = последняя содержательная фича
-> known-gaps-бэклога; 0.7.0-цикл = упаковка/версионирование, а не фича;
-> сделать фичу первой ⇒ 0.7.0-цикл упаковывает **полный** retry-контракт
-> transport + status + decode без остаточных содержательных gap'ов) зафиксирован
-> в **ADR-0011** (`docs/0.7.0/`) — концепт, шаг 1 эпика. Правило ADR-0003
-> «reopening known gap = новый ADR» выполнено: ADR-0011 supersedes «LEAVE» из
-> ADR-0009 кандидат 4. Норма объёма прежняя: один шаг за сессию.
-
-## Эпик: payload-decode retry (ADR-0011)
-
-- [x] **Шаг 1 — концепт ADR-0011** (сессия #31): reopen gap'а, три failure-
-      kind (transport/status/decode), «classified exactly once» сохранён
-      side-effect-free decode-probe (без auth/log/exception), финальное
-      исключение = codec-своё unchecked (без нового класса), отдельный
-      opt-in `retryDecodeFailures` (default off — success-path-двойной-декод
-      не подмешивать в общее enable), транспорт-освещение ADR-0009-аргумента 1
-      (complete-but-unbindable vs incomplete body), 5-шаговый план.
-- [x] **Шаг 2 — `RetryPolicy.retryDecodeFailures` + `@Retry`-атрибут +
-      шов `probePayloadDecode` (package-private) + юниты** (сессия #32):
-      флаг — отдельный opt-in (default off) в `RetryPolicy` (builder +
-      getter + Javadoc-буллет) и `@Retry` (атрибут + Javadoc: success-path,
-      double-decode-cost, `@OnError` вне scope, финальное исключение =
-      codec-своё); probe — чистый предикат decode-ветки `processResponse`,
-      те же предикаты/поля (`onErrorParser`/`isExpectedStatus`/
-      `returnType`), scope вылезает из формы (без special-case),
-      codec-exception — pass-through без обёртки (assertSame-пин);
-      `HttpTemplateDecodeProbeTest` (7 юнитов, stub-кодек, template без
-      logger/auth — side-effect-free зафиксировано формой фикстуры) +
-      `RetryPolicyTest` +1 (default off).
-- [x] **Шаг 3 — sync-wiring** (`executeWithRetries`: decode-ось в final-
-      условии + decode-DEBUG-строка) + интеграции ADR-0011 Aspect 7 сценарии
-      1–5 (200-мусор→200-норма, exhaustion-typing, default-off = zero-change,
-      `@OnError` вне scope, «classified exactly once» — auth-capture один раз)
-      (сессия #33): decode-ось — `!last && isRetryDecodeFailures()` → probe;
-      codec-исключение → DEBUG `decode (<тип>)` + `continue` (строка
-      `scheduleRetry` принимает failure-тип по ADR Aspect 3); `.retryDecode-
-      Failures(...)` в `resolveRetryPolicy()` (атрибут перестал быть dead
-      code); `RetryDecodeTest` (5 интеграций) + `TestAuthProvider`-счётчик
-      capture (replace-семантика скрывала двойной вызов — «exactly once»
-      проверяется только счётчиком) + метод `@Retry(retryDecodeFailures)` +
-      `@SetAuthDetails` в `RetryController`; finding: сценарий 4 —
-      malformed error-body бросает codec-исключение в `@OnError`-ветке
-      `processResponse` ДО `HandledException` (первая строка ADR-0011 Known
-      gaps — закреплена интеграцией: 1 запрос + `UncheckedIOException`);
-      250→255/255.
-- [x] **Шаг 4 — async-tвин** (сессия #34): `attemptAsync` — decode-ось
-      зеркалит sync-ветку (тот же probe в final-условии `!last &&
-      isRetryDecodeFailures()`, тот же DEBUG-формат `decode (<тип>)` через
-      `scheduleAsyncRetry` с задержкой на `delayedExecutor`; probe —
-      обычный синхронный вызов в handle-колбеке (он уже исполняется на
-      завершившем потоке), новых CompletionStage-веток нет); интеграция 6
-      (async 200-мусор→200-норма, `getItemAsync(1L).join()` → значение,
-      2 запроса — фикстуру не добавляли, `TestController.getItemAsync`
-      существует; exhaustion-typing в async не пинится: маппинг
-      `exchangeAsync` не тронут по ADR Aspect 6, typing закреплён sync-
-      интеграцией 2). 255→**256/256**.
-- [ ] **Шаг 5 — Javadoc-контракт** (`RetryPolicy`/`@Retry`/`ModuleInfo`,
-      sync/async uniformity) + README «Retry with backoff» (decode-параграф)
-      + **финальный gate + дистилляция в ROADMAP** (ADR-0008 Known gaps
-      payload-decode-строка зачёркнута, ADR-0009 кандидат 4 аннотирован
-      «reopened by ADR-0011»).
+> Эпик **payload-decode retry (ADR-0011)** закрыт в сессии #35 (5/5 шагов,
+> дистиллят — в ROADMAP, раздел «Payload-decode retry — COMPLETE ✅»). После
+> него в known-gaps-бэклоге содержательных фич не осталось: ADR-0011-
+> стратегия («фича первой, цикл потом») выполнена — 0.7.0-цикл теперь
+> упаковывает **полный** retry-контракт (transport + status + decode) без
+> остаточных содержательных gap'ов. Эпик 0.7.0-цикла пока не открыт —
+> пауза: один эпик в DRAFT, и он будет эпиком упаковки (release notes,
+> версия 0.7.0, тег — по решению Антона; «версии — по нашему усмотрению»),
+> не изобретённым на ходу.
 
 ## Кандидаты known gaps (триаж — остальное, не эпик)
 
@@ -77,12 +22,13 @@
       для status-retries, backoff-шов package-private. **Доки-аудит (сессия #29):
       свёрстано с реальностью, единообразно** — всё задокументировано
       (`RetryPolicy`/`@Retry` Javadoc + README; указатели в ADR-0008).
-- **Контур следующего цикла** — `docs/0.7.0/` несёт ADR-0007/0008/0009/0010
-      (**+ ADR-0011**); в 0.6.2 без тега накопились пять unreleased-наборов
-      (CompletableFuture, ISO option A, Gson/Moshi, Retry with backoff, 0.x
-      polish) — **плюс этот эпик**. 0.7.0-цикл/релиз — после payload-decode
-      (стратегическое решение ADR-0011: фича первой, цикл упаковывает полный
-      retry-контракт).
+      Payload-decode-строка **закрыта** (ADR-0011, сессии #31–#35).
+- **Контур следующего цикла (живой кандидат №1)** — `docs/0.7.0/` несёт
+      ADR-0007/0008/0009/0010/0011; в 0.6.2 без тега накопились **шесть**
+      unreleased-наборов (CompletableFuture, ISO option A, Gson/Moshi, Retry
+      with backoff, 0.x polish, payload-decode). 0.7.0-цикл/релиз — следующий
+      ход по ADR-0011-стратегии (упаковка, не фича: release notes, версия;
+      контура шагов пока нет — откроется эпиком, как открывались остальные).
 
 ## Постоянная нить (не эпик, не чекбокс)
 
@@ -96,12 +42,16 @@
       реферит post-gate работу (прецедент сессии #30: 0.x-polish-секция 8→11
       units и 239→242, Retry-секция RetryTest 10→11), а gate-снимок с
       задокументированной дельтой («+1», «+5») — оставляют.
+- **Javadoc-контракт — асимметрия поверхностей** (сессия #35): одна и та же
+      контракт-деталь (финальное исключение decode-оси = codec-своё unchecked)
+      была в Javadoc `@Retry` (атрибут), но не в `RetryPolicy` — при
+      «сверить по тексту»-шаге сверять **каждую** поверхность отдельно и
+      выравнивать: контракт живёт и на value-классе, и на аннотации.
 
 Пометки из mailbox (актуальные на 2026-10-13):
-- **Вопрос направления (#26) — Антон ответил 11:20:** предпочтения нет,
-  исходить из стратегического планирования (что выгоднее долгосрочно). Решение
-  (payload-decode первой, 0.7.0-цикл после) зафиксировано в ADR-0011 + это
-  DRAFT.
+- **Вопрос направления (#26) — закрыт** (Антон, 11:20: предпочтения нет,
+  стратегическое планирование; решение зафиксировано в ADR-0011:
+  payload-decode первой — и та закрыта; следующий ход — 0.7.0-цикл).
 - **Версии — по нашему усмотрению** (сейчас 0.6.2), **теги не вешать** (теги =
   релизные сборки, которые не должны уйти в релизы/спутаться с главным
   релизом; работаем в `agent-loop`, наружу не мержим).
@@ -112,5 +62,5 @@
 Правила работы: один эпик в DRAFT.md, шаги — чекбоксы `[ ]`; закрыл →
 дистиллируй в ROADMAP.md и зачисти это место. (Пауза-триаж — легитимное
 состояние DRAFT: эпик не изобретаем, пока мейнтейнер не выбрал направление или
-триаж сам не покажет очевидного кандидата — тут направление выбрано:
-стратегический разбор ADR-0011 → payload-decode.)
+триаж сам не покажет очевидного кандидата — тут кандидат очевиден по
+ADR-0011-стратегии: 0.7.0-цикл; но открытие его — отдельный шаг.)

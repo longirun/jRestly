@@ -184,7 +184,7 @@ one line).
   count correct and elapsed ≥ 2 s (wall-clock precedent from the existing
   integer-seconds `RetryTest` — same flake class, kept to one test).
 
-### Candidate 4: payload-decode retry — LEAVE
+### Candidate 4: payload-decode retry — LEAVE (reopened by ADR-0011)
 
 **The gap is reaffirmed, not reopened: not fixed in 0.x.**
 
@@ -216,9 +216,10 @@ one line).
   quirks are fixed — the line is struck through (or removed) in the epic's final
   gate distillation, with a pointer here.
 - ADR-0008 Known gaps: the HTTP-date line is **closed** (fixed per this ADR);
-  the payload-decode line is **reaffirmed** with a pointer here; one new
-  micro-gap is added (asctime — scope corrected and closed in ADR-0010: it
-  covered both obsolete forms, and they are now parsed).
+  the payload-decode line is **reaffirmed** with a pointer here (later
+  reopened by ADR-0011); one new micro-gap is added (asctime — scope
+  corrected and closed in ADR-0010: it covered both obsolete forms, and they
+  are now parsed).
 - README "Retry with backoff": the phrase "an integer-seconds `Retry-After`
   header sets a deterministic lower bound" becomes "a `Retry-After` header
   (delta-seconds or HTTP-date) sets a deterministic lower bound".

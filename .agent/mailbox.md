@@ -33,23 +33,6 @@
 Антон: Странные имена у коммитов в гитхабе - по идее они должны быть краткими, а они дублируют ченжлог. 
 ПС - поддерживай mailbox в чистом состоянии.
 ---
-[2026-10-13 15:0x] Агент (сессия #33): **Payload-decode — шаг 3:
-sync-wiring + интеграции 1–5 (ADR-0011)** — decode-ось в
-`executeWithRetries` (probe в final-условии, DEBUG `decode (<тип>)`) +
-строка `.retryDecodeFailures(...)` в `resolveRetryPolicy()` (атрибут
-аннотации перестал быть dead code). `RetryDecodeTest` (5 интеграций):
-200-мусор→200-норма (2 запроса), exhaustion → codec-своё
-`UncheckedIOException` (без нового класса), default-off → 1 запрос
-(zero change на success-path), `@OnError` 429 + malformed error-body →
-1 запрос — находка: декод error-body бросает в `@OnError`-ветке
-`processResponse` **до** `HandledException` (ровно первая строка Known
-gaps ADR-0011, закреплена), «classified exactly once» — auth-capture
-ровно один раз (счётчик в `TestAuthProvider`: replace-семантика
-`getAuthHeaders` скрывала бы двойной вызов). 250→**255/255**, POM без
-зависимостей (0.6.2). Следующий шаг (4) — async-твин + интеграция 6.
-И про коммиты — понял, с этого коммита краткий subject, без
-дублирования ченджлога.
----
 [2026-10-13 16:2x] Агент (сессия #34): **Payload-decode — шаг 4:
 async-твин** — decode-ось в `attemptAsync` зеркалит sync-ветку: тот же
 probe в final-условии (`!last && isRetryDecodeFailures()`), тот же
@@ -62,3 +45,24 @@ async 200-мусор→200-норма, `getItemAsync(1L).join()` → значе�
 не тронут по ADR Aspect 6, typing закреплён sync-интеграцией 2).
 255→**256/256**, POM без зависимостей (0.6.2). Остался шаг 5 —
 Javadoc-контракт + README + финальный gate + дистилляция.
+---
+[2026-10-13 17:3x] Агент (сессия #35): **Payload-decode — шаг 5:
+Javadoc-контракт + README + gate + дистилляция — ЭПИК ЗАКРЫТ (5/5)**.
+ADR-0011 реализован целиком: третий failure-kind (decode) за отдельным
+оптином `retryDecodeFailures` (default off), side-effect-free probe держит
+«classified exactly once», финальное исключение — codec-своё unchecked
+(без нового класса), sync/async uniformity. Поверхность Javadoc
+(`RetryPolicy`/`@Retry`/`ModuleInfo`) была собрана ещё в #22/#32/#34 —
+шаг 5 сверил её по тексту и достроил одно место: Javadoc `RetryPolicy`
+получил строку про финальное исключение decode-оси (в атрибуте `@Retry`
+она уже была — асимметрия двух поверхностей одного контракта). README
+«Retry with backoff» — decode-параграф (отдельный оптин, scope
+success-path, двойной декод на финале, codec-своё исключение, uniformity)
++ упоминание в фиче-буллете. ADR-0008 Known gaps: payload-decode-строка
+закрыта (указатель на ADR-0011); ADR-0009 к4: «LEAVE» аннотирован
+«reopened by ADR-0011» (+ Consequences-указатель). ROADMAP — новый
+раздел «Payload-decode retry — COMPLETE ✅» + пометка reopen в 0.x-
+polish-секции. 256/256, POM без зависимостей (0.6.2). Known-gaps-бэклог
+выработан — по ADR-0011-стратегии следующий ход: 0.7.0-цикл (упаковка
+шести unreleased-наборов: release notes + версия 0.7.0, тег — на ваше
+усмотрение), DRAFT — осознанная пауза с этим кандидатом.
