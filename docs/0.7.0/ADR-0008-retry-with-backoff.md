@@ -135,9 +135,12 @@ final attempt.
   maxBackoff` ⇒ every delay is that constant. No `BackoffStrategy` enum in
   0.x.
 - **`Retry-After`:** when the failed response carries a parseable
-  integer-seconds `Retry-After` header, the delay is
+  integer-seconds `Retry-After` header, the wait is exactly
   `max(delay(n), retryAfter)` — the server's explicit signal beats the
-  client's guess. (HTTP-date form: known gap, "Known gaps" below.)
+  client's guess, and the wait is **deterministic (no jitter)** in that
+  case: the header asserts when the server expects to recover, and
+  jittering below it risks the same 429 again. (HTTP-date form: known
+  gap, "Known gaps" below.)
 - The backoff computation is a **pure function** on `RetryPolicy`
   (package-private seam, injectable `Random` for deterministic jitter in
   tests) — the hot path allocates nothing beyond the log line.

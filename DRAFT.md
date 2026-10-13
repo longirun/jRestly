@@ -24,10 +24,17 @@
       per-method замена; кривая — exponential с cap + full jitter, fixed —
       частный случай (равные границы); идемпотентность — по RFC 9110:
       GET/PUT/DELETE ретраятся, POST/PATCH — через `nonIdempotent`.
-- [ ] Код: `RetryPolicy` (immutable + builder + валидация; чистая backoff-
+- [x] Код: `RetryPolicy` (immutable + builder + валидация; чистая backoff-
       математика: exponential с cap, full jitter с injectable `Random`,
       `Retry-After` max()-правило; `defaults()` / `off()`) +
-      `RetryPolicyTest` (юнит, без WireMock)
+      `RetryPolicyTest` (юнит, без WireMock). Сделано в сессии #18 (18→198
+      тестов, 183→198, +15): шов `nextDelayMillis(attempt,
+      retryAfterSeconds, random)` — package-private, Random приходит
+      аргументом (policy без состояний); Retry-After — детерминированный
+      `max(bound, retryAfter)` без jitter (ADR Aspect 4 уточнён);
+      валидация: `maxAttempts ≥ 1`, backoff'ы non-negative и
+      `initial ≤ max`, статусы в `[100, 599]`, коллекция копируется
+      (LinkedHashSet → unmodifiable). `isEnabled()` — предикат для контура.
 - [ ] Код: sync-retry-контур в `HttpTemplate` (транспорт + статусы,
       `@OnError`-терминальность по умолчанию, `Retry-After`, DEBUG-лог) +
       клиентский уровень (default method в `ModuleInfo`, `retry(...)` в
