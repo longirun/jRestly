@@ -1,9 +1,16 @@
 package ru.jrestly.http;
 
+import java.io.Serial;
 import java.util.Collections;
 import java.util.List;
 
+// Not part of the wire contract: details is an arbitrary user DTO, and the
+// Header record is not Serializable (ADR-0013)
+@SuppressWarnings("serial")
 public class HandledException extends RuntimeException {
+
+  @Serial
+  private static final long serialVersionUID = 1L;
 
   private final Object details;
   private final int statusCode;
@@ -19,8 +26,8 @@ public class HandledException extends RuntimeException {
         : Collections.unmodifiableList(responseHeaders);
   }
 
+  @SuppressWarnings("unchecked")
   public <T> T getDetails() {
-      //noinspection unchecked
       return (T) details;
   }
 

@@ -31,17 +31,17 @@ dependencies {
 }
 
 java {
-    sourceCompatibility = JavaVersion.VERSION_21
-    targetCompatibility = JavaVersion.VERSION_21
     withSourcesJar()
     withJavadocJar()
 }
 
 compileJava {
+    options.release = 21
     options.compilerArgs << '-parameters'
 }
 
 compileTestJava {
+    options.release = 21
     // @PathVariable name-fallback reads parameter names; tests exercise that branch too
     options.compilerArgs << '-parameters'
 }

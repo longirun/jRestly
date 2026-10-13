@@ -21,6 +21,9 @@ public abstract class AbstractHttpClient {
     protected ModuleInfo moduleInfo;
     protected HttpClient httpClient;
 
+    // this escapes by design: the protected createConnection() hook is API,
+    // and overriding subclasses need the live client right from the constructor (ADR-0013)
+    @SuppressWarnings("this-escape")
     public AbstractHttpClient(ModuleInfo moduleInfo) {
         this.moduleInfo = moduleInfo;
 
@@ -60,7 +63,7 @@ public abstract class AbstractHttpClient {
 
         return (Proxy) Proxy.newProxyInstance(
                 getClassLoader(),
-                new Class[] {classInterface},
+                new Class<?>[] {classInterface},
                 (proxy, method, args) -> {
                     if (isLoginInBackgroundNeeded(method)) {
                         login();

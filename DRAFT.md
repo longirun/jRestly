@@ -1,4 +1,4 @@
-# DRAFT: warnings и модернизация (ADR-0013) — аудит закрыт, шаги 2–6 впереди (сессия #41)
+# DRAFT: warnings и модернизация (ADR-0013) — шаг 2 закрыт, впереди 3–6 (сессия #42)
 
 > Свободный ход после 0.7.0-цикла: кандидат №1 (warnings/рефакторинг-аудит,
 > fallback с #30) открыт как эпик. Сессия #41 — сам аудит (кандидат так и
@@ -17,12 +17,14 @@
       решения D1–D4 (каждый warning чинится; suppress — точечный, с
       рационалом; javadoc — все 100 + gate `-Xdoclint=all`/`-Werror` в
       build.gradle; `release = 21`; hot path — чист).
-- [ ] Шаг 2 — main + build: 5 sites (serial — `@Serial` UID +
-      class-`@SuppressWarnings` на трёх exception'ах; rawtypes →
+- [x] Шаг 2 — main + build (сессия #42): 5 sites (serial — `@Serial` UID +
+      class-`@SuppressWarnings` с рационалом на трёх exception'ах; rawtypes →
       `Class<?>[]`; this-escape — точечный suppress с рационалом на
-      `createConnection`; `//noinspection` → `@SuppressWarnings` в
-      `HandledException.getDetails`) + `options.release = 21` вместо
-      source/targetCompatibility.
+      КОНСТРУКТОРЕ (escape site: javac стучит в call site, не в вызываемый
+      hook — уточнение зафиксировано в ADR-0013); `//noinspection` →
+      `@SuppressWarnings` в `HandledException.getDetails`) +
+      `options.release = 21` вместо source/targetCompatibility. Валидация:
+      `-Xlint:all` → 0 в main (было 9), 256/256, POM 0 deps.
 - [ ] Шаг 3 — test: generic-override `TestModuleInfo.getEnvironment`
       (+suppress); 2× `causeOf` → один общий helper в
       `ru.jrestly.fixtures` (+suppress) — лоск тестов.
@@ -84,12 +86,15 @@
   стратегическое планирование; решение зафиксировано в ADR-0011:
   payload-decode первой — и та закрыта; следующий ход — 0.7.0-цикл —
   **закрыт в сессии #39**, дистиллят в ROADMAP).
-- **Форма changelog (Антон, 2026-10-13 ~21:5x) — отвечено в #40, ждёт
-      подтверждения:** entry 0.7.0 читался как мини-документация (кодовых
-      примеров не было, но механика дублировала README/Javadoc) —
-      переписан в чистый change list с указателями (детали уже жили в
-      README/Javadoc/ADR-0007…0011 — changelog навигатор, не зеркало);
-      entry unpublished — если форма не та, дёшево поправить.
+- **Форма changelog — ЗАКРЫТО (Антон, 2026-10-13):** «Ченжлогом доволен» +
+      «больше комментариев нет»; обмен удалён из mailbox по гигиене
+      (сессия #42). Entry 0.7.0 — чистый change list с указателями
+      (changelog навигатор, не зеркало); entry unpublished.
+- **«Больше комментариев нет — продолжай сам» (Антон, 2026-10-13):**
+      живые нитки разряжены: changelog — закрыта; `-Werror` (вопрос #41) —
+      решение за агентом: gate с `-Werror` (javadocJar так или иначе в
+      каждом build, cost 0; выгода — перманентность; снять — одна строка).
+      Дальше — автономный ход до новых вводных.
 - **Версионирование (Антон, 2026-10-13) — применено в шаге 3 (#38):**
       версия 0.7.0 в `build.gradle` + названа в коммит-сообщении, гит-тега
       нет (JitPack-координаты — v0.6.1 до тега). Работаем в `agent-loop`,

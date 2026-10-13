@@ -1,5 +1,6 @@
 package ru.jrestly.http;
 
+import java.io.Serial;
 import java.util.List;
 
 /**
@@ -11,7 +12,12 @@ import java.util.List;
  * an unexpected status has no body contract by definition, so it is exposed
  * as a raw string via {@link #getRawBody()}.</p>
  */
+// Not part of the wire contract: the payload is a diagnostic raw string (ADR-0013)
+@SuppressWarnings("serial")
 public class UnexpectedStatusException extends HandledException {
+
+    @Serial
+    private static final long serialVersionUID = 1L;
 
     private final String rawBody;
 

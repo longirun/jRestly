@@ -103,7 +103,10 @@ blanket, and always carries a one-line rationale.**
   protected method on a public abstract class is API — external subclasses
   exist by the class's own contract); a targeted
   `@SuppressWarnings("this-escape")` with the rationale (constructor-time
-  connection creation is the hook's purpose).
+  connection creation is the hook's purpose). Session #42 (the fix step):
+  javac reports the warning at the **escape site** — the constructor's
+  `createConnection()` call — not inside the called hook, so the suppression
+  lands on the constructor; the hook stays annotation-free.
 - **`[unchecked]` (`HandledException.getDetails`):** the IDE-only
   `//noinspection` is replaced by the javac-visible
   `@SuppressWarnings("unchecked")` (house idiom — the same shape as
@@ -121,6 +124,13 @@ options.addBooleanOption('Werror', true) }`. `javadocJar` already runs in
 every `build`, so the gate adds no new step — it turns today's noise into a
 contract: every new public/protected member ships with a comment. The javadoc
 task covers main sources only; test sources are out of scope.
+
+Session #42 — the `-Werror` question (asked in the mailbox, session #41) was
+delegated back to the agent ("continue as you see fit"). Decision: **keep
+`-Werror`**. Rationale: `javadocJar` already runs in every `build`, so the
+gate costs no extra step; the payoff is permanence — a public member without
+a comment fails the build instead of decaying back into noise. Reverting is
+one line in `build.gradle` if it ever proves too strict for 0.x.
 
 **D3 — Java 21 idioms: no legacy fragments exist; two build-level
 modernizations instead.**
