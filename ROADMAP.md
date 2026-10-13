@@ -441,6 +441,52 @@ zero change, `@OnError` out of scope, "classified exactly once" through an
 auth-capture counter). Suite **256/256** green; generated POM
 dependency-free (0.6.2).
 
+## Cycle 0.7.0 — COMPLETE ✅ (2026-10-13, unreleased)
+
+> Source of truth (cycle shape, versioning decisions, release-notes form, gates, status):
+> [`docs/0.7.0/ADR-0012-release-0.7.0-cycle.md`](docs/0.7.0/ADR-0012-release-0.7.0-cycle.md).
+> Sessions #36–#39 (agent-loop). The cycle packaged the six unreleased feature
+> sets accumulated since `v0.6.1` — scope is packaging, not features
+> (ADR-0012 Decision 4): no new feature, no refactor, no README change (the
+> install blocks and the status line stay at `v0.6.1`, the last tag).
+
+Contents — the six `COMPLETE ✅ (unreleased)` sections above; each is the
+source of truth for its set (linked, not restated):
+
+1. [CompletableFuture return type](#completablefuture-return-type--complete--2026-10-12-unreleased)
+2. [java.time ISO-8601 wire format (option A)](#java-time-iso-8601-wire-format-option-a--complete--2026-10-12-unreleased)
+3. [Gson / Moshi codec adapters](#gson--moshi-codec-adapters--complete--2026-10-13-unreleased)
+4. [Retry with backoff](#retry-with-backoff--complete--2026-10-13-unreleased)
+5. [0.x polish — carry-over quirks and accepted known gaps](#0x-polish--carry-over-quirks-and-accepted-known-gaps--complete--2026-10-13-unreleased)
+6. [Payload-decode retry](#payload-decode-retry--complete--2026-10-13-unreleased)
+
+Versioning (ADR-0012 Decisions 1–2): `0.6.2` → **0.7.0** — a semver *minor*:
+new additive public surface (the codec adapters, `RetryPolicy` / `@Retry`,
+`JacksonCodec.LocalDateTimeFormat`, `CompletableFuture<T>` return types) with
+no breaking or behavior change (retry off by default, ISO opt-in). Mechanics
+per the maintainer: the bump in `build.gradle` on the gate step (session
+#38), the version named in the release commit message, **no git tag** — the
+0.6.2 "unpublished version" pattern; the tag-based JitPack coordinates stay
+at `v0.6.1` until the maintainer tags.
+
+Release notes (ADR-0012 Decision 3): the project's first
+[`CHANGELOG.md`](CHANGELOG.md) at the root — the `0.7.0` entry (unpublished)
+derived from the six sections (user-facing changes, not design rationale);
+pre-0.7.0 history stays in this ROADMAP (changelog-header note, no backfill).
+
+Cycle shape (ADR-0012 Decision 5): one epic, four steps (sessions #36–#39):
+concept (ADR-0012 + the DRAFT epic) → `CHANGELOG.md` (session #37) → bump
+`0.7.0` + gate (session #38) → distillation (this section) + DRAFT cleanup
+(session #39). Gates (session #38): `./gradlew test --rerun` **256/256**
+(36 classes); generated POM **0.7.0**, 0 `<dependency>` (zero-dep preserved).
+
+After the cycle: the known-gaps backlog is exhausted — ADR-0011's "feature
+first, cycle after" closed the last substantive gap, so 0.7.0 ships a
+complete retry contract (transport + status + decode) with no residual
+substantive gap. Next candidates: the warnings / refactor audit (fallback
+#1, deferred since session #30); ADR number **0013** is free (the next
+cycle's `docs/` folder).
+
 ## Post-0.5.0 shortlist (not scheduled — see ADR-0003)
 
 - ~~Retry with backoff (integrates with `@OnError` semantics)~~ — done 2026-10-13, section above
