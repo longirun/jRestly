@@ -135,12 +135,12 @@ final attempt.
   maxBackoff` ⇒ every delay is that constant. No `BackoffStrategy` enum in
   0.x.
 - **`Retry-After`:** when the failed response carries a parseable
-  integer-seconds `Retry-After` header, the wait is exactly
+  `Retry-After` header — delta-seconds or HTTP-date (the HTTP-date form
+  is honored since ADR-0009 candidate 3) — the wait is exactly
   `max(delay(n), retryAfter)` — the server's explicit signal beats the
   client's guess, and the wait is **deterministic (no jitter)** in that
   case: the header asserts when the server expects to recover, and
-  jittering below it risks the same 429 again. (HTTP-date form: known
-  gap, "Known gaps" below.)
+  jittering below it risks the same 429 again.
 - The backoff computation is a **pure function** on `RetryPolicy`
   (package-private seam, injectable `Random` for deterministic jitter in
   tests) — the hot path allocates nothing beyond the log line.
@@ -248,10 +248,14 @@ faults.
 
 ## Known gaps (accepted)
 
-- `Retry-After` HTTP-date form (RFC 9110 allows it) — v1 honors integer
-  seconds only.
+- ~~`Retry-After` HTTP-date form (RFC 9110 allows it) — v1 honors integer
+  seconds only.~~ — **closed:** fixed per ADR-0009 candidate 3 (HTTP-date /
+  IMF-fixdate → `max(0, date − now)`; the seam unified on milliseconds).
+- The **asctime** form of `Retry-After` is not parsed (obsolete per RFC 9110,
+  no zone — treated as absent, pure jitter) — micro-gap from ADR-0009.
 - A payload decode failure on the **final** response (codec exception inside
-  `processResponse`) is not retried — v1 retries transport and status only.
+  `processResponse`) is not retried — v1 retries transport and status only
+  (reaffirmed, with its three arguments, by ADR-0009 candidate 4).
 - `InterruptedException` is never retried, even with
   `retryTransport = true` (documented in Javadoc).
 - No circuit breaker, no per-status attempt caps, no metrics —

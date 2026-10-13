@@ -152,8 +152,9 @@ one line).
   - `HttpTemplate.retryAfterSeconds(response)` becomes
     `retryAfterDelayMillis(response)`: integer form → `seconds × 1000`
     (unchanged, still deterministic); HTTP-date → `max(0, dateInstant −
-    nowInstant)`; absent / null-valued / unparseable → `null` (unchanged:
-    pure jitter);
+    nowInstant)`; absent / null-valued / unparseable → `null` (pure
+    jitter; the null-valued corner used to NPE on `value.trim()` — now
+    normalized to absent);
   - `RetryPolicy.nextDelayMillis(failedAttempt, Long retryAfterMillis,
     random)` — the body is unchanged (`Math.max(bound, retryAfterMillis)` when
     non-null), only the parameter's name, unit and Javadoc move. The seam is

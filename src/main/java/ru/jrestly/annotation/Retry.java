@@ -34,9 +34,9 @@ import java.lang.annotation.Target;
  * The wait between attempts is exponential with a cap and full jitter:
  * after the {@code n}-th failed attempt the bound grows as
  * {@code min(maxBackoffMs, initialBackoffMs · 2^(n-1))} and the actual
- * wait is a uniform draw in {@code [0, bound]}. An integer-seconds
- * {@code Retry-After} header on a failed response sets a deterministic
- * lower bound on that wait.
+ * wait is a uniform draw in {@code [0, bound]}. A parseable
+ * {@code Retry-After} header on a failed response (delta-seconds or
+ * HTTP-date) sets a deterministic lower bound on that wait.
  *
  * <p>The declared policy applies to synchronous and
  * {@code CompletableFuture}-returning methods alike: the same retry

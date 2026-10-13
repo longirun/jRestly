@@ -11,6 +11,9 @@ import ru.jrestly.http.RetryPolicy;
 import ru.jrestly.http.UnexpectedStatusException;
 
 import java.time.Duration;
+import java.time.ZoneOffset;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.*;
 import static com.github.tomakehurst.wiremock.stubbing.Scenario.STARTED;
@@ -226,6 +229,32 @@ class RetryTest extends BaseWireMockTest {
         assertEquals(1L, item.id());
         // the computed bound is 10 ms, the header asks for 1 s — the wall clock honors the header
         assertTrue(elapsedMs >= 1_000, "expected >= 1000 ms, got " + elapsedMs + " ms");
+        verify(2, getRequestedFor(urlEqualTo("/api/server-error")));
+    }
+
+    @Test
+    @DisplayName("Retry-After HTTP-date: an IMF-fixdate ~3 s in the future raises the wait (ADR-0009)")
+    void retryAfterHttpDateRaisesTheWaitDeterministically() {
+        // an absolute date a few seconds ahead — the RFC 1123 / IMF-fixdate form
+        String httpDate = ZonedDateTime.now(ZoneOffset.UTC).plusSeconds(3)
+                .format(DateTimeFormatter.RFC_1123_DATE_TIME);
+        stubFor(get(urlEqualTo("/api/server-error")).inScenario("retry-after-date")
+                .whenScenarioStateIs(STARTED)
+                .willReturn(aResponse().withStatus(429).withHeader("Retry-After", httpDate))
+                .willSetStateTo("recovered"));
+        stubFor(get(urlEqualTo("/api/server-error")).inScenario("retry-after-date")
+                .whenScenarioStateIs("recovered")
+                .willReturn(aResponse().withStatus(200)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody(ITEM_JSON)));
+
+        long start = System.nanoTime();
+        TestDto item = with(smallBackoff().maxAttempts(2).build()).getServerError();
+        long elapsedMs = (System.nanoTime() - start) / 1_000_000;
+
+        assertEquals(1L, item.id());
+        // the computed bound is 10 ms, the date asks for ~3 s — the wall clock honors the header
+        assertTrue(elapsedMs >= 2_000, "expected >= 2000 ms, got " + elapsedMs + " ms");
         verify(2, getRequestedFor(urlEqualTo("/api/server-error")));
     }
 }

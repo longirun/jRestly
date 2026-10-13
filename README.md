@@ -144,7 +144,7 @@ public interface ItemApi {
 
 What gets retried: transport failures (timeouts, connection resets) and responses whose status is in the retryable set (default `{408, 429, 500, 502, 503, 504}`). A status a method declares in `@OnError.statuses` is a **terminal contract** by default — the loop stops and the typed `HandledException` is produced; opt the declared statuses into retry with `retryOnErrorStatuses(true)` / `onErrorStatuses = true`. POST and PATCH are not retried by default (RFC 9110: the retry happens after the request was sent, so a lost response on a successful POST is a classic double-submit); opt in with `retryNonIdempotent(true)` / `nonIdempotent = true` where the endpoint tolerates duplicates.
 
-The wait between attempts grows exponentially (200 ms → 5 s cap by default) with full jitter; an integer-seconds `Retry-After` header sets a deterministic lower bound on the wait. The final response is classified exactly once — auth capture, logging and `@OnError` decoding never run on a discarded attempt. Synchronous and `CompletableFuture`-returning methods retry identically; on the async circuit the wait runs on `CompletableFuture.delayedExecutor` and does not park the calling thread.
+The wait between attempts grows exponentially (200 ms → 5 s cap by default) with full jitter; a `Retry-After` header (delta-seconds or HTTP-date) sets a deterministic lower bound on the wait. The final response is classified exactly once — auth capture, logging and `@OnError` decoding never run on a discarded attempt. Synchronous and `CompletableFuture`-returning methods retry identically; on the async circuit the wait runs on `CompletableFuture.delayedExecutor` and does not park the calling thread.
 
 ## Multipart uploads
 

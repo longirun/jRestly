@@ -12,6 +12,9 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
@@ -46,6 +49,11 @@ public class HttpTemplate {
     // on every exchange.
     private static final Set<HttpMethod> BODY_LOGGING_METHODS =
             Set.of(HttpMethod.POST, HttpMethod.PATCH, HttpMethod.DELETE, HttpMethod.PUT);
+
+    // ADR-0009 candidate 3: the HTTP-date form of Retry-After (IMF-fixdate +
+    // rfc1123, the two live RFC 9110 date grammars); asctime is obsolete and
+    // not parsed
+    private static final DateTimeFormatter RETRY_AFTER_HTTP_DATE = DateTimeFormatter.RFC_1123_DATE_TIME;
 
     private System.Logger logger;
 
@@ -242,9 +250,10 @@ public class HttpTemplate {
 
     // One DEBUG line per failed attempt, then the wait: full jitter over
     // [0, bound], or the deterministic max(bound, Retry-After) when the
-    // failed response carries the integer-seconds header (ADR-0008 Aspect 4)
+    // failed response carries a parseable Retry-After header, delta-seconds
+    // or HTTP-date (ADR-0008 Aspect 4, ADR-0009 candidate 3)
     private void scheduleRetry(int attempt, int maxAttempts, String failure, WireResponse response) throws InterruptedException {
-        long delayMillis = retryPolicy.nextDelayMillis(attempt, retryAfterSeconds(response), ThreadLocalRandom.current());
+        long delayMillis = retryPolicy.nextDelayMillis(attempt, retryAfterDelayMillis(response), ThreadLocalRandom.current());
         logger.log(System.Logger.Level.DEBUG,
                 "Attempt " + attempt + "/" + maxAttempts + " failed: " + failure + " — retrying in " + delayMillis + " ms");
         if (delayMillis > 0) {
@@ -275,22 +284,45 @@ public class HttpTemplate {
         return method == HttpMethod.POST || method == HttpMethod.PATCH;
     }
 
-    // The integer-seconds form of Retry-After only (the HTTP-date form is a
-    // known gap, ADR-0008); absent, null-valued, or unparseable — null
-    private static Long retryAfterSeconds(WireResponse response) {
+    // Both RFC 9110 forms of Retry-After (ADR-0009 candidate 3): delta-seconds
+    // -> seconds x 1000 (as before, in milliseconds); HTTP-date
+    // (IMF-fixdate / RFC 1123) -> max(0, date - now) — a past date means "you
+    // may have retried already", the floor mirrors the integer form, where a
+    // small value never shrinks the max(bound, ...) below the bound. Absent,
+    // null-valued, or unparseable — null (pure jitter). The obsolete asctime
+    // form is deliberately not parsed (no zone; a micro-gap, ADR-0009).
+    // Package-private seam — the unit tests exercise the parser directly.
+    static Long retryAfterDelayMillis(WireResponse response) {
         if (response == null) {
             return null;
         }
         for (Header header : response.headers()) {
             if (header.name() != null && header.name().equalsIgnoreCase("Retry-After")) {
-                try {
-                    return Long.valueOf(header.value().trim());
-                } catch (NumberFormatException e) {
-                    return null;
-                }
+                return parseRetryAfter(header.value());
             }
         }
         return null;
+    }
+
+    private static Long parseRetryAfter(String raw) {
+        if (raw == null) {
+            return null;
+        }
+        String value = raw.trim();
+        if (value.isEmpty()) {
+            return null;
+        }
+        try {
+            return Long.valueOf(value) * 1_000L;
+        } catch (NumberFormatException e) {
+            // not delta-seconds — try the HTTP-date form below
+        }
+        try {
+            long dateMillis = ZonedDateTime.parse(value, RETRY_AFTER_HTTP_DATE).toInstant().toEpochMilli();
+            return Math.max(0L, dateMillis - System.currentTimeMillis());
+        } catch (DateTimeParseException e) {
+            return null;
+        }
     }
 
     // Async twin: same hop semantics, chained over sendAsync
@@ -350,7 +382,7 @@ public class HttpTemplate {
     // skips the scheduler call, as the sync twin skips Thread.sleep(0)
     private CompletableFuture<WireResponse> scheduleAsyncRetry(WireRequest request, int attempt, int maxAttempts,
                                                                String failure, WireResponse response, int hopsLeft) {
-        long delayMillis = retryPolicy.nextDelayMillis(attempt, retryAfterSeconds(response), ThreadLocalRandom.current());
+        long delayMillis = retryPolicy.nextDelayMillis(attempt, retryAfterDelayMillis(response), ThreadLocalRandom.current());
         logger.log(System.Logger.Level.DEBUG,
                 "Attempt " + attempt + "/" + maxAttempts + " failed: " + failure + " — retrying in " + delayMillis + " ms");
         if (delayMillis <= 0) {

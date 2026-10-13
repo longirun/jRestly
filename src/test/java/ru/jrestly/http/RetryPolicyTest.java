@@ -230,13 +230,13 @@ class RetryPolicyTest {
     void retryAfterRaisesTheWaitDeterministically() {
         RetryPolicy policy = RetryPolicy.defaults();
 
-        // bound 200 ms on attempt 1, the server asks for 1 s
-        assertEquals(1000, policy.nextDelayMillis(1, 1L, maxDraw()));
-        assertEquals(1000, policy.nextDelayMillis(1, 1L, minDraw()));
+        // bound 200 ms on attempt 1, the server asks for 1 s (the seam is in milliseconds, ADR-0009)
+        assertEquals(1000, policy.nextDelayMillis(1, 1000L, maxDraw()));
+        assertEquals(1000, policy.nextDelayMillis(1, 1000L, minDraw()));
 
         // bound already at the 5 s cap, a 3 s header must not lower it
-        assertEquals(5000, policy.nextDelayMillis(6, 3L, maxDraw()));
-        assertEquals(5000, policy.nextDelayMillis(6, 3L, minDraw()));
+        assertEquals(5000, policy.nextDelayMillis(6, 3000L, maxDraw()));
+        assertEquals(5000, policy.nextDelayMillis(6, 3000L, minDraw()));
 
         // a zero header must not lower the bound either
         assertEquals(800, policy.nextDelayMillis(3, 0L, maxDraw()));

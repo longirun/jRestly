@@ -48,9 +48,10 @@ import java.util.Set;
  * recipe — without jitter, all clients of a flapping server retry on the
  * same beat and re-break it). A fixed wait is expressible as
  * {@code initialBackoff == maxBackoff}, not as a separate mode. When the
- * failed response carries an integer-seconds {@code Retry-After} header,
- * the server's explicit signal wins: the wait is exactly
- * {@code max(bound, retryAfter)} (deterministic, no jitter).
+ * failed response carries a parseable {@code Retry-After} header
+ * (delta-seconds or HTTP-date, ADR-0009 candidate 3), the server's explicit
+ * signal wins: the wait is exactly {@code max(bound, retryAfter)}
+ * (deterministic, no jitter).
  *
  * <p>One policy covers both call styles: it applies identically to
  * synchronous methods and to {@code CompletableFuture}-returning methods
@@ -181,21 +182,24 @@ public final class RetryPolicy {
      *
      * @param failedAttempt   the 1-based number of the attempt that just
      *                        failed, {@code >= 1}
-     * @param retryAfterSeconds the integer-seconds value of the failed
-     *                        response's {@code Retry-After} header, or
-     *                        {@code null} when the header is absent
+     * @param retryAfterMillis the failed response's {@code Retry-After}
+     *                        header as a wait lower bound in milliseconds —
+     *                        delta-seconds times 1000, or the HTTP-date form
+     *                        as {@code max(0, date - now)} (ADR-0009
+     *                        candidate 3) — or {@code null} when the header
+     *                        is absent or unparseable
      * @param random          the generator for the full-jitter draw; never
      *                        {@code null}
      * @return the wait in milliseconds, {@code >= 0}
      */
-    long nextDelayMillis(long failedAttempt, Long retryAfterSeconds, Random random) {
+    long nextDelayMillis(long failedAttempt, Long retryAfterMillis, Random random) {
         Objects.requireNonNull(random, "random");
         long bound = initialBackoff.toMillis();
         for (long attempt = 2; attempt <= failedAttempt; attempt++) {
             bound = Math.min(maxBackoff.toMillis(), bound * 2);
         }
-        if (retryAfterSeconds != null) {
-            return Math.max(bound, retryAfterSeconds * 1_000L);
+        if (retryAfterMillis != null) {
+            return Math.max(bound, retryAfterMillis);
         }
         return random.nextLong(bound + 1);
     }

@@ -23,7 +23,7 @@
       форма фикса, влияние на wire/behavior-контракт, тестовая стратегия.
       Правило ADR-0003: reopening known gap = новый ADR.
 - [x] Код: фиксы 0.5.0-квирков (logging PUT + `void.class`) + тесты.
-- [ ] Код: `Retry-After` HTTP-date (решение ADR-0009: HTTP-date чиним,
+- [x] Код: `Retry-After` HTTP-date (решение ADR-0009: HTTP-date чиним,
       payload-decode остаётся gap'ом) + тесты.
 - [ ] Финальный gate (тесты зелёные, POM без зависимостей, дистилляция в
       ROADMAP, зачистка DRAFT).
