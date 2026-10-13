@@ -1,39 +1,47 @@
-# Handover Note: Сессия 16 (финальный gate эпика Gson/Moshi: дистилляция в ROADMAP + зачистка DRAFT под Retry with backoff + гигиена mailbox)
+# Handover Note: Сессия 17 (концепт ADR-0008: Retry with backoff + раскладка шагов DRAFT)
 
 ## Что сделано в этой сессии
-- **Эпик Gson/Moshi-кодеков ЗАКРЫТ** (шаг 7 — финальный gate).
-  - Гейты: `./gradlew test --rerun` — **183/183** (0 failures/0 errors по
-    XML); `build/publications/mavenJava/pom-default.xml` — **0
-    `<dependency>`**, версия 0.6.2.
-- **ROADMAP.md: дистилляция.** Новый раздел «Gson / Moshi codec adapters
-  — COMPLETE ✅ (2026-10-13, unreleased)» (перед Post-0.5.0 shortlist, в
-  стиле разделов CompletableFuture / ISO option A): источник — ADR-0007,
-  цепочка jackson → gson → moshi + package-private шов, форма адаптеров,
-  Gson 2.14.0 (минверсия 2.8.3+, замороженный java.time), Moshi 1.15.2
-  (фантом moshi-adapters, token-for-token prettyPrint), known gap
-  (конкретные коллекции), нормативный Javadoc на `JsonCodec`, README.
-  Кандидат в Post-0.5.0 shortlist зачёркнут (`~~...~~ — done 2026-10-13,
-  section above`, прецедент CompletableFuture).
-  + строка про README v0.6.1 в раздел Cycle 0.6.1 (там же доехал
-  закрытый DRAFT-кандидат про README).
-- **DRAFT.md: зачистка.** Старый эпик убран (дистиллят в ROADMAP); новый
-  активный эпик **Retry with backoff (Post-0.5.0 shortlist, ADR-0003)**:
-  шаг 1 = концепт ADR-0008 (`docs/0.7.0/`) — какие сбои ретраятся
-  (транспорт vs status vs `@OnError`-обработанные), поверхность
-  конфигурации (builder/аннотация/оба), порядок с `@OnError`, backoff,
-  идемпотентность (ретраем ли POST/PUT/PATCH), тестовая стратегия.
-  Раздел «Отложенные кандидаты» закрыт (Retry стал активным); «Постоянная
-  нить» и пометки из mailbox — без изменений.
-- **Mailbox: гигиена по согласованному правилу.** Убраны решённые обмены:
-  #8 + «Да приведи в порядок» (чистка исполнена в #9; делегирование — в
-  шапке файла и DRAFT) и статусы #12–#13 (инсайты зафиксированы в
-  ADR-0007/DRAFT/дневниках). Осталось: правила Антона (22:17 + уточнение
-  про теги + «Гоу вариант А») + последние три моих сообщения (#14, #15,
-  #16 — новое: эпик закрыт, дальше Retry).
-- **Кода нет** (только ROADMAP/DRAFT/mailbox/память) — тесты прогоном на
-  входе; независимый прогон не нужен (Java не тронута).
+- **Концепт ADR-0008 (`docs/0.7.0/`) — Retry with backoff**, шаг 1 активного
+  эпика. Ключевые решения:
+  - **Какие сбои:** транспорт (`IOException` вкл. timeouts) — да;
+    `InterruptedException` — нет; статусы — заданный набор (дефолт
+    `{408, 429, 500, 502, 503, 504}`); прочие unexpected — нет;
+    `@OnError.statuses` — нет по умолчанию.
+  - **Порядок с `@OnError` (ответ на ADR-0003):** retry **до**
+    классификации — цикл крутит raw `WireResponse`, `processResponse`
+    один раз на финальном (декодинг error-body/лог/auth-capture не
+    дублируются). Предикаты цикла = предикаты `processResponse`
+    (`canParse`/`isExpectedStatus`). `@OnError.statuses` — терминальный
+    контракт; escape hatch `retryOnErrorStatuses`; финал всегда типизирован.
+  - **Поверхность:** оба уровня по прецеденту `httpVersion`: default
+    method `ModuleInfo.getRetryPolicy()` (non-breaking) + `retry(...)` в
+    builders + аннотация `@Retry` (самоценная замена, `times = 1` =
+    off-switch). Дефолт — **off** (0.x без изменения поведения).
+  - **Backoff:** exponential с cap + full jitter (AWS-рецепт); fixed —
+    частный случай (равные границы), отдельного режима нет;
+    `Retry-After` (integer seconds) — `max(delay, retryAfter)`; чистая
+    математика с package-private швом (injectable `Random`).
+  - **Идемпотентность:** по RFC 9110 GET/PUT/DELETE — да, POST/PATCH —
+    `retryNonIdempotent`.
+  - **Шов реализации:** `executeWithRetries` об `executeWithRedirects`;
+    повторная отправка `WireRequest` безопасна (fresh `HttpRequest`,
+    per-send publisher, boundary стабилен); async — chain +
+    `CompletableFuture.delayedExecutor` (не блокирует вирт. потоки).
+  - **Тесты:** юниты backoff без WireMock + 10 интеграционных сценариев
+    (scenarios + `withFault(CONNECTION_RESET_BY_PEER)`), новых
+    test-зависимостей нет.
+- **DRAFT.md:** концепт `[x]`; добавлены 5 шагов реализации:
+  1) `RetryPolicy` + `RetryPolicyTest`; 2) sync-контур + клиентский
+  уровень + `RetryTest`; 3) `@Retry` + wiring + тесты; 4) async-твин +
+  тесты; 5) Javadoc/README/финальный gate. Мелочь-гигиена: «Пометки из
+  mailbox» — дата 2026-10-12 → 2026-10-12–13 (4-й пункт от 10-13).
+- **Mailbox:** заметка #17 (04:15) с главным решением для Антона;
+  гигиена: удалено своё #14 (инсайт 2.8.3 уже в ADR-0007/дневниках),
+  осталось 3 моих (#15–#17).
+- **Кода нет** (ADR/DRAFT/mailbox/память). `./gradlew test --rerun` на
+  входе: **183/183** (0 failures/errors по XML, 14 с, тёплый кэш).
 
-## Контекст для следующей сессии (#17)
+## Контекст для следующей сессии (#18)
 
 ### Вводные Антона (накопленные, актуально на 2026-10-13)
 1. **Объём сессии — в 2–3 раза меньше:** один маленький шаг.
@@ -41,22 +49,19 @@
    v0.6.1, версия в build.gradle 0.6.2).
 3. **Гигиена проекта — за агентом**: mailbox коротким (последние 2–3
    своих сообщения + живые нитки), расхождения — чинить сразу.
-   (Новых сообщений Антона не было — mailbox тиш после 03:25.)
+   (Новых сообщений Антона не было — mailbox тиш после 04:15.)
 
 ### Что логично делать дальше
-1. **Следующий шаг — концепт ADR-0008: Retry with backoff** (DRAFT,
-   активный эпик, шаг 1). Ключевые вопросы (в DRAFT): какие сбои
-   ретраятся (транспорт vs unexpected status vs обработанные `@OnError`),
-   поверхность конфигурации (client-level builder / per-method аннотация /
-   оба), порядок с `@OnError` (retry до или после обработки?), backoff
-   (fixed/exponential, cap), идемпотентность (только GET или и
-   POST/PUT/PATCH — и как это решать), тестовая стратегия. ADR в
-   `docs/0.7.0/` (ADR-0007 — сосед). На выходе концепта — шаги
-   реализации в DRAFT (паттерн: у Gson/Moshi концепт = шаг 1, шаги
-   реализации добавлялись по ходу — «step list grew»).
-2. После retry — бэклог короткий: в Post-0.5.0 shortlist ничего не
-   осталось (все три кандидата закрыты) — следующий кандидат будет из
-   осмысления/полей (или новый запрос Антона).
+1. **Следующий шаг — `RetryPolicy` + юниты backoff** (DRAFT, шаг 2).
+   Изолированный кусок без WireMock: immutable value class + builder +
+   валидация (`maxAttempts ≥ 1`, `initialBackoff ≤ maxBackoff`),
+   `defaults()` (3 attempts, 200 ms → 5 s cap, дефолт-статусы) и `off()`
+   (`maxAttempts = 1`), чистая backoff-функция (exponential с cap,
+   full jitter, `Retry-After` max()) с package-private швом + injectable
+   `Random` для детерминированного jitter. `RetryPolicyTest` — по пунктам
+   ADR Aspect 4/7. Код в `ru.jrestly.http` (рядом с `HttpTemplate`).
+2. Дальше по чекбоксам DRAFT: sync-контур (шаг 3), `@Retry` (шаг 4),
+   async (шаг 5), Javadoc/README/gate (шаг 6).
 
 ### Грабли прошлых сессий (актуальный набор)
 - **ADR-концепт может «пересчитать» реальность** — проверять по jar/тегам/
@@ -71,6 +76,10 @@
 - **Даты/поведение сторонних либ — только по пину.**
 - **Parallel-сессии:** перед правкой памяти/коммитом — `stat` mtime,
   `ps` на чужие процессы, `git log`.
+- **Преценденты решают споры о поверхности** (новая, #17): спорные
+  решения концепта сначала ищи в коде — форма `httpVersion`
+  (module default + per-method override, override replaces) закрыла
+  вопрос builder/аннотация для retry.
 
 ### Окружение
 1. `GRADLE_USER_HOME=/tmp/opencode/gradle-home ./gradlew ...` (кэш жив;
@@ -79,14 +88,14 @@
 2. `pids.max = 1000`. Полный `./gradlew test` БЕЗ init-скрипта.
 3. Ветка `agent-loop`. Демон Gradle переживает падения тестов.
 4. Коммиты агента: `longirun-agent <sinyagovsky@gmail.com>`; счётчик
-   сессий подкручивает harness (сейчас 16 → после этой 17).
+   сессий подкручивает harness (сейчас 17 → после этой 18).
 5. Часы контейнера: UTC+4; mailbox-время — местное.
 6. `docs/` — ADR-папки по версиям цикла: `0.5.0/`, `0.6.0/`, `0.7.0/`
-   (ADR-0007 — Gson/Moshi; следующий ADR-0008 туда же).
+   (ADR-0007 — Gson/Moshi, ADR-0008 — retry; следующий ADR — туда же).
 
 ### Состояние git
-- HEAD: коммит сессии #16 (gate эпика: ROADMAP-дистилляция + DRAFT
-  зачистка + mailbox-гигиена) поверх `a381acb` (сессия #15, README).
+- HEAD: коммит сессии #17 (концепт ADR-0008 + DRAFT + память) поверх
+  c887dda (сессия #16, gate эпика Gson/Moshi).
 - Всё на `agent-loop`. Последний тег `v0.6.1` — дальше теги за Антоном.
 - Версия в build.gradle: **0.6.2** (без тега, релизы на паузе).
-- Тесты: **183/183**.
+- Тесты: **183/183** (Java не тронута в #17).
