@@ -33,40 +33,18 @@
 Антон: Странные имена у коммитов в гитхабе - по идее они должны быть краткими, а они дублируют ченжлог. 
 ПС - поддерживай mailbox в чистом состоянии.
 ---
-[2026-10-13 16:2x] Агент (сессия #34): **Payload-decode — шаг 4:
-async-твин** — decode-ось в `attemptAsync` зеркалит sync-ветку: тот же
-probe в final-условии (`!last && isRetryDecodeFailures()`), тот же
-DEBUG-формат `decode (<тип>)`, ожидание — `delayedExecutor`; probe —
-обычный синхронный вызов в handle-колбеке (он и так исполняется на
-завершившем потоке), новых CompletionStage-веток нет. Интеграция 6:
-async 200-мусор→200-норма, `getItemAsync(1L).join()` → значение,
-2 запроса (фикстуру не добавляли — `TestController.getItemAsync`
-существует; exhaustion-typing в async не пины — маппинг `exchangeAsync`
-не тронут по ADR Aspect 6, typing закреплён sync-интеграцией 2).
-255→**256/256**, POM без зависимостей (0.6.2). Остался шаг 5 —
-Javadoc-контракт + README + финальный gate + дистилляция.
----
-[2026-10-13 17:3x] Агент (сессия #35): **Payload-decode — шаг 5:
-Javadoc-контракт + README + gate + дистилляция — ЭПИК ЗАКРЫТ (5/5)**.
-ADR-0011 реализован целиком: третий failure-kind (decode) за отдельным
-оптином `retryDecodeFailures` (default off), side-effect-free probe держит
-«classified exactly once», финальное исключение — codec-своё unchecked
-(без нового класса), sync/async uniformity. Поверхность Javadoc
-(`RetryPolicy`/`@Retry`/`ModuleInfo`) была собрана ещё в #22/#32/#34 —
-шаг 5 сверил её по тексту и достроил одно место: Javadoc `RetryPolicy`
-получил строку про финальное исключение decode-оси (в атрибуте `@Retry`
-она уже была — асимметрия двух поверхностей одного контракта). README
-«Retry with backoff» — decode-параграф (отдельный оптин, scope
-success-path, двойной декод на финале, codec-своё исключение, uniformity)
-+ упоминание в фиче-буллете. ADR-0008 Known gaps: payload-decode-строка
-закрыта (указатель на ADR-0011); ADR-0009 к4: «LEAVE» аннотирован
-«reopened by ADR-0011» (+ Consequences-указатель). ROADMAP — новый
-раздел «Payload-decode retry — COMPLETE ✅» + пометка reopen в 0.x-
-polish-секции. 256/256, POM без зависимостей (0.6.2). Known-gaps-бэклог
-выработан — по ADR-0011-стратегии следующий ход: 0.7.0-цикл (упаковка
-шести unreleased-наборов: release notes + версия 0.7.0, тег — на ваше
-усмотрение), DRAFT — осознанная пауза с этим кандидатом.
-
----
 Антон: Если считаешь, что нужна версия - пожалуйста делай ее через билд-гредл версию
-и в тексте сообщения коммита. Пожалуйста, забудь про гит-теги. 
+и в тексте сообщения коммита. Пожалуйста, забудь про гит-теги.
+---
+[2026-10-13 18:3x] Агент (сессия #36): Спасибо — вопрос с тегами снят,
+0.7.0-цикл открыт. Концепт зафиксирован в ADR-0012 (`docs/0.7.0/`):
+версия 0.6.2 → **0.7.0** (minor: новая additive-поверхность —
+Gson/Moshi-кодеки, `RetryPolicy`/`@Retry`, `LocalDateTimeFormat`,
+`CompletableFuture`-возвраты; breaking/behavior-изменений нет — retry off
+by default, ISO opt-in). Механика — ваша: bump в `build.gradle` на
+gate-шаге + версия в сообщении коммита, гит-тега не будет (паттерн
+«unpublished version» 0.6.2 — README держит `v0.6.1` как последний тег).
+Release notes — **первый `CHANGELOG.md`** в корне (user-facing; история
+до 0.7.0 остаётся в ROADMAP). Scope — ровно шесть unreleased-наборов
+(ADR-0007…0011), без README-правок. Эпик: 4 шага (концепт ✓ → changelog →
+bump+gate → дистилляция в ROADMAP). 256/256, кода нет. 
