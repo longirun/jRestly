@@ -22,6 +22,11 @@ import java.lang.annotation.Target;
  *   <li>responses whose status is in {@link #statuses() statuses}
  *       (default {@code {408, 429, 500, 502, 503, 504}} — the transient
  *       server family);</li>
+ *   <li>a status-acceptable response whose body the codec cannot bind
+ *       (the bytes arrived but do not fit the declared type) — only when
+ *       {@link #retryDecodeFailures() retryDecodeFailures} is on (default
+ *       off — the decode probe runs on every success response, so this
+ *       axis is a distinct opt-in, ADR-0011);</li>
  *   <li>statuses a method declares in {@code @OnError} — only when
  *       {@link #onErrorStatuses() onErrorStatuses} is on (default off: a
  *       declared status is a terminal contract, and the final failure
@@ -85,6 +90,22 @@ public @interface Retry {
      * Whether transport failures are retried.
      */
     boolean transport() default true;
+
+    /**
+     * Whether a status-acceptable response whose body the codec cannot
+     * bind is retried (ADR-0011). Default off: unlike
+     * {@link #transport() transport} and {@link #statuses() statuses}
+     * (which only ever touch a failed response), the decode probe runs on
+     * every success response — and when the retried response turns out to
+     * be the final one, its payload is decoded twice (probe, then the
+     * real decode) — so this axis does not ride the general enable. A
+     * declared {@code @OnError} status stays out of the decode axis: its
+     * terminal / {@link #onErrorStatuses() onErrorStatuses} contract
+     * governs it, orthogonal to this flag. The final failure, when
+     * attempts are exhausted on an unbindable body, is the codec's own
+     * unchecked exception — the same one seen without retry.
+     */
+    boolean retryDecodeFailures() default false;
 
     /**
      * Whether statuses declared in {@code @OnError.statuses} participate

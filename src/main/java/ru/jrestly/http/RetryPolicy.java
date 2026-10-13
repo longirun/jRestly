@@ -29,6 +29,12 @@ import java.util.Set;
  *       {@link #getRetryableStatuses() retryableStatuses} (default
  *       {@code {408, 429, 500, 502, 503, 504}}) — the transient server
  *       family;</li>
+ *   <li>a status-acceptable response whose body the codec cannot bind
+ *       (the bytes arrived but do not fit the declared type, ADR-0011):
+ *       only when {@link #isRetryDecodeFailures() retryDecodeFailures} is
+ *       on (default off — unlike the axes above, the decode probe runs on
+ *       every <em>success</em> response, so enabling the general retry
+ *       stays a zero change on the success path);</li>
  *   <li>statuses a method declares in {@code @OnError}: only when
  *       {@link #isRetryOnErrorStatuses() retryOnErrorStatuses} is on
  *       (default off — a declared status is a terminal contract by
@@ -81,6 +87,7 @@ public final class RetryPolicy {
     private final Duration maxBackoff;
     private final Set<Integer> retryableStatuses;
     private final boolean retryTransport;
+    private final boolean retryDecodeFailures;
     private final boolean retryOnErrorStatuses;
     private final boolean retryNonIdempotent;
 
@@ -92,6 +99,7 @@ public final class RetryPolicy {
         // copied in), so this wrapper is the contract, not a copy.
         this.retryableStatuses = Collections.unmodifiableSet(builder.retryableStatuses);
         this.retryTransport = builder.retryTransport;
+        this.retryDecodeFailures = builder.retryDecodeFailures;
         this.retryOnErrorStatuses = builder.retryOnErrorStatuses;
         this.retryNonIdempotent = builder.retryNonIdempotent;
     }
@@ -157,6 +165,16 @@ public final class RetryPolicy {
         return retryTransport;
     }
 
+    /**
+     * @return {@code true} when a status-acceptable response whose body
+     *         the codec cannot bind is retried (ADR-0011); default
+     *         {@code false} — a distinct opt-in, see the class-level
+     *         documentation for why it does not ride the general enable
+     */
+    public boolean isRetryDecodeFailures() {
+        return retryDecodeFailures;
+    }
+
     public boolean isRetryOnErrorStatuses() {
         return retryOnErrorStatuses;
     }
@@ -211,6 +229,7 @@ public final class RetryPolicy {
                 + ", maxBackoff=" + maxBackoff
                 + ", retryableStatuses=" + retryableStatuses
                 + ", retryTransport=" + retryTransport
+                + ", retryDecodeFailures=" + retryDecodeFailures
                 + ", retryOnErrorStatuses=" + retryOnErrorStatuses
                 + ", retryNonIdempotent=" + retryNonIdempotent + "]";
     }
@@ -221,6 +240,7 @@ public final class RetryPolicy {
         private Duration maxBackoff = Duration.ofSeconds(5);
         private Set<Integer> retryableStatuses = DEFAULT_RETRYABLE_STATUSES;
         private boolean retryTransport = true;
+        private boolean retryDecodeFailures = false;
         private boolean retryOnErrorStatuses = false;
         private boolean retryNonIdempotent = false;
 
@@ -264,6 +284,21 @@ public final class RetryPolicy {
 
         public Builder retryTransport(boolean retryTransport) {
             this.retryTransport = retryTransport;
+            return this;
+        }
+
+        /**
+         * Whether a status-acceptable response whose body the codec cannot
+         * bind is retried (ADR-0011). Default {@code false}: unlike
+         * {@link #retryTransport(boolean) transport} and the status axis
+         * (which only ever touch a failed response), the decode probe runs
+         * on every success response — and a final success response is then
+         * decoded twice (probe, then the real decode) — so this axis is a
+         * distinct opt-in: "enable retry" stays a zero change on the
+         * success path.
+         */
+        public Builder retryDecodeFailures(boolean retryDecodeFailures) {
+            this.retryDecodeFailures = retryDecodeFailures;
             return this;
         }
 

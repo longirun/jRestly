@@ -58,6 +58,7 @@ class RetryPolicyTest {
         assertEquals(Duration.ofSeconds(5), policy.getMaxBackoff());
         assertEquals(RetryPolicy.DEFAULT_RETRYABLE_STATUSES, policy.getRetryableStatuses());
         assertTrue(policy.isRetryTransport());
+        assertFalse(policy.isRetryDecodeFailures());
         assertFalse(policy.isRetryOnErrorStatuses());
         assertFalse(policy.isRetryNonIdempotent());
         assertTrue(policy.isEnabled());
@@ -74,6 +75,17 @@ class RetryPolicyTest {
         assertEquals(Duration.ofSeconds(5), policy.getMaxBackoff());
         assertEquals(RetryPolicy.DEFAULT_RETRYABLE_STATUSES, policy.getRetryableStatuses());
         assertTrue(policy.isRetryTransport());
+        assertFalse(policy.isRetryDecodeFailures());
+    }
+
+    @Test
+    @DisplayName("retryDecodeFailures: default off in all statics (a distinct opt-in, ADR-0011), the builder sets it")
+    void retryDecodeFailuresIsADistinctOptIn() {
+        assertFalse(RetryPolicy.off().isRetryDecodeFailures());
+        assertFalse(RetryPolicy.defaults().isRetryDecodeFailures());
+        assertFalse(RetryPolicy.builder().build().isRetryDecodeFailures());
+
+        assertTrue(RetryPolicy.builder().retryDecodeFailures(true).build().isRetryDecodeFailures());
     }
 
     @Test

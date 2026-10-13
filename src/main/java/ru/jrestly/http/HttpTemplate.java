@@ -301,6 +301,42 @@ public class HttpTemplate {
         return method == HttpMethod.POST || method == HttpMethod.PATCH;
     }
 
+    // ADR-0011 Aspect 2: the decode probe — the payload-decode branch of
+    // processResponse reproduced side-effect-free (no auth-capture, no log,
+    // no exception construction), so the retry loop can ask "would this
+    // payload decode" without classifying the response: the side-effectful
+    // processResponse still runs exactly once, on the truly final response.
+    // It returns true whenever the payload decode cannot fail — @OnError
+    // statuses and unexpected statuses classify before the payload decode,
+    // so their scope (terminal / retryOnErrorStatuses) falls out of the
+    // probe's shape rather than a special case. The same predicates
+    // processResponse uses (onErrorParser, isExpectedStatus, returnType),
+    // so the two cannot drift apart (ADR-0008 Aspect 3, decode axis).
+    // A non-bindable body throws the codec's own unchecked exception,
+    // unwrapped (ADR-0011 Aspect 3: no new type).
+    boolean probePayloadDecode(WireResponse response) {
+        int status = response.statusCode();
+        if (onErrorParser != null && onErrorParser.canParse(status)) {
+            return true; // @OnError classifies before the payload decode
+        }
+        if (!isExpectedStatus(status)) {
+            return true; // the status check classifies before the payload decode
+        }
+        byte[] bytes = response.body();
+        String payload = (bytes != null && bytes.length > 0) ? new String(bytes, StandardCharsets.UTF_8) : null;
+        if (payload == null) {
+            return true; // no body
+        }
+        if (String.class.equals(returnType)) {
+            return true; // returned raw, never decoded
+        }
+        if (Void.class.equals(returnType) || void.class.equals(returnType)) {
+            return true; // body discarded (ADR-0009 candidate 2)
+        }
+        jsonCodec.deserialize(payload, returnType);
+        return true;
+    }
+
     // Both RFC 9110 forms of Retry-After (ADR-0009 candidate 3): delta-seconds
     // -> seconds x 1000 (as before, in milliseconds); HTTP-date — all three
     // RFC 9110 date grammars (IMF-fixdate, then the obsolete RFC 850 and

@@ -20,10 +20,18 @@
       opt-in `retryDecodeFailures` (default off — success-path-двойной-декод
       не подмешивать в общее enable), транспорт-освещение ADR-0009-аргумента 1
       (complete-but-unbindable vs incomplete body), 5-шаговый план.
-- [ ] **Шаг 2 — `RetryPolicy.retryDecodeFailures` + `@Retry`-атрибут +
-      шов `probePayloadDecode` (package-private) + юниты** (stub-кодек без
-      WireMock: expected-декодируется → true; unbindable → codec-exception;
-      `@OnError`/unexpected/null/String/Void → true).
+- [x] **Шаг 2 — `RetryPolicy.retryDecodeFailures` + `@Retry`-атрибут +
+      шов `probePayloadDecode` (package-private) + юниты** (сессия #32):
+      флаг — отдельный opt-in (default off) в `RetryPolicy` (builder +
+      getter + Javadoc-буллет) и `@Retry` (атрибут + Javadoc: success-path,
+      double-decode-cost, `@OnError` вне scope, финальное исключение =
+      codec-своё); probe — чистый предикат decode-ветки `processResponse`,
+      те же предикаты/поля (`onErrorParser`/`isExpectedStatus`/
+      `returnType`), scope вылезает из формы (без special-case),
+      codec-exception — pass-through без обёртки (assertSame-пин);
+      `HttpTemplateDecodeProbeTest` (7 юнитов, stub-кодек, template без
+      logger/auth — side-effect-free зафиксировано формой фикстуры) +
+      `RetryPolicyTest` +1 (default off).
 - [ ] **Шаг 3 — sync-wiring** (`executeWithRetries`: decode-ось в final-
       условии + decode-DEBUG-строка) + интеграции ADR-0011 Aspect 7 сценарии
       1–5 (200-мусор→200-норма, exhaustion-typing, default-off = zero-change,
