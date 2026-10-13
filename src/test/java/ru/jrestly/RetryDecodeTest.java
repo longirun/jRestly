@@ -17,12 +17,14 @@ import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * The payload-decode retry axis end to end (ADR-0011, Aspect 7, scenarios
- * 1–5): a complete 200 body the codec cannot bind is the third failure-kind.
+ * 1–6): a complete 200 body the codec cannot bind is the third failure-kind.
  * It is retried only under the distinct opt-in {@code retryDecodeFailures},
  * the final exception stays the codec's own unchecked exception (no new
  * type), declared {@code @OnError} statuses stay out of scope, and the
  * auth-capture consumer fires exactly once across the retry ("classified
- * exactly once"). Real backoffs are 10–50 ms so CI stays fast.
+ * exactly once"). Scenario 6 pins the async twin — the same axis on the
+ * CompletableFuture circuit (ADR-0011: uniform across sync/async). Real
+ * backoffs are 10–50 ms so CI stays fast.
  */
 class RetryDecodeTest extends BaseWireMockTest {
 
@@ -148,5 +150,26 @@ class RetryDecodeTest extends BaseWireMockTest {
         assertEquals(1, moduleInfo.getTestAuthProvider().getAuthHeaders().size());
         assertEquals("token-final", moduleInfo.getTestAuthProvider().getAuthHeaders().get(0).value());
         verify(2, getRequestedFor(urlEqualTo("/api/decode-auth")));
+    }
+
+    @Test
+    @DisplayName("async twin: 200 garbage -> 200 good — the decode failure is retried on the CompletableFuture circuit, 2 requests")
+    void decodeFailureIsRetriedOnTheAsyncCircuit() {
+        stubFor(get(urlEqualTo("/api/items/1")).inScenario("decode-flap-async")
+                .whenScenarioStateIs(STARTED)
+                .willReturn(aResponse().withStatus(200)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody(GARBAGE_BODY))
+                .willSetStateTo("recovered"));
+        stubFor(get(urlEqualTo("/api/items/1")).inScenario("decode-flap-async")
+                .whenScenarioStateIs("recovered")
+                .willReturn(aResponse().withStatus(200)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody(ITEM_JSON)));
+
+        TestDto item = with(smallBackoff().maxAttempts(2).retryDecodeFailures(true).build()).getItemAsync(1L).join();
+
+        assertEquals(1L, item.id());
+        verify(2, getRequestedFor(urlEqualTo("/api/items/1")));
     }
 }

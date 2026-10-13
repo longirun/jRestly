@@ -456,7 +456,9 @@ public class HttpTemplate {
     // chained over sendAsync, a disabled policy a straight pass-through. The
     // backoff wait runs on CompletableFuture.delayedExecutor — non-blocking,
     // no parked virtual thread per retry — and exchangeAsync's final exception
-    // mapping stays untouched.
+    // mapping stays untouched. The decode axis (ADR-0011 Aspect 2) is mirrored
+    // verbatim: a status-acceptable response is additionally probe-checked
+    // under the distinct opt-in, exactly as the sync twin does.
     private CompletableFuture<WireResponse> executeAsyncWithRetries(WireRequest request) {
         int hopsLeft = followRedirectsNumber == null ? 0 : followRedirectsNumber;
         if (!retryPolicy.isEnabled()) {
@@ -483,6 +485,25 @@ public class HttpTemplate {
                         return scheduleAsyncRetry(request, attempt, maxAttempts, cause.getClass().getSimpleName(), null, hopsLeft);
                     }
                     if (last || !isRetryableStatus(response)) {
+                        // ADR-0011 Aspect 2, async twin: the status logic accepted
+                        // the response, but a complete body the codec cannot bind
+                        // is still not final under the distinct decode opt-in. The
+                        // probe is the payload-decode branch of processResponse
+                        // reproduced side-effect-free, so exchangeAsync's
+                        // side-effectful tail still runs exactly once. On the last
+                        // attempt it is not called at all — the final
+                        // processResponse throws the codec's own unchecked
+                        // exception (ADR-0011 Aspect 3: no new type). The probe
+                        // is a plain synchronous call: the handle callback already
+                        // runs on the completing thread.
+                        if (!last && retryPolicy.isRetryDecodeFailures()) {
+                            try {
+                                probePayloadDecode(response);
+                            } catch (RuntimeException e) {
+                                return scheduleAsyncRetry(request, attempt, maxAttempts,
+                                        "decode (" + e.getClass().getSimpleName() + ")", response, hopsLeft);
+                            }
+                        }
                         return CompletableFuture.<WireResponse>completedFuture(response);
                     }
                     return scheduleAsyncRetry(request, attempt, maxAttempts, "HTTP " + response.statusCode(), response, hopsLeft);

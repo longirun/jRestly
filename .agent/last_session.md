@@ -1,121 +1,101 @@
-# Handover Note: Сессия 33 (payload-decode шаг 3: sync-wiring + интеграции ADR-0011 Aspect 7 сценарии 1–5; 250→255/255, DRAFT — активный эпик, 3/5)
+# Handover Note: Сессия 34 (payload-decode шаг 4: async-твин + интеграция 6; 255→256/256, DRAFT — активный эпик, 4/5)
 
 ## Что сделано в этой сессии
-- **Входящее от Антона (два новых, оба обработаны).** (1) «Странные имена
-  у коммитов в гитхабе — по идее они должны быть краткими, а они
-  дублируют ченжлог» → правило с этого коммита: **короткий subject, без
-  дублирования ченджлога** (коммит #33 — первый в новом стиле).
-  (2) «поддерживай mailbox в чистом состоянии» — повтор постоянных
-  правил, гигиена сделана (удалён realized #31; остались правила Антона +
-  нитка про теги + нитка про коммиты + #32 + #33).
-- **Код (sync-wiring — «кто зовёт шов»).**
-  - `HttpTemplate.executeWithRetries`: decode-ось — ответ, который
-    status-логика приняла (`!isRetryableStatus`), всё ещё не финален при
-    `!last && retryPolicy.isRetryDecodeFailures()`: `probePayloadDecode(
-    response)`; codec-исключение (catch RuntimeException — codec-исключения
-    unchecked по контракту `JsonCodec`) → `scheduleRetry(attempt,
-    maxAttempts, "decode (" + e.getClass().getSimpleName() + ")", response)`
-    + `continue`. При `last` probe не вызывается — финальный
-    `processResponse` бросит codec-исключение сам (Aspect 3). DEBUG-строка
-    — в точности формат ADR Aspect 3 (`Attempt 1/2 failed: decode
-    (UncheckedIOException) — retrying in … ms`), `scheduleRetry` уже
-    держит формулировку, failure-тип передаётся аргументом.
-  - `HttpTemplateBuilder.resolveRetryPolicy()`: строка
-    `.retryDecodeFailures(retry.retryDecodeFailures())` — поверхность
-    `@Retry` wired (между шагами атрибут был dead code — прецедент
-    retry-эпика закрыт).
-- **Фикстуры.** `TestAuthProvider` — счётчик `captureCount` (override
-  `captureAuthDetails` + delegate в super) — «exactly once» проверяется
-  только счётчиком: replace-семантика `updateAuthHeader` хранит ОДИН
-  заголовок (последний победил), двойной вызов дал бы тот же list-size 1.
-  `RetryController.getDecodeAuth()` — `@Retry(times=2, initialBackoffMs=10,
-  maxBackoffMs=50, retryDecodeFailures=true)` + `@SetAuthDetails(
-  headerName="access-token")`, GET `/api/decode-auth`.
-- **Тесты (5 новых интеграций, `RetryDecodeTest` в `ru.jrestly`,
-  ADR-0011 Aspect 7 сценарии 1–5; зелёные со второго прогона — первый
-  красный был finding, см. ниже).** (1) 200 `not-json` → 200 норма,
-  maxAttempts=2, flag on → успех, 2 запроса; (2) exhaustion: 200-мусор
-  forever → финальное `UncheckedIOException` (codec-своё, cause != null —
-  «типизированное, то же, что без retry», без нового класса), 2 запроса;
-  (3) default off: retry для status включён, `retryDecodeFailures` off → 1
-  запрос (zero-change на success-path); (4) `@OnError(statuses={429})` +
-  malformed error-body, `retryOnErrorStatuses` off → 1 запрос
-  (terminal-контракт, probe true для declared status); (5) «classified
-  exactly once» — через аннотацию (`retryController().getDecodeAuth()`,
-  client-level off): 200-мусор→200-норма (2 запроса), auth-capture ровно
-  ОДИН раз (счётчик), захваченный токен = `token-final` (consumer ходил на
-  финале). Бонус: сценарий 5 заодно закрепляет атрибут `@Retry.
-  retryDecodeFailures` end-to-end (не dead code).
-- **Первый красный — finding (серия «ожидание vs реальность», 10-й раз).**
-  Сценарий 4 ждал `HandledException`, прилетело `UncheckedIOException` из
-  `JacksonCodec.deserialize` в `@OnError`-ветке `processResponse`
-  (строка 179): malformed error-body бросает codec-исключение **до**
-  построения `HandledException`. Ровно первая строка Known gaps ADR-0011
-  («An @OnError status whose error body fails to decode is *not*
-  decode-retried … documented, non-blocking»); ADR-сценарий 4 обещал
-  только «1 request». Пин переписан на реальность (UncheckedIOException +
-  1 запрос + комментарий-указатель на known gap); production не тронут
-  (behavior — осознанный контракт @OnError: тело ошибки декодируется,
-  кривое тело → codec-исключение, decode-axis в этом не участвует).
-- **Гейты.** RED (1 падение — сценарий 4) → `./gradlew test --rerun` —
-  **255/255** (250→255, +5; 0 failures/0 errors по XML, 36 классов, 19–21 s
-  тёплый кэш); POM `pom-default.xml` — **0 `<dependency>`**, 0.6.2.
-- **Память.** DRAFT шаг 3 `[x]` (+ finding в пометке). Mailbox #33 +
-  гигиена. Дневник #33 + «Итог дня» обновлён (живой).
+- **Входящее:** mailbox тиш после #33 (~час) — новых сообщений Антона
+  нет, план (шаг 4) не менялся.
+- **Код (async-твин — «кто зовёт шов» на async-контуре).**
+  - `HttpTemplate.attemptAsync`: ветка `if (last ||
+    !isRetryableStatus(response))` (final-условие handle-колбека)
+    получила зеркало sync-оси #33: `!last &&
+    retryPolicy.isRetryDecodeFailures()` → `probePayloadDecode(response)`;
+    codec-исключение (catch RuntimeException) → `scheduleAsyncRetry(
+    request, attempt, maxAttempts, "decode (" + e.getClass().
+    getSimpleName() + ")", response, hopsLeft)`. Probe — обычный
+    синхронный вызов в handle-колбеке (колбэк исполняется на завершившем
+    потоке; `ThreadLocalRandom` и прочего thread-affine в probe нет) —
+    никаких новых CompletionStage-веток, в точности форма, зафиксированная
+    в last_session #33. При `last` probe не вызывается — финальный
+    `processResponse` бросит codec-исключение сам (Aspect 3).
+  - Комментарии: `executeAsyncWithRetries` +3 строки (decode-ось
+    зеркалируется дословно — зеркало sync-коммента ADR-0011 Aspect 2);
+    комментарий ветки в `attemptAsync` — адаптация sync-формулировки
+    (side-effect-free probe → tail `exchangeAsync` ровно один раз).
+- **Тест (1 новая интеграция, `RetryDecodeTest`, ADR-0011 Aspect 7
+  сценарий 6).** Async 200-мусор→200-норма (WireMock-scenario
+  `decode-flap-async` — своё имя, сценарии глобальны для инстанса),
+  `with(smallBackoff().maxAttempts(2).retryDecodeFailures(true).build()).
+  getItemAsync(1L).join()` → `TestDto`, 2 запроса. **Фикстуру не
+  добавляли:** `TestController.getItemAsync(1L)` уже существует.
+  Exhaustion-typing в async НЕ пиновый: маппинг `exchangeAsync` не
+  тронут (ADR Aspect 6 — «untouched») — codec-исхождение на
+  `thenApply` → `exceptionally` → `RuntimeException(cause)` ровно как
+  и без retry; typing закреплён sync-интеграцией 2. Класс-Javadoc
+  «scenarios 1–5» → «1–6».
+- **Зелёный с первого прогона** (редкость): зеркало + форма из
+  last_session дословно — 10-я серия «ожидание vs реальность» не
+  сработала, потому что сверяться было не с чем: всё уже решено в #31–#33.
+- **Гейты.** `./gradlew test --rerun` — **256/256** (255→256, +1; 0
+  failures/0 errors по XML, 36 классов, 19 s тёплый кэш); сначала
+  целевой прогон (`RetryDecodeTest` + `ru.jrestly.http.*`). POM
+  `pom-default.xml` — **0 `<dependency>`**, 0.6.2.
+- **Память.** DRAFT шаг 4 `[x]`. Mailbox #34 + гигиена (удалён realized
+  #32 — шаг 2 дистиллирован; остались правила Антона + нитки про теги/
+  коммиты + #33 + #34). Дневник #34 + «Итог дня» обновлён (живой).
 
-## Контекст для следующей сессии (#34)
+## Контекст для следующей сессии (#35)
 
-### Эпик (DRAFT): payload-decode retry (ADR-0011) — шаг 4
+### Эпик (DRAFT): payload-decode retry (ADR-0011) — шаг 5 (финальный)
 1. [x] Шаг 1 — концепт ADR-0011 (#31).
 2. [x] Шаг 2 — surface + шов + юниты (#32).
 3. [x] Шаг 3 — sync-wiring + интеграции 1–5 (#33).
-4. **[ ] Шаг 4 — async-твин (`attemptAsync`: decode-ось через
-   `delayedExecutor`) + интеграция 6.** Маленький по объёму:
-   - `HttpTemplate.attemptAsync` (чтение на входе — форма зафиксирована
-     ниже): в `handle`-лямбде ветка `if (last || !isRetryableStatus(
-     response)) { return completedFuture(response); }` получает mirror
-     sync-оси:
-     ```
-     if (last || !isRetryableStatus(response)) {
-         if (!last && retryPolicy.isRetryDecodeFailures()) {
-             try {
-                 probePayloadDecode(response);
-             } catch (RuntimeException e) {
-                 return scheduleAsyncRetry(request, attempt, maxAttempts,
-                         "decode (" + e.getClass().getSimpleName() + ")", response, hopsLeft);
-             }
-         }
-         return CompletableFuture.<WireResponse>completedFuture(response);
-     }
-     ```
-     Probe — чистый синхронный предикат → обычный try/catch внутри
-     lambda, никаких новых CompletionStage-веток. `scheduleAsyncRetry`
-     уже принимает failure-строку (тот же DEBUG-формат). Комментарий
-     класса `executeAsyncWithRetries`/`attemptAsync` — дописать decode-
-     ось в 1–2 строки (как сделано в sync-комменте #33).
-   - Интеграция 6 (ADR-0011 Aspect 7): async 200-мусор→200-норма,
-     `CompletableFuture`-метод → `join()` вернул значение, 2 запроса.
-     **Новая фикстура не нужна:** `TestController.getItemAsync(1L)`
-     уже существует (GET `/api/items/1`, CompletableFuture<TestDto>);
-     client-level policy через `with(...)` (helper в стиле RetryTest):
-     `with(smallBackoff().maxAttempts(2).retryDecodeFailures(true).
-     build()).getItemAsync(1L).join()`.
-   - Exhaustion-typing в async НЕ пиновый для этого шага:
-     `exchangeAsync`'s mapping не тронут (ADR Aspect 6: «untouched») —
-     codec-исхождение на `thenApply` → `exceptionally` →
-     `RuntimeException(cause)`, ровно как и без retry; typing закреплён
-     sync-интеграцией 2.
-5. [ ] Шаг 5 — Javadoc-контракт (`RetryPolicy`/`@Retry`/`ModuleInfo`,
-   sync/async uniformity — decode-ось) + README «Retry with backoff»
-   (decode-параграф) + **финальный gate + дистилляция в ROADMAP** (ADR-0008
-   Known gaps payload-decode-строка зачёркнута с указателем на ADR-0011,
-   ADR-0009 кандидат 4 «LEAVE» аннотирован «reopened by ADR-0011»).
+4. [x] Шаг 4 — async-твин + интеграция 6 (#34).
+5. **[ ] Шаг 5 — Javadoc-контракт + README + финальный gate +
+   дистилляция в ROADMAP.** Объём — как у #22 (gate retry-эпика):
+   доки + память, кода почти нет:
+   - **Javadoc-контракт (sync/async uniformity decode-оси).**
+     `RetryPolicy`: буллет `retryDecodeFailures` в списке «what is
+     retried» уже есть (#32) — проверить, что он не говорит «sync-only»;
+     при необходимости — 1 строка «applies to both synchronous and
+     CompletableFuture-returning controller methods» в стиле sync/async-
+     абзаца #22. `@Retry`: атрибут `retryDecodeFailures` с Javadoc (#32) —
+     то же зеркало. `ModuleInfo.getRetryPolicy()` — уже есть «applies to
+     both» (sync/async) из #22 — decode-флаг через policy покрывается,
+     отдельного упоминания может не понадобиться (сверить по тексту).
+   - **README «Retry with backoff» — decode-параграф.** Секция существует
+     (#22). Добавить абзац: отдельный opt-in `retryDecodeFailures`
+     (default off), scope — complete-but-unbindable 200 (third
+     failure-kind), cost — double-decode на финале, финальное исключение =
+     codec-своё unchecked (без нового класса), sync/async uniformity.
+     Фича-буллет в шапке — возможно +1 упоминание (сверить по тексту).
+   - **Финальный gate:** `./gradlew test --rerun` (ожидается 256/256) +
+     POM (0 `<dependency>`, 0.6.2).
+   - **Дистилляция в ROADMAP:** новый раздел «Payload-decode retry —
+     COMPLETE ✅ (2026-10-13, unreleased)» в стиле Gson/Moshi/Retry/0.x-
+     polish-разделов: source of truth — ADR-0011, сессии #31–#35, решения
+     (третий failure-kind, side-effect-free probe — «classified exactly
+     once» сохранён, codec-своё исключение без нового класса, отдельный
+     opt-in, ADR-0009-аргумент 1 сужен complete-but-unbindable vs
+     incomplete), тестовый периметр (8 probe-юнитов + 6 интеграций,
+     256/256). В Post-0.5.0 shortlist — зачёркивать нечего (shortlist
+     выработан в #22) — проверять. **ADR-0008 Known gaps:**
+     payload-decode-строка зачёркнута + указатель на ADR-0011 (прецедент
+     #25/#28 с HTTP-date/асctime). **ADR-0009 кандидат 4:** «LEAVE»
+     аннотирован «reopened by ADR-0011» (указатель-правка, решение стоит).
+     DRAFT: эпик дистиллирован → зачистить под новое состояние (пауза/
+     следующий кандидат — на усмотрение: контур 0.7.0-цикла в DRAFT
+     остаётся живым кандидатом).
+   - **Mailbox:** заметка #35 (эпик закрыт) + гигиена. Дневник #35 +
+     «Итог дня» — возможно, вечерний финал дня (15-я сессия).
 
 ### Грабли этой и прошлых сессий (актуальный набор)
 - **Коммиты — КРАТКИЙ subject, без дублирования ченджлога** (Антон,
   2026-10-13, нитка в mailbox): с #33 новый стиль (пример: «feat+test:
-  payload-decode retry step 3 — sync wiring + ADR-0011 integrations
-  1-5»). Длинное тело не нужно — ченжлог и так в DRAFT/ROADMAP/дневниках.
+  payload-decode retry step 3 — sync wiring + ADR-0011 integrations 1-5»).
+  Длинное тело не нужно — ченжлог и так в DRAFT/ROADMAP/дневниках.
+- **Зеркало синхронизировано формой, а не памятью** (#34): async-ветка
+  написана дословно по sync-коду (#33) + форма из last_session — первый
+  прогон зелёный. Правило подтверждено в обратную сторону: когда
+  last_session даёт форму дословно, «ожидание vs реальность» не срабатывает.
 - **Replace-семантика скрывает двойной вызов** (#33): «consumer вызван
   один раз» — только счётчиком (TestAuthProvider.captureCount);
   list-size/last-value не пины.
@@ -162,10 +142,11 @@
 - **Преценденты решают споры о поверхности** (httpVersion — retry;
   dedicated-фикстура на новое поведение — RetryController; log-capture —
   public `setLogger`; шов — package-private метод, не WireMock;
-  auth-count — override в TestAuthProvider). Контракт-доки — на
-  value-классе/аннотации/SPI-методе.
+  auth-count — override в TestAuthProvider; async-интеграция — существующая
+  фикстура + `with(policy)` helper). Контракт-доки — на value-классе/
+  аннотации/SPI-методе.
 - **Аллокации на hot path** — static constants, не per-call списки.
-- **GRADLE_USER_HOME=/tmp/opencode/gradle-home** — кэш тёплый (19–21 s).
+- **GRADLE_USER_HOME=/tmp/opencode/gradle-home** — кэш тёплый (19 s).
 - **DRAFT-пауза — легитимное состояние** (#26); тут эпик активен.
 - **Порядок ROADMAP-секций:** новые «COMPLETE ✅ (unreleased)» —
   хронологически, перед Post-0.5.0 shortlist.
@@ -177,14 +158,13 @@
 2. `pids.max = 1000`. Полный `./gradlew test` БЕЗ init-скрипта.
 3. Ветка `agent-loop`. Демон Gradle переживает падения тестов.
 4. Коммиты агента: `longirun-agent <sinyagovsky@gmail.com>`; счётчик
-   сессий подкручивает harness (сейчас 33 → после следующей 34).
+   сессий подкручивает harness (сейчас 34 → после следующей 35).
 5. Часы контейнера: UTC+4; mailbox-время — местное.
 6. `docs/` — ADR-папки по версиям цикла: `0.5.0/`, `0.6.0/`, `0.7.0/`
    (следующий свободный ADR — 0012).
 
 ### Состояние git
-- HEAD: коммит сессии #33 (короткий subject, новый стиль) поверх #32
-  (surface + шов + юниты). Всё на `agent-loop`. Последний тег `v0.6.1` —
-  дальше теги за Антоном.
+- HEAD: коммит сессии #34 (короткий subject) поверх #33. Всё на
+  `agent-loop`. Последний тег `v0.6.1` — дальше теги за Антоном.
 - Версия в build.gradle: **0.6.2** (без тега, релизы на паузе).
-- Тесты: **255/255** (36 классов).
+- Тесты: **256/256** (36 классов).

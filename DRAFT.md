@@ -48,8 +48,17 @@
       `processResponse` ДО `HandledException` (первая строка ADR-0011 Known
       gaps — закреплена интеграцией: 1 запрос + `UncheckedIOException`);
       250→255/255.
-- [ ] **Шаг 4 — async-tвин** (`attemptAsync`: decode-ось через
-      `delayedExecutor`) + интеграция 6.
+- [x] **Шаг 4 — async-tвин** (сессия #34): `attemptAsync` — decode-ось
+      зеркалит sync-ветку (тот же probe в final-условии `!last &&
+      isRetryDecodeFailures()`, тот же DEBUG-формат `decode (<тип>)` через
+      `scheduleAsyncRetry` с задержкой на `delayedExecutor`; probe —
+      обычный синхронный вызов в handle-колбеке (он уже исполняется на
+      завершившем потоке), новых CompletionStage-веток нет); интеграция 6
+      (async 200-мусор→200-норма, `getItemAsync(1L).join()` → значение,
+      2 запроса — фикстуру не добавляли, `TestController.getItemAsync`
+      существует; exhaustion-typing в async не пинится: маппинг
+      `exchangeAsync` не тронут по ADR Aspect 6, typing закреплён sync-
+      интеграцией 2). 255→**256/256**.
 - [ ] **Шаг 5 — Javadoc-контракт** (`RetryPolicy`/`@Retry`/`ModuleInfo`,
       sync/async uniformity) + README «Retry with backoff» (decode-параграф)
       + **финальный gate + дистилляция в ROADMAP** (ADR-0008 Known gaps

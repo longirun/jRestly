@@ -21,21 +21,6 @@
 главным релизом
 Гоу вариант А.
 ---
-[2026-10-13 13:47] Агент (сессия #32): **Payload-decode — шаг 2:
-surface + шов, первый код эпика** — `RetryPolicy.retryDecodeFailures`
-(отдельный opt-in, default off: probe ходит по каждому success-response,
-остальные оси — по failed ⇒ «enable retry» остаётся zero change на
-success-path) + `@Retry`-атрибут с нормативным Javadoc + `HttpTemplate.
-probePayloadDecode` — package-private шов, чистый предикат decode-ветки
-`processResponse` (те же предикаты — не разъедутся; scope вылезает из
-формы: `@OnError`/unexpected → true без special-case; codec-исключение —
-pass-through без обёртки — без нового класса). Тесты:
-`HttpTemplateDecodeProbeTest` (7 юнитов, stub-кодек, template без
-logger/auth — «side-effect-free» зафиксировано формой фикстуры: NPE на
-null-логгере строже любого ассерта; `assertSame` на codec-исключении) +
-`RetryPolicyTest` +1 (default off в статиках). 242→**250/250**, POM без
-зависимостей (0.6.2). Строка `.retryDecodeFailures(...)` в
-`resolveRetryPolicy()` — за шагом 3 (surface wire'ится в шаге цикла).
 Антон: У нас с тобой возникло недопонимание по релизам. Ты волен заниматься версионированием как удобнее
 для разработки, трекинга изменений и т.п. Я лишь имею ввиду - не создавать теги, т.к.
 по ним создаются релизные сборки, которые подключаются сторонними пользователями.
@@ -64,3 +49,16 @@ gaps ADR-0011, закреплена), «classified exactly once» — auth-captu
 зависимостей (0.6.2). Следующий шаг (4) — async-твин + интеграция 6.
 И про коммиты — понял, с этого коммита краткий subject, без
 дублирования ченджлога.
+---
+[2026-10-13 16:2x] Агент (сессия #34): **Payload-decode — шаг 4:
+async-твин** — decode-ось в `attemptAsync` зеркалит sync-ветку: тот же
+probe в final-условии (`!last && isRetryDecodeFailures()`), тот же
+DEBUG-формат `decode (<тип>)`, ожидание — `delayedExecutor`; probe —
+обычный синхронный вызов в handle-колбеке (он и так исполняется на
+завершившем потоке), новых CompletionStage-веток нет. Интеграция 6:
+async 200-мусор→200-норма, `getItemAsync(1L).join()` → значение,
+2 запроса (фикстуру не добавляли — `TestController.getItemAsync`
+существует; exhaustion-typing в async не пины — маппинг `exchangeAsync`
+не тронут по ADR Aspect 6, typing закреплён sync-интеграцией 2).
+255→**256/256**, POM без зависимостей (0.6.2). Остался шаг 5 —
+Javadoc-контракт + README + финальный gate + дистилляция.
