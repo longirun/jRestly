@@ -1,4 +1,4 @@
-# DRAFT: warnings и модернизация (ADR-0013) — шаг 5 идёт: HttpTemplate + AbstractHttpClient закрыты, 115→100 (сессия #48)
+# DRAFT: warnings и модернизация (ADR-0013) — шаг 5 идёт: SimpleModuleInfo закрыт, 100→86 (сессия #49)
 
 > Свободный ход после 0.7.0-цикла: кандидат №1 (warnings/рефакторинг-аудит,
 > fallback с #30) открыт как эпик. Сессия #41 — сам аудит (кандидат так и
@@ -66,8 +66,19 @@
       `isLoginInBackgroundNeeded` — по аннотациям `@Authorization`/
       `@Anonymous`, `createController` — по `ControllerValidator`,
       `createConnection` — connectTimeout + httpVersion + Redirect.NEVER).
-      Остаток (28 файлов):
-      `SimpleModuleInfo` 14, `JRestlyClient` 14, `ModuleInfo` 10,
+      Сессия #49 закрыла `SimpleModuleInfo` 14 (100→86; поверхность 0 —
+      класс, `builder()`, `Builder` + явный no-arg конструктор с Javadoc
+      (единственная кодовая правка сессии — «default constructor»-warning,
+      прецедент #47), 9 fluent-сеттеров (house-style «this builder, for
+      chaining»), `build()`; факты сверены: дефолты против default-методов
+      `ModuleInfo` (name — abstract, уточнение в class-doc), `baseUrl` —
+      required → ISE, `jsonCodec` → SPI-фоллбэк (`JsonCodecResolver`),
+      `authHeader` — шлётся только при обоих non-null (по
+      `AuthHeaderProvider.getAuthHeaders`), validation — в момент создания
+      proxy (ленивое `get`, не «at client creation» — поправил по ходу),
+      `getEnvironment()` — свежий инстанс на каждый вызов).
+      Остаток (27 файлов):
+      `JRestlyClient` 14, `ModuleInfo` 10,
       `WireRequest` 7, `OnErrorParser` 7, `HttpMethod` 6,
       `RequestType` 5, 4 файла × 3 (JacksonCodec/WireResponse/
       HttpTemplateBuilder/AuthHeaderProvider), 8 × 2, 9 × 1.

@@ -8,6 +8,22 @@ import ru.jrestly.json.JsonCodecResolver;
 
 import java.net.http.HttpClient;
 
+/**
+ * The {@link ModuleInfo} created by {@link #builder()}: every setting is
+ * fixed at {@code build()} time, so the result is immutable and
+ * thread-safe.
+ *
+ * <p>Every field has a default — module name {@code "default"}, 5 s
+ * connect timeout, 30 s socket timeout, {@code HTTP_2}, controller
+ * validation on, retry {@code off()} — and wherever the
+ * {@link ModuleInfo} interface provides a default method, the builder's
+ * default matches it, so an unset field keeps the interface behavior.
+ *
+ * <p>{@link #getEnvironment()} returns a fresh execution environment
+ * rooted at the {@code baseUrl} on every call: relative request URLs
+ * resolve against {@link Environment#getUrl()}, and the environment holds
+ * the client's typed auth details (see {@link Environment}).
+ */
 public class SimpleModuleInfo implements ModuleInfo {
 
     private final String name;
@@ -34,6 +50,11 @@ public class SimpleModuleInfo implements ModuleInfo {
         this.retryPolicy = builder.retryPolicy;
     }
 
+    /**
+     * A builder pre-set to the defaults (see the class documentation).
+     *
+     * @return a new builder
+     */
     public static Builder builder() {
         return new Builder();
     }
@@ -84,6 +105,14 @@ public class SimpleModuleInfo implements ModuleInfo {
         return retryPolicy;
     }
 
+    /**
+     * A builder for {@link SimpleModuleInfo}, pre-set to the defaults:
+     * name {@code "default"}, 5 s connect timeout, 30 s socket timeout,
+     * {@code HTTP_2}, controller validation on, retry {@code off()}.
+     *
+     * <p>{@code baseUrl} is the only required setting; {@link #build()}
+     * validates the combination and returns the immutable module.
+     */
     public static class Builder {
         private String name = "default";
         private String baseUrl;
@@ -96,52 +125,132 @@ public class SimpleModuleInfo implements ModuleInfo {
         private boolean validateControllers = true;
         private RetryPolicy retryPolicy = RetryPolicy.off();
 
+        /**
+         * A builder pre-set to the defaults; {@code baseUrl} must still
+         * be supplied before {@link #build()}.
+         */
+        public Builder() {
+        }
+
+        /**
+         * The module name (default {@code "default"}).
+         *
+         * @param name the module name
+         * @return this builder, for chaining
+         */
         public Builder name(String name) {
             this.name = name;
             return this;
         }
 
+        /**
+         * The base URL for relative request URLs. Required:
+         * {@link #build()} fails fast without it.
+         *
+         * @param baseUrl the base URL
+         * @return this builder, for chaining
+         */
         public Builder baseUrl(String baseUrl) {
             this.baseUrl = baseUrl;
             return this;
         }
 
+        /**
+         * The initial auth header pair (default: none). The header is
+         * sent only when both name and value are set; a client started
+         * without it is not authorized until login captures a credential.
+         *
+         * @param name the auth header name, or {@code null} for no
+         *             initial header
+         * @param value the auth header value
+         * @return this builder, for chaining
+         */
         public Builder authHeader(String name, String value) {
             this.authHeaderName = name;
             this.authHeaderValue = value;
             return this;
         }
 
+        /**
+         * The JSON codec for request and response bodies. When left
+         * unset, {@link #build()} resolves one from the classpath —
+         * jackson, then gson, then moshi, the first found wins (ADR-0007).
+         *
+         * @param jsonCodec the codec to use
+         * @return this builder, for chaining
+         */
         public Builder jsonCodec(JsonCodec jsonCodec) {
             this.jsonCodec = jsonCodec;
             return this;
         }
 
+        /**
+         * The connect timeout in milliseconds (default 5 000).
+         *
+         * @param ms the connect timeout in milliseconds
+         * @return this builder, for chaining
+         */
         public Builder connectTimeout(int ms) {
             this.connectTimeout = ms;
             return this;
         }
 
+        /**
+         * The socket (request) timeout in milliseconds (default 30 000).
+         *
+         * @param ms the socket timeout in milliseconds
+         * @return this builder, for chaining
+         */
         public Builder socketTimeout(int ms) {
             this.socketTimeout = ms;
             return this;
         }
 
+        /**
+         * The HTTP protocol version (default {@code HTTP_2}).
+         *
+         * @param httpVersion the protocol version, not {@code null}
+         * @return this builder, for chaining
+         */
         public Builder httpVersion(HttpClient.Version httpVersion) {
             this.httpVersion = java.util.Objects.requireNonNull(httpVersion, "httpVersion");
             return this;
         }
 
+        /**
+         * Whether controller interfaces are validated up front (default
+         * {@code true}: an invalid controller fails when its proxy is
+         * created with a {@link ControllerValidationException}; when off,
+         * the problems are only logged and the failing methods throw on
+         * call).
+         *
+         * @param validate whether to validate controllers up front
+         * @return this builder, for chaining
+         */
         public Builder validateControllers(boolean validate) {
             this.validateControllers = validate;
             return this;
         }
 
+        /**
+         * The client-level retry policy (default {@code off()}).
+         *
+         * @param retryPolicy the retry policy, not {@code null}
+         * @return this builder, for chaining
+         */
         public Builder retry(RetryPolicy retryPolicy) {
             this.retryPolicy = java.util.Objects.requireNonNull(retryPolicy, "retryPolicy");
             return this;
         }
 
+        /**
+         * Validates the settings and creates the module: {@code baseUrl}
+         * must be set (not blank) and an unset {@code jsonCodec} is
+         * resolved from the classpath.
+         *
+         * @return the immutable module
+         * @throws IllegalStateException when {@code baseUrl} is not set
+         */
         public SimpleModuleInfo build() {
             if (baseUrl == null || baseUrl.isBlank()) {
                 throw new IllegalStateException("baseUrl is required");
