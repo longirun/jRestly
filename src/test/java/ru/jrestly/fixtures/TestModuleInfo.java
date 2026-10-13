@@ -3,7 +3,6 @@ package ru.jrestly.fixtures;
 import ru.jrestly.AuthProvider;
 import ru.jrestly.Environment;
 import ru.jrestly.ModuleInfo;
-import ru.jrestly.http.Header;
 import ru.jrestly.http.RetryPolicy;
 
 public class TestModuleInfo implements ModuleInfo {
@@ -24,8 +23,8 @@ public class TestModuleInfo implements ModuleInfo {
 
     @SuppressWarnings("unchecked")
     @Override
-    public Environment<Header> getEnvironment() {
-        return environment;
+    public <T> Environment<T> getEnvironment() {
+        return (Environment<T>) environment;
     }
 
     @Override

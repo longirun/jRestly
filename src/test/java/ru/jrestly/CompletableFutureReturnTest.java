@@ -10,11 +10,11 @@ import ru.jrestly.http.UnexpectedStatusException;
 
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionException;
 import java.util.concurrent.TimeUnit;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.*;
 import static org.junit.jupiter.api.Assertions.*;
+import static ru.jrestly.fixtures.TestFutures.causeOf;
 
 /**
  * Contract for controller methods returning {@code CompletableFuture<T>}:
@@ -184,13 +184,6 @@ class CompletableFutureReturnTest extends BaseWireMockTest {
         // the raw transport failure, not a nested wrapper
         assertEquals(RuntimeException.class, exception.getClass());
         assertNotNull(exception.getCause(), "the transport failure must be kept as the cause");
-    }
-
-    // CompletableFuture semantics: join() wraps the stored failure in a
-    // CompletionException; the contract under test is the carried exception
-    private static <T extends Throwable> T causeOf(Runnable joining) {
-        CompletionException exception = assertThrows(CompletionException.class, joining::run);
-        return (T) exception.getCause();
     }
 
     @Test

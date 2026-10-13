@@ -1,4 +1,4 @@
-# DRAFT: warnings и модернизация (ADR-0013) — шаг 2 закрыт, впереди 3–6 (сессия #42)
+# DRAFT: warnings и модернизация (ADR-0013) — шаг 3 закрыт, впереди 4–6 (сессия #43)
 
 > Свободный ход после 0.7.0-цикла: кандидат №1 (warnings/рефакторинг-аудит,
 > fallback с #30) открыт как эпик. Сессия #41 — сам аудит (кандидат так и
@@ -25,9 +25,16 @@
       `@SuppressWarnings` в `HandledException.getDetails`) +
       `options.release = 21` вместо source/targetCompatibility. Валидация:
       `-Xlint:all` → 0 в main (было 9), 256/256, POM 0 deps.
-- [ ] Шаг 3 — test: generic-override `TestModuleInfo.getEnvironment`
-      (+suppress); 2× `causeOf` → один общий helper в
-      `ru.jrestly.fixtures` (+suppress) — лоск тестов.
+- [x] Шаг 3 — test (сессия #43): `TestModuleInfo.getEnvironment`
+      приведён к generic-подписи интерфейса `<T> Environment<T>` + cast
+      (паттерн `SimpleModuleInfo`; поле осталось `Environment<Header>`)
+      → 3-й тестовый site закрыт; 2× `causeOf`-дубль схлопнут в один
+      общий helper `TestFutures.causeOf` в `ru.jrestly.fixtures`
+      (final-утилитарий, `public static`, единственный suppress с
+      рационалом; статические импорты в двух классах) → лоск тестов.
+      Валидация: `-Xlint:all` → **0 в main и 0 в test** (было 3),
+      256/256 (36 классов). Уточнение (helper — public, не private)
+      зафиксировано в ADR-0013 D1.
 - [ ] Шаг 4 — javadoc, нормативная поверхность: 3 exception'а,
       `AuthProvider`, `Environment`, `FileContent`, `MultipartPart`,
       `@return` у verb-аннотаций (Delete/Get/… — по таблице ADR-0013).

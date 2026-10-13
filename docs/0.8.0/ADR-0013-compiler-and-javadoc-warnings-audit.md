@@ -114,8 +114,11 @@ blanket, and always carries a one-line rationale.**
 - **Test overrides:** `TestModuleInfo.getEnvironment` matches the interface's
   `<T>` signature (fixture field is `Environment<Header>`; the cast sits
   behind the method-level suppression); the two `causeOf` helpers are
-  collapsed into one shared private helper in `ru.jrestly.fixtures` with a
-  single `@SuppressWarnings("unchecked")` — test polish, no behavior change.
+  collapsed into one shared helper in `ru.jrestly.fixtures` with a single
+  `@SuppressWarnings("unchecked")` — test polish, no behavior change.
+  Session #43 (the fix step): the helper is `TestFutures.causeOf` — a
+  `public static` on a final utility class (a private one would not reach
+  the two test classes across class boundaries).
 
 **D2 — All 100 javadoc warnings are fixed, and the build starts enforcing
 them.** The cleanup is permanent only if a gate keeps it: `build.gradle`

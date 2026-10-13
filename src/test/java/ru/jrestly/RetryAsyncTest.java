@@ -12,11 +12,11 @@ import ru.jrestly.http.UnexpectedStatusException;
 
 import java.time.Duration;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionException;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.*;
 import static com.github.tomakehurst.wiremock.stubbing.Scenario.STARTED;
 import static org.junit.jupiter.api.Assertions.*;
+import static ru.jrestly.fixtures.TestFutures.causeOf;
 
 /**
  * The async retry circuit end to end (ADR-0008, Aspect 6 + Aspect 7
@@ -124,12 +124,5 @@ class RetryAsyncTest extends BaseWireMockTest {
         UnexpectedStatusException exception = causeOf(future::join);
         assertEquals(503, exception.getStatusCode());
         verify(1, getRequestedFor(urlEqualTo("/api/server-error")));
-    }
-
-    // CompletableFuture semantics: join() wraps the stored failure in a
-    // CompletionException; the contract under test is the carried exception
-    private static <T extends Throwable> T causeOf(Runnable joining) {
-        CompletionException exception = assertThrows(CompletionException.class, joining::run);
-        return (T) exception.getCause();
     }
 }
