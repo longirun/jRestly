@@ -6,6 +6,8 @@ import ru.jrestly.annotation.Post;
 import ru.jrestly.annotation.RequestBody;
 import ru.jrestly.annotation.Retry;
 
+import java.util.concurrent.CompletableFuture;
+
 /**
  * Per-method {@code @Retry} fixture (ADR-0008, Aspect 2), in the shape of
  * {@link HttpVersionController}: one dedicated interface for the
@@ -19,6 +21,11 @@ public interface RetryController {
     @Retry
     @Get(path = "/api/server-error")
     TestDto getWithBareRetry();
+
+    // The same off-switch on the async circuit (CompletableFuture return)
+    @Retry
+    @Get(path = "/api/server-error")
+    CompletableFuture<TestDto> getWithBareRetryAsync();
 
     // Self-contained policy while the client level stays off: 429 flaps to 200
     @Retry(times = 3, initialBackoffMs = 10, maxBackoffMs = 50)

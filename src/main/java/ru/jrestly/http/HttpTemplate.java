@@ -17,7 +17,9 @@ import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 /**
@@ -96,8 +98,7 @@ public class HttpTemplate {
     // mapped to the exceptions a synchronous call would throw (both become
     // the cause of the future's exceptional completion)
     private CompletableFuture<Object> exchangeAsync(WireRequest request, long startNanos) {
-        int hopsLeft = followRedirectsNumber == null ? 0 : followRedirectsNumber;
-        return executeAsyncWithRedirects(request, hopsLeft)
+        return executeAsyncWithRetries(request)
                 .thenApply(response -> processResponse(request, response, startNanos))
                 .exceptionally(ex -> {
                     Throwable cause = unwrapCause(ex);
@@ -293,6 +294,60 @@ public class HttpTemplate {
             logExhaustedRedirects(response);
             return response;
         });
+    }
+
+    // Async twin of executeWithRetries (ADR-0008 Aspect 6): the same loop
+    // chained over sendAsync, a disabled policy a straight pass-through. The
+    // backoff wait runs on CompletableFuture.delayedExecutor — non-blocking,
+    // no parked virtual thread per retry — and exchangeAsync's final exception
+    // mapping stays untouched.
+    private CompletableFuture<WireResponse> executeAsyncWithRetries(WireRequest request) {
+        int hopsLeft = followRedirectsNumber == null ? 0 : followRedirectsNumber;
+        if (!retryPolicy.isEnabled()) {
+            return executeAsyncWithRedirects(request, hopsLeft);
+        }
+        return attemptAsync(request, 1, retryPolicy.maxAttempts(), hopsLeft);
+    }
+
+    // One attempt, or the next one after the wait: the exact sync decisions —
+    // only an IOException with retryTransport on and a non-last attempt is
+    // retried; InterruptedException (fail fast) and any other failure type
+    // pass through to exchangeAsync's mapping. The handle step yields the
+    // next stage (handle unwraps a returned CompletionStage at runtime); the
+    // identity compose only fixes the static type.
+    private CompletableFuture<WireResponse> attemptAsync(WireRequest request, int attempt, int maxAttempts, int hopsLeft) {
+        boolean last = attempt == maxAttempts;
+        return executeAsyncWithRedirects(request, hopsLeft)
+                .<CompletableFuture<WireResponse>>handle((response, failure) -> {
+                    if (failure != null) {
+                        Throwable cause = unwrapCause(failure);
+                        if (!(cause instanceof IOException) || last || !retryPolicy.isRetryTransport()) {
+                            return CompletableFuture.<WireResponse>failedFuture(cause);
+                        }
+                        return scheduleAsyncRetry(request, attempt, maxAttempts, cause.getClass().getSimpleName(), null, hopsLeft);
+                    }
+                    if (last || !isRetryableStatus(response)) {
+                        return CompletableFuture.<WireResponse>completedFuture(response);
+                    }
+                    return scheduleAsyncRetry(request, attempt, maxAttempts, "HTTP " + response.statusCode(), response, hopsLeft);
+                })
+                .thenCompose(Function.identity());
+    }
+
+    // The async wait: the sync twin's exact DEBUG line, then the next attempt
+    // after the delay on CompletableFuture.delayedExecutor; a zero jitter draw
+    // skips the scheduler call, as the sync twin skips Thread.sleep(0)
+    private CompletableFuture<WireResponse> scheduleAsyncRetry(WireRequest request, int attempt, int maxAttempts,
+                                                               String failure, WireResponse response, int hopsLeft) {
+        long delayMillis = retryPolicy.nextDelayMillis(attempt, retryAfterSeconds(response), ThreadLocalRandom.current());
+        logger.log(System.Logger.Level.DEBUG,
+                "Attempt " + attempt + "/" + maxAttempts + " failed: " + failure + " — retrying in " + delayMillis + " ms");
+        if (delayMillis <= 0) {
+            return attemptAsync(request, attempt + 1, maxAttempts, hopsLeft);
+        }
+        return CompletableFuture.runAsync(() -> {
+        }, CompletableFuture.delayedExecutor(delayMillis, TimeUnit.MILLISECONDS))
+                .thenCompose(ignored -> attemptAsync(request, attempt + 1, maxAttempts, hopsLeft));
     }
 
     // The next redirect hop, or null if the chain stops here

@@ -58,3 +58,12 @@ retry с дефолтами) отвергнута: аннотация-тихая
 429→429→200 self-contained, POST через `nonIdempotent`, `@OnError`-opt-in,
 typed exhaustion, custom `statuses`). 214/214 зелёные, POM чистый.
 Дальше — async-твин (шаг 5: `CompletableFuture.delayedExecutor`).
+[2026-10-13 06:00] Агент (сессия #21): Async-твин retry готов (шаг 5 из 6):
+`CompletableFuture`-методы теперь ретраятся с теми же семантиками, что и
+sync — async-контур зовёт те же предикаты и тот же backoff-шов, что и
+sync-цикл (sync/async не могут разъехаться), ожидание —
+`CompletableFuture.delayedExecutor` (виртуальные потоки на время backoff не
+паркует), маппинг исключений `exchangeAsync` не тронут. 219/219 зелёные
+(+5 интеграций: ADR-сценарий 9, transport-fault, exhaustion с
+типизированной join-причиной, 404, off-switch `@Retry` на async). Остался
+один шаг — финальный gate (Javadoc/README + дистилляция эпика).

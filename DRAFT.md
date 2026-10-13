@@ -78,9 +78,25 @@
       типизированный `HandledException`, 3 запроса; `statuses={501}` —
       кастомный статус ретраится → 2). Javadoc `RetryPolicy` обновлён
       («later step» → реализовано).
-- [ ] Код: async-твин (контур над `sendAsync`, неблокирующий backoff через
+- [x] Код: async-твин (контур над `sendAsync`, неблокирующий backoff через
       `CompletableFuture.delayedExecutor`, маппинг исключений без изменений)
-      + тесты retry на `CompletableFuture`-методах
+      + тесты retry на `CompletableFuture`-методах. Сделано в сессии #21
+      (214→219): `executeAsyncWithRetries` — async-зеркало
+      `executeWithRetries` (ADR Aspect 6 буквально: disabled policy —
+      pass-through; `attemptAsync` — цикл в форме handle-рекурсии, решения
+      побазу идентичны sync: ретраится только `IOException` с
+      `retryTransport` и не last; `InterruptedException` и любой прочий
+      failure — pass-through в маппинг `exchangeAsync`; `Retry-After`/jitter
+      — тот же шов `nextDelayMillis` + `ThreadLocalRandom`); ожидание —
+      `CompletableFuture.runAsync(noop, delayedExecutor(ms))` (без parked
+      virtual thread; нулевой jitter-выигрыш — без scheduler-вызова, как
+      `Thread.sleep(0)` в sync); DEBUG-строка в формате sync; маппинг
+      `exchangeAsync` не тронут. `RetryAsyncTest` (5 интеграций): ADR
+      сценарий 9 (503→200, `join()` — значение, 2 запроса),
+      transport-fault→200 (2 запроса), exhaustion → join-причина остаётся
+      типизированным `UnexpectedStatusException` (3), 404 — 1 запрос,
+      bare `@Retry` — off-switch и на async-контуре (новый async-метод в
+      `RetryController`).
 - [ ] Javadoc-контракт + README («Retry with backoff») + финальный gate
       (тесты зелёные, POM без зависимостей, дистилляция в ROADMAP)
 
