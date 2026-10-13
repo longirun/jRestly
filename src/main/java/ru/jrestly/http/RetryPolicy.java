@@ -112,6 +112,8 @@ public final class RetryPolicy {
      * initial backoff capped at 5 s, the default retryable statuses,
      * transport failures retried, {@code @OnError} statuses and
      * non-idempotent methods not.
+     *
+     * @return a policy with the ADR defaults
      */
     public static RetryPolicy defaults() {
         return builder().build();
@@ -125,16 +127,28 @@ public final class RetryPolicy {
     /**
      * The off policy: {@code maxAttempts = 1}, so the first attempt is the
      * only one. The client-level default (a shared instance).
+     *
+     * @return the shared off-policy instance
      */
     public static RetryPolicy off() {
         return OFF;
     }
 
+    /**
+     * A new builder for a {@link RetryPolicy}, pre-set to the ADR
+     * defaults (3 attempts, 200 ms / 5 s backoff, the default retryable
+     * statuses, transport failures retried).
+     *
+     * @return a new builder; call {@link Builder#build()} to obtain the
+     *         policy
+     */
     public static Builder builder() {
         return new Builder();
     }
 
     /**
+     * The total number of attempts, including the first.
+     *
      * @return total attempts including the first, always {@code >= 1}
      */
     public int maxAttempts() {
@@ -142,6 +156,8 @@ public final class RetryPolicy {
     }
 
     /**
+     * The bound of the wait after the first failed attempt.
+     *
      * @return the bound of the wait after the first failed attempt
      */
     public Duration getInitialBackoff() {
@@ -149,6 +165,8 @@ public final class RetryPolicy {
     }
 
     /**
+     * The cap applied to the exponential growth of the wait.
+     *
      * @return the cap applied to the exponential growth of the wait
      */
     public Duration getMaxBackoff() {
@@ -156,6 +174,8 @@ public final class RetryPolicy {
     }
 
     /**
+     * The statuses a response is retried for.
+     *
      * @return the statuses a response is retried for; unmodifiable and
      *         owned by this policy (mutating the collection passed to the
      *         builder has no effect)
@@ -164,29 +184,55 @@ public final class RetryPolicy {
         return retryableStatuses;
     }
 
+    /**
+     * Whether transport failures are retried.
+     *
+     * @return {@code true} when any {@link java.io.IOException} from the
+     *         send (connect timeout, request timeout, connection reset,
+     *         DNS blips) is retried; default {@code true}
+     */
     public boolean isRetryTransport() {
         return retryTransport;
     }
 
     /**
+     * Whether a status-acceptable response whose body the codec cannot
+     * bind is retried (ADR-0011).
+     *
      * @return {@code true} when a status-acceptable response whose body
-     *         the codec cannot bind is retried (ADR-0011); default
-     *         {@code false} — a distinct opt-in, see the class-level
-     *         documentation for why it does not ride the general enable
+     *         the codec cannot bind is retried; default {@code false} —
+     *         a distinct opt-in, see the class-level documentation for
+     *         why it does not ride the general enable
      */
     public boolean isRetryDecodeFailures() {
         return retryDecodeFailures;
     }
 
+    /**
+     * Whether statuses a method declares in {@code @OnError} are retried
+     * instead of being terminal.
+     *
+     * @return {@code true} when a declared {@code @OnError} status is
+     *         retried; default {@code false} — a declared status is a
+     *         terminal contract by default
+     */
     public boolean isRetryOnErrorStatuses() {
         return retryOnErrorStatuses;
     }
 
+    /**
+     * Whether non-idempotent methods (POST, PATCH) are retried.
+     *
+     * @return {@code true} when non-idempotent methods are retried;
+     *         default {@code false}, per RFC 9110
+     */
     public boolean isRetryNonIdempotent() {
         return retryNonIdempotent;
     }
 
     /**
+     * Whether this policy waits and retries at all.
+     *
      * @return {@code true} when this policy waits and retries at all
      *         ({@code maxAttempts > 1})
      */
@@ -225,6 +271,11 @@ public final class RetryPolicy {
         return random.nextLong(bound + 1);
     }
 
+    /**
+     * A single-line rendering of the policy for logs and error messages.
+     *
+     * @return the policy's state as a string
+     */
     @Override
     public String toString() {
         return "RetryPolicy[maxAttempts=" + maxAttempts
@@ -237,6 +288,15 @@ public final class RetryPolicy {
                 + ", retryNonIdempotent=" + retryNonIdempotent + "]";
     }
 
+    /**
+     * A builder for {@link RetryPolicy}, pre-set to the ADR defaults:
+     * 3 attempts, 200 ms initial backoff capped at 5 s, the default
+     * retryable statuses, transport failures retried, decode failures /
+     * {@code @OnError} statuses / non-idempotent methods not.
+     *
+     * <p>Each setter replaces one field; {@link #build()} validates the
+     * combination and returns the immutable policy.
+     */
     public static final class Builder {
         private int maxAttempts = 3;
         private Duration initialBackoff = Duration.ofMillis(200);
@@ -251,20 +311,41 @@ public final class RetryPolicy {
         }
 
         /**
+         * The total number of attempts, including the first.
+         *
          * @param maxAttempts total attempts including the first,
          *                    {@code >= 1} (validated in
          *                    {@link #build() build})
+         * @return this builder, for chaining
          */
         public Builder maxAttempts(int maxAttempts) {
             this.maxAttempts = maxAttempts;
             return this;
         }
 
+        /**
+         * The bound of the wait after the first failed attempt.
+         *
+         * @param initialBackoff the bound of the wait after the first
+         *                       failed attempt; non-negative and must not
+         *                       exceed {@code maxBackoff} (validated in
+         *                       {@link #build() build})
+         * @return this builder, for chaining
+         */
         public Builder initialBackoff(Duration initialBackoff) {
             this.initialBackoff = Objects.requireNonNull(initialBackoff, "initialBackoff");
             return this;
         }
 
+        /**
+         * The cap applied to the exponential growth of the wait.
+         *
+         * @param maxBackoff the cap applied to the exponential growth of
+         *                   the wait; non-negative and must not be less
+         *                   than {@code initialBackoff} (validated in
+         *                   {@link #build() build})
+         * @return this builder, for chaining
+         */
         public Builder maxBackoff(Duration maxBackoff) {
             this.maxBackoff = Objects.requireNonNull(maxBackoff, "maxBackoff");
             return this;
@@ -276,6 +357,11 @@ public final class RetryPolicy {
          * view, so mutating the argument after {@code build()} has no
          * effect. Status values must be in {@code [100, 599]} (validated
          * in {@link #build() build}).
+         *
+         * @param retryableStatuses the statuses a response is retried
+         *                         for; must not be {@code null} (nor may
+         *                         it contain {@code null} entries)
+         * @return this builder, for chaining
          */
         public Builder retryableStatuses(Collection<Integer> retryableStatuses) {
             this.retryableStatuses = new LinkedHashSet<>();
@@ -285,6 +371,16 @@ public final class RetryPolicy {
             return this;
         }
 
+        /**
+         * Whether transport failures are retried.
+         *
+         * @param retryTransport {@code true} to retry any
+         *                       {@link java.io.IOException} from the
+         *                       send (connect timeout, request timeout,
+         *                       connection reset, DNS blips); default
+         *                       {@code true}
+         * @return this builder, for chaining
+         */
         public Builder retryTransport(boolean retryTransport) {
             this.retryTransport = retryTransport;
             return this;
@@ -299,22 +395,53 @@ public final class RetryPolicy {
          * decoded twice (probe, then the real decode) — so this axis is a
          * distinct opt-in: "enable retry" stays a zero change on the
          * success path.
+         *
+         * @param retryDecodeFailures {@code true} to retry a
+         *                            status-acceptable response whose
+         *                            body the codec cannot bind
+         * @return this builder, for chaining
          */
         public Builder retryDecodeFailures(boolean retryDecodeFailures) {
             this.retryDecodeFailures = retryDecodeFailures;
             return this;
         }
 
+        /**
+         * Whether statuses a method declares in {@code @OnError} are
+         * retried instead of being terminal.
+         *
+         * @param retryOnErrorStatuses {@code true} to retry a declared
+         *                             {@code @OnError} status; default
+         *                             {@code false}
+         * @return this builder, for chaining
+         */
         public Builder retryOnErrorStatuses(boolean retryOnErrorStatuses) {
             this.retryOnErrorStatuses = retryOnErrorStatuses;
             return this;
         }
 
+        /**
+         * Whether non-idempotent methods (POST, PATCH) are retried.
+         *
+         * @param retryNonIdempotent {@code true} to retry POST and PATCH
+         *                           requests; default {@code false}, per
+         *                           RFC 9110
+         * @return this builder, for chaining
+         */
         public Builder retryNonIdempotent(boolean retryNonIdempotent) {
             this.retryNonIdempotent = retryNonIdempotent;
             return this;
         }
 
+        /**
+         * Validates the combination and returns the immutable policy.
+         *
+         * @return the built policy
+         * @throws IllegalStateException when a field is out of range:
+         *         {@code maxAttempts < 1}, a negative backoff,
+         *         {@code initialBackoff > maxBackoff}, or a retryable
+         *         status outside {@code [100, 599]}
+         */
         public RetryPolicy build() {
             if (maxAttempts < 1) {
                 throw new IllegalStateException("maxAttempts must be >= 1, got " + maxAttempts);

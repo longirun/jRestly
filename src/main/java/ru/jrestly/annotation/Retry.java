@@ -61,6 +61,9 @@ public @interface Retry {
      * Total attempts including the first, {@code >= 1}. The default of
      * {@code 1} never retries — it is the explicit off-switch; any real
      * retry declaration states its budget explicitly.
+     *
+     * @return the total number of attempts, including the first,
+     *         {@code >= 1}
      */
     int times() default 1;
 
@@ -68,6 +71,9 @@ public @interface Retry {
      * The bound of the wait after the first failed attempt, in
      * milliseconds. Non-negative and must not exceed
      * {@link #maxBackoffMs()} (validated when the policy is built).
+     *
+     * @return the bound of the wait after the first failed attempt, in
+     *         milliseconds
      */
     long initialBackoffMs() default 200;
 
@@ -75,6 +81,9 @@ public @interface Retry {
      * The cap applied to the exponential growth of the wait, in
      * milliseconds. Non-negative and must not be less than
      * {@link #initialBackoffMs()} (validated when the policy is built).
+     *
+     * @return the cap applied to the exponential growth of the wait, in
+     *         milliseconds
      */
     long maxBackoffMs() default 5_000;
 
@@ -83,11 +92,17 @@ public @interface Retry {
      * transient family ({@code {408, 429, 500, 502, 503, 504}})
      * entirely; values must be in {@code [100, 599]} (validated when the
      * policy is built).
+     *
+     * @return the statuses a response is retried for
      */
     int[] statuses() default {408, 429, 500, 502, 503, 504};
 
     /**
      * Whether transport failures are retried.
+     *
+     * @return {@code true} to retry any {@link java.io.IOException} from
+     *         the send (connect timeout, request timeout, connection
+     *         reset, DNS blips)
      */
     boolean transport() default true;
 
@@ -104,17 +119,25 @@ public @interface Retry {
      * governs it, orthogonal to this flag. The final failure, when
      * attempts are exhausted on an unbindable body, is the codec's own
      * unchecked exception — the same one seen without retry.
+     *
+     * @return {@code true} to retry a status-acceptable response whose
+     *         body the codec cannot bind
      */
     boolean retryDecodeFailures() default false;
 
     /**
      * Whether statuses declared in {@code @OnError.statuses} participate
      * in the retry decision instead of being terminal.
+     *
+     * @return {@code true} to retry a declared {@code @OnError} status
+     *         instead of failing with the typed {@code HandledException}
      */
     boolean onErrorStatuses() default false;
 
     /**
      * Whether non-idempotent methods (POST, PATCH) are retried.
+     *
+     * @return {@code true} to retry non-idempotent methods (POST, PATCH)
      */
     boolean nonIdempotent() default false;
 }
