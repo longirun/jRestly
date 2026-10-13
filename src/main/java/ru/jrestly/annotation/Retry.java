@@ -37,6 +37,10 @@ import java.lang.annotation.Target;
  * wait is a uniform draw in {@code [0, bound]}. An integer-seconds
  * {@code Retry-After} header on a failed response sets a deterministic
  * lower bound on that wait.
+ *
+ * <p>The declared policy applies to synchronous and
+ * {@code CompletableFuture}-returning methods alike: the same retry
+ * decisions, backoff and final exception on both circuits (ADR-0008).
  */
 @Target(ElementType.METHOD)
 @Retention(RetentionPolicy.RUNTIME)

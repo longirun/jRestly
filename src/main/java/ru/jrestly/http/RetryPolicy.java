@@ -52,6 +52,15 @@ import java.util.Set;
  * the server's explicit signal wins: the wait is exactly
  * {@code max(bound, retryAfter)} (deterministic, no jitter).
  *
+ * <p>One policy covers both call styles: it applies identically to
+ * synchronous methods and to {@code CompletableFuture}-returning methods
+ * (ADR-0008: uniform across sync/async). The only visible difference is
+ * how the wait is spent — the synchronous circuit sleeps the calling
+ * thread, the async one defers the next attempt on
+ * {@code CompletableFuture.delayedExecutor} without parking a virtual
+ * thread — while the retry decisions, the backoff math and the final
+ * exception are the same on both circuits.
+ *
  * <p>{@link #maxAttempts() maxAttempts} counts the first attempt: a policy
  * with {@code maxAttempts = 1} never waits and never retries — it is
  * {@link #off()} and it is the client-level default, so enabling retry is

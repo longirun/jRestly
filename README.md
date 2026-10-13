@@ -16,6 +16,7 @@ A declarative HTTP client for Java. Define an interface, get a working client �
 - Per-method typed error mapping: `@OnError(statuses = {…}, errorObject = X.class)` throws `HandledException` with the deserialized body
 - Strict status validation: any status not in `@OnError` and not in `@ExpectStatus` (or not 2xx when `@ExpectStatus` is absent) throws `UnexpectedStatusException` with the raw body. Use `@ExpectStatus(statuses = {202})` for strict 2xx contracts
 - Per-method redirect chasing: `@FollowRedirects(count = N)`
+- Retry with backoff: client-wide `retry(RetryPolicy)` (off by default) or per-method `@Retry` (self-contained override); transport failures and the transient status family retried with exponential backoff, cap and full jitter, honoring `Retry-After` — uniform across sync and `CompletableFuture` methods
 - HTTP version pinning: client-wide `httpVersion(HttpClient.Version.HTTP_1_1)` on the builder, per-method override `@HttpVersion(HttpClient.Version.HTTP_1_1)` (default is `HTTP_2`)
 - Auth state machine: `@Anonymous` (skip auth refresh), `@Authorization` (this is the login call), `@SetAuthDetails(headerName = …)` (capture token from response, reuse on subsequent calls)
 - Zero-dependency core on `java.net.http.HttpClient` (`System.Logger`, no runtime dependencies); bring your own JSON codec — Jackson 2, Gson, or Moshi is autodetected from the classpath
@@ -122,6 +123,28 @@ Item created = api.createItem(new Item("widget", 42));
 Item fetched = api.getItem(created.id());
 List<Item> page = api.listItems(1);
 ```
+
+## Retry with backoff
+
+Retry is **off by default** — without configuration a call makes exactly one attempt, so an existing client sees no change. Configure it client-wide and/or per method (the annotation is a self-contained policy that replaces the client-level one, no merging; a bare `@Retry` is the explicit off-switch on a method of a client that has retry enabled):
+
+```java
+JRestlyClient client = JRestlyClient.builder()
+        .baseUrl("https://api.example.com")
+        .retry(RetryPolicy.defaults()) // 3 attempts, 200 ms -> 5 s backoff
+        .build();
+
+public interface ItemApi {
+
+    @Get(path = "/api/items/${id}")
+    @Retry(times = 3, initialBackoffMs = 500)
+    Item getItem(@PathVariable(name = "id") long id);
+}
+```
+
+What gets retried: transport failures (timeouts, connection resets) and responses whose status is in the retryable set (default `{408, 429, 500, 502, 503, 504}`). A status a method declares in `@OnError.statuses` is a **terminal contract** by default — the loop stops and the typed `HandledException` is produced; opt the declared statuses into retry with `retryOnErrorStatuses(true)` / `onErrorStatuses = true`. POST and PATCH are not retried by default (RFC 9110: the retry happens after the request was sent, so a lost response on a successful POST is a classic double-submit); opt in with `retryNonIdempotent(true)` / `nonIdempotent = true` where the endpoint tolerates duplicates.
+
+The wait between attempts grows exponentially (200 ms → 5 s cap by default) with full jitter; an integer-seconds `Retry-After` header sets a deterministic lower bound on the wait. The final response is classified exactly once — auth capture, logging and `@OnError` decoding never run on a discarded attempt. Synchronous and `CompletableFuture`-returning methods retry identically; on the async circuit the wait runs on `CompletableFuture.delayedExecutor` and does not park the calling thread.
 
 ## Multipart uploads
 

@@ -232,9 +232,71 @@ Tests: `GsonCodecTest` (12), `MoshiCodecTest` (13),
 `JsonCodecResolverChainTest` (7), `JacksonCodecDefaultsTest` +1 (top-level null
 pin). Suite **183/183** green; generated POM dependency-free (0.6.2).
 
+## Retry with backoff — COMPLETE ✅ (2026-10-13, unreleased)
+
+> From the Post-0.5.0 shortlist (ADR-0003) — its **last** item, the shortlist
+> is now fully drained. Sessions #17–#22 (agent-loop). Design decisions,
+> the test strategy and the Javadoc contract:
+> [`docs/0.7.0/ADR-0008-retry-with-backoff.md`](docs/0.7.0/ADR-0008-retry-with-backoff.md).
+> No version bump / tag — releases paused per maintainer agreement (0.6.2
+> in `build.gradle`).
+
+ADR-0003 names retry the *only* resilience feature in the shortlist and
+notes that it "integrates with `@OnError`". A failed call is now repeated
+with exponential backoff + full jitter for transport failures and the
+transient status family; **off by default**, so existing users see zero
+behavior change and the POM stays dependency-free.
+
+Key decisions (ADR-0008):
+- **Retry before classification** — the loop runs over raw `WireResponse`s;
+  `processResponse` (auth-details capture, logging, `@OnError` decode,
+  status check, payload decode) executes exactly once, on the final
+  response — nothing allocates or logs on a discarded attempt.
+- **`@OnError.statuses` are a terminal contract by default** (the declared
+  contract wins over guessing); the escape hatch is
+  `retryOnErrorStatuses`, and the final failure stays a typed
+  `HandledException`, never a raw `UnexpectedStatusException`.
+- **Two configuration levels, the method wins** (the `httpVersion`
+  precedent): client-level `RetryPolicy` via
+  `ModuleInfo.getRetryPolicy()` (default method — non-breaking; `off()` is
+  a shared constant, no per-request allocation on the hot path) and
+  `@Retry` per method — a **self-contained** policy that replaces the
+  client's entirely (no field-by-field merge); a bare `@Retry`
+  (`times = 1`) is the explicit off-switch.
+- **Backoff** — exponential with a cap, **full jitter** (a fixed curve is
+  the equal-boundary special case, no separate mode); `Retry-After`
+  (integer seconds; the HTTP-date form is an accepted known gap) sets a
+  **deterministic** `max(bound, retryAfter)` wait with no jitter — the
+  server's hint asserts recovery time. The math is a pure package-private
+  seam with an injectable `Random` (deterministic jitter in tests).
+- **Idempotency per RFC 9110** — GET/PUT/DELETE retried; POST/PATCH only
+  via `retryNonIdempotent` (the retry lands after the request was sent —
+  a lost response on a successful POST is the classic duplicate-create);
+  a transport failure is pre-response, so it is gated by `retryTransport`
+  alone; `InterruptedException` is never retried (fail fast).
+- **Uniform across sync/async** — one set of predicates and one backoff
+  seam for both circuits; the async wait runs on
+  `CompletableFuture.delayedExecutor` (no parked virtual thread per
+  retry); `exchangeAsync`'s final exception mapping is untouched.
+
+Public surface: `RetryPolicy` (immutable + builder, `defaults()`/`off()`),
+`@Retry` (`ru.jrestly.annotation`), `ModuleInfo.getRetryPolicy()` (default
+method), `retry(...)` on `JRestlyClient.Builder` and
+`SimpleModuleInfo.Builder`. README gained the feature bullet and a "Retry
+with backoff" section.
+
+Tests: `RetryPolicyTest` (15 units — curve, cap, jitter bounds,
+`Retry-After` branches, validation, copy semantics), `RetryTest` (10
+WireMock integrations — sequential-status scenarios, transport fault,
+`@OnError` terminality, idempotency, `Retry-After` wall-clock),
+`RetryAnnotationTest` (6 — off-switch vs enabled client, self-contained
+replacements, POST via `nonIdempotent`, custom status sets),
+`RetryAsyncTest` (5 — the async twin, typed join cause on exhaustion).
+Suite **219/219** green.
+
 ## Post-0.5.0 shortlist (not scheduled — see ADR-0003)
 
-- Retry with backoff (integrates with `@OnError` semantics)
+- ~~Retry with backoff (integrates with `@OnError` semantics)~~ — done 2026-10-13, section above
 - ~~`CompletableFuture` return type~~ — done 2026-10-12, section above
 - ~~Gson / Moshi codec adapters (classpath probe chain extension)~~ — done 2026-10-13, section above
 

@@ -21,29 +21,6 @@
 главным релизом
 Гоу вариант А.
 ---
-[2026-10-13 04:15] Агент (сессия #17): Концепт **Retry with backoff** готов
-(ADR-0008, `docs/0.7.0/`). Главное решение по твоему вопросу из ADR-0003
-(«интегрируется с @OnError»): retry идёт **до** классификации — цикл крутит
-raw-ответы, а `@OnError`/статус-чек/декодинг срабатывают один раз на
-финальном. При этом статусы из `@OnError.statuses` по умолчанию
-**терминальны** (твой контракт важнее угадывания) — если хочешь ретраить и
-их, есть явный `retryOnErrorStatuses`. Ещё: по умолчанию retry выключен
-(0.x — без изменения поведения), идемпотентность — по RFC 9110 (GET/PUT/
-DELETE да, POST/PATCH — опция), кривая — exponential с cap + full jitter
-(fixed кривая — частный случай, отдельного режима не завёл). Движок:
-`CompletableFuture.delayedExecutor`, виртуальные потоки не паркует.
-183/183 зелёные. Дальше — код по шагам (сначала `RetryPolicy` + юниты).
-[2026-10-13 05:17] Агент (сессия #19): Sync-контур retry готов (шаг 3 из 6):
-`executeWithRetries` в `HttpTemplate` крутит raw-ответы, `processResponse` —
-один раз на финале; клиентский уровень — default method
-`ModuleInfo.getRetryPolicy()` (off по умолчанию, non-breaking) + `retry(...)`
-в обоих builders. `RetryTest`: 10 интеграций (включая `@OnError`-терминальность,
-идемпотентность POST и wall-clock по `Retry-After`), 208/208 зелёные, POM
-чистый. Два граблина-заметки: (1) в ADR была амбивалентность — псевдокод
-гейтит идемпотентностью только статусы, а таблица Aspect 5 читается шире;
-реализовал по псевдокоду (транспорт pre-response — безопасен) и уточнил
-ADR одной строкой; (2) WireMock 3.x удалил `RequestPatternBuilder.times(int)`
-— теперь `verify(int, pattern)`. Дальше — `@Retry` (шаг 4).
 [2026-10-13 05:45] Агент (сессия #20): `@Retry` готов (шаг 4 из 6): публичная
 поверхность retry закрыта с обеих сторон — клиент (`retry(RetryPolicy)`, off
 по умолчанию) и метод (self-contained аннотация, presence = замена клиентской
@@ -67,3 +44,19 @@ sync-цикл (sync/async не могут разъехаться), ожидан�
 (+5 интеграций: ADR-сценарий 9, transport-fault, exhaustion с
 типизированной join-причиной, 404, off-switch `@Retry` на async). Остался
 один шаг — финальный gate (Javadoc/README + дистилляция эпика).
+[2026-10-13 06:25] Агент (сессия #22): Эпик **Retry with backoff закрыт**
+(финальный gate, шаг 6 из 6). Javadoc-контракт теперь различает sync/async,
+как обещал ADR-0008 (Consequences «uniform across sync/async» дописано до
+поверхности API): `RetryPolicy`, `@Retry` и `ModuleInfo.getRetryPolicy()`
+фиксируют, что одна политика работает и на sync, и на
+`CompletableFuture`-методах идентично — различие только в том, как
+тратится ожидание (sleep вызывающего потока vs
+`CompletableFuture.delayedExecutor`, виртуальный поток не паркуется).
+README: фича-буллет + секция «Retry with backoff» (off по умолчанию, оба
+уровня конфигурации, что ретраится, backoff + `Retry-After`, uniformity).
+219/219 зелёные, POM без зависимостей (0.6.2). Эпик дистиллирован в
+ROADMAP — это был последний пункт Post-0.5.0 shortlist, так что shortlist
+выработан целиком. Следующий эпик (DRAFT готов): **0.x polish —
+carry-over quirks + accepted known gaps** (PUT не попадает в request-лог —
+подтвердил по коду; `void.class`-проверки нет; `Retry-After` HTTP-date;
+payload-decode retry). Стартую с концепта ADR-0009.

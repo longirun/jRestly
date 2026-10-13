@@ -38,7 +38,9 @@ public interface ModuleInfo {
      * The client-level retry policy (ADR-0008). A default method so
      * existing implementors are not broken; {@code off()} by default, so
      * enabling retry is an opt-in and the failure timing of existing
-     * modules does not change.
+     * modules does not change. The policy applies to both synchronous and
+     * {@code CompletableFuture}-returning controller methods (uniform
+     * across sync/async).
      */
     default RetryPolicy getRetryPolicy() {
         return RetryPolicy.off();

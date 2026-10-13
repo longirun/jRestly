@@ -1,71 +1,79 @@
-# Handover Note: Сессия 21 (async-твин retry + RetryAsyncTest — шаг 5 retry-эпика)
+# Handover Note: Сессия 22 (финальный gate retry-эпика — закрыт; DRAFT → «0.x polish»)
 
 ## Что сделано в этой сессии
-- **Async-твин retry в `HttpTemplate`** (DRAFT-шаг 5 `[x]`, 214→219):
-  `executeAsyncWithRetries` — async-зеркало `executeWithRetries`
-  (ADR-0008 Aspect 6): disabled policy → pass-through в
-  `executeAsyncWithRedirects`; `attemptAsync` — тот же цикл в форме
-  handle-рекурсии, решения побазу идентичны sync: ретраится только
-  `IOException` с `retryTransport` и не last; `InterruptedException`
-  (fail fast) и любой прочий failure-тип — pass-through в маппинг
-  `exchangeAsync`. `Retry-After`/jitter — тот же шов `nextDelayMillis` +
-  `ThreadLocalRandom.current()`; DEBUG-строка в формате sync-твина.
-- **Ожидание — `CompletableFuture.delayedExecutor`** (ADR буквально):
-  `CompletableFuture.runAsync(noop, delayedExecutor(ms))` →
-  `thenCompose(следующий attemptAsync)` — без parked virtual thread;
-  нулевой jitter-выигрыш — без scheduler-вызова (зеркало sync
-  `if (delay > 0)` против `Thread.sleep(0)`).
-- **`exchangeAsync` не тронут** — только источник сменился на
-  `executeAsyncWithRetries(request)`; `processResponse` и
-  `exceptionally`-маппинг (HandledException as-is / IE re-interrupt /
-  прочее — `RuntimeException(cause)`) — как есть (ADR: «final exception
-  mapping is untouched»).
-- **Фикстура:** `RetryController.getWithBareRetryAsync()` — bare `@Retry`
-  на async-методе (off-switch проверяется и на async-контуре).
-- **`RetryAsyncTest` (5 интеграций, зелёные со второго прогона — первый
-  упал на типизации handle, см. грабли):** ADR сценарий 9 — 503→200,
-  `join()` вернул значение, 2 запроса (maxAttempts=2); transport-fault→200
-  — 2 запроса; exhaustion 503×3 — join-причина остаётся типизированным
-  `UnexpectedStatusException` (3 запроса); 404 — 1 запрос; bare `@Retry`
-  перебивает enabled-клиента и на async-контуре (1 запрос).
-- **Гейты:** `./gradlew test --rerun` — **219/219** (214 + 5; 0
-  failures/0 errors по XML, 16 с, тёплый кэш); POM
-  (`pom-default.xml`) — **0 `<dependency>`**, 0.6.2.
-- **Mailbox:** заметка #21 (async-твин готов, до закрытия эпика один шаг).
+- **Эпик Retry with backoff ЗАКРЫТ** (DRAFT-шаг 6 `[x]`, последний).
+- **Javadoc-контракт sync/async** (ADR-0008 Consequences «uniform across
+  sync/async» доведено до поверхности API): `RetryPolicy` — новый абзац
+  (одна политика — оба стиля вызовов; различие только в том, как тратится
+  ожидание: sync `Thread.sleep` vs async `delayedExecutor` без parked
+  virtual thread; решения/backoff/финальное исключение — общие);
+  `@Retry` — абзац о тождественности sync/async; `ModuleInfo.
+  getRetryPolicy()` — «applies to both synchronous and
+  CompletableFuture-returning controller methods». `JRestlyClient.Builder`
+  / `SimpleModuleInfo.Builder` не трогал (house style: proxy-builders без
+  Javadoc, контракт на value-классе/аннотации/SPI).
+- **README:** фича-буллет retry (после redirect-chasing) + секция
+  «Retry with backoff» (между Quick start и Multipart): off by default,
+  единый снippet обоих уровней (`retry(...)` client + `@Retry` per-method,
+  self-contained + bare-off-switch), что ретраится (транспорт,
+  default-семейство, `@OnError`-терминальность + escape hatch, POST/PATCH
+  по RFC 9110), backoff + `Retry-After` + «classified exactly once» +
+  sync/async uniformity.
+- **ROADMAP:** новый раздел «Retry with backoff — COMPLETE ✅
+  (2026-10-13, unreleased)» (стиль Gson/Moshi: source of truth ADR-0008,
+  сессии #17–#22, без версии/тега) — ключевые решения + тестовый
+  периметр (219/219). Post-0.5.0 shortlist: кандидат зачёркнут →
+  **shortlist выработан целиком (все три пункта)**.
+- **DRAFT зачищен** (прецедент #16): новый активный эпик **0.x polish —
+  carry-over quirks and accepted known gaps**, шаг 1 = концепт ADR-0009
+  (scope: что в пол, что остаётся gap'ом): (1) `logRequest` — PUT не
+  логируется (подтверждено по коду, `HttpTemplate` line 536:
+  `Arrays.asList(POST, PATCH, DELETE)`); (2) `processResponse` — только
+  `Void.class.equals(returnType)` (line 165), маскируется empty-payload
+  early return'ом (204); (3) `Retry-After` HTTP-date (Known gap ADR-0008);
+  (4) payload-decode retry (Known gap ADR-0008). Правило ADR-0003:
+  reopening known gap = новый ADR.
+- **Гейты:** `./gradlew test --rerun` — **219/219** (0 failures/0 errors по
+  XML, тёплый кэш); POM (`pom-default.xml`) — **0 `<dependency>`**, 0.6.2.
+- **Mailbox:** заметка #22 (эпик закрыт, shortlist выработан, следующий
+  эпик). Гигиена: удалены #17 и #19 (реализованные статусы, контент — в
+  ROADMAP/ADR); осталось #20, #21, #22 + правила Антона.
 
-## Контекст для следующей сессии (#22)
+## Контекст для следующей сессии (#23)
 
 ### Вводные Антона (накопленные, актуально на 2026-10-13)
 1. **Объём сессии — в 2–3 раза меньше:** один маленький шаг.
 2. **Версии — по нашему усмотрению, теги — не вешать** (версия 0.6.2).
 3. **Гигиена проекта — за агентом**: mailbox коротким, расхождения —
-   чинить сразу. (Mailbox тиш после моего #21 ~06:00.)
+   чинить сразу. (Mailbox тиш после моего #22 ~06:25.)
 
 ### Что логично делать дальше
-1. **Финальный шаг эпика (шаг 6 из DRAFT):** Javadoc-контракт
-   (async-упоминание в `RetryPolicy`/`@Retry` — сейчас Javadoc не
-   различает sync/async, а ADR Consequences обещает «uniform across
-   sync/async» + README «Retry with backoff»: feature bullet + короткая
-   usage-секция) + финальный gate (тесты зелёные, POM, дистилляция эпика
-   в ROADMAP.md + зачёркивание кандидата в Post-0.5.0 shortlist —
-   прецедент кодеков, зачистка DRAFT).
-2. После эпика — выбор следующего по ROADMAP (Post-0.5.0 shortlist).
+1. **ADR-0009 (шаг 1 нового эпика):** scope-решение по четырём
+   кандидатам из DRAFT — что чиним, что остаётся known gap'ом. Моя
+   предварительная интуиция (не решение!): (1) PUT-лог — чиним
+   (однострочник, behavior-расхождение, «accepted quirk» давно висит);
+   (2) `void.class` — чиним (одна строка `|| void.class.equals(...)` — но
+   проверить, как `HttpTemplateBuilder` резолвит return type: если
+   proxy-метод с `void` никогда не доходит до decode с телом, фикс =
+   страховка, всё равно дешёвая); (3) HTTP-date `Retry-After` — чиним
+   (формат RFC 9110 `HTTP-date = IMF-fixdate / rfc1123 / asctime` —
+   парсить честно по `ZonedDateTime.parse` с перечнем форматов, known gap
+   закрыт); (4) payload-decode retry — вероятно, ОСТАВЛЯЮ gap (decode
+   сбой = кодек не понял финальный ответ; ретрай «на всякий» меняет
+   контракт v1 — дорого для 0.x, пусть ADR так и запишет). Тестовая
+   стратегия — по прецеденту (WireMock + юниты парсера HTTP-date).
+2. Дальше — фиксы по шагам DRAFT.
 
 ### Грабли прошлых сессий (актуальный набор)
-- **ADR-концепт может «пересчитать» реальность** — проверять по jar/
-  тегам/исходникам на шаге, править ADR обратно (4 раза у кодеков);
+- **ADR-концепт может «пересчитать» реальность** — проверять по
+  jar/тегам/исходникам на шаге, править ADR обратно (серия из 4+ раз);
   **код может не удержать обещание ADR** — тесты по букве ADR;
-  **амбивалентность в самом ADR** — реализация по псевдокоду + строка
-  в ADR (#19).
+  **амбивалентность в самом ADR** — реализация по псевдокоду + строка в ADR.
 - **Чужие API — только по jar/javap/исходникам; min-версии — по тегам.**
   Multi-release jar'ы: корневой класс — заглушка. WireMock 3.x —
   `verify(int, pattern)`, `times(int)` удалено.
-- **CompletableFuture handle-рекурсия (#21):** lambda `handle`,
-  возвращающая следующую стейдж-цепочку, не проходит целевую типизацию —
-  явный witness `.<CompletableFuture<T>>handle(...)` +
-  `.thenCompose(Function.identity())`; на рантайме handle сам
-  разворачивает возвращённый stage (identity лишь чинит тип, исключение
-  проходит с original-cause).
+- **CompletableFuture handle-рекурсия (#21):** witness
+  `.<CompletableFuture<T>>handle(...)` + `.thenCompose(Function.identity())`.
 - **UP-DATE ≠ мой прогон**: `./gradlew test --rerun`.
 - **POM-гейт:** `build/publications/mavenJava/pom-default.xml` (0
   `<dependency>`).
@@ -75,15 +83,10 @@
 - **Даты/поведение сторонних либ — только по пину.**
 - **Parallel-сессии:** перед правкой памяти/коммитом — `stat` mtime,
   `ps` на чужие процессы, `git log`.
-- **Преценденты решают споры о поверхности** (httpVersion: module default
-  + per-method override, override replaces — retry повторил форму
-  ровно).
+- **Преценденты решают споры о поверхности** (httpVersion — retry;
+  proxy-builders без Javadoc — контракт на value-классе).
 - **Аллокации на hot path**: default'ы — shared constants
-  (`RetryPolicy.off()`); per-request build — только для аннотированных
-  методов.
-- **Единые предикаты — страховка от разъезда синхронного и асинхронного
-  контуров**: `isRetryableStatus`/`retryAfterSeconds`/`nextDelayMillis`
-  общие для sync/async (ADR Aspect 3).
+  (`RetryPolicy.off()`).
 - **GRADLE_USER_HOME=/tmp/opencode/gradle-home** — если кэш стёрся
   (ребут), первый прогон дня качает зависимости заново (~50 с).
 
@@ -92,14 +95,14 @@
 2. `pids.max = 1000`. Полный `./gradlew test` БЕЗ init-скрипта.
 3. Ветка `agent-loop`. Демон Gradle переживает падения тестов.
 4. Коммиты агента: `longirun-agent <sinyagovsky@gmail.com>`; счётчик
-   сессий подкручивает harness (сейчас 21 → после этой 22).
+   сессий подкручивает harness (сейчас 22 → после этой 23).
 5. Часы контейнера: UTC+4; mailbox-время — местное.
 6. `docs/` — ADR-папки по версиям цикла: `0.5.0/`, `0.6.0/`, `0.7.0/`
-   (ADR-0007 — Gson/Moshi, ADR-0008 — retry).
+   (ADR-0007 — Gson/Moshi, ADR-0008 — retry; ADR-0009 — будет в `0.7.0/`).
 
 ### Состояние git
-- HEAD: коммит сессии #21 (async-твин + RetryAsyncTest + DRAFT + память)
-  поверх 1d37cc4 (сессия #20).
+- HEAD: коммит сессии #22 (Javadoc sync/async + README + ROADMAP-дистиллят
+  + DRAFT «0.x polish» + память) поверх 1445e79 (сессия #21).
 - Всё на `agent-loop`. Последний тег `v0.6.1` — дальше теги за Антоном.
 - Версия в build.gradle: **0.6.2** (без тега, релизы на паузе).
 - Тесты: **219/219**.

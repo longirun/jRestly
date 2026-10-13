@@ -1,104 +1,32 @@
-# DRAFT: Retry with backoff (Post-0.5.0 shortlist, ADR-0003)
+# DRAFT: 0.x polish — carry-over quirks and accepted known gaps
 
-> Эпик открыт в сессии #16 (2026-10-13) после закрытия эпика
-> Gson/Moshi-кодеков (дистиллят — раздел «Gson / Moshi codec adapters» в
-> ROADMAP.md; концепт и все пины — ADR-0007 в `docs/0.7.0/`). Норма объёма:
-> по одному шагу за сессию. Тегов нет, версия 0.6.2 (релизы на паузе).
-> ADR-0003 называет retry единственной resilience-фичей в shortlist'е и
-> подчёркивает, что она «интегрируется с `@OnError`» — с этой интеграции и
-> начинается концепт.
+> Эпик открыт в сессии #22 (2026-10-13) после закрытия эпика
+> Retry with backoff (дистиллят — раздел «Retry with backoff» в ROADMAP.md;
+> концепт и все пины — ADR-0008 в `docs/0.7.0/`). Post-0.5.0 shortlist
+> (ADR-0003) полностью выработан — все три кандидата закрыты; следующая
+> работа — трек-остатки, задокументированные в ROADMAP («Known carry-over
+> quirks» 0.5.0) и в Known gaps ADR-0008. Норма объёма: по одному шагу за
+> сессию.
 
 ## Шаги эпика
 
-- [x] Концепт: ADR-0008 (`docs/0.7.0/`) — retry with backoff: какие сбои
-      ретраятся (транспорт vs unexpected status vs ошибки, обработанные
-      `@OnError`), поверхность конфигурации (client-level builder /
-      per-method аннотация / оба), порядок с `@OnError` (retry до или после
-      обработки?), backoff-кривая (fixed/exponential, cap), идемпотентность
-      (ретраем ли PUT/PATCH/POST — только GET или всё?), тестовая стратегия.
-      Ключевые решения (2026-10-13, сессия #17): retry **до** классификации —
-      цикл работает над raw `WireResponse`, `processResponse` один раз на
-      финальном ответе; `@OnError.statuses` — терминальный контракт по
-      умолчанию (escape hatch: `retryOnErrorStatuses`); клиентский уровень —
-      `ModuleInfo` default method (non-breaking) + `@Retry` — самоценная
-      per-method замена; кривая — exponential с cap + full jitter, fixed —
-      частный случай (равные границы); идемпотентность — по RFC 9110:
-      GET/PUT/DELETE ретраятся, POST/PATCH — через `nonIdempotent`.
-- [x] Код: `RetryPolicy` (immutable + builder + валидация; чистая backoff-
-      математика: exponential с cap, full jitter с injectable `Random`,
-      `Retry-After` max()-правило; `defaults()` / `off()`) +
-      `RetryPolicyTest` (юнит, без WireMock). Сделано в сессии #18 (18→198
-      тестов, 183→198, +15): шов `nextDelayMillis(attempt,
-      retryAfterSeconds, random)` — package-private, Random приходит
-      аргументом (policy без состояний); Retry-After — детерминированный
-      `max(bound, retryAfter)` без jitter (ADR Aspect 4 уточнён);
-      валидация: `maxAttempts ≥ 1`, backoff'ы non-negative и
-      `initial ≤ max`, статусы в `[100, 599]`, коллекция копируется
-      (LinkedHashSet → unmodifiable). `isEnabled()` — предикат для контура.
-- [x] Код: sync-retry-контур в `HttpTemplate` (транспорт + статусы,
-      `@OnError`-терминальность по умолчанию, `Retry-After`, DEBUG-лог) +
-      клиентский уровень (default method в `ModuleInfo`, `retry(...)` в
-      обоих builders) + `RetryTest` (WireMock: 503→503→200, исчерпание,
-      transport-fault, неретраемый 404, `@OnError`-терминальность,
-      идемпотентность, `Retry-After`). Сделано в сессии #19 (198→208):
-      `executeWithRetries` об `executeWithRedirects` — цикл по raw-ответам
-      (ADR Aspect 6 буквально: `IOException` → retryTransport и не last;
-      `InterruptedException` → fail fast; статус → `isRetryableStatus`);
-      `processResponse` не тронут — один раз на финале. `isRetryableStatus`
-      — те же предикаты, что у `processResponse`: expected → `@OnError`-
-      терминальность (если не `retryOnErrorStatuses`) → retryable set →
-      идемпотентность POST/PATCH. `Retry-After` — только integer-seconds
-      (HTTP-date — known gap); DEBUG-лог в формулировке ADR; sleep через
-      `Thread.sleep`, jitter — `ThreadLocalRandom.current()` в шов.
-      Клиентский уровень: default method `ModuleInfo.getRetryPolicy()` →
-      `off()` (non-breaking), `retry(...)` в `SimpleModuleInfo.Builder` и
-      `JRestlyClient.Builder` (проксирование по прецеденту `httpVersion`);
-      `off()` — shared constant (политика читается на каждом запросе —
-      без аллокаций на hot path). RetryTest: 10 интеграций (ADR Aspect 7,
-      сценарии 1–7 и 10 + «off by default»), WireMock-scenarios для
-      последовательных статусов и fault; backoff'ы 10–50 ms, Retry-After
-      проверяется wall-clock'ом (elapsed ≥ 1 s).
-- [x] Код: аннотация `@Retry` (per-method override, `nonIdempotent`,
-      `times = 1` — явный off-switch) + wiring в `HttpTemplateBuilder` +
-      тесты (приоритет override, POST через `nonIdempotent`,
-      `@OnError`-opt-in, 429→429→200). Сделано в сессии #20 (208→214):
-      `ru.jrestly.annotation.Retry` — self-contained policy по ADR Aspect 2
-      (при presence заменяет клиентскую целиком, no merge; default
-      `times = 1` = явный off-switch — интерпретация «presence =
-      self-contained, times=1 = off» зафиксирована в Javadoc аннотации);
-      wiring — `HttpTemplateBuilder.resolveRetryPolicy()` (есть `@Retry` →
-      `RetryPolicy.Builder` из атрибутов, валидация `IllegalStateException`
-      уже в builder'е; иначе — `moduleInfo.getRetryPolicy()`), аллокация
-      политики на запрос — только для аннотированных методов (house style
-      per-request build). Фикстура — отдельный `RetryController` (прецедент
-      `HttpVersionController`); `RetryAnnotationTest`: 6 интеграций (bare
-      `@Retry` перебивает enabled-клиент → 1 запрос; self-contained
-      429→429→200 при off-клиенте → 3; POST через `nonIdempotent` → 3;
-      `onErrorStatuses`-opt-in 429→429→200 → 3; exhaustion с declared 429 →
-      типизированный `HandledException`, 3 запроса; `statuses={501}` —
-      кастомный статус ретраится → 2). Javadoc `RetryPolicy` обновлён
-      («later step» → реализовано).
-- [x] Код: async-твин (контур над `sendAsync`, неблокирующий backoff через
-      `CompletableFuture.delayedExecutor`, маппинг исключений без изменений)
-      + тесты retry на `CompletableFuture`-методах. Сделано в сессии #21
-      (214→219): `executeAsyncWithRetries` — async-зеркало
-      `executeWithRetries` (ADR Aspect 6 буквально: disabled policy —
-      pass-through; `attemptAsync` — цикл в форме handle-рекурсии, решения
-      побазу идентичны sync: ретраится только `IOException` с
-      `retryTransport` и не last; `InterruptedException` и любой прочий
-      failure — pass-through в маппинг `exchangeAsync`; `Retry-After`/jitter
-      — тот же шов `nextDelayMillis` + `ThreadLocalRandom`); ожидание —
-      `CompletableFuture.runAsync(noop, delayedExecutor(ms))` (без parked
-      virtual thread; нулевой jitter-выигрыш — без scheduler-вызова, как
-      `Thread.sleep(0)` в sync); DEBUG-строка в формате sync; маппинг
-      `exchangeAsync` не тронут. `RetryAsyncTest` (5 интеграций): ADR
-      сценарий 9 (503→200, `join()` — значение, 2 запроса),
-      transport-fault→200 (2 запроса), exhaustion → join-причина остаётся
-      типизированным `UnexpectedStatusException` (3), 404 — 1 запрос,
-      bare `@Retry` — off-switch и на async-контуре (новый async-метод в
-      `RetryController`).
-- [ ] Javadoc-контракт + README («Retry with backoff») + финальный gate
-      (тесты зелёные, POM без зависимостей, дистилляция в ROADMAP)
+- [ ] Концепт: ADR-0009 (`docs/0.7.0/`) — scope-решение, что в пол и что
+      остаётся gap'ом: (1) `logRequest` логирует тело только для
+      POST/PATCH/DELETE — PUT пропущен (carry-over 0.5.0, подтверждено по
+      коду в сессии #22: `HttpTemplate.logRequest`); (2)
+      `processResponse` проверяет только `Void.class`, не
+      `void.class` (скрыто early-return на пустом payload — 204;
+      `void`-метод с непустым телом упадёт в кодек); (3) `Retry-After`
+      HTTP-date-форма (Known gap ADR-0008: v1 — integer-seconds only);
+      (4) payload-decode failure на финальном ответе не ретраится (Known
+      gap ADR-0008: v1 — транспорт и статусы). Для каждого: чиним/оставляем,
+      форма фикса, влияние на wire/behavior-контракт, тестовая стратегия.
+      Правило ADR-0003: reopening known gap = новый ADR.
+- [ ] Код: фиксы 0.5.0-квирков (logging PUT + `void.class`) + тесты.
+- [ ] Код: `Retry-After` HTTP-date (или payload-decode retry — решение из
+      концепта) + тесты.
+- [ ] Финальный gate (тесты зелёные, POM без зависимостей, дистилляция в
+      ROADMAP, зачистка DRAFT).
 
 ## Постоянная нить (не эпик, не чекбокс)
 
