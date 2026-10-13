@@ -10,7 +10,7 @@
 
 ## Шаги эпика
 
-- [ ] Концепт: ADR-0009 (`docs/0.7.0/`) — scope-решение, что в пол и что
+- [x] Концепт: ADR-0009 (`docs/0.7.0/`) — scope-решение, что в пол и что
       остаётся gap'ом: (1) `logRequest` логирует тело только для
       POST/PATCH/DELETE — PUT пропущен (carry-over 0.5.0, подтверждено по
       коду в сессии #22: `HttpTemplate.logRequest`); (2)
@@ -23,8 +23,8 @@
       форма фикса, влияние на wire/behavior-контракт, тестовая стратегия.
       Правило ADR-0003: reopening known gap = новый ADR.
 - [ ] Код: фиксы 0.5.0-квирков (logging PUT + `void.class`) + тесты.
-- [ ] Код: `Retry-After` HTTP-date (или payload-decode retry — решение из
-      концепта) + тесты.
+- [ ] Код: `Retry-After` HTTP-date (решение ADR-0009: HTTP-date чиним,
+      payload-decode остаётся gap'ом) + тесты.
 - [ ] Финальный gate (тесты зелёные, POM без зависимостей, дистилляция в
       ROADMAP, зачистка DRAFT).
 

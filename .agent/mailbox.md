@@ -21,20 +21,6 @@
 главным релизом
 Гоу вариант А.
 ---
-[2026-10-13 05:45] Агент (сессия #20): `@Retry` готов (шаг 4 из 6): публичная
-поверхность retry закрыта с обеих сторон — клиент (`retry(RetryPolicy)`, off
-по умолчанию) и метод (self-contained аннотация, presence = замена клиентской
-политики целиком, no field-by-field merge). Один осознанный выбор, который
-хотел показать: default `times = 1` — то есть **bare `@Retry` = явный
-off-switch** (метод никогда не ретраит, даже у клиента с включённым retry);
-реальный retry всегда объявлен явно (`times >= 2`). Альтернатива (bare =
-retry с дефолтами) отвергнута: аннотация-тихая-изменёнка противоречит
-0.x-дисциплине «retry is a choice». Валидация атрибутов — через тот же
-`RetryPolicy.Builder` (`IllegalStateException`, нового кода нет).
-`RetryAnnotationTest`: 6 интеграций (off-switch vs enabled-клиент,
-429→429→200 self-contained, POST через `nonIdempotent`, `@OnError`-opt-in,
-typed exhaustion, custom `statuses`). 214/214 зелёные, POM чистый.
-Дальше — async-твин (шаг 5: `CompletableFuture.delayedExecutor`).
 [2026-10-13 06:00] Агент (сессия #21): Async-твин retry готов (шаг 5 из 6):
 `CompletableFuture`-методы теперь ретраятся с теми же семантиками, что и
 sync — async-контур зовёт те же предикаты и тот же backoff-шов, что и
@@ -60,3 +46,21 @@ ROADMAP — это был последний пункт Post-0.5.0 shortlist, т
 carry-over quirks + accepted known gaps** (PUT не попадает в request-лог —
 подтвердил по коду; `void.class`-проверки нет; `Retry-After` HTTP-date;
 payload-decode retry). Стартую с концепта ADR-0009.
+[2026-10-13 06:43] Агент (сессия #23): Концепт **ADR-0009 готов** (шаг 1
+эпика 0.x polish) — все четыре кандидата проверены по коду, scope решён:
+**чиним 1–3, gap остаётся 4**. (1) PUT-лог: чиним — в список
+POST/PATCH/DELETE добавляется PUT + `Arrays.asList` с каждого запроса
+заменяется на static final Set (аллокация на hot path). (2) `void.class`:
+чиним одной строкой — единственная настоящая behavior-изменение эпика
+(`void`-метод с непустым телом перестаёт падать в кодек; `Void`-форма уже
+тихо отбрасывала тело — приводим к единой семантике). (3) `Retry-After`
+HTTP-date: чиним — `DateTimeFormatter.RFC_1123_DATE_TIME`, абсолютное время
+→ wait = max(0, date − now), шов `retryAfterSeconds` становится
+`retryAfterDelayMillis` (миллисекунды — естественная единица wait'а;
+package-private, ABI не ломается). asctime (obsolete per RFC 9110) — новый
+микро-gap. (4) payload-decode retry: ОСТАВЛЯЮ gap — транзентные случаи уже
+покрыты transport-retry (оборванный поток = IOException), а ретрай декода
+столкается с «classified exactly once» из ADR-0008 (нужно отличать
+успешный `HandledException` от сбоев декода — лишнее состояние в цикле для
+редкого пути). Тестовая стратегия по каждому кандидату — в ADR. Дальше —
+фиксы 0.5.0-квирков (шаг 2).
