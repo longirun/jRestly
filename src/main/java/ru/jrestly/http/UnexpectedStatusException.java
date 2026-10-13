@@ -19,13 +19,27 @@ public class UnexpectedStatusException extends HandledException {
     @Serial
     private static final long serialVersionUID = 1L;
 
+    /** The response body as a raw string — an unexpected status has no body contract, so it is not decoded. */
     private final String rawBody;
 
+    /**
+     * Creates the exception for an unexpected status.
+     *
+     * @param statusCode the unexpected HTTP status
+     * @param rawBody the response body as a string, or {@code null} for an empty body
+     * @param responseHeaders the response headers, or {@code null} for none
+     */
     public UnexpectedStatusException(int statusCode, String rawBody, List<Header> responseHeaders) {
         super(null, statusCode, responseHeaders);
         this.rawBody = rawBody == null ? "" : rawBody;
     }
 
+    /**
+     * The response body as a raw string — an unexpected status has no body
+     * contract, so it is not decoded.
+     *
+     * @return the raw body, empty when the body was absent
+     */
     public String getRawBody() {
         return rawBody;
     }

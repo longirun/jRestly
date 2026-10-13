@@ -14,12 +14,24 @@ import java.lang.annotation.Target;
 @Retention(RetentionPolicy.RUNTIME)
 public @interface Put {
 
-    /** Target path or absolute URL. May contain ${var} placeholders. */
+    /**
+     * Target path or absolute URL. May contain ${var} placeholders.
+     *
+     * @return the target path, or an absolute URL
+     */
     String path();
 
-    /** Content type and payload format. Defaults to {@link RequestType#APPLICATION_JSON}. */
+    /**
+     * Content type and payload format. Defaults to {@link RequestType#APPLICATION_JSON}.
+     *
+     * @return the request type (content type and payload format)
+     */
     RequestType requestType() default RequestType.APPLICATION_JSON;
 
-    /** Default query parameters appended to the request. */
+    /**
+     * Default query parameters appended to the request.
+     *
+     * @return the default query parameters
+     */
     RequestDefaultParam[] params() default {};
 }

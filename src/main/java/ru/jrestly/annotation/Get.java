@@ -12,9 +12,17 @@ import java.lang.annotation.Target;
 @Retention(RetentionPolicy.RUNTIME)
 public @interface Get {
 
-    /** Target path or absolute URL. May contain ${var} placeholders. */
+    /**
+     * Target path or absolute URL. May contain ${var} placeholders.
+     *
+     * @return the target path, or an absolute URL
+     */
     String path();
 
-    /** Default query parameters appended to the request. */
+    /**
+     * Default query parameters appended to the request.
+     *
+     * @return the default query parameters
+     */
     RequestDefaultParam[] params() default {};
 }

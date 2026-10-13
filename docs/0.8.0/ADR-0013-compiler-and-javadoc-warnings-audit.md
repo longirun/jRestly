@@ -79,6 +79,17 @@ comments at all), `MultipartPart` 5, `HandledException` 5, `AuthProvider` 5,
 `AuthHeaderProvider` 3, `Delete` 3, `GsonCodec` 2, `Param` 2, `Header` 2,
 `ControllerValidator` 2, `Get` 2, `FollowRedirects` 1, `ExpectStatus` 1.
 
+**Session #44 (re-measure) — the "100" is a floor, not a total.** The
+javadoc tool caps warnings per run at 100 (`Log.defaultMaxWarnings`);
+without `-Xmaxwarns` the count saturates at exactly 100, which the audit
+mistook for the total. With `-Xmaxwarns 999` the true audit baseline is
+**237 warnings across 44 files** — the table above is the tool's first
+100, still a valid gate snapshot (re-measure, don't re-read — see
+Consequences). Re-measurement after step 4 (session #45): **173
+remaining**; every step-4 surface (the three exceptions, `AuthProvider`,
+`Environment`, `FileContent`, `MultipartPart`, the five verb annotations)
+is at 0.
+
 The bulk is `no comment` on public/protected members (the documented
 contract surfaces — `JsonCodec`, `RetryPolicy`, `@Retry`, `ModuleInfo`, the
 codec adapters — are already normatively documented and stay out of this
@@ -134,6 +145,14 @@ delegated back to the agent ("continue as you see fit"). Decision: **keep
 gate costs no extra step; the payoff is permanence — a public member without
 a comment fails the build instead of decaying back into noise. Reverting is
 one line in `build.gradle` if it ever proves too strict for 0.x.
+
+Session #45 — the option form above is a trap: `addStringOption('Xdoclint',
+'all')` writes **two** arguments (`-Xdoclint` + `all`), and the javadoc tool
+parses the bare `all` as a package name — the task dies with
+"No source files for package all". The gate (step 6) uses the
+single-argument form `options.addStringOption('Xdoclint:all')`, which the
+tool accepts as one option (verified directly: `-Xdoclint all` fails,
+`-Xdoclint:all` works).
 
 **D3 — Java 21 idioms: no legacy fragments exist; two build-level
 modernizations instead.**

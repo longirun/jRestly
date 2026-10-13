@@ -13,22 +13,36 @@ import java.util.function.Supplier;
  */
 public interface FileContent {
 
+    /**
+     * The filename sent on the wire for this part.
+     *
+     * @return the wire filename
+     */
     String fileName();
 
     /**
      * Content source: {@link Path}, {@code byte[]}, or {@link Supplier} of {@link InputStream}.
+     *
+     * @return the content source in one of the three supported shapes
      */
     Object content();
 
     /**
      * Size in bytes if known up front, or {@code null} to derive it from the source
      * or transfer via chunked encoding.
+     *
+     * @return the content length in bytes, or {@code null} when not known up front
      */
     default Long contentLength() {
         return null;
     }
 
-    /** Creates a file part read from disk on demand. */
+    /**
+     * Creates a file part read from disk on demand.
+     *
+     * @param file the file to upload; the wire filename is its last path component
+     * @return a file part backed by the given file
+     */
     static FileContent of(Path file) {
         Objects.requireNonNull(file, "file");
         if (file.getFileName() == null) {
@@ -37,12 +51,27 @@ public interface FileContent {
         return new PathFileContent(file);
     }
 
+    /**
+     * Creates a file part from an in-memory byte array.
+     *
+     * @param fileName the filename sent on the wire
+     * @param bytes the part content
+     * @return a file part backed by the given bytes
+     */
     static FileContent of(String fileName, byte[] bytes) {
         return new BytesFileContent(
                 Objects.requireNonNull(fileName, "fileName"),
                 Objects.requireNonNull(bytes, "bytes"));
     }
 
+    /**
+     * Creates a stream-backed file part of unknown length (chunked transfer
+     * when the transport cannot derive it).
+     *
+     * @param fileName the filename sent on the wire
+     * @param source the lazy stream source, opened per attempt
+     * @return a file part backed by the given stream source
+     */
     static FileContent of(String fileName, Supplier<InputStream> source) {
         return new StreamFileContent(
                 Objects.requireNonNull(fileName, "fileName"),
@@ -52,6 +81,11 @@ public interface FileContent {
 
     /**
      * Creates a stream-backed file part with a known content length.
+     *
+     * @param fileName the filename sent on the wire
+     * @param source the lazy stream source, opened per attempt
+     * @param contentLength the exact content length in bytes, non-negative
+     * @return a file part backed by the given stream source
      */
     static FileContent of(String fileName, Supplier<InputStream> source, long contentLength) {
         Objects.requireNonNull(fileName, "fileName");

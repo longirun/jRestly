@@ -1,10 +1,11 @@
-# DRAFT: warnings и модернизация (ADR-0013) — шаг 3 закрыт, впереди 4–6 (сессия #43)
+# DRAFT: warnings и модернизация (ADR-0013) — шаг 4 закрыт, впереди 5–6 (сессия #45)
 
 > Свободный ход после 0.7.0-цикла: кандидат №1 (warnings/рефакторинг-аудит,
 > fallback с #30) открыт как эпик. Сессия #41 — сам аудит (кандидат так и
 > требовал: сначала «что именно», потом план): замеры по `javac -Xlint:all`
 > (12 warnings: 9 main / 3 test), `javadoc -Xdoclint=all` (100 warnings —
-> все missing-comment/@param/@return), идеомы Java 21 (устаревших фрагментов
+> все missing-comment/@param/@return; уточнение #44/#45: это потолок
+> тула, истинный total 237 — см. ADR-0013), идеомы Java 21 (устаревших фрагментов
 > нет — pattern-matching/arrow-switch/records на месте; 2 build-level
 > модернизации: `options.release`, javadoc-gate), hot path (новых находок
 > нет). ADR-0013 (`docs/0.8.0/` — папка следующего цикла создана при
@@ -35,12 +36,26 @@
       Валидация: `-Xlint:all` → **0 в main и 0 в test** (было 3),
       256/256 (36 классов). Уточнение (helper — public, не private)
       зафиксировано в ADR-0013 D1.
-- [ ] Шаг 4 — javadoc, нормативная поверхность: 3 exception'а,
-      `AuthProvider`, `Environment`, `FileContent`, `MultipartPart`,
-      `@return` у verb-аннотаций (Delete/Get/… — по таблице ADR-0013).
-- [ ] Шаг 5 — javadoc, остальное: `HttpTemplate` (17),
-      `AbstractHttpClient` (15), wire-модель, `HttpMethod`,
-      `AuthHeaderProvider`, `ControllerValidator`, `GsonCodec`, остаток.
+- [x] Шаг 4 — javadoc, нормативная поверхность (сессии #44–45): 3
+      exception'а (class/field/ctor/getter-комментарии), `AuthProvider`,
+      `Environment`, `FileContent`, `MultipartPart` (включая `@param`
+      record-компонентов и `@throws` canonical-конструктора), `@return` у
+      verb-аннотаций (Delete/Get/Post/Put/Patch — все атрибуты). Код
+      менять не пришлось — только Javadoc (факты сверены: IAE у
+      MultipartPart, null-authDetails у Environment, @SetAuthDetails-контракт
+      у AuthProvider). Валидация (замер #45, `-Xdoclint:all -Xmaxwarns 999`
+      прямым `javadoc`'ом): **237 → 173 warnings**; все 12 файлов шага — 0.
+      `./gradlew test --rerun` — 256/256 (36 классов). Уточнение: «100»
+      в ADR-0013 — было потолком javadoc-тула (100/run без `Xmaxwarns`);
+      истинный baseline 237 (поправка зафиксирована в ADR-0013).
+- [ ] Шаг 5 — javadoc, остальное (173 warnings, замер #45 — реальный,
+      не capped): `RetryPolicy` 25, `HttpTemplate` 25,
+      `AbstractHttpClient` 15, `SimpleModuleInfo` 14, `JRestlyClient` 14,
+      `ModuleInfo` 10, `Retry` 8, `WireRequest` 7, `OnErrorParser` 7,
+      `HttpMethod` 6, `RequestType` 5, далее 4 файла × 3
+      (Jackson/WireResponse/HttpTemplateBuilder/AuthHeaderProvider),
+      8 × 2 (wire-модель, codec'и, `ControllerValidator`, мелкие
+      аннотации) и 9 × 1.
 - [ ] Шаг 6 — gate: `javadoc { Xdoclint=all, Werror }` в build.gradle,
       полный ре-аудит (`-Xlint:all` → 0, javadoc → 0), дистилляция в
       ROADMAP.
