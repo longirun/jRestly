@@ -41,10 +41,16 @@ copied from the ROADMAP wording):
   A `void` method with a **non-empty** body on an expected status then misses
   the `Void.class.equals(returnType)` check and reaches
   `jsonCodec.deserialize(payload, void.class)` — the codec is asked to decode
-  into the primitive `void`, a type the user never wrote. The failure mode is a
-  codec exception naming `void` (exact class/message pinned by the reproducer
-  test in the fix step). `returnType` is consumed nowhere else in the library
-  (only the String/Void/codec branches of `processResponse`).
+  into the primitive `void`, a type the user never wrote. The failure mode is
+  **codec-dependent** (verified against all three bundled codecs on
+  2026-10-13): Jackson 2.18.2 is lenient and decodes `void.class` to `null`
+  (the quirk stays silent under the default codec), while Gson 2.14.0 throws
+  `IllegalArgumentException: GSON (2.14.0) cannot handle void` and Moshi
+  1.15.2 throws `IllegalArgumentException: Cannot serialize abstract class
+  void` — under a Gson/Moshi classpath a `void` method whose server sends a
+  non-empty body breaks outright, under Jackson it silently rides on codec
+  luck. `returnType` is consumed nowhere else in the library (only the
+  String/Void/codec branches of `processResponse`).
 - **Candidate 3:** `HttpTemplate.retryAfterSeconds` parses only
   `Long.valueOf(value.trim())`; the HTTP-date form throws
   `NumberFormatException` → `null` → the header is treated as absent and the
@@ -109,19 +115,22 @@ one line).
   circuits: `processResponse` is the shared tail of sync and async
   (ADR-0008).
 - **Contract impact — the one real behavior change in this ADR:** a `void`
-  method + non-empty body + expected status currently throws a codec exception
-  (class/message pinned by the reproducer) and afterwards returns normally
-  (`null`, body discarded — identical to the `Void` form). It is hard to
-  imagine a user pinning a codec failure that names `void`. Reopening the
-  "accepted quirk" is precisely the point: the ROADMAP called it non-blocking,
-  not correct. The `@OnError` and unexpected-status branches fire before this
-  line and are untouched.
-- **Test strategy:** TDD reproducer first — a new fixture `void` controller
-  method against a 200 with a non-empty JSON body: red on today's code (the
-  codec exception, class and message captured in the test), green after the
-  one-line fix. Symmetry pins: `CompletableFuture<Void>` + non-empty body →
-  `null` (async twin, the sync/async uniformity precedent), and the `Void`
-  boxed form + non-empty body → `null` if not already pinned.
+  method + non-empty body + expected status currently depends on the codec
+  (silent `null` under Jackson; `IllegalArgumentException` under Gson/Moshi)
+  and afterwards always returns normally (`null`, body discarded — identical
+  to the `Void` form, codec-independent). It is hard to imagine a user pinning
+  a codec failure that names `void`. Reopening the "accepted quirk" is
+  precisely the point: the ROADMAP called it non-blocking, not correct. The
+  `@OnError` and unexpected-status branches fire before this line and are
+  untouched.
+- **Test strategy:** reproducer — a `void` controller method against a 200
+  with a non-empty JSON body; under the default Jackson codec it passes even
+  before the fix (Jackson's leniency — see Context), so the pin's value is
+  that the passing is now the library's contract, not the codec's accident.
+  Symmetry pins: `CompletableFuture<Void>` + non-empty body → `null` (async
+  twin, the sync/async uniformity precedent) and the `Void` boxed form +
+  non-empty body → `null` (a new fixture method — `getNothingBoxed` — since
+  no boxed-`Void` method existed).
 
 ### Candidate 3: `Retry-After` HTTP-date form — FIX
 

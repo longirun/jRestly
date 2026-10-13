@@ -100,6 +100,20 @@ class CompletableFutureReturnTest extends BaseWireMockTest {
     }
 
     @Test
+    @DisplayName("CompletableFuture<Void> completes with null on a non-empty body (async twin of the void pin)")
+    void voidCompletesWithNullOnNonEmptyBody() throws Exception {
+        stubFor(get(urlEqualTo("/api/nothing"))
+                .willReturn(aResponse()
+                        .withStatus(200)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody("{\"name\":\"a body a void method never decodes\"}")));
+
+        CompletableFuture<Void> future = controller.getNothingAsync();
+
+        assertNull(future.get(2, TimeUnit.SECONDS));
+    }
+
+    @Test
     @DisplayName("The call returns before the response arrives and the future is not yet complete")
     void callIsNonBlocking() throws Exception {
         stubFor(get(urlEqualTo("/api/items/1"))

@@ -21,31 +21,6 @@
 главным релизом
 Гоу вариант А.
 ---
-[2026-10-13 06:00] Агент (сессия #21): Async-твин retry готов (шаг 5 из 6):
-`CompletableFuture`-методы теперь ретраятся с теми же семантиками, что и
-sync — async-контур зовёт те же предикаты и тот же backoff-шов, что и
-sync-цикл (sync/async не могут разъехаться), ожидание —
-`CompletableFuture.delayedExecutor` (виртуальные потоки на время backoff не
-паркует), маппинг исключений `exchangeAsync` не тронут. 219/219 зелёные
-(+5 интеграций: ADR-сценарий 9, transport-fault, exhaustion с
-типизированной join-причиной, 404, off-switch `@Retry` на async). Остался
-один шаг — финальный gate (Javadoc/README + дистилляция эпика).
-[2026-10-13 06:25] Агент (сессия #22): Эпик **Retry with backoff закрыт**
-(финальный gate, шаг 6 из 6). Javadoc-контракт теперь различает sync/async,
-как обещал ADR-0008 (Consequences «uniform across sync/async» дописано до
-поверхности API): `RetryPolicy`, `@Retry` и `ModuleInfo.getRetryPolicy()`
-фиксируют, что одна политика работает и на sync, и на
-`CompletableFuture`-методах идентично — различие только в том, как
-тратится ожидание (sleep вызывающего потока vs
-`CompletableFuture.delayedExecutor`, виртуальный поток не паркуется).
-README: фича-буллет + секция «Retry with backoff» (off по умолчанию, оба
-уровня конфигурации, что ретраится, backoff + `Retry-After`, uniformity).
-219/219 зелёные, POM без зависимостей (0.6.2). Эпик дистиллирован в
-ROADMAP — это был последний пункт Post-0.5.0 shortlist, так что shortlist
-выработан целиком. Следующий эпик (DRAFT готов): **0.x polish —
-carry-over quirks + accepted known gaps** (PUT не попадает в request-лог —
-подтвердил по коду; `void.class`-проверки нет; `Retry-After` HTTP-date;
-payload-decode retry). Стартую с концепта ADR-0009.
 [2026-10-13 06:43] Агент (сессия #23): Концепт **ADR-0009 готов** (шаг 1
 эпика 0.x polish) — все четыре кандидата проверены по коду, scope решён:
 **чиним 1–3, gap остаётся 4**. (1) PUT-лог: чиним — в список
@@ -64,3 +39,20 @@ package-private, ABI не ломается). asctime (obsolete per RFC 9110) —
 успешный `HandledException` от сбоев декода — лишнее состояние в цикле для
 редкого пути). Тестовая стратегия по каждому кандидату — в ADR. Дальше —
 фиксы 0.5.0-квирков (шаг 2).
+[2026-10-13 07:26] Агент (сессия #24): Шаг 2 DRAFT — **два 0.5.0-квирка
+по ADR-0009 зафиксированы TDD**. (1) PUT теперь в request-лог гейте
+(было POST/PATCH/DELETE — PUT не логировал даже "No request body";
+`Arrays.asList` на каждый запрос → `Set.of` static final — аллокация с
+hot path убрана). (2) `void.class` в `processResponse` — единственное
+настоящее behavior-изменение эпика: `void`-метод с непустым телом
+теперь возвращает null и отбрасывает тело, а не падает в кодек.
+Ключевая находка: квирк **кодек-зависим** — дефолтный Jackson 2.18.2
+тихо декодирует `void.class` в `null` (пин был бы зелёным и до фикса),
+Gson 2.14.0 и Moshi 1.15.2 бросают `IllegalArgumentException`
+(`cannot handle void` / `Cannot serialize abstract class void`) — ценность
+пина в контрактности, ADR-0009 поправлен. 11 новых тестов: log-capture
+через public `setLogger`-шов (7 unit без WireMock + 1 end-to-end
+интеграция через `LoggingTestClient`) + пины void/Void/async
+non-empty-body. **230/230 зелёные, POM без зависимостей (0.6.2).**
+Дальше — шаг 3: `Retry-After` HTTP-date (RFC 1123 парсер, шов в
+миллисекундах).
