@@ -4,7 +4,7 @@
 > тонкая настройка пайплайна запросов (RequestInterceptor, ResponseInterceptor,
 > RequestContext, ResponseContext, wither-методы WireRequest, zero-cost default path,
 > устойчивость и симметрия sync/async).
-> Сьюйт: **398/398** (49 классов, 0 fail/err), 0 warnings под перманентными
+> Сьюйт: **411/411** (50 классов, 0 fail/err), 0 warnings под перманентными
 > `-Xlint:all -Werror` и `-Xdoclint:all -Werror`.
 > `build.gradle` — 0.8.0 unreleased (не меняется до 0.9.0-цикла).
 
@@ -33,13 +33,15 @@
       проброс метаданных вызова (`method`, `controller`, `args`) и списков интерцепторов в `HttpTemplateBuilder` -> `HttpTemplate`;
       сьют: 390 → **398/398** (+8 тестов в `InterceptorConfigurationTest`, 49 классов, 0 fail/err),
       0 warnings под `-Xlint:all -Werror` и `-Xdoclint:all -Werror`.
-- [ ] **Шаг 4 (следующая сессия): исполнение в `HttpTemplate` (sync & async twins execution seam) (TDD).**
-      Выполнение цепочки `RequestInterceptor` перед стартом вызова (с защитой от null),
+- [x] **Шаг 4 (сессия #88): исполнение в `HttpTemplate` (sync & async twins execution seam) (TDD).**
+      Выполнение цепочки `RequestInterceptor` перед стартом вызова (с защитой от null, сохранением последнего валидного запроса),
       выполнение `ResponseInterceptor` при завершении вызова (в `finally` для sync `exchange()`,
       в `whenComplete` для async `exchangeAsync()`), передача контекста и атрибутов,
-      изоляция исключений хуков (robustness logging, непрерывность цепочки), сохранение
-      стрим-безопасности для `InputStream` / SSE + unit TDD тесты (`RequestPipelineTest`).
-- [ ] **Шаг 5: end-to-end WireMock сьюйт, документация и Javadoc.**
+      изоляция исключений хуков (logging warning, непрерывность цепочки), сохранение
+      стрим-безопасности для `InputStream` / SSE; 13 unit TDD тестов в `RequestPipelineTest`,
+      сьют: 398 → **411/411** (+13 тестов в `RequestPipelineTest`, 50 классов, 0 fail/err),
+      0 warnings под `-Xlint:all -Werror` и `-Xdoclint:all -Werror`.
+- [ ] **Шаг 5 (следующая сессия): end-to-end WireMock сьюйт, документация и Javadoc.**
       Комплексный сьюйт `RequestPipelineWireMockTest` (динамический bearer auth токен,
       propagation correlation-id, сбор latency/метрик, обработка ошибок 4xx/5xx и сетевых сбоев,
       async CompletableFuture twin), лаконичный Javadoc нормативной поверхности под `-Werror`,

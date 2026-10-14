@@ -1,8 +1,12 @@
 package ru.jrestly.http;
 
 import ru.jrestly.ModuleInfo;
+import ru.jrestly.interceptor.RequestContext;
 import ru.jrestly.interceptor.RequestInterceptor;
+import ru.jrestly.interceptor.ResponseContext;
 import ru.jrestly.interceptor.ResponseInterceptor;
+import ru.jrestly.interceptor.SimpleRequestContext;
+import ru.jrestly.interceptor.SimpleResponseContext;
 import ru.jrestly.json.JsonCodec;
 
 import java.io.BufferedReader;
@@ -29,6 +33,7 @@ import java.util.Locale;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
@@ -129,7 +134,7 @@ public class HttpTemplate {
     /**
      * Executes the call and returns the decoded result. For
      * {@code CompletableFuture<T>} return types the returned value is the
-     * future itself; see {@link #exchangeAsync(WireRequest, long)}.
+     * future itself; see {@link #exchangeAsync(WireRequest, long, RequestContext)}.
      *
      * @param <T> the type the controller method declares as its return type
      * @return the payload decoded to {@code T} by the JSON codec, the raw
@@ -144,35 +149,86 @@ public class HttpTemplate {
     public <T> T exchange() {
         WireRequest request = new WireRequest(httpMethod, createUri(), headers, contentType, body, multipartFormParts, multipartBoundary);
 
-        logRequest(request);
+        long start = System.nanoTime();
+        boolean hasInterceptors = !requestInterceptors.isEmpty() || !responseInterceptors.isEmpty();
+        RequestContext requestContext = hasInterceptors ? createRequestContext() : null;
+        WireRequest effectiveRequest = request;
 
-        if (async) {
-            long start = System.nanoTime();
-            return (T) exchangeAsync(request, start);
+        if (hasInterceptors) {
+            try {
+                for (RequestInterceptor interceptor : requestInterceptors) {
+                    WireRequest next = interceptor.intercept(effectiveRequest, requestContext);
+                    if (next == null) {
+                        throw new NullPointerException("RequestInterceptor returned null WireRequest");
+                    }
+                    effectiveRequest = next;
+                }
+            } catch (Throwable t) {
+                invokeResponseInterceptors(requestContext, effectiveRequest, null, t, start);
+                if (async) {
+                    CompletableFuture<Object> failed = new CompletableFuture<>();
+                    failed.completeExceptionally(t);
+                    return (T) failed;
+                }
+                if (t instanceof RuntimeException re) {
+                    throw re;
+                } else if (t instanceof Error err) {
+                    throw err;
+                } else {
+                    throw new RuntimeException(t);
+                }
+            }
         }
 
+        logRequest(effectiveRequest);
+
+        if (async) {
+            return (T) exchangeAsync(effectiveRequest, start, requestContext);
+        }
+
+        WireResponse response = null;
+        Throwable failure = null;
         try {
-            long start = System.nanoTime();
-            WireResponse response = executeWithRetries(request);
-            return processResponse(request, response, start);
+            response = executeWithRetries(effectiveRequest);
+            return processResponse(effectiveRequest, response, start);
         } catch (IOException e) {
+            failure = e;
             logger.log(System.Logger.Level.ERROR,
-                    "Request failed: " + request.method() + " " + request.uri(), e);
+                    "Request failed: " + effectiveRequest.method() + " " + effectiveRequest.uri(), e);
 
             throw new RuntimeException(e);
         } catch (InterruptedException e) {
+            failure = e;
             Thread.currentThread().interrupt();
             throw new RuntimeException(e);
+        } catch (Throwable t) {
+            failure = t;
+            throw t;
+        } finally {
+            if (hasInterceptors) {
+                invokeResponseInterceptors(requestContext, effectiveRequest, response, failure, start);
+            }
         }
     }
 
     // Async twin of exchange(): the same tail via processResponse, with
     // @OnError / status-check exceptions kept as-is and transport failures
     // mapped to the exceptions a synchronous call would throw (both become
-    // the cause of the future's exceptional completion)
-    private CompletableFuture<Object> exchangeAsync(WireRequest request, long startNanos) {
-        return executeAsyncWithRetries(request)
+    // the cause of the future's exceptional completion), and response
+    // interceptors triggered non-blockingly upon completion.
+    private CompletableFuture<Object> exchangeAsync(
+            WireRequest request,
+            long startNanos,
+            RequestContext requestContext
+    ) {
+        AtomicReference<WireResponse> responseRef = new AtomicReference<>();
+        boolean hasResponseInterceptors = !responseInterceptors.isEmpty() && requestContext != null;
+
+        CompletableFuture<Object> future = executeAsyncWithRetries(request)
                 .thenApply(response -> {
+                    if (hasResponseInterceptors) {
+                        responseRef.set(response);
+                    }
                     try {
                         return processResponse(request, response, startNanos);
                     } catch (IOException e) {
@@ -198,6 +254,68 @@ public class HttpTemplate {
                     }
                     throw new RuntimeException(cause);
                 });
+
+        if (hasResponseInterceptors) {
+            return future.whenComplete((res, ex) -> {
+                Throwable failure = ex != null ? unwrapCause(ex) : null;
+                invokeResponseInterceptors(
+                        requestContext,
+                        request,
+                        responseRef.get(),
+                        failure,
+                        startNanos
+                );
+            });
+        }
+
+        return future;
+    }
+
+    private RequestContext createRequestContext() {
+        String modName = (moduleInfo != null && moduleInfo.getName() != null)
+                ? moduleInfo.getName()
+                : "default";
+        Class<?> ctrlClass = controllerClass != null ? controllerClass : HttpTemplate.class;
+        Method mtd = method != null ? method : fallbackMethod();
+        Object[] callArgs = args != null ? args : new Object[0];
+        return new SimpleRequestContext(modName, ctrlClass, mtd, callArgs);
+    }
+
+    private static Method fallbackMethod() {
+        try {
+            return HttpTemplate.class.getMethod("exchange");
+        } catch (NoSuchMethodException e) {
+            throw new IllegalStateException("exchange method not found", e);
+        }
+    }
+
+    private void invokeResponseInterceptors(
+            RequestContext requestContext,
+            WireRequest request,
+            WireResponse response,
+            Throwable failure,
+            long startNanos
+    ) {
+        if (responseInterceptors.isEmpty() || requestContext == null) {
+            return;
+        }
+        Duration duration = Duration.ofNanos(System.nanoTime() - startNanos);
+        ResponseContext context = new SimpleResponseContext(
+                requestContext,
+                request,
+                response,
+                failure,
+                duration
+        );
+        for (ResponseInterceptor interceptor : responseInterceptors) {
+            try {
+                interceptor.onResponse(context);
+            } catch (Throwable t) {
+                if (logger != null) {
+                    logger.log(System.Logger.Level.WARNING, "ResponseInterceptor failed", t);
+                }
+            }
+        }
     }
 
     private static Throwable unwrapCause(Throwable throwable) {
