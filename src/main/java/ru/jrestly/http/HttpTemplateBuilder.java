@@ -21,6 +21,7 @@ import ru.jrestly.annotation.Retry;
 import ru.jrestly.annotation.SetAuthDetails;
 
 import java.io.File;
+import java.io.InputStream;
 import java.lang.reflect.Method;
 import java.lang.reflect.Parameter;
 import java.lang.reflect.ParameterizedType;
@@ -158,14 +159,22 @@ public class HttpTemplateBuilder {
     }
 
     // CompletableFuture<T> methods run non-blockingly on the client executor;
-    // T itself (a class or parameterized type, including Void) is the wire contract
+    // T itself (a class or parameterized type, including Void) is the wire
+    // contract — the effective return type. An InputStream effective return
+    // type declares byte binding (ADR-0015, Aspect 1): the body arrives as
+    // a live stream via BodyHandlers.ofInputStream, codec-free
     private static void resolveReturnType(HttpTemplate result, Type genericReturnType) {
+        Type effective;
         if (genericReturnType instanceof ParameterizedType parameterized
                 && CompletableFuture.class.equals(parameterized.getRawType())) {
             result.setAsync(true);
-            result.setReturnType(parameterized.getActualTypeArguments()[0]);
+            effective = parameterized.getActualTypeArguments()[0];
         } else {
-            result.setReturnType(genericReturnType);
+            effective = genericReturnType;
+        }
+        result.setReturnType(effective);
+        if (InputStream.class.equals(effective)) {
+            result.setStreamBody(true);
         }
     }
 

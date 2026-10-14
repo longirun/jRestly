@@ -4,6 +4,7 @@ import ru.jrestly.ModuleInfo;
 import ru.jrestly.json.JsonCodec;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.lang.reflect.Type;
 import java.net.URI;
 import java.net.URLEncoder;
@@ -90,6 +91,7 @@ public class HttpTemplate {
     private String multipartBoundary;
     private Type returnType;
     private boolean async;
+    private boolean streamBody;
     private OnErrorParser onErrorParser;
     private List<Integer> expectStatuses;
     private Integer followRedirectsNumber;
@@ -232,6 +234,7 @@ public class HttpTemplate {
             }
             request = next;
             hopsLeft--;
+            closeIntermediateStream(response);
             response = send(request);
         }
 
@@ -304,6 +307,10 @@ public class HttpTemplate {
     // failed response carries a parseable Retry-After header, delta-seconds
     // or HTTP-date (ADR-0008 Aspect 4, ADR-0009 candidate 3)
     private void scheduleRetry(int attempt, int maxAttempts, String failure, WireResponse response) throws InterruptedException {
+        // ADR-0015 Aspect 2: every scheduled retry discards the failed
+        // attempt — its stream (if any) is closed before the wait; a
+        // transport failure carries no response and is a no-op
+        closeIntermediateStream(response);
         long delayMillis = retryPolicy.nextDelayMillis(attempt, retryAfterDelayMillis(response), ThreadLocalRandom.current());
         logger.log(System.Logger.Level.DEBUG,
                 "Attempt " + attempt + "/" + maxAttempts + " failed: " + failure + " — retrying in " + delayMillis + " ms");
@@ -459,6 +466,7 @@ public class HttpTemplate {
             if (next == null || hopsLeft <= 0) {
                 return CompletableFuture.completedFuture(response);
             }
+            closeIntermediateStream(response);
             return executeAsyncWithRedirects(next, hopsLeft - 1);
         }).thenApply(response -> {
             logExhaustedRedirects(response);
@@ -530,6 +538,9 @@ public class HttpTemplate {
     // skips the scheduler call, as the sync twin skips Thread.sleep(0)
     private CompletableFuture<WireResponse> scheduleAsyncRetry(WireRequest request, int attempt, int maxAttempts,
                                                                String failure, WireResponse response, int hopsLeft) {
+        // ADR-0015 Aspect 2, async twin: the same discard — the failed
+        // attempt's stream (if any) is closed before the deferred wait
+        closeIntermediateStream(response);
         long delayMillis = retryPolicy.nextDelayMillis(attempt, retryAfterDelayMillis(response), ThreadLocalRandom.current());
         logger.log(System.Logger.Level.DEBUG,
                 "Attempt " + attempt + "/" + maxAttempts + " failed: " + failure + " — retrying in " + delayMillis + " ms");
@@ -585,18 +596,37 @@ public class HttpTemplate {
         }
     }
 
-    private WireResponse send(WireRequest request) throws IOException, InterruptedException {
+    // ADR-0015 Aspect 2: the effective return type picks the body handler —
+    // an InputStream return takes the body as a live stream (ofInputStream),
+    // everything else materializes bytes as before (ofByteArray). Package-
+    // private seam — the unit tests exercise the branch directly.
+    WireResponse send(WireRequest request) throws IOException, InterruptedException {
         long start = System.nanoTime();
-        HttpResponse<byte[]> response = httpClient.send(toHttpRequest(request), HttpResponse.BodyHandlers.ofByteArray());
-        logPerHop(request, response, start);
+        if (streamBody) {
+            HttpResponse<InputStream> response =
+                    httpClient.send(toHttpRequest(request), HttpResponse.BodyHandlers.ofInputStream());
+            logPerHop(request, response.statusCode(), start);
+            return toWireResponse(response);
+        }
+        HttpResponse<byte[]> response =
+                httpClient.send(toHttpRequest(request), HttpResponse.BodyHandlers.ofByteArray());
+        logPerHop(request, response.statusCode(), start);
         return toWireResponse(response);
     }
 
+    // Async twin of send(): the same branch, chained over sendAsync
     private CompletableFuture<WireResponse> sendAsync(WireRequest request) {
         long start = System.nanoTime();
+        if (streamBody) {
+            return httpClient.sendAsync(toHttpRequest(request), HttpResponse.BodyHandlers.ofInputStream())
+                    .thenApply(response -> {
+                        logPerHop(request, response.statusCode(), start);
+                        return toWireResponse(response);
+                    });
+        }
         return httpClient.sendAsync(toHttpRequest(request), HttpResponse.BodyHandlers.ofByteArray())
                 .thenApply(response -> {
-                    logPerHop(request, response, start);
+                    logPerHop(request, response.statusCode(), start);
                     return toWireResponse(response);
                 });
     }
@@ -627,20 +657,50 @@ public class HttpTemplate {
         return builder.build();
     }
 
-    private void logPerHop(WireRequest request, HttpResponse<byte[]> response, long startNanos) {
+    private void logPerHop(WireRequest request, int statusCode, long startNanos) {
         long elapsedMs = (System.nanoTime() - startNanos) / 1_000_000;
         // per-hop timing; the total (redirect chain included) is logged in the response INFO line
         logger.log(System.Logger.Level.DEBUG,
-                request.method() + " " + request.uri() + " -> " + response.statusCode() + " in " + elapsedMs + " ms");
+                request.method() + " " + request.uri() + " -> " + statusCode + " in " + elapsedMs + " ms");
     }
 
-    private WireResponse toWireResponse(HttpResponse<byte[]> response) {
-        List<Header> headers = response.headers().map().entrySet().stream()
+    // The body arrives as byte[] (ofByteArray) or as a live InputStream
+    // (ofInputStream) — exactly one slot of the wire model is filled
+    @SuppressWarnings("unchecked") // the else branch: the body is the ofByteArray path's byte[]
+    private static WireResponse toWireResponse(HttpResponse<?> response) {
+        Object body = response.body();
+        List<Header> headers = toHeaders(response);
+        if (body instanceof InputStream stream) {
+            return new WireResponse(response.statusCode(), headers, null, stream);
+        }
+        return new WireResponse(response.statusCode(), headers, (byte[]) body, null);
+    }
+
+    private static List<Header> toHeaders(HttpResponse<?> response) {
+        return response.headers().map().entrySet().stream()
                 .flatMap(entry -> entry.getValue().stream()
                         .map(value -> new Header(entry.getKey(), value)))
                 .toList();
+    }
 
-        return new WireResponse(response.statusCode(), headers, response.body());
+    // ADR-0015 Aspect 2: an intermediate hop's stream (a redirect hop, a
+    // retried attempt) is single-use — closed before the next send, so the
+    // connection is not left half-read; only the final response's stream
+    // reaches the caller (or is consumed by the error path). A close
+    // failure is logged, not thrown: body hygiene, not the call's fate
+    private void closeIntermediateStream(WireResponse response) {
+        if (response == null) {
+            return;
+        }
+        InputStream stream = response.stream();
+        if (stream == null) {
+            return;
+        }
+        try {
+            stream.close();
+        } catch (IOException e) {
+            logger.log(System.Logger.Level.INFO, "Failed to close the intermediate response stream", e);
+        }
     }
 
     // a fresh publisher per send: stream suppliers are single-use, a redirect re-send must get a live body
@@ -929,6 +989,26 @@ public class HttpTemplate {
      */
     public void setAsync(boolean async) {
         this.async = async;
+    }
+
+    /**
+     * Whether the effective return type is {@code InputStream}: the
+     * response body is then received via {@code BodyHandlers.ofInputStream()}
+     * and carried in the {@link WireResponse#stream()} component instead of
+     * materialized as bytes (ADR-0015, Aspect 2).
+     *
+     * @param streamBody true for {@code InputStream} return types; the
+     *              builder sets it only in that case (the field default is
+     *              {@code false})
+     */
+    public void setStreamBody(boolean streamBody) {
+        this.streamBody = streamBody;
+    }
+
+    // Package-private read for the wire-seam tests: builder detection is
+    // gated on the flag itself, not on a stubbed send
+    boolean streamBody() {
+        return streamBody;
     }
 
     /**

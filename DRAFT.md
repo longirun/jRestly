@@ -31,7 +31,7 @@
       логирование (payload-строка не читает тело; Content-Length из
       заголовка); retry (пересечения ADR-0008/0010/0011); test strategy
       (8 сценариев). JDK-факты — в ADR (javap по jmods + Oracle javadoc 21).
-- [ ] 2. **Wire seam** — `WireResponse`: компонент `InputStream stream` +
+- [x] 2. **Wire seam** — `WireResponse`: компонент `InputStream stream` +
       secondary 3-arg конструктор (ABI-нейтрально); send-path ветка на
       effective return type (`BodyHandlers.ofInputStream` vs `ofByteArray`,
       sync + `sendAsync`); close промежуточных стримов (redirect-хопы +
@@ -132,7 +132,9 @@
       основной следующий курс. Ответил (09:5x, сессия #62); концепт
       первого эпика — сессия #64 (ADR-0015: response streaming, байт-
       стриминг первым, оговорка про JSON оформлена как «JSON by return
-      type»).
+      type»). Концепт принят (входящее 2026-10-14: «Красава,
+      продолжай»; обмен удалён из mailbox по гигиене — решение в
+      ADR-0015).
 - **Вопрос направления (#26) — закрыт** (Антон, 11:20: предпочтения нет,
   стратегическое планирование; решение зафиксировано в ADR-0011:
   payload-decode первой — и та закрыта; следующий ход — 0.7.0-цикл —
