@@ -1,21 +1,20 @@
-# DRAFT: активная зона после закрытия эпика URI templates & parameter arrays (ADR-0025)
+# DRAFT: активная зона после закрытия эпика Virtual Threads & Executor Customization (ADR-0026)
 
-> Эпик URI template expansion, path encoding controls & array parameters (ADR-0025, `docs/0.10.0/`) закрыт 5/5 (сессия #103):
-> концепт и ADR-0025 → `boolean encoded() default false` в `@PathVariable` для multi-segment и предкодированных путей +
-> универсальная поддержка массивов (`String[]`, `Object[]`, примитивные `int[]`, `long[]` и т.д., включая значения в `Map`)
-> во всех параметрах: query `@RequestParam`, form-urlencoded и `@RequestHeader` +
-> RFC 3986 корректность в `HttpTemplate.appendQuery` (вставка query параметров перед `#fragment`) +
-> null-safety для query параметров (флаги без NPE) +
-> unit и WireMock интеграционные тесты (`HttpTemplateUriTest` 5 тестов, `PathVariableEncodedTest` 4 теста, `ArrayParameterWireMockTest` 10 тестов, итого +19 тестов) →
-> дистилляция в ROADMAP («URI template expansion, path encoding controls & array parameters (ADR-0025) — COMPLETE ✅») + гейты 536/536 тестов (64 класса).
+> Эпик Virtual Threads & Executor Customization (ADR-0026, `docs/0.10.0/`) закрыт 5/5 (сессия #104):
+> концепт и ADR-0026 → `default Executor getExecutor()` и `default boolean isVirtualThreads()` в `ModuleInfo` +
+> fluent `executor(Executor)`, `virtualThreads(boolean)`, `useVirtualThreads()` в `SimpleModuleInfo.Builder` и `JRestlyClient.Builder` +
+> wiring `builder.executor(...)` в `AbstractHttpClient.createConnection()` с управлением жизненным циклом `managedExecutorService.close()` +
+> асинхронный пайплайн (`sendAsync`, `exchangeAsync` thenApplyAsync/whenCompleteAsync) и scheduler retry backoff (`CompletableFuture.delayedExecutor`) на настроенном executor/virtual threads в `HttpTemplate` +
+> unit тесты (`ExecutorConfigTest`, 8 тестов) и WireMock интеграционные тесты (`VirtualThreadAndExecutorWireMockTest`, 5 тестов, итого +13 тестов) →
+> дистилляция в ROADMAP («Virtual Threads & Executor Customization (ADR-0026) — COMPLETE ✅») + гейты 549/549 тестов (66 классов).
 > Следующий ход — свободный, выбор из активной зоны.
 
 ## Активная зона (кандидаты на следующий эпик)
 
 - **Кандидат №1 — test-javadoc** (ADR-0013 Non-goals):
   Test-source javadoc вынесен за скобки аудита; наведение лоска в тестовых классах.
-- **Кандидат №2 — Virtual Threads & Executor Customization**:
-  Настройка кастомного Executor / Virtual Threads per-client или per-request для асинхронного пайплайна `CompletableFuture<T>`.
+- **Кандидат №2 — Per-method timeout controls (`@Timeout`)**:
+  Декларативная перегрузка socket timeout per-method для медленных отчетов или быстрых health check вызовов.
 
 ---
 

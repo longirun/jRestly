@@ -10,6 +10,7 @@ import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLParameters;
 import java.net.http.HttpClient;
 import java.util.List;
+import java.util.concurrent.Executor;
 import java.util.function.UnaryOperator;
 
 /**
@@ -273,6 +274,39 @@ public class JRestlyClient extends AbstractHttpClient {
          */
         public Builder decompression(boolean enabled) {
             moduleInfoBuilder.decompression(enabled);
+            return this;
+        }
+
+        /**
+         * Sets the custom executor for asynchronous tasks and completions (ADR-0026).
+         *
+         * @param executor the custom executor, not {@code null}
+         * @return this builder, for chaining
+         */
+        public Builder executor(Executor executor) {
+            moduleInfoBuilder.executor(executor);
+            return this;
+        }
+
+        /**
+         * Sets whether to use virtual threads for asynchronous tasks (ADR-0026).
+         *
+         * @param enabled {@code true} to enable virtual threads, {@code false} to disable
+         * @return this builder, for chaining
+         */
+        public Builder virtualThreads(boolean enabled) {
+            moduleInfoBuilder.virtualThreads(enabled);
+            return this;
+        }
+
+        /**
+         * Enables virtual threads for asynchronous tasks (ADR-0026).
+         * Shortcut for {@code virtualThreads(true)}.
+         *
+         * @return this builder, for chaining
+         */
+        public Builder useVirtualThreads() {
+            moduleInfoBuilder.useVirtualThreads();
             return this;
         }
 

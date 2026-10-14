@@ -10,6 +10,7 @@ import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLParameters;
 import java.net.http.HttpClient;
 import java.util.List;
+import java.util.concurrent.Executor;
 
 /**
  * Module configuration: everything a client is built from — identity
@@ -178,4 +179,28 @@ public interface ModuleInfo {
     default boolean isDecompressionEnabled() {
         return true;
     }
+
+    /**
+     * The executor used for asynchronous tasks in the underlying HTTP client
+     * and asynchronous pipeline stages (ADR-0026). When {@code null} (the default),
+     * the client uses the platform default executor, unless {@link #isVirtualThreads()}
+     * is enabled.
+     *
+     * @return the custom executor, or {@code null} for defaults
+     */
+    default Executor getExecutor() {
+        return null;
+    }
+
+    /**
+     * Whether to use virtual threads (via {@link java.util.concurrent.Executors#newVirtualThreadPerTaskExecutor()})
+     * for asynchronous tasks when no custom {@link #getExecutor()} is provided (ADR-0026).
+     * Defaults to {@code false}.
+     *
+     * @return {@code true} if virtual threads are enabled, {@code false} otherwise
+     */
+    default boolean isVirtualThreads() {
+        return false;
+    }
 }
+

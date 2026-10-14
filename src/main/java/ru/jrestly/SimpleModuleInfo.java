@@ -15,6 +15,7 @@ import java.net.http.HttpClient;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.Executor;
 import java.util.function.UnaryOperator;
 
 /**
@@ -49,6 +50,8 @@ public class SimpleModuleInfo implements ModuleInfo {
     private final SSLContext sslContext;
     private final SSLParameters sslParameters;
     private final boolean decompressionEnabled;
+    private final Executor executor;
+    private final boolean virtualThreads;
 
     private SimpleModuleInfo(Builder builder) {
         this.name = builder.name;
@@ -67,6 +70,8 @@ public class SimpleModuleInfo implements ModuleInfo {
         this.sslContext = builder.sslContext;
         this.sslParameters = builder.sslParameters;
         this.decompressionEnabled = builder.decompressionEnabled;
+        this.executor = builder.executor;
+        this.virtualThreads = builder.virtualThreads;
     }
 
     /**
@@ -149,6 +154,16 @@ public class SimpleModuleInfo implements ModuleInfo {
         return decompressionEnabled;
     }
 
+    @Override
+    public Executor getExecutor() {
+        return executor;
+    }
+
+    @Override
+    public boolean isVirtualThreads() {
+        return virtualThreads;
+    }
+
     /**
      * A builder for {@link SimpleModuleInfo}, pre-set to the defaults:
      * name {@code "default"}, 5 s connect timeout, 30 s socket timeout,
@@ -173,6 +188,8 @@ public class SimpleModuleInfo implements ModuleInfo {
         private SSLContext sslContext;
         private SSLParameters sslParameters;
         private boolean decompressionEnabled = true;
+        private Executor executor;
+        private boolean virtualThreads = false;
 
         /**
          * A builder pre-set to the defaults; {@code baseUrl} must still
@@ -388,6 +405,38 @@ public class SimpleModuleInfo implements ModuleInfo {
         public Builder decompression(boolean enabled) {
             this.decompressionEnabled = enabled;
             return this;
+        }
+
+        /**
+         * Sets the custom executor for asynchronous tasks and completions (ADR-0026).
+         *
+         * @param executor the custom executor, not {@code null}
+         * @return this builder, for chaining
+         */
+        public Builder executor(Executor executor) {
+            this.executor = Objects.requireNonNull(executor, "executor");
+            return this;
+        }
+
+        /**
+         * Sets whether to use virtual threads for asynchronous tasks (ADR-0026).
+         *
+         * @param enabled {@code true} to enable virtual threads, {@code false} to disable
+         * @return this builder, for chaining
+         */
+        public Builder virtualThreads(boolean enabled) {
+            this.virtualThreads = enabled;
+            return this;
+        }
+
+        /**
+         * Enables virtual threads for asynchronous tasks (ADR-0026).
+         * Shortcut for {@code virtualThreads(true)}.
+         *
+         * @return this builder, for chaining
+         */
+        public Builder useVirtualThreads() {
+            return virtualThreads(true);
         }
 
         /**

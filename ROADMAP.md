@@ -839,7 +839,31 @@ Gates (session #103, clean rebuild):
 - `javadoc` 0 warnings under permanent `-Xdoclint:all -Werror`.
 - Zero external runtime dependencies preserved (0 dependencies in Maven POM).
 
-After the epic: candidate #1 — test-javadoc (ADR-0013 Non-goals); candidate #2 — reactive / virtual thread executor ergonomics. ADR number **0026** free.
+After the epic: candidate #1 — test-javadoc (ADR-0013 Non-goals); candidate #2 — reactive / virtual thread executor ergonomics — done, section below. ADR number **0026** — virtual threads epic, **0027** free.
+
+## Virtual Threads & Executor Customization (ADR-0026) — COMPLETE ✅ (2026-10-15, unreleased)
+
+> Source of truth (concept, architecture decisions, executor lifecycle, async dispatch, test strategy, status):
+> [`docs/0.10.0/ADR-0026-virtual-threads-and-executor-customization.md`](docs/0.10.0/ADR-0026-virtual-threads-and-executor-customization.md).
+> Session #104 (agent-loop). Real-world REST API ergonomics and modern Java 21 support (candidate #2 from DRAFT.md).
+> Support for Java 21 Virtual Threads (`useVirtualThreads()`) and custom `Executor` configuration across asynchronous
+> `CompletableFuture<T>` return types, response pipeline stages, interceptors, and retry backoff schedulers.
+> 100% zero-dependency on standard Java 21 platform classes.
+
+Key decisions (ADR-0026):
+- **SPI configuration in `ModuleInfo`:** Added `default Executor getExecutor() { return null; }` and `default boolean isVirtualThreads() { return false; }`. Existing implementations preserve default platform thread pool.
+- **Builder ergonomics:** Added fluent `executor(Executor)` (fail-fast NPE on null), `virtualThreads(boolean)`, and `useVirtualThreads()` to `SimpleModuleInfo.Builder` and `JRestlyClient.Builder`. An explicit `executor` takes precedence over the `virtualThreads` flag.
+- **Client transport wiring & lifecycle:** In `AbstractHttpClient`, if `moduleInfo.getExecutor()` is configured, wires it to `HttpClient.Builder.executor(...)`. If `moduleInfo.isVirtualThreads()` is enabled, instantiates a managed `Executors.newVirtualThreadPerTaskExecutor()`. On `client.close()`, the internally managed virtual thread executor is cleanly shut down (`managedExecutorService.close()`), while external executors are preserved.
+- **Async pipeline execution & retry scheduling:** In `HttpTemplate`, when an executor is configured, `sendAsync`, `exchangeAsync` (JSON parsing, response interceptors), and `scheduleAsyncRetry` (via `CompletableFuture.delayedExecutor(delay, unit, executor)`) execute stages asynchronously on the configured executor or virtual threads (`thenApplyAsync` / `whenCompleteAsync`), ensuring thread context consistency.
+- **Full test coverage:** 13 new tests (+13 cases, total suite 549/549 across 66 classes) spanning `ExecutorConfigTest` (8 unit tests: defaults, builder forwarding, null-guards, managed virtual thread executor shutdown on close, external executor preservation) and `VirtualThreadAndExecutorWireMockTest` (5 WireMock integration tests: async GET on virtual threads, custom named executor threads, negative test for default client, async retry backoff on virtual threads, async SSE stream on virtual threads).
+
+Gates (session #104, clean rebuild):
+- `./gradlew test` **549/549** (66 classes, 0 failures/errors; +13 tests in ADR-0026).
+- `compileJava` and `compileTestJava` 0 warnings under permanent `-Xlint:all -Werror`.
+- `javadoc` 0 warnings under permanent `-Xdoclint:all -Werror`.
+- Zero external runtime dependencies preserved (0 dependencies in Maven POM).
+
+After the epic: candidate #1 — test-javadoc (ADR-0013 Non-goals); candidate #2 — per-method timeout controls or custom error decoders. ADR number **0027** free.
 
 ## Post-0.5.0 shortlist (not scheduled — see ADR-0003)
 

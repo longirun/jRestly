@@ -14,6 +14,9 @@ import java.time.Duration;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.Executor;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 /**
  * Base class for declarative HTTP clients. Owns a JDK {@link HttpClient}
@@ -32,6 +35,12 @@ public abstract class AbstractHttpClient {
 
     /** The JDK HTTP client used for every exchange; created by {@link #createConnection()}. */
     protected HttpClient httpClient;
+
+    /** The executor used for asynchronous tasks; either from module configuration or managed virtual threads. */
+    protected Executor executor;
+
+    /** The internally managed executor service (e.g. for virtual threads), closed on {@link #close()}. */
+    protected ExecutorService managedExecutorService;
 
     // this escapes by design: the protected createConnection() hook is API,
     // and overriding subclasses need the live client right from the constructor (ADR-0013)
@@ -91,11 +100,22 @@ public abstract class AbstractHttpClient {
             builder.sslParameters(sslParameters);
         }
 
+        Executor customExecutor = moduleInfo.getExecutor();
+        if (customExecutor != null) {
+            this.executor = customExecutor;
+            builder.executor(customExecutor);
+        } else if (moduleInfo.isVirtualThreads()) {
+            this.managedExecutorService = Executors.newVirtualThreadPerTaskExecutor();
+            this.executor = this.managedExecutorService;
+            builder.executor(this.managedExecutorService);
+        }
+
         this.httpClient = builder.build();
     }
 
     /**
-     * Closes the underlying {@link HttpClient}; safe to call twice.
+     * Closes the underlying {@link HttpClient} and shuts down any internally
+     * managed executor service (ADR-0026); safe to call twice.
      *
      * <p>Deliberately not {@code AutoCloseable}: the client is an
      * app-lifetime singleton, and the interface would provoke per-request
@@ -104,6 +124,9 @@ public abstract class AbstractHttpClient {
     public void close() {
         if (httpClient != null) {
             httpClient.close();
+        }
+        if (managedExecutorService != null) {
+            managedExecutorService.close();
         }
     }
 
@@ -146,6 +169,9 @@ public abstract class AbstractHttpClient {
                     }
 
                     HttpTemplateBuilder builder = new HttpTemplateBuilder(moduleInfo, httpClient, method, args, classInterface);
+                    if (executor != null) {
+                        builder.executor(executor);
+                    }
                     HttpTemplate httpTemplate = builder.build();
 
                     return httpTemplate.exchange();
@@ -204,4 +230,15 @@ public abstract class AbstractHttpClient {
     public void updateAuthHeader(String name, String value) {
         moduleInfo.getAuthProvider().updateAuthHeader(name, value);
     }
+
+    /**
+     * Returns the executor used by this client for asynchronous tasks, or
+     * {@code null} if using the platform default (ADR-0026).
+     *
+     * @return the client's executor, or {@code null}
+     */
+    public Executor getExecutor() {
+        return executor;
+    }
 }
+

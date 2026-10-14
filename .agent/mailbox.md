@@ -40,13 +40,14 @@
 * я думаю еще в реалном исползовании есть миллион важных вещей?
 Это не приказ бросаться сразу все делать, просто можно учесть и разобрать в будущем. 
 
-[2026-10-15 02:13] Агент (сессия #101): Реализован эпик условных запросов (RFC 9110 / RFC 7232), авто-обработки 304 Not Modified и нативной поддержки `Optional<T>` (ADR-0023): авто-прием 304 для условных запросов, Optional.empty() на 404/304/204/пустое тело, кэш-хелперы в ResponseHeaders (`isNotModified()`, `isNotFound()`, `lastModifiedInstant()`). 501/501 тест зелёные.
-
 [2026-10-15 02:41] Агент (сессия #102): Закрыт эпик гибкости multipart/form-data и form-urlencoded (ADR-0024): JSON DTO части в multipart через `JsonCodec` (`@RequestParam(contentType = "application/json")`), согласование кодировок (charsets per part), фабрики `MultipartPart` и null-safety. 517/517 тестов зелёные.
 
-[2026-10-15 03:04] Агент (сессия #103): Реализован эпик шаблонизации URI, контроля кодирования путей и поддержки массивов (ADR-0025):
-1. **`@PathVariable(encoded = true)`:** позволяет передавать multi-segment подпути со слэшами (`docs/2026/spec.pdf`) и предкодированные строки без нежелательного экранирования в `%2F` и двойного кодирования. По умолчанию (`encoded = false`) сохраняется строгий percent-encoding.
-2. **Массивы в `@RequestParam` и `@RequestHeader`:** массивы объектов (`String[]`, `Object[]`) и примитивов (`int[]`, `long[]` и др.) теперь поддержаны наравне с `Collection<?>` во всех местах (query параметры, form-urlencoded и заголовки, включая массивы внутри динамических `Map<String, ?>`). Пустые массивы чисто опускаются, `null` элементы пропускаются.
-3. **RFC 3986 `#fragment` и null-safety:** в `HttpTemplate.appendQuery` query-параметры гарантированно вставляются перед фрагментом `#` (`/items?page=1#top`), а query-параметры с null значением безопасно сериализуются как флаги без NPE.
-Написано 19 новых тестов (5 в `HttpTemplateUriTest`, 4 в `PathVariableEncodedTest`, 10 в `ArrayParameterWireMockTest`).
-Гейты: **536/536** тестов (64 класса) зелёные, 0 warnings под `-Werror`, zero-dep POM сохранён.
+[2026-10-15 03:04] Агент (сессия #103): Реализован эпик шаблонизации URI, контроля кодирования путей и поддержки массивов (ADR-0025): `@PathVariable(encoded = true)`, универсальные массивы (включая примитивные `int[]`) в параметрах/заголовках/формах, RFC 3986 `#fragment` и null-safe query флаги. 536/536 тестов зелёные.
+
+[2026-10-15 03:32] Агент (сессия #104): Реализован эпик поддержки Virtual Threads и кастомных Executor (ADR-0026):
+1. **Виртуальные потоки в один вызов:** `JRestlyClient.builder().useVirtualThreads()` переводит исполнение асинхронных `CompletableFuture<T>` методов, стриминга и интерцепторов на легковесные Java 21 виртуальные потоки (`Executors.newVirtualThreadPerTaskExecutor()`).
+2. **Кастомный `Executor`:** `builder.executor(Executor)` позволяет задать выделенный пул потоков для изоляции ресурсов (bulkhead), трассировки (MDC/OTel) или кастомного именования потоков.
+3. **Безопасное управление ресурсами (Lifecycle):** при вызове `client.close()` автоматически и безопасно завершается внутренний виртуальный тред исполнитель, не затрагивая внешние переданные пользователем executor'ы.
+4. **Асинхронные пайплайны и ретраи:** все этапы (`thenApplyAsync`, `whenCompleteAsync`) и отложенный запуск retry backoff (`CompletableFuture.delayedExecutor`) диспетчеризируются на настроенный executor/virtual threads.
+Написано 13 новых тестов (8 в `ExecutorConfigTest`, 5 в `VirtualThreadAndExecutorWireMockTest`).
+Гейты: **549/549** тестов (66 классов) зелёные, 0 javac/javadoc warnings под `-Werror`, zero-dep core строго сохранен.

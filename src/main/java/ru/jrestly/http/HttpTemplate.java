@@ -39,6 +39,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
+import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
@@ -131,6 +132,7 @@ public class HttpTemplate {
     private Method method;
     private Object[] args;
     private ResponseHeaders responseHeadersHolder;
+    private Executor executor;
 
     /**
      * Creates an empty template. Not intended for direct use: instances
@@ -233,39 +235,44 @@ public class HttpTemplate {
         AtomicReference<WireResponse> responseRef = new AtomicReference<>();
         boolean hasResponseInterceptors = !responseInterceptors.isEmpty() && requestContext != null;
 
-        CompletableFuture<Object> future = executeAsyncWithRetries(request)
-                .thenApply(response -> {
-                    if (hasResponseInterceptors) {
-                        responseRef.set(response);
-                    }
-                    try {
-                        return processResponse(request, response, startNanos);
-                    } catch (IOException e) {
-                        // ADR-0015 Aspect 3: a stream-consumption failure on the
-                        // error path is a transport-class failure — thenApply
-                        // unwraps the CompletionException, so the mapping below
-                        // sees the plain IOException, as the sync twin's
-                        // catch (IOException) does
-                        throw new CompletionException(e);
-                    }
-                })
-                .exceptionally(ex -> {
-                    Throwable cause = unwrapCause(ex);
-                    // the future completes exceptionally with this exception as the
-                    // CompletionException cause of join() / ExecutionException cause of get()
-                    if (cause instanceof HandledException) {
-                        throw (RuntimeException) cause; // UnexpectedStatusException included
-                    }
-                    logger.log(System.Logger.Level.ERROR,
-                            "Request failed: " + request.method() + " " + request.uri(), cause);
-                    if (cause instanceof InterruptedException) {
-                        Thread.currentThread().interrupt();
-                    }
-                    throw new RuntimeException(cause);
-                });
+        java.util.function.Function<WireResponse, Object> processor = response -> {
+            if (hasResponseInterceptors) {
+                responseRef.set(response);
+            }
+            try {
+                return processResponse(request, response, startNanos);
+            } catch (IOException e) {
+                // ADR-0015 Aspect 3: a stream-consumption failure on the
+                // error path is a transport-class failure — thenApply
+                // unwraps the CompletionException, so the mapping below
+                // sees the plain IOException, as the sync twin's
+                // catch (IOException) does
+                throw new CompletionException(e);
+            }
+        };
+
+        CompletableFuture<WireResponse> retriesFuture = executeAsyncWithRetries(request);
+        CompletableFuture<Object> stage = executor != null
+                ? retriesFuture.thenApplyAsync(processor, executor)
+                : retriesFuture.thenApply(processor);
+
+        CompletableFuture<Object> future = stage.exceptionally(ex -> {
+            Throwable cause = unwrapCause(ex);
+            // the future completes exceptionally with this exception as the
+            // CompletionException cause of join() / ExecutionException cause of get()
+            if (cause instanceof HandledException) {
+                throw (RuntimeException) cause; // UnexpectedStatusException included
+            }
+            logger.log(System.Logger.Level.ERROR,
+                    "Request failed: " + request.method() + " " + request.uri(), cause);
+            if (cause instanceof InterruptedException) {
+                Thread.currentThread().interrupt();
+            }
+            throw new RuntimeException(cause);
+        });
 
         if (hasResponseInterceptors) {
-            return future.whenComplete((res, ex) -> {
+            java.util.function.BiConsumer<Object, Throwable> interceptorAction = (res, ex) -> {
                 Throwable failure = ex != null ? unwrapCause(ex) : null;
                 invokeResponseInterceptors(
                         requestContext,
@@ -274,7 +281,10 @@ public class HttpTemplate {
                         failure,
                         startNanos
                 );
-            });
+            };
+            return executor != null
+                    ? future.whenCompleteAsync(interceptorAction, executor)
+                    : future.whenComplete(interceptorAction);
         }
 
         return future;
@@ -887,8 +897,11 @@ public class HttpTemplate {
         if (delayMillis <= 0) {
             return attemptAsync(request, attempt + 1, maxAttempts, hopsLeft);
         }
+        Executor scheduler = executor != null
+                ? CompletableFuture.delayedExecutor(delayMillis, TimeUnit.MILLISECONDS, executor)
+                : CompletableFuture.delayedExecutor(delayMillis, TimeUnit.MILLISECONDS);
         return CompletableFuture.runAsync(() -> {
-        }, CompletableFuture.delayedExecutor(delayMillis, TimeUnit.MILLISECONDS))
+        }, scheduler)
                 .thenCompose(ignored -> attemptAsync(request, attempt + 1, maxAttempts, hopsLeft));
     }
 
@@ -958,25 +971,29 @@ public class HttpTemplate {
     private CompletableFuture<WireResponse> sendAsync(WireRequest request) {
         long start = System.nanoTime();
         if (streamBody) {
-            return httpClient.sendAsync(toHttpRequest(request), HttpResponse.BodyHandlers.ofInputStream())
-                    .thenApply(response -> {
-                        logPerHop(request, response.statusCode(), start);
-                        try {
-                            return handleDecompression(toWireResponse(response));
-                        } catch (IOException e) {
-                            throw new CompletionException(e);
-                        }
-                    });
+            CompletableFuture<HttpResponse<InputStream>> raw =
+                    httpClient.sendAsync(toHttpRequest(request), HttpResponse.BodyHandlers.ofInputStream());
+            java.util.function.Function<HttpResponse<InputStream>, WireResponse> mapper = response -> {
+                logPerHop(request, response.statusCode(), start);
+                try {
+                    return handleDecompression(toWireResponse(response));
+                } catch (IOException e) {
+                    throw new CompletionException(e);
+                }
+            };
+            return executor != null ? raw.thenApplyAsync(mapper, executor) : raw.thenApply(mapper);
         }
-        return httpClient.sendAsync(toHttpRequest(request), HttpResponse.BodyHandlers.ofByteArray())
-                .thenApply(response -> {
-                    logPerHop(request, response.statusCode(), start);
-                    try {
-                        return handleDecompression(toWireResponse(response));
-                    } catch (IOException e) {
-                        throw new CompletionException(e);
-                    }
-                });
+        CompletableFuture<HttpResponse<byte[]>> raw =
+                httpClient.sendAsync(toHttpRequest(request), HttpResponse.BodyHandlers.ofByteArray());
+        java.util.function.Function<HttpResponse<byte[]>, WireResponse> mapper = response -> {
+            logPerHop(request, response.statusCode(), start);
+            try {
+                return handleDecompression(toWireResponse(response));
+            } catch (IOException e) {
+                throw new CompletionException(e);
+            }
+        };
+        return executor != null ? raw.thenApplyAsync(mapper, executor) : raw.thenApply(mapper);
     }
 
     /**
@@ -1312,6 +1329,24 @@ public class HttpTemplate {
      */
     public void setHttpClient(HttpClient httpClient) {
         this.httpClient = httpClient;
+    }
+
+    /**
+     * The executor used for asynchronous tasks and retry delays (ADR-0026).
+     *
+     * @param executor the executor, or {@code null} for default
+     */
+    public void setExecutor(Executor executor) {
+        this.executor = executor;
+    }
+
+    /**
+     * Returns the executor configured for this template, or {@code null} if default (ADR-0026).
+     *
+     * @return the executor, or {@code null}
+     */
+    public Executor getExecutor() {
+        return executor;
     }
 
     /**

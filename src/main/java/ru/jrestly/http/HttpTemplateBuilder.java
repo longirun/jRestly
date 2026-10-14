@@ -42,6 +42,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
 import java.util.UUID;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
@@ -65,6 +66,7 @@ public class HttpTemplateBuilder {
     private final Class<?> controller;
 
     private RequestMeta requestMeta;
+    private Executor executor;
 
     /**
      * Creates a builder for the given invocation.
@@ -81,6 +83,17 @@ public class HttpTemplateBuilder {
         this.method = method;
         this.args = args;
         this.controller = controller;
+    }
+
+    /**
+     * Sets the custom executor for asynchronous execution and retry delays (ADR-0026).
+     *
+     * @param executor the executor
+     * @return this builder, for chaining
+     */
+    public HttpTemplateBuilder executor(Executor executor) {
+        this.executor = executor;
+        return this;
     }
 
     /**
@@ -164,6 +177,7 @@ public class HttpTemplateBuilder {
         result.setRequestInterceptors(moduleInfo.getRequestInterceptors());
         result.setResponseInterceptors(moduleInfo.getResponseInterceptors());
         result.setResponseHeadersHolder(resolveResponseHeadersHolder());
+        result.setExecutor(executor != null ? executor : moduleInfo.getExecutor());
         result.setControllerClass(controller);
         result.setMethod(method);
         result.setArgs(args);
