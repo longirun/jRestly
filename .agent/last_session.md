@@ -1,68 +1,55 @@
-# Handover Note: Сессия 53 (шаг 5 warnings-эпика: `OnErrorParser` 7 задокументирован, 55→48 javadoc-warnings, 256/256; следующий ход — `HttpMethod` 6)
+# Handover Note: Сессия 54 (шаг 5 warnings-эпика: пара enum'ов HttpMethod + RequestType задокументирована, 48→37 javadoc-warnings, 256/256; следующий ход — блок 4×3)
 
 ## Что сделано в этой сессии
 - **Входящее:** нет — живых ниток с Антоном нет (автономный ход).
-- **Ход:** шаг 5 по раскладу #52 — `OnErrorParser` (7), второй
-  из пары по 7 (`WireRequest` закрыт в #52).
-- **Замер на месте** (прямой javadoc, явный файловый путь): ровно
-  7 = класс 1 + **default constructor 1** (граблина #47/#49/#50)
-  + 5 методов (`canParse`, `getStatuses`, `setStatuses`,
-  `getErrorClass`, `setErrorClass`).
-- **Правка:** Javadoc 6 сайтов + явный `public OnErrorParser()`
-  с Javadoc (единственная кодовая правка сессии — прецеденты
-  #47/#49/#50; видимость `public` сохранена — тест
-  `HttpTemplateDecodeProbeTest` конструирует `new OnErrorParser()`;
-  конструктор после полей — house-style). Class-doc — «per-method
-  `@OnError` configuration» + кто собирает/потребляет.
-- **Факты сверил по коду:** собирает только
-  `HttpTemplateBuilder.createOnErrorParser()` — при `@OnError` на
-  контроллер-методе (иначе `null` в шаблон); `statuses` — boxed
-  `OnError.statuses()`, `errorClass` — `OnError.errorObject()`
-  (дефолт `Void.class`). Потребляет `HttpTemplate.processResponse`
-  (классификация статуса ДО expected-status-проверки; тело
-  декодится `jsonCodec.deserialize(payload, errorClass)` — null при
-  пустом теле — в `HandledException`), retry-loop
-  (`isRetryableStatus`: declared-статус — terminal по дефолту, если
-  не `retryOnErrorStatuses`) и decode-probe (`probePayloadDecode`:
-  `@OnError` классифицирует до decode).
-- **Граблина дня: полный замер javadoc по дереву.** Для полного
-  дерева нужны `-cp $(cat /tmp/opencode/cp.txt) -sourcepath
-  src/main/java -subpackages ru.jrestly`: (1) без `-cp` —
-  compileOnly (moshi/jackson/gson) не видны — 49 файлов не
-  компилируются; (2) `-subpackages` требует пакет АРГУМЕНТОМ;
-  (3) аргумент-пакет `ru.jrestly` без `-subpackages` сканирует
-  только топовый пакет (2 warnings — `ControllerValidator`).
-  Пер-файловые замеры — явным файловым путём (как #52), это
-  работает.
-- **Замер:** `OnErrorParser` — 0. Проект: **55 → 48 warnings**
-  (−7 ровно), остаток 23 файла (расклад совпал с handover'ом:
-  6+5+4×3+8×2+9×1 = 48).
+- **Ход:** шаг 5 по раскладу #53 — пара enum'ов `HttpMethod` (6) +
+  `RequestType` (5) одним шагом (мелкие, суммарно 11, связная тема —
+  параметры verb-аннотаций).
+- **Замер на месте** (прямой javadoc, явный файловый путь, оба файла
+  одной командой): ровно 11 = `HttpMethod` 6 (класс + 5 констант) +
+  `RequestType` 5 (класс + 3 константы + `mime()`).
+- **Правка — чистый Javadoc** (2 класса + 8 констант + `mime()`;
+  ноль кода). `HttpMethod` — class-doc (mapping аннотаций 1:1 по
+  `resolveRequestMeta`, body-лог кроме `GET`, 307/308 — preserve/
+  остальные → `GET`) + константы (RFC 9110: `POST`/`PATCH` —
+  non-idempotent, `GET` — без тела, `PUT`/`DELETE` — idempotent;
+  body логируется у 4 кроме `GET` — по `BODY_LOGGING_METHODS`).
+  `RequestType` — class-doc (requestType-атрибут verb-аннотаций,
+  `@Get` фиксированно JSON, `mime()` → `Content-Type`, у multipart
+  + boundary) + константы (JSON — дефолт всех аннотаций +
+  `@RequestBody` через codec; form/multipart — без query-параметров,
+  ≥1 параметр, boundary `jrestly-<uuid>`) + `mime()`.
+- **Граблина дня (зеркало #46):** getter с main-description БЕЗ
+  `@return` — doclint требует ОБА (в #46 было наоборот: голое
+  `@return` без main description).
+- **Замер:** оба файла — 0. Проект: **48 → 37 warnings** (−11 ровно),
+  остаток 21 файл (4×3+8×2+9×1 = 37; расклад совпал с handover'ом).
 - **Гейты:** `./gradlew test --rerun` — **256/256** (0 fail/err по
-  XML). javac `-Xlint:all` — 0/0 (init-скрипт). build.gradle не
-  трогал — POM как был (0 `<dependency>`).
-- **DRAFT:** шапка + шаг 5 пересчитан (48, 23 файла,
-  `OnErrorParser` закрыт).
+  XML). javac `-Xlint:all` — 0/0 (init-скрипт, main+test
+  пересобраны). build.gradle не трогал — POM как был (0
+  `<dependency>`).
+- **DRAFT:** шапка + шаг 5 пересчитан (37, 21 файл, пара enum'ов
+  закрыта).
 - **Mailbox:** не трогал (входящих нет; по существу нечего — рутина).
 
-## Контекст для следующей сессии (#54)
+## Контекст для следующей сессии (#55)
 
 ### Состояние: активный эпик «warnings и модернизация (ADR-0013)», 4/6
-1. **Шаг 5 — javadoc, остальное (48 warnings, 23 файла, замер #53).**
-   Следующие по расходу: `HttpMethod` 6, `RequestType` 5,
-   4 файла × 3 (JacksonCodec, WireResponse, HttpTemplateBuilder,
-   AuthHeaderProvider), 8 × 2 (MoshiCodec, GsonCodec, Param,
-   Header, ControllerValidator, RequestDefaultParam, OnError,
-   MultipartFormFile), 9 × 1 (JsonCodecResolver, RequestMeta,
-   SetAuthDetails, RequestParam, RequestHeader, PathVariable,
-   HttpVersion, FollowRedirects, ExpectStatus). Замерять на месте
+1. **Шаг 5 — javadoc, остальное (37 warnings, 21 файл, замер #54).**
+   Следующие по расходу: 4 файла × 3 — `JacksonCodec` (3),
+   `WireResponse` (3), `HttpTemplateBuilder` (3), `AuthHeaderProvider`
+   (3); 8 × 2 — `MoshiCodec`, `GsonCodec`, `Param`, `Header`,
+   `ControllerValidator`, `RequestDefaultParam`, `OnError`,
+   `MultipartFormFile`; 9 × 1 — `JsonCodecResolver`, `RequestMeta`,
+   `SetAuthDetails`, `RequestParam`, `RequestHeader`, `PathVariable`,
+   `HttpVersion`, `FollowRedirects`, `ExpectStatus`. Замерять на месте
    (прямой `javadoc -Xdoclint:all -Xmaxwarns 999` **явным файловым
    путём**; полный дерево-замер — см. граблину #53). Подсказки:
-   (1) `HttpMethod` 6 / `RequestType` 5 — enum'ы: проверить, что
-   именно стучит (constants или class; в #52 было не разложено);
-   (2) блок 4×3 — `JacksonCodec`/`MoshiCodec`/`GsonCodec` — codec-
-   тройка (у Jackson ещё 3: у Moshi/Gson по 2); `WireResponse` —
-   record как `WireRequest` (#52, house-style record-`@param`
-   готов); `HttpTemplateBuilder` — 3 (каких именно — замерить);
+   (1) `WireResponse` — record как `WireRequest` (#52, house-style
+   record-`@param` готов); (2) codec-тройка Jackson/Moshi/Gson —
+   3/2/2, проверить что именно стучит (у Moshi/Gson по 2 — вероятно
+   class + 1 метод, у Jackson на 1 больше — замерить); (3)
+   `HttpTemplateBuilder` — 3 (каких именно — замерить); (4)
    `AuthHeaderProvider` — 3. После шага 5 — ожидание 0 javadoc-
    warnings.
 2. **Шаг 6 — гейт:** в `build.gradle` `javadoc {
@@ -78,21 +65,20 @@
    существу (архитектурные споры/инсайты), не по рутине.
 
 ### Грабли (актуальный набор)
+- **Getter: doclint требует main description И `@return`**
+  (сессии #46/#54): в #46 — голое `@return` без description; в #54 —
+  description без `@return`. Обе части обязательны одновременно.
 - **Полный javadoc-замер по дереву** (сессия #53): `-cp $(cat
   /tmp/opencode/cp.txt) -sourcepath src/main/java -subpackages
   ru.jrestly`; `-subpackages` требует пакет-аргумент; без `-cp` —
   compileOnly не видны; пакет-аргумент без `-subpackages` — только
-  топовый пакет. Per-file — явным файловым путём.
+  топовый пакет. Per-file — явным файловым путём (оба файла одной
+  командой работают, #54).
 - **Javadoc-замер — явным файловым путём** (сессия #52): FQN как
-  аргумент (`ru.jrestly.http.WireRequest`) javadoc трактует как
-  ПАКЕТ — «No source files for package …». `src/main/java/.../X.java`
-  — всегда работает.
-- **«Асимметрия поверхностей» — в обе стороны** (сессия #51):
-  #35 — выравнивал ПРЯМО (value-класс → аннотация); #51 — ОБРАТНО:
-  нормативное описание живёт в интерфейсе (`ModuleInfo`), реализации
-  опираются на него.
+  аргумент javadoc трактует как ПАКЕТ.
+- **«Асимметрия поверхностей» — в обе стороны** (сессия #51).
 - **Факты Javadoc — по коду, не по имени; сверять ВСЕ утверждения**
-  (сессии #49–#53: «очевидные» переносы описаний между классами
+  (сессии #49–#54: «очевидные» переносы описаний между классами
   разносят subclass-специфику).
 - **Forwarder-доки не переносят subclass-зависимые факты**
   (сессия #50).
@@ -102,14 +88,13 @@
 - **javadoc тул капает warnings на 100/run** (сессия #44): без
   `-Xmaxwarns 999` любой счётчик — floor.
 - **Per-file подсчёт по логам — только по строкам `warning:`**
-  (сессия #47): «Loading source file» строки тоже несут путь к
-  файлу и ломают `uniq -c`.
-- **Getter с голым `@return` — doclint требует main description**
-  (сессия #46).
+  (сессия #47).
 - **Indentation javadoc в вложенных классах — 9 пробелов** (сессия
-  #46); в DRAFT.md строки шагов — 6 пробелов.
+  #46); в DRAFT.md строки шагов — 6 пробелов (продолжения переноса
+  шапки шага — С НУЛЯ, без отступа — граблина edit #54: первая
+  строка блока шага в DRAFT без отступа, следующие — 6 пробелов).
 - **DRAFT-перенос строк: edit-tool oldString — только с фактическим
-  байтовым текстом** (сессии #48–#53): проверять `sed -n`/`cat -A`,
+  байтовым текстом** (сессии #48–#54): проверять `sed -n`/`cat -A`,
   не по памяти про отступы.
 - **House-style fluent-builder: `@return this builder, for chaining`**
   (сессия #46).
@@ -147,11 +132,11 @@
 
 ### Среда
 1. `GRADLE_USER_HOME=/tmp/opencode/gradle-home ./gradlew ...` (тёплый
-   кэш пережил сессии #36–#53).
+   кэш пережил сессии #36–#54).
 2. `pids.max = 1000`. Полный `./gradlew test --rerun` без init-скрипта.
 3. Ветка `agent-loop`. Демон Gradle переживает падения тестов.
 4. Коммиты агента: `longirun-agent <sinyagovsky@gmail.com>`; счётчик
-   сессий подкручивает harness (сейчас 53 → после следующей 54).
+   сессий подкручивает harness (сейчас 54 → после следующей 55).
 5. Часы контейнера: UTC+4; mailbox-время — местное.
 6. `docs/` — ADR-папки по версиям цикла: `0.5.0/`, `0.6.0/`, `0.7.0/`,
    **`0.8.0/` (ADR-0013; версионная метка провизорная)**; lint-инит-
@@ -167,17 +152,18 @@
    `jdoc-52-wr.log` (7), `jdoc-52-oep.log` (7),
    `jdoc-52-wr-after.log` (0), `javadoc-52.log` (55),
    `jdoc-53-oep.log` (7), `jdoc-53-oep-after.log` (0),
-   `javadoc-53.log` (48).
+   `javadoc-53.log` (48), `jdoc-54-methods.log` (11),
+   `jdoc-54-methods-after.log` (0), `javadoc-54.log` (37).
 7. Системный JDK: `/opt/java/openjdk` (Temurin 21) — `javadoc`-бинарь
    для прямых замеров.
 
 ### Состояние git
 - HEAD: коммит сессии #53 (javadoc OnErrorParser + no-arg ctor)
-  поверх `7f32ccf` (#52), `20b23b7` (#51), `7fb7e85` (#50),
+  `590ac26` поверх `7f32ccf` (#52), `20b23b7` (#51), `7fb7e85` (#50),
   `38e5aba` (#49), `0bed4fa` (#48), `3d8be5a` (#47), `9e7461c` (#46).
   Всё на `agent-loop`. Последний тег `v0.6.1`.
 - Версия в build.gradle: **0.7.0**; POM `pom-default.xml`: **0.7.0**,
   0 `<dependency>`.
 - Тесты: **256/256** (36 классов).
 - Warnings: javac main+test — **0/0** под `-Xlint:all`; javadoc —
-  **48** (шаги 5–6; baseline 237).
+  **37** (шаги 5–6; baseline 237).

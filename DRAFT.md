@@ -1,4 +1,4 @@
-# DRAFT: warnings и модернизация (ADR-0013) — шаг 5 идёт: OnErrorParser закрыт, 55→48 (сессия #53)
+# DRAFT: warnings и модернизация (ADR-0013) — шаг 5 идёт: HttpMethod/RequestType закрыты, 48→37 (сессия #54)
 
 > Свободный ход после 0.7.0-цикла: кандидат №1 (warnings/рефакторинг-аудит,
 > fallback с #30) открыт как эпик. Сессия #41 — сам аудит (кандидат так и
@@ -119,8 +119,24 @@
       при наличии `@OnError` на контроллер-методе (иначе в шаблон
       ставится `null`), потребляется `HttpTemplate.processResponse`
       (классификация статуса + decode тела в `HandledException`) и
-      retry-loop/decode-probe'ом через `canParse`). Остаток (23 файла):
-      `HttpMethod` 6, `RequestType` 5, 4 файла × 3
+      retry-loop/decode-probe'ом через `canParse`). Сессия #54 закрыла
+      пару enum'ов `HttpMethod` 6 + `RequestType` 5 (48→37; поверхности 0;
+      ноль кода — чистый Javadoc; `HttpMethod` — class-doc (mapping
+      аннотаций 1:1 по `resolveRequestMeta`; body-лог — все кроме
+      `GET` — по `BODY_LOGGING_METHODS`; 307/308 — preserve, остальные
+      → `GET`) + 5 констант (RFC 9110: `POST`/`PATCH` — non-idempotent
+      — по `isNonIdempotent`, `GET` — тело никогда не несёт — по
+      `createBody`/`toHttpRequest`, `PUT`/`DELETE` — idempotent);
+      `RequestType` — class-doc (`requestType`-атрибут verb-аннотаций,
+      `@Get` — фиксированно `APPLICATION_JSON`; `mime()` —
+      `Content-Type`, у multipart — + per-request boundary) + 3
+      константы + `mime()` (зеркало граблины #46: main-description БЕЗ
+      `@return` — doclint требует обеим; факты сверены по
+      `HttpTemplateBuilder.build()`/`createUrlEncodedBody`/
+      `createMultipartParts` + `ControllerValidator`: JSON — дефолт
+      всех verb-аннотаций + `@RequestBody` через codec; form/multipart
+      — без query-параметров, ≥1 параметр, boundary `jrestly-<uuid>`).
+      Остаток (21 файл): 4 файла × 3
       (JacksonCodec/WireResponse/HttpTemplateBuilder/AuthHeaderProvider),
       8 × 2, 9 × 1.
 - [ ] Шаг 6 — gate: `javadoc { Xdoclint=all, Werror }` в build.gradle,
