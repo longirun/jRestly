@@ -37,7 +37,7 @@
       sync + `sendAsync`); close промежуточных стримов (redirect-хопы +
       retry-попытки, обе ветки + async twins). Gate: suite green; промежу-
       точный stream закрыт до следующего хопа (отрицательная проверка).
-- [ ] 3. **Синх-контракт** — `processResponse`: stream-ветка (успех =
+- [x] 3. **Синх-контракт** — `processResponse`: stream-ветка (успех =
       stream as-is; `@OnError` — consume via `readAllBytes` + decode;
       unexpected status — consume + полный raw payload в
       `UnexpectedStatusException`); `probePayloadDecode`: stream = «decode

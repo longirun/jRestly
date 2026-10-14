@@ -43,10 +43,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * hop" gate is an order assertion over the recorded events, not an
  * assumption (a gate without a negative check is not a gate).
  *
- * <p>The success branch of {@code processResponse} is the next step of the
- * epic and not in scope yet: a full {@code exchange()}-level call on a
- * stream response still yields {@code null} in these tests — the subject
- * under test is the wire, not the contract.
+ * <p>A full {@code exchange()}-level call on a stream response returns the
+ * final stream as-is (ADR-0015 Aspect 3) — the {@code assertSame} hand-over
+ * assertion doubles as the wire's "untouched" gate; the contract itself is
+ * the subject of {@code HttpTemplateStreamContractTest}.
  */
 class HttpTemplateStreamWireTest {
 
@@ -104,7 +104,7 @@ class HttpTemplateStreamWireTest {
                 response(307, Map.of("location", List.of("/api/stream-target")), intermediate),
                 response(200, Map.of(), finalStream))));
 
-        assertNull(t.exchange());
+        assertSame(finalStream, t.exchange());
 
         assertTrue(intermediate.closed);
         assertFalse(finalStream.closed);
@@ -128,7 +128,7 @@ class HttpTemplateStreamWireTest {
                 response(503, Map.of(), failedAttempt),
                 response(200, Map.of(), finalStream))));
 
-        assertNull(t.exchange());
+        assertSame(finalStream, t.exchange());
 
         assertTrue(failedAttempt.closed);
         assertFalse(finalStream.closed);
@@ -154,7 +154,7 @@ class HttpTemplateStreamWireTest {
                 response(200, Map.of(), finalStream))));
 
         CompletableFuture<Object> future = t.exchange();
-        assertNull(future.join());
+        assertSame(finalStream, future.join());
 
         assertTrue(intermediate.closed);
         assertFalse(finalStream.closed);
@@ -180,7 +180,7 @@ class HttpTemplateStreamWireTest {
                 response(200, Map.of(), finalStream))));
 
         CompletableFuture<Object> future = t.exchange();
-        assertNull(future.join());
+        assertSame(finalStream, future.join());
 
         assertTrue(failedAttempt.closed);
         assertFalse(finalStream.closed);

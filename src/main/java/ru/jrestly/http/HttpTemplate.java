@@ -149,7 +149,18 @@ public class HttpTemplate {
     // the cause of the future's exceptional completion)
     private CompletableFuture<Object> exchangeAsync(WireRequest request, long startNanos) {
         return executeAsyncWithRetries(request)
-                .thenApply(response -> processResponse(request, response, startNanos))
+                .thenApply(response -> {
+                    try {
+                        return processResponse(request, response, startNanos);
+                    } catch (IOException e) {
+                        // ADR-0015 Aspect 3: a stream-consumption failure on the
+                        // error path is a transport-class failure — thenApply
+                        // unwraps the CompletionException, so the mapping below
+                        // sees the plain IOException, as the sync twin's
+                        // catch (IOException) does
+                        throw new CompletionException(e);
+                    }
+                })
                 .exceptionally(ex -> {
                     Throwable cause = unwrapCause(ex);
                     // the future completes exceptionally with this exception as the
@@ -176,7 +187,8 @@ public class HttpTemplate {
     // Shared tail of both exchange paths: auth-details capture, response
     // logging, @OnError handling, status check, payload decoding
     @SuppressWarnings("unchecked")
-    private <T> T processResponse(WireRequest request, WireResponse response, long startNanos) {
+    private <T> T processResponse(WireRequest request, WireResponse response, long startNanos)
+            throws IOException {
         long elapsedMs = (System.nanoTime() - startNanos) / 1_000_000;
 
         List<Header> responseHeaders = response.headers();
@@ -186,8 +198,32 @@ public class HttpTemplate {
 
         logResponse(response, elapsedMs);
 
-        byte[] bytes = response.body();
         int statusCode = response.statusCode();
+
+        // ADR-0015 Aspect 3: an InputStream return declares byte binding —
+        // the success path hands the stream over untouched (codec-free),
+        // the error paths consume it fully and keep the byte[] contract
+        // (a payload cap is a revisit-on-demand, not a 0.x default)
+        InputStream stream = response.stream();
+        if (stream != null) {
+            if (onErrorParser != null && onErrorParser.canParse(statusCode)) {
+                String errorPayload = consumePayload(stream);
+                Object errorObject = (errorPayload != null)
+                        ? jsonCodec.deserialize(errorPayload, onErrorParser.getErrorClass())
+                        : null;
+                throw new HandledException(errorObject, statusCode, responseHeaders);
+            }
+            if (!isExpectedStatus(statusCode)) {
+                String rawPayload = consumePayload(stream);
+                throw new UnexpectedStatusException(statusCode, rawPayload == null ? "" : rawPayload, responseHeaders);
+            }
+            // ADR-0015 Aspect 5: the payload line is skipped for stream
+            // responses — logging must not consume the body
+            logger.log(System.Logger.Level.INFO, streamingPayloadLine(responseHeaders));
+            return (T) stream;
+        }
+
+        byte[] bytes = response.body();
         String payload = (bytes != null && bytes.length > 0) ? new String(bytes, StandardCharsets.UTF_8) : null;
 
         if (onErrorParser != null && onErrorParser.canParse(statusCode)) {
@@ -219,6 +255,31 @@ public class HttpTemplate {
         }
 
         return jsonCodec.deserialize(payload, returnType);
+    }
+
+    // ADR-0015 Aspect 3: the error paths' consumption — the stream's
+    // readAllBytes is the byte[] path's payload in stream form: an empty
+    // stream is a null payload, as an empty body is. The close follows the
+    // JDK contract (read to EOF, then close)
+    private static String consumePayload(InputStream stream) throws IOException {
+        try (stream) {
+            byte[] bytes = stream.readAllBytes();
+            return bytes.length > 0 ? new String(bytes, StandardCharsets.UTF_8) : null;
+        }
+    }
+
+    // ADR-0015 Aspect 5: the streaming variant of the payload log line —
+    // the Content-Length header carries the size (when present), never a
+    // body read
+    private static String streamingPayloadLine(List<Header> headers) {
+        String contentLength = headers.stream()
+                .filter(h -> h.name() != null && h.name().equalsIgnoreCase("Content-Length"))
+                .map(Header::value)
+                .findFirst()
+                .orElse(null);
+        return contentLength == null
+                ? "streaming (length unknown)"
+                : "streaming, Content-Length: " + contentLength;
     }
 
     // Handles redirects according to HTTP spec:
@@ -362,6 +423,9 @@ public class HttpTemplate {
         }
         if (!isExpectedStatus(status)) {
             return true; // the status check classifies before the payload decode
+        }
+        if (response.stream() != null) {
+            return true; // ADR-0015 Aspect 3: byte binding — nothing is decoded, the decode cannot fail
         }
         byte[] bytes = response.body();
         String payload = (bytes != null && bytes.length > 0) ? new String(bytes, StandardCharsets.UTF_8) : null;
