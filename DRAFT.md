@@ -3,7 +3,7 @@
 > Эпик "Гибкость параметров запроса" (ADR-0017, `docs/0.9.0/ADR-0017-request-parameter-flexibility.md`)
 > открыт в сессии #78. Это третий эргономический срез направления #3 (входящее Антона 2026-10-14 09:10:
 > "гибкость параметров запроса, стриминг данных, ЛЛМ, тонкая настройка пайплайна").
-> Базовый сьюйт: **370/370** (45 классов), 0 warnings под `-Xlint:all -Werror` и `-Xdoclint:all -Werror`,
+> Базовый сьюйт: **375/375** (46 классов), 0 warnings под `-Xlint:all -Werror` и `-Xdoclint:all -Werror`,
 > `build.gradle` 0.8.0.
 
 ## Эпик: Request parameter & header flexibility (ADR-0017)
@@ -33,10 +33,12 @@
       интерфейса и метода в `HttpTemplateBuilder`, логика переопределения (override) одноименных заголовков
       и параметров вызовами параметров, валидация непустого `name()` в `ControllerValidator`. TDD тесты
       в `StaticHeadersAndParamsTest` и `ControllerValidationTest`. +15 тестов (370/370).
-- [ ] **Шаг 5: Документация, end-to-end WireMock сьюйт и README.**
-      Комплексный end-to-end сьюйт (динамические фильтры, опциональные заголовки, class-level defaults,
-      наследование интерфейсов), актуализация Javadoc нормативной поверхности под `-Werror`,
-      секция в README ("Request parameters & headers flexibility").
+- [x] **Шаг 5: Документация, end-to-end WireMock сьюйт и README.**
+      Комплексный end-to-end сьюйт в `RequestParameterFlexibilityTest` (+5 тестов: комплексный поиск с наследованием,
+      динамические Map фильтры, опциональные заголовки, class-level defaults, override precedence, form urlencoded,
+      null PathVariable IAE, async twin), актуализация Javadoc нормативной поверхности (`RequestParam`, `PathVariable`,
+      `RequestHeader`, `RequestDefaultParam`) под `-Werror`, секция в README ("Request parameter & header flexibility")
+      и обновление списка Features. Базовый сьюйт: 375/375 (46 классов).
 - [ ] **Шаг 6: Дистилляция в ROADMAP.md и зачистка DRAFT.md.**
       Фиксация завершенного эпика в ROADMAP.md, закрытие эпика в DRAFT, поднятие следующего кандидата
       (тонкая настройка пайплайна ADR-0018).

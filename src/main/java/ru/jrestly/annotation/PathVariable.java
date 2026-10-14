@@ -6,7 +6,8 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 /**
- * Binds a parameter to a URI path placeholder.
+ * Binds a parameter to a URI path placeholder {@code ${name}}.
+ * Passing {@code null} throws an {@link IllegalArgumentException} because path placeholders cannot be omitted.
  */
 @Target(ElementType.PARAMETER)
 @Retention(RetentionPolicy.RUNTIME)

@@ -8,6 +8,9 @@ import java.lang.annotation.Target;
 
 /**
  * Binds a parameter to an HTTP request header, or declares a static HTTP header on a method or type.
+ * When placed on a controller interface, applies to all methods in that interface and sub-interfaces.
+ * Static headers are overridable (case-insensitively) by method-level headers and runtime arguments.
+ * Passing {@code null} as an argument omits the header.
  */
 @Target({ElementType.PARAMETER, ElementType.METHOD, ElementType.TYPE})
 @Retention(RetentionPolicy.RUNTIME)

@@ -8,6 +8,8 @@ import java.lang.annotation.Target;
 
 /**
  * Static default parameter attached to an HTTP method or controller interface.
+ * When placed on a controller interface, applies to all methods declared in that interface
+ * and sub-interfaces. Overridden when a method parameter specifies the same parameter name.
  */
 @Target({ElementType.METHOD, ElementType.TYPE})
 @Retention(RetentionPolicy.RUNTIME)

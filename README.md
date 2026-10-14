@@ -10,7 +10,7 @@ A declarative HTTP client for Java. Define an interface, get a working client â€
 
 - Declarative interface-based API via `java.lang.reflect.Proxy`
 - HTTP methods: `@Get`, `@Post`, `@Put`, `@Patch`, `@Delete`
-- Path variables (`@PathVariable` + `${var}`), query params (`@RequestParam`, `@RequestDefaultParam`), headers (`@RequestHeader`), request body (`@RequestBody`)
+- Path variables (`@PathVariable` + `${var}`), query params and form fields (`@RequestParam`, `@RequestDefaultParam`), headers (`@RequestHeader`), dynamic `Map<?, ?>` parameters and headers, repeatable class-level defaults and static headers, request body (`@RequestBody`)
 - Content types: `application/json` (default), `application/x-www-form-urlencoded`, `multipart/form-data`
 - Response streaming via `InputStream` (and `CompletableFuture<InputStream>`): direct streaming via `BodyHandlers.ofInputStream()` without whole-body buffering; bypasses the JSON codec on success; error responses consume the stream and preserve typed error mapping
 - Multipart uploads via `@MultipartFormFile(partName = â€¦)`: any number of files from disk, memory, or arbitrary streams (`FileContent`), streamed with bounded buffering; per-part `Content-Type` derived from the file extension, overridable per parameter
@@ -175,6 +175,36 @@ try (Stream<ServerSentEvent> events = api.streamChat(request)) {
 - **WHATWG SSE conformance:** `ServerSentEvent` exposes `id()`, `event()`, `data()` (multi-line data concatenated with `\n`), `retry()`, and `isDone()` (detects the `[DONE]` marker common in LLM APIs). SSE comments (`: ping`) are ignored.
 - **Encoding:** Charset is parsed from the `Content-Type` header (e.g. `text/event-stream; charset=utf-8`), defaulting to UTF-8.
 - **Unified error contract:** On `@OnError` or unexpected HTTP statuses, the stream is consumed eagerly and produces `HandledException` or `UnexpectedStatusException`, preserving the uniform error contract across all return types.
+
+## Request parameter & header flexibility
+
+jRestly handles real-world HTTP parameter patterns declaratively across interface hierarchies:
+
+```java
+@RequestHeader(name = "User-Agent", value = "my-service/1.0")
+@RequestDefaultParam(name = "api_version", value = "2026-10-14")
+public interface BaseApi {
+}
+
+@RequestHeader(name = "Accept", value = "application/json")
+public interface SearchApi extends BaseApi {
+
+    @Get(path = "/api/items")
+    List<Item> search(
+            @RequestParam(name = "filter") Map<String, Object> filters,
+            @RequestParam(name = "sort") List<String> sortFields,
+            @RequestParam(name = "offset") Integer offset,
+            @RequestHeader(name = "Accept") String acceptOverride,
+            @RequestHeader Map<String, String> dynamicHeaders
+    );
+}
+```
+
+- **Nullable parameters & headers:** Passing `null` as a `@RequestHeader` or `@RequestParam` argument omits it gracefully from the wire request. Collections skip `null` elements without throwing exceptions. Passing `null` to a `@PathVariable` throws an actionable `IllegalArgumentException` indicating that the path placeholder cannot be left blank.
+- **Dynamic `Map<?, ?>` parameters:** `@RequestParam Map<?, ?>` expands map entries into query parameters (or form fields). If `@RequestParam.name()` is specified, parameter names are prefixed as `name[key]` (e.g. `filter[status]=active`). Nested collections expand into repeated keys.
+- **Dynamic `Map<?, ?>` headers:** `@RequestHeader Map<?, ?>` binds arbitrary dynamic headers. Entries with `null` keys or values are omitted.
+- **Class-level & method-level static declarations:** `@RequestHeader` and `@RequestDefaultParam` can be declared directly on controller interfaces or individual methods with `@Repeatable` support. Interface inheritance applies parent declarations first, allowing child interfaces to specialize headers and defaults.
+- **Override precedence:** Runtime parameter arguments override default query parameters and static headers (compared case-insensitively per RFC 9110), eliminating key duplication when overriding a default.
 
 ## Retry with backoff
 

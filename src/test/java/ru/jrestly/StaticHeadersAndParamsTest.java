@@ -287,12 +287,17 @@ class StaticHeadersAndParamsTest extends BaseWireMockTest {
     @Test
     @DisplayName("Map @RequestParam overrides default param for present keys")
     void mapParameterOverridesDefaultParam() {
-        stubFor(get(urlEqualTo("/api/static/map-param-override?sort=desc&filter=active"))
+        stubFor(get(urlPathEqualTo("/api/static/map-param-override"))
+                .withQueryParam("sort", equalTo("desc"))
+                .withQueryParam("filter", equalTo("active"))
                 .willReturn(aResponse().withStatus(200).withBody("ok")));
 
         MapOverrideParamController ctrl = client.get(MapOverrideParamController.class);
 
         assertEquals("ok", ctrl.call(Map.of("sort", "desc", "filter", "active")));
+        verify(getRequestedFor(urlPathEqualTo("/api/static/map-param-override"))
+                .withQueryParam("sort", equalTo("desc"))
+                .withQueryParam("filter", equalTo("active")));
     }
 
     @Test
