@@ -160,9 +160,10 @@ public class HttpTemplateBuilder {
 
     // CompletableFuture<T> methods run non-blockingly on the client executor;
     // T itself (a class or parameterized type, including Void) is the wire
-    // contract — the effective return type. An InputStream effective return
-    // type declares byte binding (ADR-0015, Aspect 1): the body arrives as
-    // a live stream via BodyHandlers.ofInputStream, codec-free
+    // contract — the effective return type. An InputStream, Stream<String>, or
+    // Stream<ServerSentEvent> effective return type declares streaming binding
+    // (ADR-0015, ADR-0016): the body arrives as a live stream via
+    // BodyHandlers.ofInputStream, codec-free
     private static void resolveReturnType(HttpTemplate result, Type genericReturnType) {
         Type effective;
         if (genericReturnType instanceof ParameterizedType parameterized
@@ -173,7 +174,9 @@ public class HttpTemplateBuilder {
             effective = genericReturnType;
         }
         result.setReturnType(effective);
-        if (InputStream.class.equals(effective)) {
+        if (InputStream.class.equals(effective)
+                || HttpTemplate.isStreamType(effective, String.class)
+                || HttpTemplate.isStreamType(effective, ServerSentEvent.class)) {
             result.setStreamBody(true);
         }
     }

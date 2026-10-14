@@ -3,14 +3,18 @@ package ru.jrestly.http;
 import ru.jrestly.ModuleInfo;
 import ru.jrestly.json.JsonCodec;
 
+import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.ZoneOffset;
@@ -27,6 +31,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
  * One declarative call: assembles the wire request, executes it (optionally
@@ -44,9 +49,10 @@ import java.util.stream.Collectors;
  * cause of an {@code ExecutionException}.
  *
  * <p>When the controller method returns {@link java.io.InputStream} (or
- * {@code CompletableFuture<InputStream>}), the body is streamed via
+ * {@code CompletableFuture<InputStream>}), {@code Stream<String>} or
+ * {@code Stream<ServerSentEvent>}, the body is streamed via
  * {@code BodyHandlers.ofInputStream()} without intermediate buffering and
- * bypasses the JSON codec on success (ADR-0015). On error statuses the
+ * bypasses the JSON codec on success (ADR-0015, ADR-0016). On error statuses the
  * stream is consumed to produce the typed exception.
  */
 public class HttpTemplate {
@@ -120,7 +126,9 @@ public class HttpTemplate {
      * @param <T> the type the controller method declares as its return type
      * @return the payload decoded to {@code T} by the JSON codec, the raw
      *         body when {@code T} is {@link String}, the live body stream
-     *         when {@code T} is {@link java.io.InputStream}, {@code null}
+     *         when {@code T} is {@link java.io.InputStream}, line stream
+     *         when {@code T} is {@code Stream<String>}, event stream when
+     *         {@code T} is {@code Stream<ServerSentEvent>}, {@code null}
      *         when the method returns {@code void}/{@link Void}, or the
      *         future itself when the method returns {@code CompletableFuture<T>}
      */
@@ -224,9 +232,28 @@ public class HttpTemplate {
                 String rawPayload = consumePayload(stream);
                 throw new UnexpectedStatusException(statusCode, rawPayload == null ? "" : rawPayload, responseHeaders);
             }
+            // ADR-0016 Aspect 1 & 5: Stream<String> returns line stream;
+            // Stream<ServerSentEvent> returns parsed event stream
+            if (isStreamType(returnType, String.class)) {
+                logger.log(System.Logger.Level.INFO, streamingPayloadLine("streaming lines", responseHeaders));
+                Charset charset = resolveCharset(responseHeaders);
+                Stream<String> lineStream = new BufferedReader(new InputStreamReader(stream, charset))
+                        .lines()
+                        .onClose(() -> closeQuietly(stream));
+                return (T) lineStream;
+            }
+            if (isStreamType(returnType, ServerSentEvent.class)) {
+                logger.log(System.Logger.Level.INFO, streamingPayloadLine("streaming events", responseHeaders));
+                Charset charset = resolveCharset(responseHeaders);
+                Stream<String> lineStream = new BufferedReader(new InputStreamReader(stream, charset))
+                        .lines()
+                        .onClose(() -> closeQuietly(stream));
+                Stream<ServerSentEvent> eventStream = ServerSentEvent.parse(lineStream);
+                return (T) eventStream;
+            }
             // ADR-0015 Aspect 5: the payload line is skipped for stream
             // responses — logging must not consume the body
-            logger.log(System.Logger.Level.INFO, streamingPayloadLine(responseHeaders));
+            logger.log(System.Logger.Level.INFO, streamingPayloadLine("streaming", responseHeaders));
             return (T) stream;
         }
 
@@ -275,18 +302,79 @@ public class HttpTemplate {
         }
     }
 
-    // ADR-0015 Aspect 5: the streaming variant of the payload log line —
-    // the Content-Length header carries the size (when present), never a
-    // body read
-    private static String streamingPayloadLine(List<Header> headers) {
+    static boolean isStreamType(Type type, Class<?> elementClass) {
+        if (type instanceof ParameterizedType pt && Stream.class.equals(pt.getRawType())) {
+            Type[] args = pt.getActualTypeArguments();
+            return args.length == 1 && elementClass.equals(args[0]);
+        }
+        return false;
+    }
+
+    static Charset resolveCharset(List<Header> headers) {
+        if (headers == null) {
+            return StandardCharsets.UTF_8;
+        }
+        for (Header header : headers) {
+            if (header.name() != null && header.name().equalsIgnoreCase("Content-Type")) {
+                String value = header.value();
+                if (value != null) {
+                    Charset cs = parseCharsetFromContentType(value);
+                    if (cs != null) {
+                        return cs;
+                    }
+                }
+            }
+        }
+        return StandardCharsets.UTF_8;
+    }
+
+    private static Charset parseCharsetFromContentType(String contentType) {
+        String[] parts = contentType.split(";");
+        for (int i = 1; i < parts.length; i++) {
+            String part = parts[i].trim();
+            int eq = part.indexOf('=');
+            if (eq > 0) {
+                String key = part.substring(0, eq).trim();
+                if ("charset".equalsIgnoreCase(key)) {
+                    String charsetName = part.substring(eq + 1).trim();
+                    if (charsetName.startsWith("\"") && charsetName.endsWith("\"") && charsetName.length() >= 2) {
+                        charsetName = charsetName.substring(1, charsetName.length() - 1).trim();
+                    }
+                    if (charsetName.isEmpty()) {
+                        return StandardCharsets.UTF_8;
+                    }
+                    try {
+                        return Charset.forName(charsetName);
+                    } catch (Exception e) {
+                        return StandardCharsets.UTF_8;
+                    }
+                }
+            }
+        }
+        return null;
+    }
+
+    private void closeQuietly(InputStream stream) {
+        if (stream == null) {
+            return;
+        }
+        try {
+            stream.close();
+        } catch (IOException e) {
+            logger.log(System.Logger.Level.INFO, "Failed to close the response stream", e);
+        }
+    }
+
+    // ADR-0015 & ADR-0016: streaming variant of the payload log line
+    private static String streamingPayloadLine(String prefix, List<Header> headers) {
         String contentLength = headers.stream()
                 .filter(h -> h.name() != null && h.name().equalsIgnoreCase("Content-Length"))
                 .map(Header::value)
                 .findFirst()
                 .orElse(null);
         return contentLength == null
-                ? "streaming (length unknown)"
-                : "streaming, Content-Length: " + contentLength;
+                ? prefix + " (length unknown)"
+                : prefix + ", Content-Length: " + contentLength;
     }
 
     // Handles redirects according to HTTP spec:
@@ -760,17 +848,8 @@ public class HttpTemplate {
     // reaches the caller (or is consumed by the error path). A close
     // failure is logged, not thrown: body hygiene, not the call's fate
     private void closeIntermediateStream(WireResponse response) {
-        if (response == null) {
-            return;
-        }
-        InputStream stream = response.stream();
-        if (stream == null) {
-            return;
-        }
-        try {
-            stream.close();
-        } catch (IOException e) {
-            logger.log(System.Logger.Level.INFO, "Failed to close the intermediate response stream", e);
+        if (response != null) {
+            closeQuietly(response.stream());
         }
     }
 

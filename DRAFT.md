@@ -6,7 +6,7 @@
 > Новые типы возврата: `Stream<String>` (line streaming) и `Stream<ServerSentEvent>`
 > (WHATWG SSE), плюс их асинхронные близнецы `CompletableFuture<Stream<...>>`.
 > Базовая версия `build.gradle` — 0.8.0 (не меняется до release-цикла 0.9.0).
-> Текущий сьюйт: **295/295** (41 класс), 0 warnings под перманентными `-Xlint:all -Werror`
+> Текущий сьюйт: **305/305** (42 класса), 0 warnings под перманентными `-Xlint:all -Werror`
 > и `-Xdoclint:all -Werror`.
 
 ## Шаги эпика ADR-0016
@@ -21,10 +21,13 @@
       id, event, retry, LLM-маркер `[DONE]`, lazy evaluation через `Spliterator`/`Iterator`,
       закрытие источника при `stream.close()`; 13 unit TDD тестов в `ServerSentEventTest`,
       282 → 295/295, 0 warnings).
-- [ ] **Шаг 3:** Wire & engine seam для `Stream<String>` и `Stream<ServerSentEvent>`
-      (`HttpTemplateBuilder` детекция эффективного return type, `HttpTemplate.processResponse`
-      line/SSE стримы, charset resolution из Content-Type с дефолтом UTF-8,
-      onClose lifecycle, unit/wire тесты).
+- [x] **Шаг 3 (сессия #74):** Wire & engine seam для `Stream<String>` и `Stream<ServerSentEvent>`
+      (`HttpTemplateBuilder` детекция `Stream<String>` и `Stream<ServerSentEvent>` return types
+      и их async twins с включением `streamBody = true`, `HttpTemplate.processResponse`
+      построчный и SSE-стриминг поверх шва `response.stream()`, разбор кодировки `Charset`
+      из `Content-Type` с дефолтом UTF-8, жизненный цикл закрытия `onClose` с гарантированным
+      освобождением `InputStream`, логирование `"streaming lines"` / `"streaming events"`;
+      10 unit TDD тестов в `HttpTemplateLineAndEventStreamTest`, 295 → 305/305, 0 warnings).
 - [ ] **Шаг 4:** Контракт ошибок и Async twins (`CompletableFuture<Stream<String>>`,
       `CompletableFuture<Stream<ServerSentEvent>>`). Ошибки 4xx/5xx вычитывают stream,
       декодируют `@OnError` или сохраняют raw body, бросают типизированные исключения;
