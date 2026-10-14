@@ -1,37 +1,30 @@
-# Handover Note: Сессия 82 (ADR-0017 шаг 5/6 — Документация, end-to-end WireMock сьюйт и README закрыт; сьюйт 375/375; следующий ход — шаг 6: Дистилляция в ROADMAP.md и зачистка DRAFT.md)
+# Handover Note: Сессия 83 (ADR-0017 шаг 6/6 — Дистилляция в ROADMAP.md и зачистка DRAFT.md закрыт; эпик завершён; сьюйт 375/375; следующий ход — концепт ADR-0018)
 
 ## Что сделано в этой сессии
-- **Ход:** шаг 5 эпика ADR-0017 «Гибкость параметров запроса и заголовков» (Документация, end-to-end WireMock сьюйт и README).
-- **End-to-End WireMock сьюйт:**
-  - Создан `RequestParameterFlexibilityTest` (+5 тестов):
-    1. Комплексный поиск с наследованием интерфейсов (`BaseServiceApi` -> `CatalogApi`), динамическими `Map` фильтрами (`filter[key]`), коллекциями со скалярными и `null` элементами, опциональными параметрами, переопределением `Accept` и опусканием `null` заголовков.
-    2. Динамические `Map` заголовки с переопределением class-level заголовка (`X-Tenant-Id`) и пропуском `null` ключей и значений.
-    3. Строгая валидация `null` в `@PathVariable` с понятным `IllegalArgumentException("Path variable 'id' value cannot be null")`.
-    4. Form-urlencoded запрос с унаследованными default params от интерфейса, переопределением дефолтного параметра (`scope`) и динамическими credentials без дублирования ключей.
-    5. Асинхронный twin `CompletableFuture<String>` с переопределением default-параметров и динамическими аргументами.
-- **Стабилизация существующего сьюйта (`StaticHeadersAndParamsTest`):**
-  - Обнаружена скрытая ненадёжность с `Map.of`: порядок итерации не детерминирован, из-за чего строгий `urlEqualTo(...)` падал на query string. Заменено на `urlPathEqualTo(...)` с независимыми `.withQueryParam(...)` матчерами WireMock.
-- **Актуализация нормативного Javadoc:**
-  - Дополнены Javadoc контракты на `RequestParam`, `PathVariable`, `RequestHeader`, `RequestDefaultParam` с лаконичным отражением поддержки `Map`, коллекций, опускания `null` и правил переопределения под `-Xdoclint:all -Werror`.
-- **Документация (`README.md`):**
-  - Добавлена секция «Request parameter & header flexibility» с примером декларативного интерфейса и описанием nullable параметров, dynamic maps, class-level defaults и override precedence.
-  - Обновлен список Features в README.
-- **Гейты (clean rebuild & rerun):**
-  - `./gradlew test compileJava compileTestJava javadoc --rerun-tasks` — **375/375** (46 классов, 0 fail/err по XML), прирост +5 тестов.
+- **Ход:** шаг 6 эпика ADR-0017 «Гибкость параметров запроса и заголовков» (Дистилляция в ROADMAP.md и зачистка DRAFT.md, закрытие эпика).
+- **Дистилляция в `ROADMAP.md`:**
+  - Добавлена завершающая секция: `## Request parameter & header flexibility (ADR-0017) — COMPLETE ✅ (2026-10-14, unreleased)`
+  - Зафиксированы 5 архитектурных аспектов (nullable headers/params, dynamic Map<?, ?> params/headers с префиксами и раскрытием коллекций, class-level/method-level static `@RequestHeader` и `@RequestDefaultParam` с `@Repeatable` контейнерами и наследованием интерфейсов, правила override/merge с регистронезависимостью заголовков, ControllerValidator и WireMock e2e suite).
+  - Факты гейтов clean rebuild: 375/375 (46 классов, 0 fail/err), 0 warnings под постоянными `-Xlint:all -Werror` и `-Xdoclint:all -Werror`.
+  - Зарезервирован свободный номер ADR-0018 для следующего эпика.
+- **Зачистка `DRAFT.md`:**
+  - Завершенный эпик ADR-0017 снят из активной зоны.
+  - Активная зона сформирована: кандидат №1 (направление #3, основной курс: тонкая настройка пайплайна запросов — ADR-0018), кандидат №2 (test-javadoc).
+  - Правила гигиены, пометки из mailbox сохранены без потерь.
+- **Гейты (clean rebuild):**
+  - `./gradlew test compileJava compileTestJava javadoc --rerun-tasks`: **375/375** (46 классов, 0 fail/err по XML).
   - `javac` и `javadoc`: **0 warnings** под перманентными `-Xlint:all -Werror` и `-Xdoclint:all -Werror`.
   - `build.gradle` не менялся (0.8.0 unreleased).
-- **DRAFT.md:**
-  - Шаг 5 отмечен как выполненный `[x]`, базовый сьюйт обновлен до 375/375.
-- **Память:** дневник дня `.agent/days/2026-10-14.md` пополнен заметкой сессии #82 и обновлением в итог дня.
+- **Память:**
+  - Дневник дня `.agent/days/2026-10-14.md` пополнен заметкой сессии #83 и обновлением в финал «Итог дня».
 
-## Контекст для следующей сессии (#83)
+## Контекст для следующей сессии (#84)
 
-### Состояние: шаг 6 эпика ADR-0017
+### Состояние: завершение ADR-0017, активная зона открыта
 - **Рекомендуемый следующий шаг:**
-  - Реализация шага 6 эпика ADR-0017 (Дистилляция в ROADMAP.md и зачистка DRAFT.md):
-    - Секция в `ROADMAP.md`: «Request parameter & header flexibility (ADR-0017) — COMPLETE ✅ (2026-10-14, unreleased)» (линки, не пересказ; факты гейтов: 375/375, 46 классов, 0 warnings under -Werror).
-    - Зачистка активной зоны в `DRAFT.md`: снятие завершенного эпика ADR-0017, поднятие кандидата №1 (тонкая настройка пайплайна запросов ADR-0018: request/response interceptors / hooks, кастомизация заголовков и метрик).
-    - Свежий запуск гейтов.
+  - Старт четвертого эргономического эпика направления #3: концепт-сессия ADR-0018 (тонкая настройка пайплайна запросов):
+    - Создание `docs/0.9.0/ADR-0018-request-pipeline-interceptors.md` (дизайн: request/response interceptors, execution hooks, auth/logging/metrics расширяемость при сохранении Zero-Dep Core и отсутствия лишних аллокаций).
+    - Оформление нового активного эпика в `DRAFT.md` с разбиением на шаги с чекбоксами `[ ]`.
 
 ### Грабли (актуальный набор)
 - **`GRADLE_USER_HOME=/tmp/opencode/gradle-home`**: всегда указывать при запуске `./gradlew` в этой среде.

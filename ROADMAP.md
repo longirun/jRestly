@@ -604,7 +604,28 @@ Gates (session #77, clean rebuild):
 - `javadoc` 0 warnings under permanent `-Xdoclint:all -Werror`.
 - `build.gradle` untouched (0.8.0 unreleased).
 
-After the epic: candidate #1 — request parameter flexibility (class-level headers, nullable query params, catch-all), candidate #2 — request pipeline tuning (hooks/interceptors), candidate #3 — test-javadoc. ADR number **0017** free.
+After the epic: candidate #1 — request parameter flexibility (class-level headers, nullable query params, catch-all) — done, section below; candidate #2 — request pipeline tuning (hooks/interceptors), candidate #3 — test-javadoc. ADR number **0017** — the request parameter & header flexibility epic (`docs/0.9.0/`), **0018** free.
+
+## Request parameter & header flexibility (ADR-0017) — COMPLETE ✅ (2026-10-14, unreleased)
+
+> Source of truth (concept, decisions, test strategy, Javadoc contract, status):
+> [`docs/0.9.0/ADR-0017-request-parameter-flexibility.md`](docs/0.9.0/ADR-0017-request-parameter-flexibility.md).
+> Sessions #78–#83 (agent-loop). The third ergonomics slice of direction 3 (maintainer's 2026-10-14 mailbox: "request parameter flexibility, data streaming, LLM, request pipeline tuning"). Nullable parameters & headers, dynamic `Map<?, ?>` arguments, class-level/method-level static `@RequestHeader` and `@RequestDefaultParam` with `@Repeatable` containers, override/merge semantics. No version bump / tag — releases paused per maintainer agreement (0.8.0 in `build.gradle`).
+
+Key decisions (ADR-0017 Aspects 1–5):
+- **Nullable parameters & graceful omission (Aspect 1):** Null values in `@RequestHeader` omit the header without throwing NPE. Null-safe collections in `@RequestParam` (query, form-urlencoded, multipart) and `@RequestHeader` skip `null` elements. `@PathVariable` strictly rejects `null` values with clear, actionable `IllegalArgumentException("Path variable '" + name + "' value cannot be null")`.
+- **Dynamic Map parameters (Aspect 2):** Method arguments of type `Map<?, ?>` annotated with `@RequestParam` or `@RequestHeader` expand dynamically. Supports nested collections, skips null keys and values. When annotation specifies a non-empty name, keys are prefixed (`name[key]`). `@RequestHeader.name()` defaults to `""` allowing bare `@RequestHeader Map<String, String>`.
+- **Class-level & method-level static annotations (Aspects 3–4):** Extended `@Target` of `@RequestHeader` to `TYPE` and `METHOD`, introduced `@RequestDefaultParam` for query/form defaults. Container annotations `@RequestHeaders` and `@RequestDefaultParams` with `@Repeatable` support multiple declarations per class or method. Interface inheritance walks the hierarchy so sub-interfaces inherit static headers and defaults.
+- **Merge and override precedence (Aspect 5):** Case-insensitive header overrides and name-exact param overrides: method parameter > method static annotation > class static annotation (sub-interface > super-interface). Duplicate static headers with distinct values multi-bind. `ControllerValidator` verifies static declarations have non-empty names.
+- **Validation & End-to-end (Aspect 5 / Suite):** Full WireMock end-to-end suite (`RequestParameterFlexibilityTest`, 5 tests) exercises interface inheritance, nested dynamic map filters, nullable headers, default parameter overrides, form-urlencoded encoding, strict path variable validation, and async twin `CompletableFuture`.
+
+Gates (session #83, clean rebuild):
+- `./gradlew test compileJava compileTestJava javadoc --rerun-tasks` **375/375** (46 classes, 0 failures/errors; +49 tests in ADR-0017 across `RequestHeadersTest`, `PathVariableEncodingTest`, `GetMethodTest`, `PostMethodTest`, `MultipartTest`, `StaticHeadersAndParamsTest`, `ControllerValidationTest`, `RequestParameterFlexibilityTest`).
+- `compileJava` and `compileTestJava` 0 warnings under permanent `-Xlint:all -Werror`.
+- `javadoc` 0 warnings under permanent `-Xdoclint:all -Werror`.
+- `build.gradle` untouched (0.8.0 unreleased).
+
+After the epic: candidate #1 — request pipeline tuning (request/response interceptors / hooks, header customization, metrics — ADR-0018), candidate #2 — test-javadoc. ADR number **0018** free.
 
 ## Post-0.5.0 shortlist (not scheduled — see ADR-0003)
 

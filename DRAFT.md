@@ -1,53 +1,22 @@
-# DRAFT: активный эпик ADR-0017 (Request parameter & header flexibility)
+# DRAFT: активная зона (после закрытия ADR-0017; направление #3 — эргономика для современных API)
 
-> Эпик "Гибкость параметров запроса" (ADR-0017, `docs/0.9.0/ADR-0017-request-parameter-flexibility.md`)
-> открыт в сессии #78. Это третий эргономический срез направления #3 (входящее Антона 2026-10-14 09:10:
-> "гибкость параметров запроса, стриминг данных, ЛЛМ, тонкая настройка пайплайна").
-> Базовый сьюйт: **375/375** (46 классов), 0 warnings под `-Xlint:all -Werror` и `-Xdoclint:all -Werror`,
-> `build.gradle` 0.8.0.
+> Эпик Request parameter & header flexibility (ADR-0017, `docs/0.9.0/ADR-0017-request-parameter-flexibility.md`)
+> закрыт 6/6 (сессии #78–#83): концепт (#78) → nullable parameters & headers TDD (#79) →
+> dynamic Map parameters TDD (#80) → class-level & method-level static `@RequestHeader` / `@RequestDefaultParam` TDD (#81) →
+> end-to-end WireMock сьюйт, Javadoc и README (#82) → дистилляция в ROADMAP
+> («Request parameter & header flexibility (ADR-0017) — COMPLETE ✅») + эта зачистка (#83).
+> Сьюйт: 326 → **375/375** (46 классов, 0 fail/err, +49 тестов в ADR-0017),
+> 0 warnings под перманентными `-Xlint:all -Werror` и `-Xdoclint:all -Werror`.
+> `build.gradle` — 0.8.0 (не менялся). Следующий ход — свободный, из активной зоны.
 
-## Эпик: Request parameter & header flexibility (ADR-0017)
+## Активная зона (кандидаты на следующий эпик)
 
-- [x] **Шаг 1: Концепт-сессия (ADR-0017 + оформление DRAFT.md).**
-      Source of truth — `docs/0.9.0/ADR-0017-request-parameter-flexibility.md`.
-      Сформулированы 5 архитектурных аспектов: Aspect 1 (Nullable parameters & graceful omission:
-      пропуск null `@RequestHeader`, null-safe коллекции в `@RequestParam`, понятное IAE для null `@PathVariable`),
-      Aspect 2 (Dynamic Map parameters: `Map<?, ?>` в `@RequestParam` и `@RequestHeader` с раскрытием коллекций
-      и префиксами `name[key]`), Aspect 3 (Class-level & method-level static `@RequestHeader` с `@Repeatable`),
-      Aspect 4 (Class-level `@RequestDefaultParam` с `@Repeatable`), Aspect 5 (Семантика слияния и переопределения
-      headers/params, валидация в `ControllerValidator`).
-- [x] **Шаг 2: Nullable parameters & headers (TDD).**
-      Реализация Aspect 1: пропуск заголовков при `null`-значениях в `@RequestHeader` (устранение NPE),
-      пропуск `null`-элементов в коллекциях `@RequestParam` и `@RequestHeader`, строгая валидация `null`
-      в `@PathVariable` с понятным `IllegalArgumentException`. Unit/WireMock тесты в `RequestHeadersTest`,
-      `PathVariableEncodingTest`, `GetMethodTest` и `MultipartTest`. +11 тестов (337/337).
-- [x] **Шаг 3: Dynamic Map parameters (TDD).**
-      Реализация Aspect 2: поддержка `Map<?, ?>` в `@RequestParam` (query string, form-urlencoded body,
-      multipart text parts) и `@RequestHeader`. Раскрытие вложенных коллекций, пропуск null-значений
-      и null-ключей, поддержка префикса `name[key]` при непустом имени аннотации, `default ""` для
-      `RequestHeader.name()`. TDD тесты в `RequestHeadersTest`, `GetMethodTest`, `PostMethodTest`,
-      `MultipartTest`. +18 тестов (355/355).
-- [x] **Шаг 4: Class-level and method-level `@RequestHeader` & `@RequestDefaultParam` (TDD).**
-      Реализация Aspect 3, 4, 5: расширение `@Target` аннотаций, создание контейнеров `@RequestHeaders`
-      и `@RequestDefaultParams` с `@Repeatable`, сбор статических заголовков и дефолтных параметров с
-      интерфейса и метода в `HttpTemplateBuilder`, логика переопределения (override) одноименных заголовков
-      и параметров вызовами параметров, валидация непустого `name()` в `ControllerValidator`. TDD тесты
-      в `StaticHeadersAndParamsTest` и `ControllerValidationTest`. +15 тестов (370/370).
-- [x] **Шаг 5: Документация, end-to-end WireMock сьюйт и README.**
-      Комплексный end-to-end сьюйт в `RequestParameterFlexibilityTest` (+5 тестов: комплексный поиск с наследованием,
-      динамические Map фильтры, опциональные заголовки, class-level defaults, override precedence, form urlencoded,
-      null PathVariable IAE, async twin), актуализация Javadoc нормативной поверхности (`RequestParam`, `PathVariable`,
-      `RequestHeader`, `RequestDefaultParam`) под `-Werror`, секция в README ("Request parameter & header flexibility")
-      и обновление списка Features. Базовый сьюйт: 375/375 (46 классов).
-- [ ] **Шаг 6: Дистилляция в ROADMAP.md и зачистка DRAFT.md.**
-      Фиксация завершенного эпика в ROADMAP.md, закрытие эпика в DRAFT, поднятие следующего кандидата
-      (тонкая настройка пайплайна ADR-0018).
-
-## Кандидаты на следующие эпики (после ADR-0017)
-
-- **Кандидат №1 (направление #3): тонкая настройка пайплайна запросов — ADR-0018**
-  (request/response interceptors / hooks, кастомизация заголовков и метрик).
-- **Кандидат №2: test-javadoc** (ADR-0013 Non-goals: «test-source javadoc» вынесен за скобки аудита).
+- **Кандидат №1 (направление #3, основной курс): тонкая настройка пайплайна запросов — ADR-0018**
+  (следующий срез эргономики: request/response interceptors / hooks, кастомизация заголовков,
+  метрики, аудит вызовов без раздувания zero-dep ядра).
+- **Кандидат №2: test-javadoc** (ADR-0013 Non-goals: «test-source javadoc»
+  вынесен за скобки аудита): test-источники получают ту же обработку;
+  гейт на test-поверхность не нужен (лоск, не контур).
 
 ## Постоянная нить (не эпик, не чекбокс)
 
