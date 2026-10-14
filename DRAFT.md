@@ -4,7 +4,7 @@
 > тонкая настройка пайплайна запросов (RequestInterceptor, ResponseInterceptor,
 > RequestContext, ResponseContext, wither-методы WireRequest, zero-cost default path,
 > устойчивость и симметрия sync/async).
-> Сьюйт: **390/390** (48 классов, 0 fail/err), 0 warnings под перманентными
+> Сьюйт: **398/398** (49 классов, 0 fail/err), 0 warnings под перманентными
 > `-Xlint:all -Werror` и `-Xdoclint:all -Werror`.
 > `build.gradle` — 0.8.0 unreleased (не меняется до 0.9.0-цикла).
 
@@ -25,13 +25,15 @@
       `withUri`, `withMethod`, `withBody`, `withContentType`, `withParts`) и fluent `Builder` (`builder()`, `toBuilder()`);
       сьют: 375 → **390/390** (+15 тестов в 2 новых классах `WireRequestTest` и `RequestContextTest`),
       0 warnings под `-Xlint:all -Werror` и `-Xdoclint:all -Werror`.
-- [ ] **Шаг 3 (следующая сессия): интеграция в конфигурацию клиента (`ModuleInfo`, `SimpleModuleInfo`, `JRestlyClient.Builder`).**
-      Добавление `getRequestInterceptors()` и `getResponseInterceptors()` в `ModuleInfo`,
-      методы в `SimpleModuleInfo.Builder` и `JRestlyClient.Builder` (`addRequestInterceptor`,
-      `addResponseInterceptor`, `requestInterceptors`, `responseInterceptors`), проброс
-      метаданных вызова (`method`, `controller`, `args`, `moduleName`) и интерцепторов
-      в `HttpTemplateBuilder` -> `HttpTemplate` + unit-тесты конфигурации.
-- [ ] **Шаг 4: исполнение в `HttpTemplate` (sync & async twins execution seam) (TDD).**
+- [x] **Шаг 3 (сессия #86): интеграция в конфигурацию клиента (`ModuleInfo`, `SimpleModuleInfo`, `JRestlyClient.Builder`).**
+      Добавление `getRequestInterceptors()` и `getResponseInterceptors()` с дефолтными реализациями `List.of()` в `ModuleInfo`;
+      методы `addRequestInterceptor(RequestInterceptor)`, `addRequestInterceptor(UnaryOperator<WireRequest>)`,
+      `requestInterceptors(List)`, `addResponseInterceptor(ResponseInterceptor)`, `responseInterceptors(List)`
+      в `SimpleModuleInfo.Builder` и `JRestlyClient.Builder` с защитным копированием и строгой non-null валидацией;
+      проброс метаданных вызова (`method`, `controller`, `args`) и списков интерцепторов в `HttpTemplateBuilder` -> `HttpTemplate`;
+      сьют: 390 → **398/398** (+8 тестов в `InterceptorConfigurationTest`, 49 классов, 0 fail/err),
+      0 warnings под `-Xlint:all -Werror` и `-Xdoclint:all -Werror`.
+- [ ] **Шаг 4 (следующая сессия): исполнение в `HttpTemplate` (sync & async twins execution seam) (TDD).**
       Выполнение цепочки `RequestInterceptor` перед стартом вызова (с защитой от null),
       выполнение `ResponseInterceptor` при завершении вызова (в `finally` для sync `exchange()`,
       в `whenComplete` для async `exchangeAsync()`), передача контекста и атрибутов,

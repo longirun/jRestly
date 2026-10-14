@@ -1,18 +1,21 @@
 package ru.jrestly;
 
+import ru.jrestly.interceptor.RequestInterceptor;
+import ru.jrestly.interceptor.ResponseInterceptor;
 import ru.jrestly.json.JsonCodec;
 import ru.jrestly.json.JsonCodecResolver;
 import ru.jrestly.http.RetryPolicy;
 
 import java.net.http.HttpClient;
+import java.util.List;
 
 /**
  * Module configuration: everything a client is built from — identity
  * ({@link #getName()}), the execution environment (base URL and typed
  * auth details via {@link #getEnvironment()}), auth headers
  * ({@link #getAuthProvider()}), the JSON codec, the timeouts, the HTTP
- * protocol version, up-front controller validation, and the retry
- * policy.
+ * protocol version, up-front controller validation, the retry policy,
+ * and request/response interceptors (ADR-0018).
  *
  * <p>{@link SimpleModuleInfo} is the canonical implementation: a builder
  * with a default for every setting ({@code baseUrl} is the only
@@ -112,5 +115,28 @@ public interface ModuleInfo {
      */
     default RetryPolicy getRetryPolicy() {
         return RetryPolicy.off();
+    }
+
+    /**
+     * The configured request interceptors (ADR-0018). Default method
+     * returning an empty list so existing implementations do not break.
+     * Interceptors run sequentially before each request is dispatched.
+     *
+     * @return the list of request interceptors, never {@code null}
+     */
+    default List<RequestInterceptor> getRequestInterceptors() {
+        return List.of();
+    }
+
+    /**
+     * The configured response interceptors (ADR-0018). Default method
+     * returning an empty list so existing implementations do not break.
+     * Interceptors run sequentially after each exchange completes
+     * (either successfully or exceptionally).
+     *
+     * @return the list of response interceptors, never {@code null}
+     */
+    default List<ResponseInterceptor> getResponseInterceptors() {
+        return List.of();
     }
 }

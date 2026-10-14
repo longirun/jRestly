@@ -1,12 +1,15 @@
 package ru.jrestly.http;
 
 import ru.jrestly.ModuleInfo;
+import ru.jrestly.interceptor.RequestInterceptor;
+import ru.jrestly.interceptor.ResponseInterceptor;
 import ru.jrestly.json.JsonCodec;
 
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.lang.reflect.Method;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
 import java.net.URI;
@@ -109,6 +112,11 @@ public class HttpTemplate {
     private Integer followRedirectsNumber;
     private HttpClient.Version httpVersion;
     private RetryPolicy retryPolicy = RetryPolicy.off();
+    private List<RequestInterceptor> requestInterceptors = List.of();
+    private List<ResponseInterceptor> responseInterceptors = List.of();
+    private Class<?> controllerClass;
+    private Method method;
+    private Object[] args;
 
     /**
      * Creates an empty template. Not intended for direct use: instances
@@ -1230,5 +1238,95 @@ public class HttpTemplate {
      */
     public void setJsonCodec(JsonCodec jsonCodec) {
         this.jsonCodec = jsonCodec;
+    }
+
+    /**
+     * Sets the request interceptors for this call.
+     *
+     * @param requestInterceptors the request interceptors
+     */
+    public void setRequestInterceptors(List<RequestInterceptor> requestInterceptors) {
+        this.requestInterceptors = requestInterceptors != null ? List.copyOf(requestInterceptors) : List.of();
+    }
+
+    /**
+     * The configured request interceptors.
+     *
+     * @return unmodifiable list of request interceptors, never {@code null}
+     */
+    public List<RequestInterceptor> getRequestInterceptors() {
+        return requestInterceptors;
+    }
+
+    /**
+     * Sets the response interceptors for this call.
+     *
+     * @param responseInterceptors the response interceptors
+     */
+    public void setResponseInterceptors(List<ResponseInterceptor> responseInterceptors) {
+        this.responseInterceptors = responseInterceptors != null ? List.copyOf(responseInterceptors) : List.of();
+    }
+
+    /**
+     * The configured response interceptors.
+     *
+     * @return unmodifiable list of response interceptors, never {@code null}
+     */
+    public List<ResponseInterceptor> getResponseInterceptors() {
+        return responseInterceptors;
+    }
+
+    /**
+     * Sets the controller interface class being invoked.
+     *
+     * @param controllerClass the controller interface class
+     */
+    public void setControllerClass(Class<?> controllerClass) {
+        this.controllerClass = controllerClass;
+    }
+
+    /**
+     * The controller interface class being invoked.
+     *
+     * @return the controller class
+     */
+    public Class<?> getControllerClass() {
+        return controllerClass;
+    }
+
+    /**
+     * Sets the controller method being invoked.
+     *
+     * @param method the method being invoked
+     */
+    public void setMethod(Method method) {
+        this.method = method;
+    }
+
+    /**
+     * The controller method being invoked.
+     *
+     * @return the method
+     */
+    public Method getMethod() {
+        return method;
+    }
+
+    /**
+     * Sets the invocation arguments.
+     *
+     * @param args the invocation arguments
+     */
+    public void setArgs(Object[] args) {
+        this.args = args;
+    }
+
+    /**
+     * The invocation arguments.
+     *
+     * @return the invocation arguments
+     */
+    public Object[] getArgs() {
+        return args;
     }
 }

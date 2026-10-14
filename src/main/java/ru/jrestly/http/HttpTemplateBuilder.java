@@ -156,6 +156,11 @@ public class HttpTemplateBuilder {
         result.setFollowRedirectsNumber(getFollowRedirectsNumber());
         result.setHttpVersion(getHttpVersion());
         result.setRetryPolicy(resolveRetryPolicy());
+        result.setRequestInterceptors(moduleInfo.getRequestInterceptors());
+        result.setResponseInterceptors(moduleInfo.getResponseInterceptors());
+        result.setControllerClass(controller);
+        result.setMethod(method);
+        result.setArgs(args);
 
         return result;
     }

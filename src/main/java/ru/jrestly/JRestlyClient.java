@@ -1,9 +1,14 @@
 package ru.jrestly;
 
 import ru.jrestly.http.RetryPolicy;
+import ru.jrestly.http.WireRequest;
+import ru.jrestly.interceptor.RequestInterceptor;
+import ru.jrestly.interceptor.ResponseInterceptor;
 import ru.jrestly.json.JsonCodec;
 
 import java.net.http.HttpClient;
+import java.util.List;
+import java.util.function.UnaryOperator;
 
 /**
  * Factory for declarative HTTP API proxies.
@@ -177,6 +182,61 @@ public class JRestlyClient extends AbstractHttpClient {
          */
         public Builder retry(RetryPolicy retryPolicy) {
             moduleInfoBuilder.retry(retryPolicy);
+            return this;
+        }
+
+        /**
+         * Appends a request interceptor to the execution pipeline (ADR-0018).
+         *
+         * @param interceptor the request interceptor, not {@code null}
+         * @return this builder, for chaining
+         */
+        public Builder addRequestInterceptor(RequestInterceptor interceptor) {
+            moduleInfoBuilder.addRequestInterceptor(interceptor);
+            return this;
+        }
+
+        /**
+         * Appends a stateless request transformer to the pipeline (ADR-0018).
+         *
+         * @param operator the request transformer function, not {@code null}
+         * @return this builder, for chaining
+         */
+        public Builder addRequestInterceptor(UnaryOperator<WireRequest> operator) {
+            moduleInfoBuilder.addRequestInterceptor(operator);
+            return this;
+        }
+
+        /**
+         * Replaces the request interceptors with the given list (ADR-0018).
+         *
+         * @param interceptors the request interceptors, not {@code null} and containing no {@code null} elements
+         * @return this builder, for chaining
+         */
+        public Builder requestInterceptors(List<RequestInterceptor> interceptors) {
+            moduleInfoBuilder.requestInterceptors(interceptors);
+            return this;
+        }
+
+        /**
+         * Appends a response interceptor to the execution pipeline (ADR-0018).
+         *
+         * @param interceptor the response interceptor, not {@code null}
+         * @return this builder, for chaining
+         */
+        public Builder addResponseInterceptor(ResponseInterceptor interceptor) {
+            moduleInfoBuilder.addResponseInterceptor(interceptor);
+            return this;
+        }
+
+        /**
+         * Replaces the response interceptors with the given list (ADR-0018).
+         *
+         * @param interceptors the response interceptors, not {@code null} and containing no {@code null} elements
+         * @return this builder, for chaining
+         */
+        public Builder responseInterceptors(List<ResponseInterceptor> interceptors) {
+            moduleInfoBuilder.responseInterceptors(interceptors);
             return this;
         }
 

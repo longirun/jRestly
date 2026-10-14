@@ -3,10 +3,17 @@ package ru.jrestly;
 import ru.jrestly.http.AuthHeaderProvider;
 import ru.jrestly.http.Header;
 import ru.jrestly.http.RetryPolicy;
+import ru.jrestly.http.WireRequest;
+import ru.jrestly.interceptor.RequestInterceptor;
+import ru.jrestly.interceptor.ResponseInterceptor;
 import ru.jrestly.json.JsonCodec;
 import ru.jrestly.json.JsonCodecResolver;
 
 import java.net.http.HttpClient;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Objects;
+import java.util.function.UnaryOperator;
 
 /**
  * The {@link ModuleInfo} created by {@link #builder()}: every setting is
@@ -35,6 +42,8 @@ public class SimpleModuleInfo implements ModuleInfo {
     private final HttpClient.Version httpVersion;
     private final boolean validateControllers;
     private final RetryPolicy retryPolicy;
+    private final List<RequestInterceptor> requestInterceptors;
+    private final List<ResponseInterceptor> responseInterceptors;
 
     private SimpleModuleInfo(Builder builder) {
         this.name = builder.name;
@@ -48,6 +57,8 @@ public class SimpleModuleInfo implements ModuleInfo {
         this.httpVersion = builder.httpVersion;
         this.validateControllers = builder.validateControllers;
         this.retryPolicy = builder.retryPolicy;
+        this.requestInterceptors = List.copyOf(builder.requestInterceptors);
+        this.responseInterceptors = List.copyOf(builder.responseInterceptors);
     }
 
     /**
@@ -105,6 +116,16 @@ public class SimpleModuleInfo implements ModuleInfo {
         return retryPolicy;
     }
 
+    @Override
+    public List<RequestInterceptor> getRequestInterceptors() {
+        return requestInterceptors;
+    }
+
+    @Override
+    public List<ResponseInterceptor> getResponseInterceptors() {
+        return responseInterceptors;
+    }
+
     /**
      * A builder for {@link SimpleModuleInfo}, pre-set to the defaults:
      * name {@code "default"}, 5 s connect timeout, 30 s socket timeout,
@@ -124,6 +145,8 @@ public class SimpleModuleInfo implements ModuleInfo {
         private HttpClient.Version httpVersion = HttpClient.Version.HTTP_2;
         private boolean validateControllers = true;
         private RetryPolicy retryPolicy = RetryPolicy.off();
+        private final List<RequestInterceptor> requestInterceptors = new ArrayList<>();
+        private final List<ResponseInterceptor> responseInterceptors = new ArrayList<>();
 
         /**
          * A builder pre-set to the defaults; {@code baseUrl} must still
@@ -240,6 +263,70 @@ public class SimpleModuleInfo implements ModuleInfo {
          */
         public Builder retry(RetryPolicy retryPolicy) {
             this.retryPolicy = java.util.Objects.requireNonNull(retryPolicy, "retryPolicy");
+            return this;
+        }
+
+        /**
+         * Appends a request interceptor to the execution pipeline (ADR-0018).
+         *
+         * @param interceptor the request interceptor, not {@code null}
+         * @return this builder, for chaining
+         */
+        public Builder addRequestInterceptor(RequestInterceptor interceptor) {
+            this.requestInterceptors.add(Objects.requireNonNull(interceptor, "interceptor"));
+            return this;
+        }
+
+        /**
+         * Appends a stateless request transformer to the pipeline (ADR-0018).
+         *
+         * @param operator the request transformer function, not {@code null}
+         * @return this builder, for chaining
+         */
+        public Builder addRequestInterceptor(UnaryOperator<WireRequest> operator) {
+            Objects.requireNonNull(operator, "operator");
+            this.requestInterceptors.add(RequestInterceptor.of(operator));
+            return this;
+        }
+
+        /**
+         * Replaces the request interceptors with the given list (ADR-0018).
+         *
+         * @param interceptors the request interceptors, not {@code null} and containing no {@code null} elements
+         * @return this builder, for chaining
+         */
+        public Builder requestInterceptors(List<RequestInterceptor> interceptors) {
+            Objects.requireNonNull(interceptors, "interceptors");
+            this.requestInterceptors.clear();
+            for (RequestInterceptor interceptor : interceptors) {
+                this.requestInterceptors.add(Objects.requireNonNull(interceptor, "interceptor in list cannot be null"));
+            }
+            return this;
+        }
+
+        /**
+         * Appends a response interceptor to the execution pipeline (ADR-0018).
+         *
+         * @param interceptor the response interceptor, not {@code null}
+         * @return this builder, for chaining
+         */
+        public Builder addResponseInterceptor(ResponseInterceptor interceptor) {
+            this.responseInterceptors.add(Objects.requireNonNull(interceptor, "interceptor"));
+            return this;
+        }
+
+        /**
+         * Replaces the response interceptors with the given list (ADR-0018).
+         *
+         * @param interceptors the response interceptors, not {@code null} and containing no {@code null} elements
+         * @return this builder, for chaining
+         */
+        public Builder responseInterceptors(List<ResponseInterceptor> interceptors) {
+            Objects.requireNonNull(interceptors, "interceptors");
+            this.responseInterceptors.clear();
+            for (ResponseInterceptor interceptor : interceptors) {
+                this.responseInterceptors.add(Objects.requireNonNull(interceptor, "interceptor in list cannot be null"));
+            }
             return this;
         }
 
