@@ -49,7 +49,7 @@
       `sendAsync`, exception mapping не меняется — future completes после
       заголовков со stream). Gate: suite green включая async-тесты (test
       strategy 2).
-- [ ] 5. **Документация** — `ControllerValidator` (`InputStream`-возврат
+- [x] 5. **Документация** — `ControllerValidator` (`InputStream`-возврат
       валидируется чисто), Javadoc-контракт на затронутую публичную
       поверхность (лаконично — Антон, 2026-10-14), README (feature-буллет
       + «JSON by return type»-нота). Gate: javadoc 0 под

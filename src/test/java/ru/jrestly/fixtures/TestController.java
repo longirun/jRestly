@@ -5,6 +5,7 @@ import ru.jrestly.http.FileContent;
 import ru.jrestly.http.RequestType;
 
 import java.io.File;
+import java.io.InputStream;
 import java.net.http.HttpClient;
 import java.nio.file.Path;
 import java.util.List;
@@ -38,6 +39,12 @@ public interface TestController {
 
     @Get(path = "/api/raw")
     CompletableFuture<String> getRawAsync();
+
+    @Get(path = "/api/stream")
+    InputStream getStream();
+
+    @Get(path = "/api/stream")
+    CompletableFuture<InputStream> getStreamAsync();
 
     @Get(path = "/api/nothing")
     void getNothing();

@@ -12,6 +12,7 @@ A declarative HTTP client for Java. Define an interface, get a working client �
 - HTTP methods: `@Get`, `@Post`, `@Put`, `@Patch`, `@Delete`
 - Path variables (`@PathVariable` + `${var}`), query params (`@RequestParam`, `@RequestDefaultParam`), headers (`@RequestHeader`), request body (`@RequestBody`)
 - Content types: `application/json` (default), `application/x-www-form-urlencoded`, `multipart/form-data`
+- Response streaming via `InputStream` (and `CompletableFuture<InputStream>`): direct streaming via `BodyHandlers.ofInputStream()` without whole-body buffering; bypasses the JSON codec on success; error responses consume the stream and preserve typed error mapping
 - Multipart uploads via `@MultipartFormFile(partName = …)`: any number of files from disk, memory, or arbitrary streams (`FileContent`), streamed with bounded buffering; per-part `Content-Type` derived from the file extension, overridable per parameter
 - Per-method typed error mapping: `@OnError(statuses = {…}, errorObject = X.class)` throws `HandledException` with the deserialized body
 - Strict status validation: any status not in `@OnError` and not in `@ExpectStatus` (or not 2xx when `@ExpectStatus` is absent) throws `UnexpectedStatusException` with the raw body. Use `@ExpectStatus(statuses = {202})` for strict 2xx contracts
@@ -123,6 +124,25 @@ Item created = api.createItem(new Item("widget", 42));
 Item fetched = api.getItem(created.id());
 List<Item> page = api.listItems(1);
 ```
+
+## Response streaming
+
+Declare `InputStream` or `CompletableFuture<InputStream>` as the controller method return type to stream the response body directly without buffering it into memory:
+
+```java
+public interface DownloadApi {
+
+    @Get(path = "/files/${name}")
+    InputStream download(@PathVariable(name = "name") String name);
+
+    @Get(path = "/files/${name}")
+    CompletableFuture<InputStream> downloadAsync(@PathVariable(name = "name") String name);
+}
+```
+
+- **JSON by return type:** A POJO return type binds the response via the configured JSON codec; `String` returns the raw body text; `InputStream` declares byte binding and bypasses the codec entirely on the success path.
+- **Error paths:** If the server returns an `@OnError` status or an unexpected status, the stream is consumed automatically to materialize the error payload (`HandledException` with the decoded error object or `UnexpectedStatusException` with raw text).
+- **Resource lifecycle:** The caller is responsible for closing the returned `InputStream` once reading completes. Network timeouts apply until response headers arrive; interruptions during stream consumption surface as an `IOException` at the read site.
 
 ## Retry with backoff
 

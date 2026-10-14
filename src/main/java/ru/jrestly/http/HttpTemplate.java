@@ -42,6 +42,12 @@ import java.util.stream.Collectors;
  * per standard {@code CompletableFuture} semantics, {@code join()} surfaces
  * it as the cause of a {@code CompletionException} and {@code get()} as the
  * cause of an {@code ExecutionException}.
+ *
+ * <p>When the controller method returns {@link java.io.InputStream} (or
+ * {@code CompletableFuture<InputStream>}), the body is streamed via
+ * {@code BodyHandlers.ofInputStream()} without intermediate buffering and
+ * bypasses the JSON codec on success (ADR-0015). On error statuses the
+ * stream is consumed to produce the typed exception.
  */
 public class HttpTemplate {
 
@@ -113,9 +119,10 @@ public class HttpTemplate {
      *
      * @param <T> the type the controller method declares as its return type
      * @return the payload decoded to {@code T} by the JSON codec, the raw
-     *         body when {@code T} is {@link String}, {@code null} when the
-     *         method returns {@code void}/{@link Void}, or the future
-     *         itself when the method returns {@code CompletableFuture<T>}
+     *         body when {@code T} is {@link String}, the live body stream
+     *         when {@code T} is {@link java.io.InputStream}, {@code null}
+     *         when the method returns {@code void}/{@link Void}, or the
+     *         future itself when the method returns {@code CompletableFuture<T>}
      */
     @SuppressWarnings("unchecked")
     public <T> T exchange() {

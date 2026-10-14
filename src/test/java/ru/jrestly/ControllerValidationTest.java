@@ -42,4 +42,20 @@ public class ControllerValidationTest {
 
         assertNotNull(client.get(TestController.class));
     }
+
+    interface StreamController {
+        @ru.jrestly.annotation.Get(path = "/api/stream")
+        java.io.InputStream stream();
+
+        @ru.jrestly.annotation.Get(path = "/api/stream/async")
+        java.util.concurrent.CompletableFuture<java.io.InputStream> streamAsync();
+    }
+
+    @Test
+    void streamReturnTypesPassValidation() {
+        assertTrue(ControllerValidator.validate(StreamController.class).isEmpty());
+
+        JRestlyClient client = JRestlyClient.builder().baseUrl("http://localhost:1").build();
+        assertNotNull(client.get(StreamController.class));
+    }
 }
