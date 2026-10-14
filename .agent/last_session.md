@@ -1,42 +1,34 @@
-# Handover Note: Сессия 76 (ADR-0016 шаг 5/6 — документация, валидация ControllerValidator, end-to-end WireMock тесты; DRAFT 5/6, 326/326; следующий ход — шаг 6: дистилляция в ROADMAP и зачистка DRAFT)
+# Handover Note: Сессия 77 (ADR-0016 шаг 6/6 — дистилляция в ROADMAP и зачистка DRAFT; эпик закрыт 6/6; сьюйт 326/326; следующий ход — выбор из активной зоны: ADR-0017 гибкость параметров запроса)
 
 ## Что сделано в этой сессии
-- **Ход:** шаг 5 эпика ADR-0016 — документация, валидация (`ControllerValidator`), end-to-end WireMock тесты для LLM/SSE и line streaming. Входящих нет (автономный ход; живые нитки mailbox'а — 3 — на месте).
-- **Валидация (`ControllerValidator`):**
-  - Расширен `ControllerValidationTest.StreamController`: добавлены синхронные и асинхронные методы `Stream<String>`, `Stream<ServerSentEvent>`, `CompletableFuture<Stream<String>>`, `CompletableFuture<Stream<ServerSentEvent>>`. Проверена валидация через `ControllerValidator.validate(...)` и создание контроллера через клиент (0 проблем).
-  - В `TestController` добавлены методы `getLines()`, `getLinesAsync()`, `getEvents()`, `getEventsAsync()` для согласованности тестовой модели.
-- **End-to-end WireMock тесты (`ServerSentEventsAndLineStreamingTest`):**
-  - Реализован комплексный набор из 10 end-to-end тестов (+1 класс в сьюйте):
-    - `syncLlmChatStreaming`: реальный LLM Chat Completions SSE-стрим (OpenAI/Anthropic формат) с `event: message`, `id: N`, `data: {"content": ...}`, распознавание `[DONE]` маркера через `event.isDone()`.
-    - `asyncLlmChatStreaming`: асинхронный близнец `CompletableFuture<Stream<ServerSentEvent>>` с разбором токенов и маркера завершения `[DONE]`.
-    - `syncNdjsonLineStreaming`: построчный стриминг NDJSON (`Stream<String>`) с заголовком `application/x-ndjson`.
-    - `asyncNdjsonLineStreaming`: асинхронный близнец построчного стриминга `CompletableFuture<Stream<String>>`.
-    - `lineStreamingDecodesCustomCharset`: разбор альтернативной кодировки (`windows-1251`) из заголовка `Content-Type`.
-    - `sseOnErrorConsumesBodyAndThrowsHandledException`: `@OnError` статус (429 Rate Limit) для SSE-стрима вычитывает тело ошибки и декодирует его в `HandledException`.
-    - `lineStreamOnErrorConsumesBodyAndThrowsHandledException`: `@OnError` статус (400 Bad Request) для построчного стрима вычитывает тело ошибки и декодирует в `HandledException`.
-    - `sseUnexpectedStatusThrowsException`: неожиданный статус (502) для SSE выбрасывает `UnexpectedStatusException` с полным сырым телом ошибки.
-    - `asyncUnexpectedStatusThrowsException`: неожиданный статус (500) для async twin завершает future `CompletionException`, оборачивающим `UnexpectedStatusException`.
-    - `serverFaultDuringStream`: connection reset (`Fault.CONNECTION_RESET_BY_PEER`) корректно завершается `UncheckedIOException` или сетевым исключением `IOException` без зависаний.
-- **Документация (`README.md`):**
-  - Добавлен раздел `## Server-Sent Events & line streaming` с лаконичными примерами использования `Stream<ServerSentEvent>` для LLM Chat API и `Stream<String>` для NDJSON, правилами управления жизненным циклом через `try-with-resources`, соответствием WHATWG SSE спецификации и единым контрактом ошибок.
+- **Ход:** шаг 6 эпика ADR-0016 — дистилляция в ROADMAP.md и зачистка DRAFT.md. Эпик Server-Sent Events & line streaming полностью завершён 6/6.
+- **Дистилляция в `ROADMAP.md`:**
+  - Добавлена новая секция `## Server-Sent Events & line streaming (ADR-0016) — COMPLETE ✅ (2026-10-14, unreleased)`:
+    - Source of truth: ADR-0016, сессии #72–#77.
+    - Ключевые архитектурные решения по Aspect 1–5: return types `Stream<String>` и `Stream<ServerSentEvent>` (+ async twins), streaming-парсер WHATWG SSE с `event.isDone()` для LLM `[DONE]`, переиспользование стрим-шва ADR-0015 `WireResponse.stream()` и `BodyHandlers.ofInputStream()` с `onClose` lifecycle hook, единый контракт ошибок (вычитывание и декодирование 4xx/5xx), `ControllerValidator` и end-to-end WireMock сьюйт.
+    - В секции ADR-0015 зафиксировано завершение ADR-0016, ADR number **0017** объявлен свободным.
+- **Зачистка `DRAFT.md`:**
+  - Закрытый эпик ADR-0016 снят.
+  - В активную зону подняты кандидаты для следующего хода:
+    - Кандидат №1 (направление #3, основной курс): гибкость параметров запроса — ADR-0017 (class-level headers, nullable query params, map/dynamic params).
+    - Кандидат №2 (направление #3): тонкая настройка пайплайна запросов — ADR-0018 (interceptors / hooks).
+    - Кандидат №3: test-javadoc.
 - **Гейты (clean rebuild & rerun):**
-  - `./gradlew test compileJava compileTestJava javadoc --rerun-tasks` — **326/326** (44 класса, +10 тестов, 0 fail/err по XML).
+  - `./gradlew test compileJava compileTestJava javadoc --rerun-tasks` — **326/326** (44 класса, 0 fail/err по XML).
   - Warnings: **0 warnings** под перманентными `-Xlint:all -Werror` и `-Xdoclint:all -Werror`.
   - `build.gradle` не менялся (0.8.0 unreleased).
-- **DRAFT:** Шаг 5 отмечен `[x]`, сьюйт обновлен до 326/326.
-- **Память:** дневник дня `.agent/days/2026-10-14.md` пополнен заметкой сессии #76 и дополнением в итог дня.
+- **Память:** дневник дня `.agent/days/2026-10-14.md` пополнен заметкой сессии #77 и обновлением в итог дня.
 
-## Контекст для следующей сессии (#77)
+## Контекст для следующей сессии (#78)
 
-### Состояние: шаг 6 эпика ADR-0016 (дистилляция в ROADMAP.md + зачистка DRAFT.md)
-- **Цель шага 6:**
-  1. Дистилляция в `ROADMAP.md`:
-     - Добавить секцию завершения эпика: «Server-Sent Events & line streaming (ADR-0016) — COMPLETE ✅ (2026-10-14, unreleased)».
-     - Включить лаконичные ссылки на ADR-0016, сессии #72–#76, ключевые аспекты (Stream<String>, Stream<ServerSentEvent>, WHATWG SSE parser, isDone(), onClose lifecycle, единый контракт ошибок, zero-dep, 326 тестов, 0 warnings).
-  2. Зачистить `DRAFT.md`:
-     - Снять завершённый эпик.
-     - Поднять кандидатов из активной зоны (кандидат №1: гибкость параметров запроса — class-level headers, nullable-параметры; кандидат №2: тонкая настройка пайплайна; кандидат №3: test-javadoc).
-  3. Провести чистый проверочный прогон гейтов (`./gradlew test compileJava compileTestJava javadoc --rerun-tasks`).
+### Состояние: выбор следующего хода из активной зоны
+- **Рекомендуемый следующий шаг:**
+  - Открытие эпика ADR-0017: **Гибкость параметров запроса** (третий эргономический срез направления #3: "гибкость параметров запроса, стриминг данных, ЛЛМ, тонкая настройка пайплайна"; входящее Антона 2026-10-14 09:10).
+  - Шаг 1: Концепт-сессия (`docs/0.9.0/ADR-0017-request-parameter-flexibility.md`):
+    - Срез A: Class-level `@RequestHeader` (и `@RequestDefaultParam`) на интерфейсе контроллера — общие заголовки для всех методов сервиса (например, `Accept: application/json`, `X-Api-Key: secret`).
+    - Срез B: Nullable `@RequestParam` / `@RequestHeader` — если значение аргумента `null`, параметр/заголовок опускается (вместо конкатенации `"param=null"` или NPE).
+    - Срез C: Динамические Map-параметры (`@RequestParam Map<String, ?>` / `@RequestHeader Map<String, ?>`) для произвольных наборов query-параметров и заголовков.
+    - Оформление эпика в `DRAFT.md` (шаги с чекбоксами `[ ]`).
 
 ### Грабли (актуальный набор)
 - **`GRADLE_USER_HOME=/tmp/opencode/gradle-home`**: всегда указывать при запуске `./gradlew` в этой среде.

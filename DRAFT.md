@@ -1,54 +1,24 @@
-# DRAFT: Server-Sent Events & line streaming (ADR-0016, `docs/0.9.0/`)
+# DRAFT: активная зона (после закрытия ADR-0016; направление #3 — эргономика для современных API)
 
-> Второй срез направления #3 («эргономика для современных API»: стриминг данных,
-> ЛЛМ, пайплайн; входящее Антона 2026-10-14 09:10). Строится поверх проверенного
-> стрим-шва ADR-0015 (`WireResponse.stream`, `ofInputStream`).
-> Новые типы возврата: `Stream<String>` (line streaming) и `Stream<ServerSentEvent>`
-> (WHATWG SSE), плюс их асинхронные близнецы `CompletableFuture<Stream<...>>`.
-> Базовая версия `build.gradle` — 0.8.0 (не меняется до release-цикла 0.9.0).
-> Текущий сьюйт: **326/326** (44 класса), 0 warnings под перманентными `-Xlint:all -Werror`
-> и `-Xdoclint:all -Werror`.
+> Эпик Server-Sent Events & line streaming (ADR-0016, `docs/0.9.0/`)
+> закрыт 6/6 (сессии #72–#77): концепт (#72) → ServerSentEvent модель и streaming-парсер
+> WHATWG SSE (#73) → wire & engine seam для `Stream<String>` и `Stream<ServerSentEvent>`
+> поверх `WireResponse.stream` с `onClose` жизненным циклом (#74) → error contract и
+> async twins `CompletableFuture<Stream<...>>` (#75) → валидация (`ControllerValidator`),
+> end-to-end WireMock сьюйт (LLM chat с `[DONE]`, NDJSON, charset, error paths) и README (#76) →
+> дистилляция в ROADMAP («Server-Sent Events & line streaming (ADR-0016) — COMPLETE ✅»)
+> + эта зачистка (#77). Сьюйт: 282 → **326/326** (44 класса, 0 fail/err, +44 теста
+> в ADR-0016), 0 warnings под перманентными `-Xlint:all -Werror` и `-Xdoclint:all -Werror`.
+> `build.gradle` — 0.8.0 (не менялся). Следующий ход — свободный, из активной зоны.
 
-## Шаги эпика ADR-0016
+## Активная зона (кандидаты на следующий эпик)
 
-- [x] **Шаг 1 (сессия #72):** Концепт — `docs/0.9.0/ADR-0016-sse-line-events.md`
-      (дизайн: `Stream<String>` и `Stream<ServerSentEvent>` return types,
-      переиспользование шва ADR-0015 `WireResponse.stream`, WHATWG SSE спецификация,
-      ошибочные пути с сохранением единого контракта `HandledException`/`UnexpectedStatusException`,
-      `onClose()` lifecycle hook для закрытия сетевого соединения, кодировка из Content-Type).
-- [x] **Шаг 2 (сессия #73):** Модель `ServerSentEvent` и streaming-парсер `ServerSentEventParser`
-      (чистый unit TDD: WHATWG SSE спецификация, multi-line data, comments `:` ignored,
-      id, event, retry, LLM-маркер `[DONE]`, lazy evaluation через `Spliterator`/`Iterator`,
-      закрытие источника при `stream.close()`; 13 unit TDD тестов в `ServerSentEventTest`,
-      282 → 295/295, 0 warnings).
-- [x] **Шаг 3 (сессия #74):** Wire & engine seam для `Stream<String>` и `Stream<ServerSentEvent>`
-      (`HttpTemplateBuilder` детекция `Stream<String>` и `Stream<ServerSentEvent>` return types
-      и их async twins с включением `streamBody = true`, `HttpTemplate.processResponse`
-      построчный и SSE-стриминг поверх шва `response.stream()`, разбор кодировки `Charset`
-      из `Content-Type` с дефолтом UTF-8, жизненный цикл закрытия `onClose` с гарантированным
-      освобождением `InputStream`, логирование `"streaming lines"` / `"streaming events"`;
-      10 unit TDD тестов в `HttpTemplateLineAndEventStreamTest`, 295 → 305/305, 0 warnings).
-- [x] **Шаг 4 (сессия #75):** Контракт ошибок и Async twins (`CompletableFuture<Stream<String>>`,
-      `CompletableFuture<Stream<ServerSentEvent>>`). Ошибки 4xx/5xx вычитывают stream,
-      декодируют `@OnError` в `HandledException` или сохраняют raw body в `UnexpectedStatusException`,
-      гарантированное закрытие сетевого `InputStream`; async twins завершаются активным живым
-      стримом на успехе и exceptional completion на ошибках (включая transport failure);
-      probePayloadDecode подтвержден как decode-proof без обращения к кодеку;
-      11 unit TDD тестов в `HttpTemplateLineAndEventStreamErrorAndAsyncTest`, 305 → 316/316, 0 warnings).
-- [x] **Шаг 5 (сессия #76):** Документация, валидация (`ControllerValidator`), end-to-end WireMock
-      тесты для LLM/SSE и line streaming (chat stream, ndjson stream, custom charset decoding,
-      error paths с `@OnError` и UnexpectedStatusException, connection fault, Javadoc-контракт,
-      README с секцией Server-Sent Events & line streaming и примером для LLM completions;
-      10 WireMock тестов в `ServerSentEventsAndLineStreamingTest`, расширение `TestController`
-      и `ControllerValidationTest`, 316 → 326/326, 0 warnings).
-- [ ] **Шаг 6:** Дистилляция в `ROADMAP.md` + зачистка `DRAFT.md`.
-
-## Активная зона (кандидаты после закрытия ADR-0016)
-
-- **Кандидат №1: гибкость параметров запроса** (class-level headers,
-  nullable-параметры, catch-all) — следующий срез направления #3.
-- **Кандидат №2: тонкая настройка пайплайна** (hooks/interceptors) —
-  следующий срез направления #3.
+- **Кандидат №1 (направление #3, основной курс): гибкость параметров запроса — ADR-0017**
+  (следующий срез эргономики: class-level headers `@RequestHeader` на интерфейсе контроллера,
+  nullable query-параметры с пропуском null-значений вместо `"null"`, опциональный catch-all
+  или Map-параметры `@RequestParam Map<String, Object>`).
+- **Кандидат №2 (направление #3): тонкая настройка пайплайна запросов — ADR-0018**
+  (следующий срез эргономики: request/response interceptors / hooks, кастомизация заголовков и метрик).
 - **Кандидат №3: test-javadoc** (ADR-0013 Non-goals: «test-source javadoc»
   вынесен за скобки аудита): test-источники получают ту же обработку;
   гейт на test-поверхность не нужен (лоск, не контур).

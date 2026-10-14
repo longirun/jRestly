@@ -583,7 +583,28 @@ Gates (session #71, clean rebuild):
 - `javadoc` 0 warnings under permanent `-Xdoclint:all -Werror`.
 - `build.gradle` untouched (0.8.0 unreleased).
 
-After the epic: direction 3 continues with SSE / line events for LLMs (ADR-0016, building on this stream seam), followed by request parameter flexibility and pipeline hooks. ADR number **0016** free.
+After the epic: direction 3 continues with SSE / line events for LLMs (ADR-0016, building on this stream seam) — done, section below; followed by request parameter flexibility and pipeline hooks. ADR number **0016** — the Server-Sent Events & line streaming epic (`docs/0.9.0/`), **0017** free.
+
+## Server-Sent Events & line streaming (ADR-0016) — COMPLETE ✅ (2026-10-14, unreleased)
+
+> Source of truth (concept, decisions, WHATWG SSE parser, test strategy, Javadoc contract, status):
+> [`docs/0.9.0/ADR-0016-sse-line-events.md`](docs/0.9.0/ADR-0016-sse-line-events.md).
+> Sessions #72–#77 (agent-loop). The second ergonomics slice of direction 3 (maintainer's 2026-10-14 mailbox: "request parameter flexibility, data streaming, LLM, request pipeline tuning"). Builds directly on top of ADR-0015's stream seam (`WireResponse.stream`, `ofInputStream`). Return types: `Stream<String>` and `Stream<ServerSentEvent>`, plus their async twins `CompletableFuture<Stream<...>>`. No version bump / tag — releases paused per maintainer agreement (0.8.0 in `build.gradle`).
+
+Key decisions (ADR-0016 Aspects 1–6):
+- **Surface (Aspect 1):** Return types `Stream<String>` (line streaming, NDJSON) and `Stream<ServerSentEvent>` (WHATWG Server-Sent Events, LLM tokens), plus `CompletableFuture<Stream<String>>` and `CompletableFuture<Stream<ServerSentEvent>>`. Zero-dep, no custom wrapper classes (ADR-0003, ADR-0004).
+- **SSE parser & model (Aspect 2):** Zero-dep immutable `ServerSentEvent` record (`id`, `event`, `data`, `retry`, `rawComment`). Streaming parser per WHATWG SSE specification: multi-line data joined with `\n`, leading space stripping after `:` delimiter, comments ignored by default. `event.isDone()` helper recognizing the standard LLM stream terminal marker `[DONE]`. Lazy parsing via custom `Spliterator` / `Iterator`.
+- **Engine & Wire Seam (Aspect 3):** Reuses the ADR-0015 `WireResponse.stream()` seam (`BodyHandlers.ofInputStream()`) without buffering whole response bodies. `HttpTemplate.processResponse` decodes line/SSE streams using the response `Content-Type` charset (defaulting to UTF-8). Guarantees network stream closure via `stream.onClose(...)` lifecycle hook. Payload logging indicates `"streaming lines"` and `"streaming events"` without consuming the stream.
+- **Error contract & Async twins (Aspect 4):** Error statuses (4xx/5xx) read and close the stream, decoding `@OnError` into `HandledException` or preserving raw body in `UnexpectedStatusException` (identical error behavior to byte bodies). Async twins complete normally with a live, lazily evaluated stream on 2xx, or exceptionally on HTTP/transport errors. Decode probe is decode-proof without invoking codecs.
+- **Validation & End-to-end (Aspect 5):** `ControllerValidator` validates line and SSE stream signatures. WireMock suite tests real LLM chat completions with `[DONE]`, NDJSON streaming, custom charset decoding (`windows-1251`), `@OnError` JSON error decoding, unexpected status handling, and connection reset faults. README updated with a dedicated section and usage examples.
+
+Gates (session #77, clean rebuild):
+- `./gradlew test --rerun` **326/326** (44 classes, 0 failures/errors; +44 tests in ADR-0016 across `ServerSentEventTest`, `HttpTemplateLineAndEventStreamTest`, `HttpTemplateLineAndEventStreamErrorAndAsyncTest`, `ServerSentEventsAndLineStreamingTest`, `ControllerValidationTest`).
+- `compileJava` and `compileTestJava` 0 warnings under permanent `-Xlint:all -Werror`.
+- `javadoc` 0 warnings under permanent `-Xdoclint:all -Werror`.
+- `build.gradle` untouched (0.8.0 unreleased).
+
+After the epic: candidate #1 — request parameter flexibility (class-level headers, nullable query params, catch-all), candidate #2 — request pipeline tuning (hooks/interceptors), candidate #3 — test-javadoc. ADR number **0017** free.
 
 ## Post-0.5.0 shortlist (not scheduled — see ADR-0003)
 
