@@ -5,6 +5,8 @@ import ru.jrestly.annotation.Authorization;
 import ru.jrestly.http.HttpTemplate;
 import ru.jrestly.http.HttpTemplateBuilder;
 
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLParameters;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.net.http.HttpClient;
@@ -67,18 +69,29 @@ public abstract class AbstractHttpClient {
 
     /**
      * Creates the JDK {@link HttpClient} from the module configuration:
-     * its connect timeout and HTTP version, with the JDK redirect policy
-     * set to {@code NEVER}.
+     * its connect timeout, HTTP version, and SSL/TLS configuration (ADR-0020),
+     * with the JDK redirect policy set to {@code NEVER}.
      *
      * <p>Protected hook: a subclass may override it to build a different
-     * client (e.g. with a network proxy or TLS settings).
+     * client (e.g. with a network proxy or custom transport settings).
      */
     protected void createConnection() {
-        this.httpClient = HttpClient.newBuilder()
+        HttpClient.Builder builder = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofMillis(moduleInfo.getConnectTimeout()))
                 .version(moduleInfo.getHttpVersion())
-                .followRedirects(HttpClient.Redirect.NEVER)
-                .build();
+                .followRedirects(HttpClient.Redirect.NEVER);
+
+        SSLContext sslContext = moduleInfo.getSslContext();
+        if (sslContext != null) {
+            builder.sslContext(sslContext);
+        }
+
+        SSLParameters sslParameters = moduleInfo.getSslParameters();
+        if (sslParameters != null) {
+            builder.sslParameters(sslParameters);
+        }
+
+        this.httpClient = builder.build();
     }
 
     /**

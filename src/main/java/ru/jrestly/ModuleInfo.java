@@ -6,6 +6,8 @@ import ru.jrestly.json.JsonCodec;
 import ru.jrestly.json.JsonCodecResolver;
 import ru.jrestly.http.RetryPolicy;
 
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLParameters;
 import java.net.http.HttpClient;
 import java.util.List;
 
@@ -15,7 +17,8 @@ import java.util.List;
  * auth details via {@link #getEnvironment()}), auth headers
  * ({@link #getAuthProvider()}), the JSON codec, the timeouts, the HTTP
  * protocol version, up-front controller validation, the retry policy,
- * and request/response interceptors (ADR-0018).
+ * request/response interceptors (ADR-0018), and SSL/TLS configuration
+ * (ADR-0020).
  *
  * <p>{@link SimpleModuleInfo} is the canonical implementation: a builder
  * with a default for every setting ({@code baseUrl} is the only
@@ -138,5 +141,27 @@ public interface ModuleInfo {
      */
     default List<ResponseInterceptor> getResponseInterceptors() {
         return List.of();
+    }
+
+    /**
+     * The SSL context used for secure HTTPS connections (ADR-0020). When
+     * {@code null} (the default), the underlying HTTP client uses the platform
+     * default SSL context ({@link SSLContext#getDefault()}).
+     *
+     * @return the SSL context, or {@code null} for the platform default
+     */
+    default SSLContext getSslContext() {
+        return null;
+    }
+
+    /**
+     * The SSL parameters used for secure HTTPS connections (ADR-0020). When
+     * {@code null} (the default), the underlying HTTP client uses the default
+     * SSL parameters.
+     *
+     * @return the SSL parameters, or {@code null} for defaults
+     */
+    default SSLParameters getSslParameters() {
+        return null;
     }
 }

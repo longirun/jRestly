@@ -9,6 +9,8 @@ import ru.jrestly.interceptor.ResponseInterceptor;
 import ru.jrestly.json.JsonCodec;
 import ru.jrestly.json.JsonCodecResolver;
 
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLParameters;
 import java.net.http.HttpClient;
 import java.util.ArrayList;
 import java.util.List;
@@ -44,6 +46,8 @@ public class SimpleModuleInfo implements ModuleInfo {
     private final RetryPolicy retryPolicy;
     private final List<RequestInterceptor> requestInterceptors;
     private final List<ResponseInterceptor> responseInterceptors;
+    private final SSLContext sslContext;
+    private final SSLParameters sslParameters;
 
     private SimpleModuleInfo(Builder builder) {
         this.name = builder.name;
@@ -59,6 +63,8 @@ public class SimpleModuleInfo implements ModuleInfo {
         this.retryPolicy = builder.retryPolicy;
         this.requestInterceptors = List.copyOf(builder.requestInterceptors);
         this.responseInterceptors = List.copyOf(builder.responseInterceptors);
+        this.sslContext = builder.sslContext;
+        this.sslParameters = builder.sslParameters;
     }
 
     /**
@@ -126,6 +132,16 @@ public class SimpleModuleInfo implements ModuleInfo {
         return responseInterceptors;
     }
 
+    @Override
+    public SSLContext getSslContext() {
+        return sslContext;
+    }
+
+    @Override
+    public SSLParameters getSslParameters() {
+        return sslParameters;
+    }
+
     /**
      * A builder for {@link SimpleModuleInfo}, pre-set to the defaults:
      * name {@code "default"}, 5 s connect timeout, 30 s socket timeout,
@@ -147,6 +163,8 @@ public class SimpleModuleInfo implements ModuleInfo {
         private RetryPolicy retryPolicy = RetryPolicy.off();
         private final List<RequestInterceptor> requestInterceptors = new ArrayList<>();
         private final List<ResponseInterceptor> responseInterceptors = new ArrayList<>();
+        private SSLContext sslContext;
+        private SSLParameters sslParameters;
 
         /**
          * A builder pre-set to the defaults; {@code baseUrl} must still
@@ -327,6 +345,28 @@ public class SimpleModuleInfo implements ModuleInfo {
             for (ResponseInterceptor interceptor : interceptors) {
                 this.responseInterceptors.add(Objects.requireNonNull(interceptor, "interceptor in list cannot be null"));
             }
+            return this;
+        }
+
+        /**
+         * Sets the custom SSL context for secure HTTPS connections (ADR-0020).
+         *
+         * @param sslContext the SSL context, not {@code null}
+         * @return this builder, for chaining
+         */
+        public Builder sslContext(SSLContext sslContext) {
+            this.sslContext = Objects.requireNonNull(sslContext, "sslContext");
+            return this;
+        }
+
+        /**
+         * Sets the custom SSL parameters for secure HTTPS connections (ADR-0020).
+         *
+         * @param sslParameters the SSL parameters, not {@code null}
+         * @return this builder, for chaining
+         */
+        public Builder sslParameters(SSLParameters sslParameters) {
+            this.sslParameters = Objects.requireNonNull(sslParameters, "sslParameters");
             return this;
         }
 

@@ -6,6 +6,8 @@ import ru.jrestly.interceptor.RequestInterceptor;
 import ru.jrestly.interceptor.ResponseInterceptor;
 import ru.jrestly.json.JsonCodec;
 
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLParameters;
 import java.net.http.HttpClient;
 import java.util.List;
 import java.util.function.UnaryOperator;
@@ -237,6 +239,28 @@ public class JRestlyClient extends AbstractHttpClient {
          */
         public Builder responseInterceptors(List<ResponseInterceptor> interceptors) {
             moduleInfoBuilder.responseInterceptors(interceptors);
+            return this;
+        }
+
+        /**
+         * Sets the custom SSL context for secure HTTPS connections (ADR-0020).
+         *
+         * @param sslContext the SSL context, not {@code null}
+         * @return this builder, for chaining
+         */
+        public Builder sslContext(SSLContext sslContext) {
+            moduleInfoBuilder.sslContext(sslContext);
+            return this;
+        }
+
+        /**
+         * Sets the custom SSL parameters for secure HTTPS connections (ADR-0020).
+         *
+         * @param sslParameters the SSL parameters, not {@code null}
+         * @return this builder, for chaining
+         */
+        public Builder sslParameters(SSLParameters sslParameters) {
+            moduleInfoBuilder.sslParameters(sslParameters);
             return this;
         }
 

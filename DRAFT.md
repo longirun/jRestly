@@ -1,20 +1,33 @@
-# DRAFT: активная зона после закрытия Release-цикла 0.9.0 (ADR-0019)
+# DRAFT: Эпик SSL / Custom Certificates & mTLS (ADR-0020)
 
-> Цикл 0.9.0 (ADR-0019, `docs/0.9.0/`) закрыт 4/4 (сессии #93–#96):
-> концепт (#93) → changelog entry 0.9.0 (navigator-форма, #94) → bump 0.8.0 →
-> 0.9.0 + гейты (clean rebuild: compile 0 / javadoc 0 warnings под перманентными
-> `-Werror`-гейтами, 420/420 tests, POM 0.9.0 / 0 `<dependency>`, #95) →
-> дистилляция в ROADMAP («Cycle 0.9.0 — COMPLETE ✅») + эта зачистка (#96).
-> `build.gradle` — 0.9.0, тега нет (механика ADR-0012/ADR-0014 D2, без изменений);
-> changelog-entries (0.7.0, 0.8.0, 0.9.0) unpublished до тега мейнтейнера.
-> Следующий ход — свободный, из активной зоны.
+> Эпик открыт в сессии #97 в рамках векторов зрелости библиотеки (mailbox Антона от 2026-10-14 23:25).
+> Концепт и архитектурные решения зафиксированы в `docs/0.10.0/ADR-0020-ssl-custom-certificates-mtls.md`.
 
-## Активная зона (кандидаты на следующий эпик)
+## Шаги эпика
 
-- **Кандидат №1 — SSL / custom certificates (mTLS, корпоративные CA, self-signed)** (mailbox #94):
-  Настройка `SSLContext` в `JRestlyClient.builder().sslContext(SSLContext)` с пробросом в
-  `HttpClient.Builder.sslContext()`. Чистый zero-dep core на стандартных типах `javax.net.ssl`,
-  критически важно для реальных интеграций в production (корпоративные прокси, внутренние CA, mutual TLS).
+- [x] **Шаг 1: Концепт и дизайн (сессия #97)**
+  - Архитектурное решение ADR-0020 (`docs/0.10.0/ADR-0020-ssl-custom-certificates-mtls.md`).
+  - Анализ вариантов mTLS, корпоративных CA, self-signed сертов, протоколов TLS и SNI.
+  - Zero-dep инвариант: типы `javax.net.ssl.SSLContext` и `javax.net.ssl.SSLParameters` из `java.base`.
+- [x] **Шаг 2: Реализация конфигурационной поверхности (сессия #97)**
+  - `ModuleInfo`: `default SSLContext getSslContext() { return null; }`, `default SSLParameters getSslParameters() { return null; }`.
+  - `SimpleModuleInfo` и `SimpleModuleInfo.Builder`: хранение, геттеры и fluent-методы `sslContext(SSLContext)` / `sslParameters(SSLParameters)` с fail-fast на `null`.
+  - `JRestlyClient.Builder`: делегирование в `moduleInfoBuilder`.
+  - `AbstractHttpClient.createConnection()`: проброс `sslContext` и `sslParameters` в `HttpClient.Builder`.
+  - Unit-тесты `SslConfigTest` (9 тестов, проверяющие дефолты null, явную передачу, fail-fast на null).
+- [ ] **Шаг 3: Интеграционные тесты с WireMock HTTPS (сессия #98)**
+  - Поднятие WireMock на динамическом HTTPS порту (`dynamicHttpsPort()`).
+  - Отрицательный тест: клиент с дефолтным `SSLContext` отклоняет самоподписанный сертификат с SSLHandshake/SSLException.
+  - Положительный тест: клиент с кастомным `SSLContext` (trust-all или truststore WireMock) успешно выполняет декларативные запросы.
+  - Тест с `SSLParameters`: клиент с кастомными `SSLParameters` (протоколы TLS, endpoint identification algorithm).
+- [ ] **Шаг 4: Гейты и финализация эпика**
+  - Полный прогон `./gradlew test compileJava compileTestJava javadoc`.
+  - Фиксация результатов, обновление статуса ADR-0020 (Accepted) и дистилляция в ROADMAP.md.
+
+---
+
+## Активная зона (кандидаты на следующие эпики)
+
 - **Кандидат №2 — Прозрачный GZIP / Deflate decompression** (mailbox #94):
   JDK `HttpClient` не распаковывает сжатые ответы автоматически. Поддержка `Accept-Encoding: gzip, deflate`
   и прозрачная распаковка потока ответа через `GZIPInputStream` и `InflaterInputStream` в Java
@@ -26,6 +39,8 @@
   интеграция с `ResponseInterceptor`.
 - **Кандидат №4 — test-javadoc** (ADR-0013 Non-goals):
   Test-source javadoc вынесен за скобки аудита; наведение лоска в тестовых классах.
+
+---
 
 ## Постоянная нить (не эпик, не чекбокс)
 
@@ -50,6 +65,6 @@
 - **Векторы зрелости библиотеки (Антон, 2026-10-14 23:25, живая нить):**
   донастройка SSL (кастомные серты, mTLS), прозрачный GZIP/Deflate,
   элегантный доступ к метаданным заголовков (пагинация, ETag, Location, rate limits).
-  Подняты в кандидаты активной зоны выше.
+  SSL взят в работу в ADR-0020!
 - **Коммиты — краткие, не дублируют ченджлог** (Антон).
 - **Объём одной сессии в 2–3 раза меньше** — один маленький шаг.
