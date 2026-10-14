@@ -1,25 +1,24 @@
-# Handover Note: Сессия 91 (ADR-0018 шаг 6/6 — дистилляция в ROADMAP, ADR-0018 → Accepted, зачистка DRAFT; эпик закрыт 6/6; следующий ход — выбор из кандидатов в DRAFT.md)
+# Handover Note: Сессия 93 (Release-цикл 0.9.0 шаг 1/4 — концепт ADR-0019 + DRAFT epic; следующий ход — шаг 2: CHANGELOG.md entry 0.9.0)
 
 ## Что сделано в этой сессии
-- **Ход:** шаг 6 эпика ADR-0018 «Тонкая настройка пайплайна запросов» (дистилляция).
-- **ROADMAP.md:** добавлена секция «Request pipeline: Interceptors & hooks (ADR-0018) — COMPLETE ✅ (2026-10-14, unreleased)» с ключевыми решениями, гейтами и указателем на ADR-0018.
-- **ADR-0018:** статус переведён из `Proposed` в `Accepted`.
-- **DRAFT.md:** зачищен от закрытого эпика ADR-0018. Активная зона: кандидат №1 — release-цикл 0.9.0, кандидат №2 — test-javadoc.
-- **Гейты:** `./gradlew test compileJava compileTestJava javadoc --rerun-tasks` — **420/420** (51 класс, 0 fail/err), 0 warnings под `-Xlint:all -Werror` и `-Xdoclint:all -Werror`, BUILD SUCCESSFUL.
-- **Память:** дневник дня `.agent/days/2026-10-14.md` пополнен заметкой сессии #91.
+- **Ход:** шаг 1 release-цикла 0.9.0 (упаковка четырёх эргономических эпиков Direction 3).
+- **ADR-0019:** создан архитектурный концепт `docs/0.9.0/ADR-0019-release-0.9.0-cycle.md` (scope: packaging, version 0.8.0 → 0.9.0 semver minor, navigator-форма changelog, gates verification, no git tag).
+- **ROADMAP.md:** обновлён указатель следующего ADR: «0019 — cycle ADR, 0020 free».
+- **DRAFT.md:** поднят активный эпик «Release-цикл 0.9.0 (ADR-0019)» из 4 шагов, шаг 1 закрыт `[x]`.
+- **Гейты:** проверены `./gradlew test compileJava compileTestJava javadoc` — **420/420** (51 класс, 0 fail/err), 0 warnings под `-Xlint:all -Werror` и `-Xdoclint:all -Werror`, BUILD SUCCESSFUL.
+- **Память:** дневник дня `.agent/days/2026-10-14.md` пополнен заметкой сессии #93.
 
-## Контекст для следующей сессии (#92)
+## Контекст для следующей сессии (#94)
 
-### Состояние: все 4 эргономических эпика direction 3 закрыты
-- ADR-0015 (response streaming) — COMPLETE ✅
-- ADR-0016 (SSE/LLM) — COMPLETE ✅
-- ADR-0017 (params/headers flexibility) — COMPLETE ✅
-- ADR-0018 (request pipeline interceptors) — COMPLETE ✅
+### Состояние: release-цикл 0.9.0 открыт (шаг 1/4 закрыт)
+- Шаг 1: Концепт (ADR-0019 + DRAFT) — COMPLETE ✅
+- Шаг 2: `CHANGELOG.md` entry 0.9.0 — PENDING
+- Шаг 3: Bump версии 0.8.0 → 0.9.0 в `build.gradle` + гейты + commit message — PENDING
+- Шаг 4: Дистилляция в `ROADMAP.md` + зачистка `DRAFT.md` — PENDING
 
 ### Рекомендуемый следующий ход
-Выбрать из кандидатов в DRAFT.md:
-- **Кандидат №1: release-цикл 0.9.0** — упаковка 4 эпиков (ADR-0015–0018). Прецеденты: ADR-0012 (0.7.0), ADR-0014 (0.8.0). Scope: packaging (bump, CHANGELOG, gate, distillation). ADR number **0019**.
-- **Кандидат №2: test-javadoc** — ADR-0013 Non-goals.
+- **Шаг 2 эпика ADR-0019:** подготовить запись `0.9.0` в `CHANGELOG.md` в navigator-форме (лаконично 1–2 строки на каждый из четырёх эпиков: ADR-0015 streaming, ADR-0016 SSE/LLM, ADR-0017 params/headers, ADR-0018 interceptors + ссылки на ADR и документацию).
+- Существующие записи `0.7.0` и `0.8.0` (unpublished) не трогать.
 
 ### Грабли (актуальный набор)
 - **`GRADLE_USER_HOME=/tmp/opencode/gradle-home`**: всегда указывать при запуске `./gradlew`.
@@ -27,9 +26,10 @@
 - **Подсчёт тестов:** `grep -h -o 'tests="[0-9]*"' build/test-results/test/*.xml | awk -F'"' '{s+=$2} END{print s}'` (сейчас — 420).
 - **Mailbox-гигиена:** решённый обмен удаляем; живые нитки и последние 2–3 сообщения оставляем.
 - **Коммит-субъект: краткий, без дублирования ченджлога** (Антон); body — гейты-факты.
+- **No git tags:** теги не создавать (релизы запаузены per maintainer agreement).
 
 ### Среда
 1. `GRADLE_USER_HOME=/tmp/opencode/gradle-home ./gradlew ...` (тёплый кэш).
 2. Ветка `agent-loop`.
-3. Версия в build.gradle: **0.8.0**. Тесты: **420/420** (51 класс).
+3. Версия в `build.gradle`: **0.8.0** (будет 0.9.0 на шаге 3). Тесты: **420/420** (51 класс).
 4. Warnings: main 0, test 0, javadoc 0 (под `-Werror`).

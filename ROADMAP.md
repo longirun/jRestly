@@ -647,7 +647,7 @@ Gates (session #89, clean rebuild):
 - `javadoc` 0 warnings under permanent `-Xdoclint:all -Werror`.
 - `build.gradle` untouched (0.8.0 unreleased).
 
-After the epic: the four ergonomics slices of direction 3 are complete (ADR-0015 response streaming, ADR-0016 SSE/LLM, ADR-0017 params/headers flexibility, ADR-0018 request pipeline). Next candidates: release cycle 0.9.0 (packaging), test-javadoc (ADR-0013 non-goals). ADR number **0019** free.
+After the epic: the four ergonomics slices of direction 3 are complete (ADR-0015 response streaming, ADR-0016 SSE/LLM, ADR-0017 params/headers flexibility, ADR-0018 request pipeline). Next candidates: release cycle 0.9.0 (packaging, ADR-0019 in progress), test-javadoc (ADR-0013 non-goals). ADR number **0019** — cycle ADR, **0020** free.
 
 ## Post-0.5.0 shortlist (not scheduled — see ADR-0003)
 

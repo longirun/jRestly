@@ -1,21 +1,28 @@
-# DRAFT: активная зона (эпик ADR-0018 закрыт, выбор следующего)
+# DRAFT: активный эпик — Release-цикл 0.9.0 (ADR-0019)
 
-> Эпик ADR-0018 «Request pipeline interceptors & hooks» закрыт 6/6
-> (сессия #91 — дистилляция в ROADMAP.md, ADR-0018 → Accepted).
-> Сьюйт: **420/420** (51 класс, 0 fail/err), 0 warnings под
-> `-Xlint:all -Werror` и `-Xdoclint:all -Werror`.
-> `build.gradle` — 0.8.0 unreleased.
+> **Эпик:** упаковка четырёх эргономических эпиков Direction 3 (ADR-0015..0018)
+> в минорный релиз `0.9.0`. Scope: packaging, not features.
+> Прецеденты: ADR-0012 (cycle 0.7.0), ADR-0014 (cycle 0.8.0).
+> Состояние ветки: **420/420** (51 класс, 0 fail/err), 0 warnings под
+> `-Xlint:all -Werror` и `-Xdoclint:all -Werror`, `build.gradle` — 0.8.0 unreleased.
 
-## Кандидаты в следующий эпик
+## Шаги эпика ADR-0019 (0.9.0 cycle)
 
-- **Кандидат №1: release-цикл 0.9.0** — упаковка четырёх эргономических
-  эпиков direction 3: ADR-0015 (response streaming), ADR-0016 (SSE/LLM),
-  ADR-0017 (params/headers flexibility), ADR-0018 (request pipeline).
-  Прецеденты: ADR-0012 (cycle 0.7.0), ADR-0014 (cycle 0.8.0).
-  Scope: packaging, not features — bump version, CHANGELOG entry,
-  gate verification, distillation. ADR number **0019**.
-- **Кандидат №2: test-javadoc** — ADR-0013 Non-goals: test-source javadoc
-  вынесен за скобки аудита. Может быть полезен для onboarding.
+- [x] **Шаг 1: Концепт** — ADR-0019 в `docs/0.9.0/ADR-0019-release-0.9.0-cycle.md`
+      + этот эпик в DRAFT.md (сессия #93).
+- [ ] **Шаг 2: CHANGELOG.md** — запись `0.9.0` (navigator-форма: 4 эргономических
+      эпика direction 3, ссылки на ADR-0015..0018 и документацию).
+- [ ] **Шаг 3: Bump версии** — `0.8.0` → `0.9.0` в `build.gradle` + проверка гейтов
+      (clean rebuild: `compileJava` / `compileTestJava` 0 warnings, `javadoc` 0 warnings,
+      `./gradlew test --rerun` 420/420, POM 0.9.0 zero `<dependency>`) + версия в commit message.
+- [ ] **Шаг 4: Дистилляция** — секция `Cycle 0.9.0 — COMPLETE ✅` в `ROADMAP.md` +
+      зачистка DRAFT.
+
+## Кандидаты после цикла 0.9.0
+
+- **Кандидат: test-javadoc** — ADR-0013 Non-goals: test-source javadoc
+  вынесен за скобки аудита.
+- **Новые архитектурные концепты / направления.**
 
 ## Постоянная нить (не эпик, не чекбокс)
 
@@ -36,7 +43,7 @@
       (1) инварианты — zero-dep, прозрачные методы (ADR-0004),
       анти-комбайн (ADR-0003); (2) ниша — идеальный декларативный
       HTTP-клиент для современной Java; (3) эргономика для современных
-      API — все 4 эпика direction 3 закрыты (ADR-0015–0018).
+      API — все 4 эпика direction 3 закрыты (ADR-0015–0018), идёт packaging в 0.9.0.
 - **Коммиты — краткие, не дублируют ченджлог** (Антон).
 - **Объём одной сессии в 2–3 раза меньше** — один маленький шаг.
 
