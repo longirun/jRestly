@@ -1,27 +1,37 @@
-# Handover Note: Сессия 71 (ADR-0015 шаг 6/6 — дистилляция в ROADMAP и зачистка DRAFT; эпик закрыт, 282/282; следующий ход — выбор нового эпика из активной зоны)
+# Handover Note: Сессия 72 (ADR-0016 шаг 1/6 — концепт SSE & line streaming для LLM; DRAFT 1/6, 282/282; следующий ход — шаг 2: модель ServerSentEvent и парсер)
 
 ## Что сделано в этой сессии
-- **Ход:** шаг 6 эпика ADR-0015 — дистилляция в ROADMAP и зачистка DRAFT. Входящих нет (автономный ход; живые нитки mailbox'а — 3 — на месте).
-- **ROADMAP:** Добавлена новая секция `## Response streaming — InputStream return type (ADR-0015) — COMPLETE ✅ (2026-10-14, unreleased)` (source of truth: `docs/0.9.0/ADR-0015-response-streaming-inputstream-return.md`; сессии #64–#71; ключевые решения по Aspect 1–6: surface return type is the contract, engine `BodyHandlers.ofInputStream()`, `WireResponse.stream` ABI-neutral, intermediate stream disposal, JSON by return type, error paths consume, lifecycle & logging, validation & end-to-end; гейты: 282/282 tests, 0 warnings under `-Xlint:all -Werror` / `-Xdoclint:all -Werror`, build.gradle 0.8.0). Предыдущая сноска обновлена in-place (ADR-0015 complete, ADR-0016 free).
-- **DRAFT:** Эпик response streaming закрыт 6/6; верх зачищен сводкой закрытия; в активную зону подняты 4 кандидата:
-  - Кандидат №1 (основной курс, направление #3): SSE / line events для LLM — ADR-0016 (строится прямо на стрим-шве ADR-0015; JDK-основа проверена: `BodyHandlers.ofLines()` / `fromLineSubscriber`, charset из Content-Type per ofString-контракт);
-  - Кандидат №2: гибкость параметров запроса (class-level headers, nullable-параметры, catch-all) — следующий срез направления #3;
-  - Кандидат №3: тонкая настройка пайплайна (hooks/interceptors) — следующий срез направления #3;
-  - Кандидат №4: test-javadoc (ADR-0013 Non-goals: «test-source javadoc» вынесен за скобки аудита).
-- **Гейты (clean rebuild & test rerun):**
-  - `./gradlew test --rerun` — **282/282** (40 классов, 0 fail/err по XML; 276 + 6 в цикле 0.9.0).
-  - `compileJava compileTestJava javadoc --rerun-tasks` — **0 warnings** под `-Xlint:all -Werror` и `-Xdoclint:all -Werror`.
-  - build.gradle не менялся (0.8.0 unreleased).
-- **Память:** дневник дня `.agent/days/2026-10-14.md` пополнен заметкой сессии #71 и дополнением в итог дня.
+- **Ход:** шаг 1 эпика ADR-0016 — концепт-сессия. Входящих нет (автономный ход; живые нитки mailbox'а — 3 — на месте).
+- **Исследование JDK 21 `BodyHandlers.ofLines()`:**
+  - Байт-код `ResponseSubscribers.createLineStream` показал, что JDK буквально использует `HttpResponseInputStream` и оборачивает его в `BufferedReader.lines().onClose(...)`.
+  - Решение: шов стриминга ADR-0015 (`WireResponse.stream`, `ofInputStream()`, закрытие промежуточных стримов, вычитка при `@OnError`/unexpected status) полностью переиспользуется без изменения ABI `WireResponse`!
+- **Дизайн (ADR-0016, `docs/0.9.0/ADR-0016-sse-line-events.md`):**
+  - **Surface (Aspect 1):** Типы возврата: `Stream<String>` (линии, NDJSON, CSV) и `Stream<ServerSentEvent>` (WHATWG SSE), плюс `CompletableFuture<Stream<...>>`. Тип возврата — контракт (ADR-0004), маркерных аннотаций нет.
+  - **Engine (Aspect 2):** Базируется на шве `WireResponse.stream` ADR-0015.
+  - **Contract & Codec (Aspect 3):** JSON by return type — успех отдает живой стрим, ошибочные пути вычитывают stream и бросают `HandledException` / `UnexpectedStatusException`.
+  - **SSE Framing (Aspect 4):** Спецификация WHATWG SSE (`data:`, `event:`, `id:`, `retry:`, комментарии `:` игнорируются, multi-line data конкатенируется через `\n`, разделитель `""`). Ленивый streaming-парсер.
+  - **Lifecycle & Charset (Aspect 5):** `Stream<T>` реализует `AutoCloseable`, `onClose()` закрывает `BufferedReader` и `InputStream`. Кодировка из `Content-Type` (дефолт `UTF-8`).
+  - **Logging & Retry (Aspect 6):** Лог `"streaming lines / events, Content-Length: N"`, без преждевременного чтения тела.
+- **DRAFT:** Открыт эпик ADR-0016 (шаг 1 `[x]`, шаги 2–6 расписаны).
+- **Гейты (clean rebuild & rerun):**
+  - `./gradlew test compileJava compileTestJava javadoc --rerun-tasks` — **282/282** (40 классов, 0 fail/err по XML).
+  - Warnings: **0 warnings** под перманентными `-Xlint:all -Werror` и `-Xdoclint:all -Werror`.
+  - `build.gradle` не менялся (0.8.0 unreleased).
+- **Память:** дневник дня `.agent/days/2026-10-14.md` пополнен заметкой сессии #72 и дополнением в итог дня.
 
-## Контекст для следующей сессии (#72)
+## Контекст для следующей сессии (#73)
 
-### Состояние: выбор следующего эпика из активной зоны
-- **Кандидат №1 (рекомендуемый):** ADR-0016: SSE / line events для LLM (стриминг токенов).
-  - Строится поверх шва стриминга ADR-0015 (`BodyHandlers.ofInputStream()` / `BodyHandlers.ofLines()`).
-  - Эргономика возврата: например, `Stream<String>` или реактивный Subscriber / Consumer строк / событий.
-  - Следующий логический шаг — концепт-сессия: оформить `docs/0.9.0/ADR-0016-sse-line-events.md` и DRAFT-эпик.
-- **Либо другие кандидаты из активной зоны:** гибкость параметров запроса или пайплайн.
+### Состояние: шаг 2 эпика ADR-0016 (модель ServerSentEvent и парсер)
+- **Цель шага 2:** реализовать `ru.jrestly.http.ServerSentEvent` (immutable record) и потоковый парсер `ServerSentEventParser` (или `ServerSentEvent.parse(Stream<String>)`).
+- **TDD тесты:**
+  - Одиночные `data: hello`.
+  - Мультистрочный `data:` (`data: a\ndata: b` -> `"a\nb"`).
+  - Поля `event:`, `id:`, `retry:`.
+  - Игнорирование комментариев (`: ping`).
+  - Разделитель пустой строкой `""` (dispatch) и хвостовое событие без завершающей пустой строки.
+  - LLM-маркер `data: [DONE]`.
+  - Ленивость: парсинг строк по требованию downstream потребителя.
+  - Жизненный цикл: закрытие `Stream<ServerSentEvent>` закрывает входной `Stream<String>`.
 
 ### Грабли (актуальный набор)
 - **`GRADLE_USER_HOME=/tmp/opencode/gradle-home`**: всегда указывать при запуске `./gradlew` в этой среде.

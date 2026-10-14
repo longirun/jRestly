@@ -1,28 +1,45 @@
-# DRAFT: активная зона (после закрытия ADR-0015; направление #3 — эргономика для современных API)
+# DRAFT: Server-Sent Events & line streaming (ADR-0016, `docs/0.9.0/`)
 
-> Эпик response streaming (`InputStream` return type, ADR-0015, `docs/0.9.0/`)
-> закрыт 6/6 (сессии #64–#71): концепт (#64) → wire seam (`WireResponse.stream`,
-> `BodyHandlers.ofInputStream()`, #65) → sync контракт (`processResponse` stream
-> branch, error paths consume, streaming payload log, #66) → async twin
-> (`CompletableFuture<InputStream>`, #67) → документация и валидация
-> (`ControllerValidator`, `HttpTemplate`, README, WireMock suite, #70) →
-> дистилляция в ROADMAP («Response streaming — `InputStream` return type
-> (ADR-0015) — COMPLETE ✅») + эта зачистка (#71). Сьюйт: 256 → **282/282**
-> (40 классов, 0 fail/err, +26 тестов в цикле 0.9.0), 0 warnings под
-> перманентными `-Xlint:all -Werror` и `-Xdoclint:all -Werror`. `build.gradle` —
-> 0.8.0 (не менялся). Следующий ход — свободный, из активной зоны.
+> Второй срез направления #3 («эргономика для современных API»: стриминг данных,
+> ЛЛМ, пайплайн; входящее Антона 2026-10-14 09:10). Строится поверх проверенного
+> стрим-шва ADR-0015 (`WireResponse.stream`, `ofInputStream`).
+> Новые типы возврата: `Stream<String>` (line streaming) и `Stream<ServerSentEvent>`
+> (WHATWG SSE), плюс их асинхронные близнецы `CompletableFuture<Stream<...>>`.
+> Базовая версия `build.gradle` — 0.8.0 (не меняется до release-цикла 0.9.0).
+> Текущий сьюйт: **282/282** (40 классов), 0 warnings под перманентными `-Xlint:all -Werror`
+> и `-Xdoclint:all -Werror`.
 
-## Активная зона (кандидаты на следующий эпик)
+## Шаги эпика ADR-0016
 
-- **Кандидат №1 (основной курс, направление #3): SSE / line events для ЛЛМ — ADR-0016**
-  (концепт следующего эпика; строится прямо на стрим-шве ADR-0015; JDK-основа
-  проверена: `BodyHandlers.ofLines()` / `fromLineSubscriber`, charset из
-  Content-Type per ofString-контракт; стриминг токенов для LLM API).
-- **Кандидат №2: гибкость параметров запроса** (class-level headers,
+- [x] **Шаг 1 (сессия #72):** Концепт — `docs/0.9.0/ADR-0016-sse-line-events.md`
+      (дизайн: `Stream<String>` и `Stream<ServerSentEvent>` return types,
+      переиспользование шва ADR-0015 `WireResponse.stream`, WHATWG SSE спецификация,
+      ошибочные пути с сохранением единого контракта `HandledException`/`UnexpectedStatusException`,
+      `onClose()` lifecycle hook для закрытия сетевого соединения, кодировка из Content-Type).
+- [ ] **Шаг 2:** Модель `ServerSentEvent` и streaming-парсер `ServerSentEventParser`
+      (чистый unit TDD: WHATWG SSE спецификация, multi-line data, comments `:` ignored,
+      id, event, retry, LLM-маркер `[DONE]`, lazy evaluation через `Spliterator`/`Iterator`,
+      закрытие источника при `stream.close()`).
+- [ ] **Шаг 3:** Wire & engine seam для `Stream<String>` и `Stream<ServerSentEvent>`
+      (`HttpTemplateBuilder` детекция эффективного return type, `HttpTemplate.processResponse`
+      line/SSE стримы, charset resolution из Content-Type с дефолтом UTF-8,
+      onClose lifecycle, unit/wire тесты).
+- [ ] **Шаг 4:** Контракт ошибок и Async twins (`CompletableFuture<Stream<String>>`,
+      `CompletableFuture<Stream<ServerSentEvent>>`). Ошибки 4xx/5xx вычитывают stream,
+      декодируют `@OnError` или сохраняют raw body, бросают типизированные исключения;
+      async future завершается активным стримом.
+- [ ] **Шаг 5:** Документация, валидация (`ControllerValidator`), end-to-end WireMock
+      тесты для LLM/SSE и line streaming (chat stream, ndjson stream, error path,
+      connection fault, Javadoc-контракт, README с примерами для LLM API).
+- [ ] **Шаг 6:** Дистилляция в `ROADMAP.md` + зачистка `DRAFT.md`.
+
+## Активная зона (кандидаты после закрытия ADR-0016)
+
+- **Кандидат №1: гибкость параметров запроса** (class-level headers,
   nullable-параметры, catch-all) — следующий срез направления #3.
-- **Кандидат №3: тонкая настройка пайплайна** (hooks/interceptors) —
+- **Кандидат №2: тонкая настройка пайплайна** (hooks/interceptors) —
   следующий срез направления #3.
-- **Кандидат №4: test-javadoc** (ADR-0013 Non-goals: «test-source javadoc»
+- **Кандидат №3: test-javadoc** (ADR-0013 Non-goals: «test-source javadoc»
   вынесен за скобки аудита): test-источники получают ту же обработку;
   гейт на test-поверхность не нужен (лоск, не контур).
 
