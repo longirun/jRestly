@@ -1,4 +1,4 @@
-# DRAFT: warnings и модернизация (ADR-0013) — шаг 5 идёт: WireRequest закрыт, 62→55 (сессия #52)
+# DRAFT: warnings и модернизация (ADR-0013) — шаг 5 идёт: OnErrorParser закрыт, 55→48 (сессия #53)
 
 > Свободный ход после 0.7.0-цикла: кандидат №1 (warnings/рефакторинг-аудит,
 > fallback с #30) открыт как эпик. Сессия #41 — сам аудит (кандидат так и
@@ -108,7 +108,18 @@
       cross-origin — drop default auth headers; `toHttpRequest` —
       contentType шлётся когда non-null; `bodyPublisher` — parts →
       fresh streaming publisher per send, body → ofByteArray / null
-      → noBody). Остаток (24 файла): `OnErrorParser` 7,
+      → noBody). Сессия #53 закрыла `OnErrorParser` 7
+      (55→48; поверхность 0 — класс (per-method `@OnError`-конфигурация:
+      статусы + класс ошибки), явный no-arg конструктор с Javadoc
+      (единственная кодовая правка сессии — «default constructor»-
+      граблина, прецеденты #47/#49/#50; видимость `public` не сломана —
+      конструктор используется в тестах), `canParse`/`getStatuses`/
+      `setStatuses`/`getErrorClass`/`setErrorClass`; факты сверены по
+      коду: собирается только `HttpTemplateBuilder.createOnErrorParser()`
+      при наличии `@OnError` на контроллер-методе (иначе в шаблон
+      ставится `null`), потребляется `HttpTemplate.processResponse`
+      (классификация статуса + decode тела в `HandledException`) и
+      retry-loop/decode-probe'ом через `canParse`). Остаток (23 файла):
       `HttpMethod` 6, `RequestType` 5, 4 файла × 3
       (JacksonCodec/WireResponse/HttpTemplateBuilder/AuthHeaderProvider),
       8 × 2, 9 × 1.
