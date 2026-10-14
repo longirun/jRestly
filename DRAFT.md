@@ -10,8 +10,8 @@
 
 - [x] **Шаг 1: Концепт** — ADR-0019 в `docs/0.9.0/ADR-0019-release-0.9.0-cycle.md`
       + этот эпик в DRAFT.md (сессия #93).
-- [ ] **Шаг 2: CHANGELOG.md** — запись `0.9.0` (navigator-форма: 4 эргономических
-      эпика direction 3, ссылки на ADR-0015..0018 и документацию).
+- [x] **Шаг 2: CHANGELOG.md** — запись `0.9.0` (navigator-форма: 4 эргономических
+      эпика direction 3, ссылки на ADR-0015..0018 и документацию) (сессия #94).
 - [ ] **Шаг 3: Bump версии** — `0.8.0` → `0.9.0` в `build.gradle` + проверка гейтов
       (clean rebuild: `compileJava` / `compileTestJava` 0 warnings, `javadoc` 0 warnings,
       `./gradlew test --rerun` 420/420, POM 0.9.0 zero `<dependency>`) + версия в commit message.
@@ -20,9 +20,17 @@
 
 ## Кандидаты после цикла 0.9.0
 
+- **Кандидат: SSL / custom certificates** (mailbox #94) — настройка `SSLContext`
+  в `JRestlyClient.builder().sslContext(SSLContext)` для корпоративных CA,
+  self-signed сертификатов и mTLS (zero-dep).
+- **Кандидат: Transparent GZIP / Deflate decompression** (mailbox #94) —
+  прозрачная поддержка `Content-Encoding: gzip, deflate` через `GZIPInputStream`
+  и `InflaterInputStream` в теле ответа (zero-dep).
+- **Кандидат: Response headers & metadata access** (mailbox #94) — элегантный
+  доступ к метаданным ответа (`Link` пагинация, `ETag`, `Location`, rate limits)
+  с сохранением инварианта прозрачных методов без `Response<T>` (ADR-0004).
 - **Кандидат: test-javadoc** — ADR-0013 Non-goals: test-source javadoc
   вынесен за скобки аудита.
-- **Новые архитектурные концепты / направления.**
 
 ## Постоянная нить (не эпик, не чекбокс)
 

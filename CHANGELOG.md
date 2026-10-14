@@ -3,6 +3,57 @@
 User-facing changes per version. History prior to 0.7.0 (cycles 0.5.0 →
 0.6.1) lives in [ROADMAP.md](ROADMAP.md).
 
+## 0.9.0 — 2026-10-14 (unpublished)
+
+> *Unpublished — no git tag. Per the maintainer's versioning rule the
+> version lives in `build.gradle` and the release commit message; the
+> tag-based coordinates (JitPack) remain at `v0.6.1` until the maintainer
+> tags.*
+
+### Added
+
+- **Response byte streaming (`InputStream` return type)** — zero-copy
+  streaming of raw response bytes directly into user code without whole-body
+  buffering. The JSON codec is bypassed on success, while `@OnError` and
+  unexpected status responses consume the stream and preserve typed error
+  mapping (`CompletableFuture<InputStream>` twin included). Details: the
+  [Response streaming](README.md#response-streaming) README section,
+  `HttpTemplate` Javadoc, and
+  [ADR-0015](docs/0.9.0/ADR-0015-response-streaming-inputstream-return.md).
+- **Server-Sent Events & line streaming (`Stream<ServerSentEvent>`, `Stream<String>`)** —
+  lazy streaming of WHATWG Server-Sent Events and newline-delimited payloads
+  (NDJSON), tailored for real-time APIs and LLM token feeds with built-in
+  terminal `[DONE]` marker detection (`event.isDone()`). Network resources
+  are bound to Stream lifecycle with deterministic cleanup via
+  `Stream.onClose()` (`CompletableFuture<Stream<...>>` twins included).
+  Details: the
+  [Server-Sent Events & line streaming](README.md#server-sent-events--line-streaming)
+  README section, `ServerSentEvent` Javadoc, and
+  [ADR-0016](docs/0.9.0/ADR-0016-sse-line-events.md).
+- **Request parameter & header flexibility** — nullable `@RequestParam` and
+  `@RequestHeader` arguments are gracefully omitted, dynamic `Map<?, ?>`
+  query and header expansion with `name[key]` nesting support, repeatable
+  class-level and method-level `@RequestHeader` and `@RequestDefaultParam`
+  declarations with interface inheritance, and deterministic override
+  precedence. Passing `null` to `@PathVariable` fails fast with an actionable
+  exception. Details: the
+  [Request parameter & header flexibility](README.md#request-parameter--header-flexibility)
+  README section, annotation Javadocs, and
+  [ADR-0017](docs/0.9.0/ADR-0017-request-parameter-flexibility.md).
+- **Request pipeline: Interceptors & hooks** — pre-execution `RequestInterceptor`
+  pipeline for header injection, authentication, and URL rewriting (via
+  `WireRequest` builder/withers) and post-execution `ResponseInterceptor`
+  pipeline for telemetry, audit, and logging with thread-safe
+  `RequestContext`/`ResponseContext` attribute passing. Fault-isolated hooks,
+  zero-overhead empty path, and complete symmetry across synchronous and
+  asynchronous methods. Details: the
+  [Request pipeline: Interceptors & hooks](README.md#request-pipeline-interceptors--hooks)
+  README section, `RequestInterceptor` Javadoc, and
+  [ADR-0018](docs/0.9.0/ADR-0018-request-pipeline-interceptors.md).
+
+The core remains zero-dependency: the generated POM has no
+`<dependency>`, and all external adapters remain `compileOnly`.
+
 ## 0.8.0 — 2026-10-14 (unpublished)
 
 > *Unpublished — no git tag. Per the maintainer's versioning rule the
