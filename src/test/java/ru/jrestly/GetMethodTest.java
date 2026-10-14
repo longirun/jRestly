@@ -4,6 +4,8 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import ru.jrestly.fixtures.TestDto;
 
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.*;
@@ -148,5 +150,47 @@ class GetMethodTest extends BaseWireMockTest {
 
         assertNotNull(result);
         assertEquals("encoded", result.name());
+    }
+
+    @Test
+    @DisplayName("GET with collection @RequestParam skips null elements")
+    void getWithCollectionParamContainingNullsSkipsNullElements() {
+        stubFor(get(urlEqualTo("/api/collection?ids=1&ids=2"))
+                .willReturn(aResponse()
+                        .withStatus(200)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody("[]")));
+
+        List<TestDto> result = controller.getWithCollectionParam(Arrays.asList(1L, null, 2L));
+
+        assertNotNull(result);
+    }
+
+    @Test
+    @DisplayName("GET with collection @RequestParam containing only nulls omits parameter")
+    void getWithCollectionParamOnlyNullsOmitsParam() {
+        stubFor(get(urlEqualTo("/api/collection"))
+                .willReturn(aResponse()
+                        .withStatus(200)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody("[]")));
+
+        List<TestDto> result = controller.getWithCollectionParam(Collections.singletonList(null));
+
+        assertNotNull(result);
+    }
+
+    @Test
+    @DisplayName("GET with null collection @RequestParam omits parameter")
+    void getWithNullCollectionParamOmitsParam() {
+        stubFor(get(urlEqualTo("/api/collection"))
+                .willReturn(aResponse()
+                        .withStatus(200)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody("[]")));
+
+        List<TestDto> result = controller.getWithCollectionParam(null);
+
+        assertNotNull(result);
     }
 }

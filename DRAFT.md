@@ -3,7 +3,7 @@
 > Эпик "Гибкость параметров запроса" (ADR-0017, `docs/0.9.0/ADR-0017-request-parameter-flexibility.md`)
 > открыт в сессии #78. Это третий эргономический срез направления #3 (входящее Антона 2026-10-14 09:10:
 > "гибкость параметров запроса, стриминг данных, ЛЛМ, тонкая настройка пайплайна").
-> Базовый сьюйт: **326/326** (44 класса), 0 warnings под `-Xlint:all -Werror` и `-Xdoclint:all -Werror`,
+> Базовый сьюйт: **337/337** (44 класса), 0 warnings под `-Xlint:all -Werror` и `-Xdoclint:all -Werror`,
 > `build.gradle` 0.8.0.
 
 ## Эпик: Request parameter & header flexibility (ADR-0017)
@@ -16,11 +16,11 @@
       и префиксами `name[key]`), Aspect 3 (Class-level & method-level static `@RequestHeader` с `@Repeatable`),
       Aspect 4 (Class-level `@RequestDefaultParam` с `@Repeatable`), Aspect 5 (Семантика слияния и переопределения
       headers/params, валидация в `ControllerValidator`).
-- [ ] **Шаг 2: Nullable parameters & headers (TDD).**
+- [x] **Шаг 2: Nullable parameters & headers (TDD).**
       Реализация Aspect 1: пропуск заголовков при `null`-значениях в `@RequestHeader` (устранение NPE),
       пропуск `null`-элементов в коллекциях `@RequestParam` и `@RequestHeader`, строгая валидация `null`
-      в `@PathVariable` с понятным `IllegalArgumentException`. Unit/WireMock тесты в `RequestHeadersTest`
-      и `GetMethodTest` / `RequestParamsTest`.
+      в `@PathVariable` с понятным `IllegalArgumentException`. Unit/WireMock тесты в `RequestHeadersTest`,
+      `PathVariableEncodingTest`, `GetMethodTest` и `MultipartTest`. +11 тестов (337/337).
 - [ ] **Шаг 3: Dynamic Map parameters (TDD).**
       Реализация Aspect 2: поддержка `Map<?, ?>` в `@RequestParam` (query string, form-urlencoded body,
       multipart text parts) и `@RequestHeader`. Раскрытие вложенных коллекций, пропуск null-значений,

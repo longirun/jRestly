@@ -68,4 +68,22 @@ class PathVariableEncodingTest extends BaseWireMockTest {
 
         assertEquals("sku-ok", result);
     }
+
+    @Test
+    @DisplayName("null path variable throws IllegalArgumentException with informative message")
+    void nullPathVariableThrowsIllegalArgumentException() {
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () ->
+                pathController().getItemBySlug(null));
+
+        assertEquals("Path variable 'slug' value cannot be null", ex.getMessage());
+    }
+
+    @Test
+    @DisplayName("null path variable with parameter-name fallback throws IllegalArgumentException with parameter name")
+    void nullPathVariableWithParameterNameFallbackThrowsIllegalArgumentException() {
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () ->
+                pathController().getBySku(null));
+
+        assertEquals("Path variable 'sku' value cannot be null", ex.getMessage());
+    }
 }
