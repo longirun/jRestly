@@ -647,7 +647,48 @@ Gates (session #89, clean rebuild):
 - `javadoc` 0 warnings under permanent `-Xdoclint:all -Werror`.
 - `build.gradle` untouched (0.8.0 unreleased).
 
-After the epic: the four ergonomics slices of direction 3 are complete (ADR-0015 response streaming, ADR-0016 SSE/LLM, ADR-0017 params/headers flexibility, ADR-0018 request pipeline). Next candidates: release cycle 0.9.0 (packaging, ADR-0019 in progress), test-javadoc (ADR-0013 non-goals). ADR number **0019** — cycle ADR, **0020** free.
+After the epic: the four ergonomics slices of direction 3 are complete (ADR-0015 response streaming, ADR-0016 SSE/LLM, ADR-0017 params/headers flexibility, ADR-0018 request pipeline). Release cycle 0.9.0 (packaging, ADR-0019) — done, section below. ADR number **0019** — cycle ADR, **0020** free.
+
+## Cycle 0.9.0 — COMPLETE ✅ (2026-10-15, unreleased)
+
+> Source of truth (cycle shape, versioning decisions, release-notes form, gates, status):
+> [`docs/0.9.0/ADR-0019-release-0.9.0-cycle.md`](docs/0.9.0/ADR-0019-release-0.9.0-cycle.md).
+> Sessions #93–#96 (agent-loop). The cycle packaged the four ergonomic epics
+> accumulated under Direction 3 (maintainer's 2026-10-14 mailbox) — response
+> streaming (ADR-0015), SSE & line streaming (ADR-0016), request parameter & header
+> flexibility (ADR-0017), and request pipeline interceptors & hooks (ADR-0018);
+> scope is packaging, not features (ADR-0019 Decision 4).
+
+Contents — the four sections above; they are the sources of truth for the
+shipped set (linked, not restated):
+
+1. [Response streaming — `InputStream` return type (ADR-0015)](#response-streaming--inputstream-return-type-adr-0015--complete--2026-10-14-unreleased)
+2. [Server-Sent Events & line streaming (ADR-0016)](#server-sent-events--line-streaming-adr-0016--complete--2026-10-14-unreleased)
+3. [Request parameter & header flexibility (ADR-0017)](#request-parameter--header-flexibility-adr-0017--complete--2026-10-14-unreleased)
+4. [Request pipeline: Interceptors & hooks (ADR-0018)](#request-pipeline-interceptors--hooks-adr-0018--complete--2026-10-14-unreleased)
+
+Versioning (ADR-0019 Decisions 1–2): `0.8.0` → **0.9.0** — a semver *minor*:
+the release ships major ergonomic capabilities (byte/line/SSE streaming, dynamic maps,
+static headers, request/response interceptor pipeline) with zero breaking changes or mandatory
+migrations for existing callers. Mechanics per ADR-0012/ADR-0014: the bump in `build.gradle`
+on the gate step (session #95), the version named in the release commit message, **no git tag** —
+the tag-based JitPack coordinates stay at `v0.6.1` until the maintainer tags.
+
+Release notes (ADR-0019 Decision 3): the `0.9.0` entry in [`CHANGELOG.md`](CHANGELOG.md)
+(unpublished), written from the start in navigator form (1–2 lines per epic + pointer to source of
+truth: ADR-0015..0018, README sections, Javadoc); the unpublished `0.7.0` and `0.8.0` entries stay
+untouched — all three await the maintainer's tag.
+
+Cycle shape (ADR-0019 Decision 5): one epic, four steps (sessions #93–#96):
+concept (ADR-0019 + DRAFT epic, session #93) → `CHANGELOG.md` entry (session #94) →
+bump `0.9.0` + gates (session #95) → distillation (this section) + DRAFT cleanup (session #96).
+Gates verified on clean rebuild (session #95):
+`compileJava` / `compileTestJava` 0 warnings under permanent `-Xlint:all -Werror`,
+`javadoc` 0 warnings under permanent `-Xdoclint:all -Werror`,
+`./gradlew test --rerun` **420/420** (51 classes),
+generated POM **0.9.0** with 0 `<dependency>` (zero-dep preserved).
+
+After the cycle: candidate #1 — SSL / custom certificates (mailbox #94: `SSLContext` configuration on builder, zero-dep, enterprise CAs / mTLS); candidate #2 — transparent GZIP / Deflate decompression (mailbox #94: `GZIPInputStream`/`InflaterInputStream` zero-dep core); candidate #3 — response headers & metadata access (mailbox #94: `Link` pagination, `ETag`, `Location`, rate limits while preserving ADR-0004 transparent methods); candidate #4 — test-javadoc (ADR-0013 Non-goals). ADR number **0020** free.
 
 ## Post-0.5.0 shortlist (not scheduled — see ADR-0003)
 
