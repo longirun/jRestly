@@ -45,7 +45,7 @@
       строка пропускается; «streaming, Content-Length: N» / «(length
       unknown)»). Gate: suite green включая error-path-тесты (test strategy
       4).
-- [ ] 4. **Async twin** — `CompletableFuture<InputStream>` (ветка
+- [x] 4. **Async twin** — `CompletableFuture<InputStream>` (ветка
       `sendAsync`, exception mapping не меняется — future completes после
       заголовков со stream). Gate: suite green включая async-тесты (test
       strategy 2).
