@@ -6,7 +6,7 @@
 > Новые типы возврата: `Stream<String>` (line streaming) и `Stream<ServerSentEvent>`
 > (WHATWG SSE), плюс их асинхронные близнецы `CompletableFuture<Stream<...>>`.
 > Базовая версия `build.gradle` — 0.8.0 (не меняется до release-цикла 0.9.0).
-> Текущий сьюйт: **316/316** (43 класса), 0 warnings под перманентными `-Xlint:all -Werror`
+> Текущий сьюйт: **326/326** (44 класса), 0 warnings под перманентными `-Xlint:all -Werror`
 > и `-Xdoclint:all -Werror`.
 
 ## Шаги эпика ADR-0016
@@ -35,9 +35,12 @@
       стримом на успехе и exceptional completion на ошибках (включая transport failure);
       probePayloadDecode подтвержден как decode-proof без обращения к кодеку;
       11 unit TDD тестов в `HttpTemplateLineAndEventStreamErrorAndAsyncTest`, 305 → 316/316, 0 warnings).
-- [ ] **Шаг 5:** Документация, валидация (`ControllerValidator`), end-to-end WireMock
-      тесты для LLM/SSE и line streaming (chat stream, ndjson stream, error path,
-      connection fault, Javadoc-контракт, README с примерами для LLM API).
+- [x] **Шаг 5 (сессия #76):** Документация, валидация (`ControllerValidator`), end-to-end WireMock
+      тесты для LLM/SSE и line streaming (chat stream, ndjson stream, custom charset decoding,
+      error paths с `@OnError` и UnexpectedStatusException, connection fault, Javadoc-контракт,
+      README с секцией Server-Sent Events & line streaming и примером для LLM completions;
+      10 WireMock тестов в `ServerSentEventsAndLineStreamingTest`, расширение `TestController`
+      и `ControllerValidationTest`, 316 → 326/326, 0 warnings).
 - [ ] **Шаг 6:** Дистилляция в `ROADMAP.md` + зачистка `DRAFT.md`.
 
 ## Активная зона (кандидаты после закрытия ADR-0016)

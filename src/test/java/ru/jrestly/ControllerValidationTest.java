@@ -49,6 +49,18 @@ public class ControllerValidationTest {
 
         @ru.jrestly.annotation.Get(path = "/api/stream/async")
         java.util.concurrent.CompletableFuture<java.io.InputStream> streamAsync();
+
+        @ru.jrestly.annotation.Get(path = "/api/stream/lines")
+        java.util.stream.Stream<String> lines();
+
+        @ru.jrestly.annotation.Get(path = "/api/stream/lines/async")
+        java.util.concurrent.CompletableFuture<java.util.stream.Stream<String>> linesAsync();
+
+        @ru.jrestly.annotation.Get(path = "/api/stream/events")
+        java.util.stream.Stream<ru.jrestly.http.ServerSentEvent> events();
+
+        @ru.jrestly.annotation.Get(path = "/api/stream/events/async")
+        java.util.concurrent.CompletableFuture<java.util.stream.Stream<ru.jrestly.http.ServerSentEvent>> eventsAsync();
     }
 
     @Test

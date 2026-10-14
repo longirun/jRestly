@@ -144,6 +144,38 @@ public interface DownloadApi {
 - **Error paths:** If the server returns an `@OnError` status or an unexpected status, the stream is consumed automatically to materialize the error payload (`HandledException` with the decoded error object or `UnexpectedStatusException` with raw text).
 - **Resource lifecycle:** The caller is responsible for closing the returned `InputStream` once reading completes. Network timeouts apply until response headers arrive; interruptions during stream consumption surface as an `IOException` at the read site.
 
+## Server-Sent Events & line streaming
+
+Declare `Stream<ServerSentEvent>` or `Stream<String>` (and their `CompletableFuture<Stream<...>>` twins) to consume real-time event streams (such as LLM token completions) or newline-delimited payloads (NDJSON / JSON lines) lazily as chunks arrive over the wire:
+
+```java
+public interface LlmApi {
+
+    @Post(path = "/v1/chat/completions")
+    Stream<ServerSentEvent> streamChat(@RequestBody ChatRequest request);
+
+    @Post(path = "/v1/chat/completions")
+    CompletableFuture<Stream<ServerSentEvent>> streamChatAsync(@RequestBody ChatRequest request);
+
+    @Get(path = "/events/ndjson")
+    Stream<String> streamLines();
+}
+```
+
+Consume in a `try-with-resources` block to ensure the underlying network connection and response stream close when finished:
+
+```java
+try (Stream<ServerSentEvent> events = api.streamChat(request)) {
+    events.takeWhile(e -> !e.isDone()).forEach(event -> {
+        System.out.print(event.data());
+    });
+}
+```
+
+- **WHATWG SSE conformance:** `ServerSentEvent` exposes `id()`, `event()`, `data()` (multi-line data concatenated with `\n`), `retry()`, and `isDone()` (detects the `[DONE]` marker common in LLM APIs). SSE comments (`: ping`) are ignored.
+- **Encoding:** Charset is parsed from the `Content-Type` header (e.g. `text/event-stream; charset=utf-8`), defaulting to UTF-8.
+- **Unified error contract:** On `@OnError` or unexpected HTTP statuses, the stream is consumed eagerly and produces `HandledException` or `UnexpectedStatusException`, preserving the uniform error contract across all return types.
+
 ## Retry with backoff
 
 Retry is **off by default** — without configuration a call makes exactly one attempt, so an existing client sees no change. Configure it client-wide and/or per method (the annotation is a self-contained policy that replaces the client-level one, no merging; a bare `@Retry` is the explicit off-switch on a method of a client that has retry enabled):

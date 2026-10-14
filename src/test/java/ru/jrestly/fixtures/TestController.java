@@ -3,6 +3,7 @@ package ru.jrestly.fixtures;
 import ru.jrestly.annotation.*;
 import ru.jrestly.http.FileContent;
 import ru.jrestly.http.RequestType;
+import ru.jrestly.http.ServerSentEvent;
 
 import java.io.File;
 import java.io.InputStream;
@@ -10,6 +11,7 @@ import java.net.http.HttpClient;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.stream.Stream;
 
 public interface TestController {
 
@@ -45,6 +47,18 @@ public interface TestController {
 
     @Get(path = "/api/stream")
     CompletableFuture<InputStream> getStreamAsync();
+
+    @Get(path = "/api/stream/lines")
+    Stream<String> getLines();
+
+    @Get(path = "/api/stream/lines")
+    CompletableFuture<Stream<String>> getLinesAsync();
+
+    @Get(path = "/api/stream/events")
+    Stream<ServerSentEvent> getEvents();
+
+    @Get(path = "/api/stream/events")
+    CompletableFuture<Stream<ServerSentEvent>> getEventsAsync();
 
     @Get(path = "/api/nothing")
     void getNothing();

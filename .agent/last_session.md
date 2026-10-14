@@ -1,43 +1,42 @@
-# Handover Note: Сессия 75 (ADR-0016 шаг 4/6 — контракт ошибок и async twins для Stream<String> и Stream<ServerSentEvent>; DRAFT 4/6, 316/316; следующий ход — шаг 5: документация, валидация ControllerValidator, end-to-end WireMock тесты)
+# Handover Note: Сессия 76 (ADR-0016 шаг 5/6 — документация, валидация ControllerValidator, end-to-end WireMock тесты; DRAFT 5/6, 326/326; следующий ход — шаг 6: дистилляция в ROADMAP и зачистка DRAFT)
 
 ## Что сделано в этой сессии
-- **Ход:** шаг 4 эпика ADR-0016 — контракт ошибок и Async twins (`CompletableFuture<Stream<String>>`, `CompletableFuture<Stream<ServerSentEvent>>`). Входящих нет (автономный ход; живые нитки mailbox'а — 3 — на месте).
-- **TDD тесты (`HttpTemplateLineAndEventStreamErrorAndAsyncTest`):**
-  - Реализован комплексный набор из 11 unit-тестов (+1 класс в сьюйте):
-    - `syncLineStreamOnErrorConsumesAndDecodes`: `@OnError` статус (429) для `Stream<String>` полностью вычитывает поток ошибки, декодирует JSON в `HandledException`, передает заголовки ответа и гарантированно закрывает underlying сетевой `InputStream`.
-    - `syncEventStreamOnErrorEmptyBodyCarriesNullDetails`: `@OnError` статус (400) для `Stream<ServerSentEvent>` с пустым телом возвращает `HandledException` с `null` details, закрывает стрим и не обращается к кодеку.
-    - `syncLineStreamUnexpectedStatusCarriesRawBody`: неожиданный статус (404) для `Stream<String>` выбрасывает `UnexpectedStatusException` с полным сырым телом и закрывает `InputStream`.
-    - `syncEventStreamUnexpectedStatusWithEmptyStream`: неожиданный статус (500) для `Stream<ServerSentEvent>` с пустым телом выбрасывает `UnexpectedStatusException` с пустой строкой в `rawBody` и закрывает стрим.
-    - `probeTreatsStreamReturnAsDecodeProof`: `probePayloadDecode` для `Stream<String>` и `Stream<ServerSentEvent>` возвращает `true` (decode-proof) без обращения к JSON-кодеку (ADR-0011 / ADR-0016 Aspect 3).
-    - `asyncLineStreamSuccessCompletesWithLiveStream`: `CompletableFuture<Stream<String>>` завершается живым читаемым `Stream<String>`, чтение строк декодирует данные, закрытие `lines.close()` закрывает underlying `InputStream`.
-    - `asyncEventStreamSuccessCompletesWithParsedEvents`: `CompletableFuture<Stream<ServerSentEvent>>` завершается читаемым `Stream<ServerSentEvent>`, возвращает распарсенные события, `events.close()` закрывает underlying `InputStream`.
-    - `asyncEmptyStreamYieldsEmptyStream`: пустые потоки для async twins завершаются пустыми `Stream<String>` и `Stream<ServerSentEvent>` без зависаний.
-    - `asyncOnErrorFailsWithHandledException`: async twin на `@OnError` статусе завершается exceptional completion с `HandledException` в качестве cause `CompletionException`, поток ошибки вычитан и закрыт.
-    - `asyncUnexpectedStatusFailsWithRawPayload`: async twin на неожиданном статусе завершается exceptional completion с `UnexpectedStatusException` в качестве cause `CompletionException`, сырое тело сохранено, поток закрыт.
-    - `asyncTransportFailureWrapsIOException`: async twin на транспортной ошибке (`IOException`) завершается exceptional completion с `RuntimeException`, оборачивающим исходный `IOException` (симметрично синхронному контракту).
+- **Ход:** шаг 5 эпика ADR-0016 — документация, валидация (`ControllerValidator`), end-to-end WireMock тесты для LLM/SSE и line streaming. Входящих нет (автономный ход; живые нитки mailbox'а — 3 — на месте).
+- **Валидация (`ControllerValidator`):**
+  - Расширен `ControllerValidationTest.StreamController`: добавлены синхронные и асинхронные методы `Stream<String>`, `Stream<ServerSentEvent>`, `CompletableFuture<Stream<String>>`, `CompletableFuture<Stream<ServerSentEvent>>`. Проверена валидация через `ControllerValidator.validate(...)` и создание контроллера через клиент (0 проблем).
+  - В `TestController` добавлены методы `getLines()`, `getLinesAsync()`, `getEvents()`, `getEventsAsync()` для согласованности тестовой модели.
+- **End-to-end WireMock тесты (`ServerSentEventsAndLineStreamingTest`):**
+  - Реализован комплексный набор из 10 end-to-end тестов (+1 класс в сьюйте):
+    - `syncLlmChatStreaming`: реальный LLM Chat Completions SSE-стрим (OpenAI/Anthropic формат) с `event: message`, `id: N`, `data: {"content": ...}`, распознавание `[DONE]` маркера через `event.isDone()`.
+    - `asyncLlmChatStreaming`: асинхронный близнец `CompletableFuture<Stream<ServerSentEvent>>` с разбором токенов и маркера завершения `[DONE]`.
+    - `syncNdjsonLineStreaming`: построчный стриминг NDJSON (`Stream<String>`) с заголовком `application/x-ndjson`.
+    - `asyncNdjsonLineStreaming`: асинхронный близнец построчного стриминга `CompletableFuture<Stream<String>>`.
+    - `lineStreamingDecodesCustomCharset`: разбор альтернативной кодировки (`windows-1251`) из заголовка `Content-Type`.
+    - `sseOnErrorConsumesBodyAndThrowsHandledException`: `@OnError` статус (429 Rate Limit) для SSE-стрима вычитывает тело ошибки и декодирует его в `HandledException`.
+    - `lineStreamOnErrorConsumesBodyAndThrowsHandledException`: `@OnError` статус (400 Bad Request) для построчного стрима вычитывает тело ошибки и декодирует в `HandledException`.
+    - `sseUnexpectedStatusThrowsException`: неожиданный статус (502) для SSE выбрасывает `UnexpectedStatusException` с полным сырым телом ошибки.
+    - `asyncUnexpectedStatusThrowsException`: неожиданный статус (500) для async twin завершает future `CompletionException`, оборачивающим `UnexpectedStatusException`.
+    - `serverFaultDuringStream`: connection reset (`Fault.CONNECTION_RESET_BY_PEER`) корректно завершается `UncheckedIOException` или сетевым исключением `IOException` без зависаний.
+- **Документация (`README.md`):**
+  - Добавлен раздел `## Server-Sent Events & line streaming` с лаконичными примерами использования `Stream<ServerSentEvent>` для LLM Chat API и `Stream<String>` для NDJSON, правилами управления жизненным циклом через `try-with-resources`, соответствием WHATWG SSE спецификации и единым контрактом ошибок.
 - **Гейты (clean rebuild & rerun):**
-  - `./gradlew test compileJava compileTestJava javadoc --rerun-tasks` — **316/316** (43 класса, +11 тестов, 0 fail/err по XML).
+  - `./gradlew test compileJava compileTestJava javadoc --rerun-tasks` — **326/326** (44 класса, +10 тестов, 0 fail/err по XML).
   - Warnings: **0 warnings** под перманентными `-Xlint:all -Werror` и `-Xdoclint:all -Werror`.
   - `build.gradle` не менялся (0.8.0 unreleased).
-- **DRAFT:** Шаг 4 отмечен `[x]`, сьюйт обновлен до 316/316.
-- **Память:** дневник дня `.agent/days/2026-10-14.md` пополнен заметкой сессии #75 и дополнением в итог дня.
+- **DRAFT:** Шаг 5 отмечен `[x]`, сьюйт обновлен до 326/326.
+- **Память:** дневник дня `.agent/days/2026-10-14.md` пополнен заметкой сессии #76 и дополнением в итог дня.
 
-## Контекст для следующей сессии (#76)
+## Контекст для следующей сессии (#77)
 
-### Состояние: шаг 5 эпика ADR-0016 (документация, валидация ControllerValidator, end-to-end WireMock тесты)
-- **Цель шага 5:**
-  1. `ControllerValidator`:
-     - Проверить валидацию методов с `Stream<String>`, `Stream<ServerSentEvent>`, `CompletableFuture<Stream<String>>`, `CompletableFuture<Stream<ServerSentEvent>>`.
-     - Добавить unit-тесты валидации (например, в `ControllerValidationTest`), если требуется.
-  2. End-to-end WireMock тесты (`ServerSentEventsAndLineStreamingTest` или `SseStreamingTest`):
-     - End-to-end интеграция через WireMock:
-       - SSE chat completion endpoint (эмуляция OpenAI/Anthropic token streaming) с `data: [DONE]`.
-       - Line streaming (NDJSON / newline text).
-       - Error paths (400 Bad Request с `@OnError`, 500 UnexpectedStatusException).
-       - Connection fault / reset.
-  3. Документация:
-     - `README.md`: лаконичный раздел с примерами использования `Stream<ServerSentEvent>` для LLM и `Stream<String>` для line streaming, указание `onClose()` / try-with-resources.
-     - Javadoc на затронутых публичных типах (`ServerSentEvent`, `HttpTemplate`).
+### Состояние: шаг 6 эпика ADR-0016 (дистилляция в ROADMAP.md + зачистка DRAFT.md)
+- **Цель шага 6:**
+  1. Дистилляция в `ROADMAP.md`:
+     - Добавить секцию завершения эпика: «Server-Sent Events & line streaming (ADR-0016) — COMPLETE ✅ (2026-10-14, unreleased)».
+     - Включить лаконичные ссылки на ADR-0016, сессии #72–#76, ключевые аспекты (Stream<String>, Stream<ServerSentEvent>, WHATWG SSE parser, isDone(), onClose lifecycle, единый контракт ошибок, zero-dep, 326 тестов, 0 warnings).
+  2. Зачистить `DRAFT.md`:
+     - Снять завершённый эпик.
+     - Поднять кандидатов из активной зоны (кандидат №1: гибкость параметров запроса — class-level headers, nullable-параметры; кандидат №2: тонкая настройка пайплайна; кандидат №3: test-javadoc).
+  3. Провести чистый проверочный прогон гейтов (`./gradlew test compileJava compileTestJava javadoc --rerun-tasks`).
 
 ### Грабли (актуальный набор)
 - **`GRADLE_USER_HOME=/tmp/opencode/gradle-home`**: всегда указывать при запуске `./gradlew` в этой среде.
@@ -48,7 +47,7 @@
 - **Changelog — навигатор, не зеркало** (#40): entry 0.9.0 пишем в release-цикле 0.9.0; сейчас CHANGELOG не трогать.
 - **Коммит-субъект: краткий, без дублирования ченджлога** (Антон); body — гейты-факты.
 - **`./gradlew test --rerun`** — «UP-TO-DATE ≠ мой прогон».
-- **Подсчёт тестов:** `grep -h -o 'tests="[0-9]*"' build/test-results/test/*.xml | awk -F'"' '{s+=$2} END{print s}'` (сейчас — 316).
+- **Подсчёт тестов:** `grep -h -o 'tests="[0-9]*"' build/test-results/test/*.xml | awk -F'"' '{s+=$2} END{print s}'` (сейчас — 326).
 - **«Итог дня» — живая секция:** дописывать фрагментом « + **... (сессия #N)**», не переписывать; сессионные заметки — до «Итога дня», не после.
 - **Mailbox-гигиена:** решённый обмен удаляем; живые нитки и последние 2–3 сообщения оставляем (сейчас 3).
 
@@ -56,5 +55,5 @@
 1. `GRADLE_USER_HOME=/tmp/opencode/gradle-home ./gradlew ...` (тёплый кэш).
 2. `pids.max = 1000`. Полный `./gradlew test --rerun` без init-скрипта.
 3. Ветка `agent-loop`.
-4. Версия в build.gradle: **0.8.0**. Тесты: **316/316** (43 класса).
+4. Версия в build.gradle: **0.8.0**. Тесты: **326/326** (44 класса).
 5. Warnings: main 0, test 0, javadoc 0 (под `-Werror`).
