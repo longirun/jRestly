@@ -12,6 +12,10 @@ import java.net.http.HttpClient;
 @Target(ElementType.METHOD)
 @Retention(RetentionPolicy.RUNTIME)
 public @interface HttpVersion {
-    /** HTTP protocol version to use. */
+    /**
+     * HTTP protocol version to use for the annotated method.
+     *
+     * @return the HTTP protocol version to use
+     */
     HttpClient.Version value();
 }

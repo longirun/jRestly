@@ -1,4 +1,4 @@
-# DRAFT: warnings и модернизация (ADR-0013) — шаг 5 идёт: блок 8×2 закрыт, 25→9 (сессия #56)
+# DRAFT: warnings и модернизация (ADR-0013) — шаг 5 закрыт: javadoc 0 (сессия #57), впереди гейт шага 6
 
 > Свободный ход после 0.7.0-цикла: кандидат №1 (warnings/рефакторинг-аудит,
 > fallback с #30) открыт как эпик. Сессия #41 — сам аудит (кандидат так и
@@ -48,7 +48,7 @@
       `./gradlew test --rerun` — 256/256 (36 классов). Уточнение: «100»
       в ADR-0013 — было потолком javadoc-тула (100/run без `Xmaxwarns`);
       истинный baseline 237 (поправка зафиксирована в ADR-0013).
-- [ ] Шаг 5 — javadoc, остальное (100 warnings, замер #48 — реальный,
+- [x] Шаг 5 — javadoc, остальное (100 warnings, замер #48 — реальный,
       не capped). Сессия #46 закрыла контрактную пару `RetryPolicy` 25
       + `Retry` 8 (173→140; обе поверхности — 0; fluent-`@return` —
       house-style «this builder, for chaining»). Сессия #47 закрыла
@@ -203,7 +203,30 @@
       (description без `@return`), `RequestMeta` (class-комментария нет
       вовсе — внимание: после добавления class-комментария могут
       появиться 4 × `no @param` record-компонентов, прецедент
-      `Param`/`Header` — замерить и закрыть одним шагом).
+      `Param`/`Header` — замерить и закрыть одним шагом). Сессия #57
+      закрыла финальный блок 9 × 1 (9→0; поверхности 0; ноль кода —
+      чистый Javadoc; 7 атрибутов аннотаций — блочная форма с
+      `@return` (граблина #56, все 7 сайтов: `ExpectStatus.statuses`
+      — ожидаемые успешные статусы, без аннотации 2xx —
+      `createExpectStatuses`, `FollowRedirects.count` — макс. число
+      redirect-хопов, `HttpVersion.value` — переопределение версии
+      протокола — `getHttpVersion`, `PathVariable.name` —
+      плейсхолдер `${name}`, пусто → имя Java-параметра —
+      `createUrl`, `RequestHeader.name` — имя хедера,
+      `RequestParam.name` — имя параметра, пусто → имя
+      Java-параметра, `SetAuthDetails.headerName` — response-хедер
+      для capture — `getAuthDetailsConsumer`),
+      `JsonCodecResolver.resolve()` — `@return` (defaults-кодек первой
+      найденной библиотеки, jackson → gson → moshi) + `@throws ISE`
+      (ни одной поддерживаемой библиотеки), `RequestMeta` —
+      class-комментарий (per-method-метаданные из verb-аннотации:
+      method/path/type/defaultParams; собирает `HttpTemplateBuilder`;
+      относительные пути достраиваются base URL окружения в момент
+      запроса; `@Get` — фиксированно JSON, иначе значение
+      аннотации) + 4 × record-`@param` (прогноз природы из #56
+      сработал: record без class-комментария мерился как 1, после
+      class-комментария — ровно 5 сайтов). Полное дерево: **9 → 0
+      javadoc-warnings** (baseline 237, замер #57).
 - [ ] Шаг 6 — gate: `javadoc { Xdoclint=all, Werror }` в build.gradle,
       полный ре-аудит (`-Xlint:all` → 0, javadoc → 0), дистилляция в
       ROADMAP.

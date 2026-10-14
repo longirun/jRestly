@@ -19,6 +19,10 @@ public final class JsonCodecResolver {
     /**
      * Probes the real classpath and returns the first matching codec, or
      * fails fast naming all supported libraries.
+     *
+     * @return the defaults codec of the first supported library found on the classpath
+     * (jackson &rarr; gson &rarr; moshi)
+     * @throws IllegalStateException if no supported library is present
      */
     public static JsonCodec resolve() {
         return resolve(JsonCodecResolver::isOnClasspath);

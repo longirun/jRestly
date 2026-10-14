@@ -11,6 +11,10 @@ import java.lang.annotation.Target;
 @Target(ElementType.METHOD)
 @Retention(RetentionPolicy.RUNTIME)
 public @interface FollowRedirects {
-    /** Maximum number of redirect hops. */
+    /**
+     * Maximum number of redirect hops to follow for the annotated method.
+     *
+     * @return maximum number of redirect hops
+     */
     int count();
 }

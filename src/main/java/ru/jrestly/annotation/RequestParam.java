@@ -11,6 +11,11 @@ import java.lang.annotation.Target;
 @Target(ElementType.PARAMETER)
 @Retention(RetentionPolicy.RUNTIME)
 public @interface RequestParam {
-    /** Parameter name. If empty, derived from the Java parameter name. */
+    /**
+     * Parameter name. If empty, derived from the Java parameter name.
+     *
+     * @return the parameter name,
+     * or the empty string (the default) to use the Java parameter name
+     */
     String name() default "";
 }

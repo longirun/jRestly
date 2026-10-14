@@ -11,6 +11,10 @@ import java.lang.annotation.Target;
 @Target(ElementType.PARAMETER)
 @Retention(RetentionPolicy.RUNTIME)
 public @interface RequestHeader {
-    /** Header name. */
+    /**
+     * Name of the HTTP request header to bind the parameter to.
+     *
+     * @return the header name
+     */
     String name();
 }

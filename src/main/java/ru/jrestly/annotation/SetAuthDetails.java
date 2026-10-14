@@ -11,6 +11,10 @@ import java.lang.annotation.Target;
 @Target(ElementType.METHOD)
 @Retention(RetentionPolicy.RUNTIME)
 public @interface SetAuthDetails {
-    /** Name of the response header to capture. */
+    /**
+     * Name of the response header to capture into the client's AuthProvider.
+     *
+     * @return the name of the response header to capture
+     */
     String headerName();
 }
