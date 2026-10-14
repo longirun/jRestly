@@ -4,7 +4,7 @@
 > тонкая настройка пайплайна запросов (RequestInterceptor, ResponseInterceptor,
 > RequestContext, ResponseContext, wither-методы WireRequest, zero-cost default path,
 > устойчивость и симметрия sync/async).
-> Сьюйт на старте: **375/375** (46 классов, 0 fail/err), 0 warnings под перманентными
+> Сьюйт: **390/390** (48 классов, 0 fail/err), 0 warnings под перманентными
 > `-Xlint:all -Werror` и `-Xdoclint:all -Werror`.
 > `build.gradle` — 0.8.0 unreleased (не меняется до 0.9.0-цикла).
 
@@ -16,12 +16,16 @@
       `RequestContext` и `ResponseContext` (метаданные метода, контроллера, аргументов +
       атрибуты для связи pre/post), wither-методы `WireRequest`, единый call-level
       жизненный цикл, симметрия sync/async twins, zero-cost путь при пустых списках.
-- [ ] **Шаг 2 (следующая сессия): модель и интерфейсы интерцепторов + wither-методы `WireRequest` (TDD).**
-      Создание пакета `ru.jrestly.interceptor` (`RequestInterceptor`, `ResponseInterceptor`,
-      `RequestContext`, `ResponseContext`, реализация `SimpleRequestContext`) +
-      методы `WireRequest.withHeader`, `withoutHeader`, `withUri`, `withMethod`, `withBody`,
-      `toBuilder()` / `builder()` + unit-тесты TDD (`WireRequestTest`, `RequestContextTest`).
-- [ ] **Шаг 3: интеграция в конфигурацию клиента (`ModuleInfo`, `SimpleModuleInfo`, `JRestlyClient.Builder`).**
+- [x] **Шаг 2 (сессия #85): модель и интерфейсы интерцепторов + wither-методы `WireRequest` (TDD).**
+      Создан пакет `ru.jrestly.interceptor`: `RequestInterceptor` (с адаптером `of(UnaryOperator)`),
+      `ResponseInterceptor`, `RequestContext`, `ResponseContext` (с хелперами `statusCode()` и
+      `isSuccess()`), `SimpleRequestContext` (с потокобезопасными атрибутами и защитным копированием `args()`),
+      `SimpleResponseContext` (делегирование в RequestContext + метаданные вызова);
+      в `WireRequest` добавлены wither-методы (`withHeader`, `withHeaders`, регистронезависимый `withoutHeader`,
+      `withUri`, `withMethod`, `withBody`, `withContentType`, `withParts`) и fluent `Builder` (`builder()`, `toBuilder()`);
+      сьют: 375 → **390/390** (+15 тестов в 2 новых классах `WireRequestTest` и `RequestContextTest`),
+      0 warnings под `-Xlint:all -Werror` и `-Xdoclint:all -Werror`.
+- [ ] **Шаг 3 (следующая сессия): интеграция в конфигурацию клиента (`ModuleInfo`, `SimpleModuleInfo`, `JRestlyClient.Builder`).**
       Добавление `getRequestInterceptors()` и `getResponseInterceptors()` в `ModuleInfo`,
       методы в `SimpleModuleInfo.Builder` и `JRestlyClient.Builder` (`addRequestInterceptor`,
       `addResponseInterceptor`, `requestInterceptors`, `responseInterceptors`), проброс
