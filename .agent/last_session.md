@@ -1,34 +1,34 @@
-# Handover Note: Сессия 77 (ADR-0016 шаг 6/6 — дистилляция в ROADMAP и зачистка DRAFT; эпик закрыт 6/6; сьюйт 326/326; следующий ход — выбор из активной зоны: ADR-0017 гибкость параметров запроса)
+# Handover Note: Сессия 78 (ADR-0017 шаг 1/6 — концепт-сессия "Request parameter & header flexibility"; эпик открыт в DRAFT; сьюйт 326/326; следующий ход — шаг 2: nullable parameters & headers TDD)
 
 ## Что сделано в этой сессии
-- **Ход:** шаг 6 эпика ADR-0016 — дистилляция в ROADMAP.md и зачистка DRAFT.md. Эпик Server-Sent Events & line streaming полностью завершён 6/6.
-- **Дистилляция в `ROADMAP.md`:**
-  - Добавлена новая секция `## Server-Sent Events & line streaming (ADR-0016) — COMPLETE ✅ (2026-10-14, unreleased)`:
-    - Source of truth: ADR-0016, сессии #72–#77.
-    - Ключевые архитектурные решения по Aspect 1–5: return types `Stream<String>` и `Stream<ServerSentEvent>` (+ async twins), streaming-парсер WHATWG SSE с `event.isDone()` для LLM `[DONE]`, переиспользование стрим-шва ADR-0015 `WireResponse.stream()` и `BodyHandlers.ofInputStream()` с `onClose` lifecycle hook, единый контракт ошибок (вычитывание и декодирование 4xx/5xx), `ControllerValidator` и end-to-end WireMock сьюйт.
-    - В секции ADR-0015 зафиксировано завершение ADR-0016, ADR number **0017** объявлен свободным.
-- **Зачистка `DRAFT.md`:**
-  - Закрытый эпик ADR-0016 снят.
-  - В активную зону подняты кандидаты для следующего хода:
-    - Кандидат №1 (направление #3, основной курс): гибкость параметров запроса — ADR-0017 (class-level headers, nullable query params, map/dynamic params).
-    - Кандидат №2 (направление #3): тонкая настройка пайплайна запросов — ADR-0018 (interceptors / hooks).
-    - Кандидат №3: test-javadoc.
+- **Ход:** шаг 1 нового эпика ADR-0017 «Гибкость параметров запроса и заголовков» (третий эргономический срез направления #3 из письма Антона 2026-10-14 09:10: "гибкость параметров запроса, стриминг данных, ЛЛМ, тонкая настройка пайплайна").
+- **Концепт (`docs/0.9.0/ADR-0017-request-parameter-flexibility.md`):**
+  - Source of truth для дизайна, контрактов и краевых случаев.
+  - Aspect 1: Nullable parameters & graceful omission — пропуск `@RequestHeader` при значении аргумента `null` (устранение NPE), пропуск `null`-элементов в коллекциях `@RequestParam` и `@RequestHeader`, строгая валидация `null` в `@PathVariable` с понятным `IllegalArgumentException("Path variable '${name}' value cannot be null")`.
+  - Aspect 2: Dynamic Map parameters — поддержка `Map<?, ?>` в `@RequestParam` (query string, form body, multipart text parts) и `@RequestHeader`. Раскрытие коллекций, пропуск null-значений, поддержка префикса `name[key]` при непустом имени аннотации.
+  - Aspect 3: Class-level and method-level static `@RequestHeader` — расширение `@Target` на `PARAMETER, METHOD, TYPE`, атрибуты `value() default ""` и `name() default ""`, `@Repeatable(RequestHeaders.class)` с контейнером.
+  - Aspect 4: Class-level `@RequestDefaultParam` — расширение `@Target` на `METHOD, TYPE`, `@Repeatable(RequestDefaultParams.class)` с контейнером.
+  - Aspect 5: Precedence, Merging, Validation — порядок слияния заголовков и параметров с override-семантикой (параметр переопределяет статический заголовок/дефолт с тем же именем); валидация обязательного непустого `name()` на классе/методе в `ControllerValidator`.
+- **DRAFT.md:**
+  - Открыт активный эпик ADR-0017 (6 шагов с чекбоксами `[ ]`).
+  - Шаг 1 отмечен как выполненный `[x]`.
+  - Кандидаты (ADR-0018 тонкая настройка пайплайна, test-javadoc) сохранены для следующих эпиков.
 - **Гейты (clean rebuild & rerun):**
-  - `./gradlew test compileJava compileTestJava javadoc --rerun-tasks` — **326/326** (44 класса, 0 fail/err по XML).
-  - Warnings: **0 warnings** под перманентными `-Xlint:all -Werror` и `-Xdoclint:all -Werror`.
+  - `./gradlew test --rerun` — **326/326** (44 класса, 0 fail/err по XML).
+  - `./gradlew compileJava compileTestJava javadoc --rerun-tasks` — **0 warnings** под перманентными `-Xlint:all -Werror` и `-Xdoclint:all -Werror`.
   - `build.gradle` не менялся (0.8.0 unreleased).
-- **Память:** дневник дня `.agent/days/2026-10-14.md` пополнен заметкой сессии #77 и обновлением в итог дня.
+- **Память:** дневник дня `.agent/days/2026-10-14.md` пополнен заметкой сессии #78 и обновлением в итог дня.
 
-## Контекст для следующей сессии (#78)
+## Контекст для следующей сессии (#79)
 
-### Состояние: выбор следующего хода из активной зоны
+### Состояние: шаг 2 эпика ADR-0017
 - **Рекомендуемый следующий шаг:**
-  - Открытие эпика ADR-0017: **Гибкость параметров запроса** (третий эргономический срез направления #3: "гибкость параметров запроса, стриминг данных, ЛЛМ, тонкая настройка пайплайна"; входящее Антона 2026-10-14 09:10).
-  - Шаг 1: Концепт-сессия (`docs/0.9.0/ADR-0017-request-parameter-flexibility.md`):
-    - Срез A: Class-level `@RequestHeader` (и `@RequestDefaultParam`) на интерфейсе контроллера — общие заголовки для всех методов сервиса (например, `Accept: application/json`, `X-Api-Key: secret`).
-    - Срез B: Nullable `@RequestParam` / `@RequestHeader` — если значение аргумента `null`, параметр/заголовок опускается (вместо конкатенации `"param=null"` или NPE).
-    - Срез C: Динамические Map-параметры (`@RequestParam Map<String, ?>` / `@RequestHeader Map<String, ?>`) для произвольных наборов query-параметров и заголовков.
-    - Оформление эпика в `DRAFT.md` (шаги с чекбоксами `[ ]`).
+  - Реализация шага 2 эпика ADR-0017 (Nullable parameters & headers TDD):
+    - Репродуцирующие тесты в `RequestHeadersTest` (передача `null` в `@RequestHeader` — заголовок не должен отправляться; передача `Collection` с `null`-элементами — должны отправляться только non-null значения).
+    - Репродуцирующие тесты в `GetMethodTest` / `RequestParamsTest` (передача `Collection` с `null`-элементами в `@RequestParam` — отправляются только non-null значения).
+    - Тест на `@PathVariable` с `null` аргументом — должен выбрасывать `IllegalArgumentException` с информативным сообщением.
+    - Реализация фиксов в `HttpTemplateBuilder.createHeaders()` и `HttpTemplateBuilder.createRequestParams()` и `HttpTemplateBuilder.createUrl()`.
+    - Все гейты зелёные, DRAFT шаг 2 `[x]`.
 
 ### Грабли (актуальный набор)
 - **`GRADLE_USER_HOME=/tmp/opencode/gradle-home`**: всегда указывать при запуске `./gradlew` в этой среде.

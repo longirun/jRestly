@@ -1,27 +1,48 @@
-# DRAFT: активная зона (после закрытия ADR-0016; направление #3 — эргономика для современных API)
+# DRAFT: активный эпик ADR-0017 (Request parameter & header flexibility)
 
-> Эпик Server-Sent Events & line streaming (ADR-0016, `docs/0.9.0/`)
-> закрыт 6/6 (сессии #72–#77): концепт (#72) → ServerSentEvent модель и streaming-парсер
-> WHATWG SSE (#73) → wire & engine seam для `Stream<String>` и `Stream<ServerSentEvent>`
-> поверх `WireResponse.stream` с `onClose` жизненным циклом (#74) → error contract и
-> async twins `CompletableFuture<Stream<...>>` (#75) → валидация (`ControllerValidator`),
-> end-to-end WireMock сьюйт (LLM chat с `[DONE]`, NDJSON, charset, error paths) и README (#76) →
-> дистилляция в ROADMAP («Server-Sent Events & line streaming (ADR-0016) — COMPLETE ✅»)
-> + эта зачистка (#77). Сьюйт: 282 → **326/326** (44 класса, 0 fail/err, +44 теста
-> в ADR-0016), 0 warnings под перманентными `-Xlint:all -Werror` и `-Xdoclint:all -Werror`.
-> `build.gradle` — 0.8.0 (не менялся). Следующий ход — свободный, из активной зоны.
+> Эпик "Гибкость параметров запроса" (ADR-0017, `docs/0.9.0/ADR-0017-request-parameter-flexibility.md`)
+> открыт в сессии #78. Это третий эргономический срез направления #3 (входящее Антона 2026-10-14 09:10:
+> "гибкость параметров запроса, стриминг данных, ЛЛМ, тонкая настройка пайплайна").
+> Базовый сьюйт: **326/326** (44 класса), 0 warnings под `-Xlint:all -Werror` и `-Xdoclint:all -Werror`,
+> `build.gradle` 0.8.0.
 
-## Активная зона (кандидаты на следующий эпик)
+## Эпик: Request parameter & header flexibility (ADR-0017)
 
-- **Кандидат №1 (направление #3, основной курс): гибкость параметров запроса — ADR-0017**
-  (следующий срез эргономики: class-level headers `@RequestHeader` на интерфейсе контроллера,
-  nullable query-параметры с пропуском null-значений вместо `"null"`, опциональный catch-all
-  или Map-параметры `@RequestParam Map<String, Object>`).
-- **Кандидат №2 (направление #3): тонкая настройка пайплайна запросов — ADR-0018**
-  (следующий срез эргономики: request/response interceptors / hooks, кастомизация заголовков и метрик).
-- **Кандидат №3: test-javadoc** (ADR-0013 Non-goals: «test-source javadoc»
-  вынесен за скобки аудита): test-источники получают ту же обработку;
-  гейт на test-поверхность не нужен (лоск, не контур).
+- [x] **Шаг 1: Концепт-сессия (ADR-0017 + оформление DRAFT.md).**
+      Source of truth — `docs/0.9.0/ADR-0017-request-parameter-flexibility.md`.
+      Сформулированы 5 архитектурных аспектов: Aspect 1 (Nullable parameters & graceful omission:
+      пропуск null `@RequestHeader`, null-safe коллекции в `@RequestParam`, понятное IAE для null `@PathVariable`),
+      Aspect 2 (Dynamic Map parameters: `Map<?, ?>` в `@RequestParam` и `@RequestHeader` с раскрытием коллекций
+      и префиксами `name[key]`), Aspect 3 (Class-level & method-level static `@RequestHeader` с `@Repeatable`),
+      Aspect 4 (Class-level `@RequestDefaultParam` с `@Repeatable`), Aspect 5 (Семантика слияния и переопределения
+      headers/params, валидация в `ControllerValidator`).
+- [ ] **Шаг 2: Nullable parameters & headers (TDD).**
+      Реализация Aspect 1: пропуск заголовков при `null`-значениях в `@RequestHeader` (устранение NPE),
+      пропуск `null`-элементов в коллекциях `@RequestParam` и `@RequestHeader`, строгая валидация `null`
+      в `@PathVariable` с понятным `IllegalArgumentException`. Unit/WireMock тесты в `RequestHeadersTest`
+      и `GetMethodTest` / `RequestParamsTest`.
+- [ ] **Шаг 3: Dynamic Map parameters (TDD).**
+      Реализация Aspect 2: поддержка `Map<?, ?>` в `@RequestParam` (query string, form-urlencoded body,
+      multipart text parts) и `@RequestHeader`. Раскрытие вложенных коллекций, пропуск null-значений,
+      поддержка префикса `name[key]` при непустом имени аннотации. Тесты всех вариантов мап.
+- [ ] **Шаг 4: Class-level and method-level `@RequestHeader` & `@RequestDefaultParam` (TDD).**
+      Реализация Aspect 3, 4, 5: расширение `@Target` аннотаций, создание контейнеров `@RequestHeaders`
+      и `@RequestDefaultParams` с `@Repeatable`, сбор статических заголовков и дефолтных параметров с
+      интерфейса и метода в `HttpTemplateBuilder`, логика переопределения (override) одноименных заголовков
+      и параметров вызовами параметров, валидация непустого `name()` в `ControllerValidator`.
+- [ ] **Шаг 5: Документация, end-to-end WireMock сьюйт и README.**
+      Комплексный end-to-end сьюйт (динамические фильтры, опциональные заголовки, class-level defaults,
+      наследование интерфейсов), актуализация Javadoc нормативной поверхности под `-Werror`,
+      секция в README ("Request parameters & headers flexibility").
+- [ ] **Шаг 6: Дистилляция в ROADMAP.md и зачистка DRAFT.md.**
+      Фиксация завершенного эпика в ROADMAP.md, закрытие эпика в DRAFT, поднятие следующего кандидата
+      (тонкая настройка пайплайна ADR-0018).
+
+## Кандидаты на следующие эпики (после ADR-0017)
+
+- **Кандидат №1 (направление #3): тонкая настройка пайплайна запросов — ADR-0018**
+  (request/response interceptors / hooks, кастомизация заголовков и метрик).
+- **Кандидат №2: test-javadoc** (ADR-0013 Non-goals: «test-source javadoc» вынесен за скобки аудита).
 
 ## Постоянная нить (не эпик, не чекбокс)
 
