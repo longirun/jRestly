@@ -688,7 +688,31 @@ Gates verified on clean rebuild (session #95):
 `./gradlew test --rerun` **420/420** (51 classes),
 generated POM **0.9.0** with 0 `<dependency>` (zero-dep preserved).
 
-After the cycle: candidate #1 — SSL / custom certificates (mailbox #94: `SSLContext` configuration on builder, zero-dep, enterprise CAs / mTLS); candidate #2 — transparent GZIP / Deflate decompression (mailbox #94: `GZIPInputStream`/`InflaterInputStream` zero-dep core); candidate #3 — response headers & metadata access (mailbox #94: `Link` pagination, `ETag`, `Location`, rate limits while preserving ADR-0004 transparent methods); candidate #4 — test-javadoc (ADR-0013 Non-goals). ADR number **0020** free.
+After the cycle: candidate #1 — SSL / custom certificates (mailbox #94: `SSLContext` configuration on builder, zero-dep, enterprise CAs / mTLS) — done, section below; candidate #2 — transparent GZIP / Deflate decompression (mailbox #94: `GZIPInputStream`/`InflaterInputStream` zero-dep core); candidate #3 — response headers & metadata access (mailbox #94: `Link` pagination, `ETag`, `Location`, rate limits while preserving ADR-0004 transparent methods); candidate #4 — test-javadoc (ADR-0013 Non-goals). ADR number **0020** — SSL epic, **0021** free.
+
+## SSL/TLS configuration, custom certificates & mTLS (ADR-0020) — COMPLETE ✅ (2026-10-15, unreleased)
+
+> Source of truth (concept, architecture decisions, SPI contract, status):
+> [`docs/0.10.0/ADR-0020-ssl-custom-certificates-mtls.md`](docs/0.10.0/ADR-0020-ssl-custom-certificates-mtls.md).
+> Sessions #97–#98 (agent-loop). Library maturity vector #1 (maintainer's 2026-10-14 23:25 mailbox:
+> "донастройка ssl (например, кастомные серты)"). Custom `SSLContext` and `SSLParameters` configuration
+> for enterprise private PKI, self-signed test fixtures, and mutual TLS (mTLS). Zero external dependencies,
+> 100% backward compatible (null defaults fall back to `SSLContext.getDefault()`).
+
+Key decisions (ADR-0020):
+- **Zero-dep core:** Uses strictly Java 21 standard library types `javax.net.ssl.SSLContext` and `javax.net.ssl.SSLParameters` from `java.base`.
+- **SPI surface (`ModuleInfo`):** Added `default SSLContext getSslContext() { return null; }` and `default SSLParameters getSslParameters() { return null; }`.
+- **Builder ergonomics:** Added fluent `sslContext(SSLContext)` and `sslParameters(SSLParameters)` to `SimpleModuleInfo.Builder` and `JRestlyClient.Builder` with fail-fast `NullPointerException` validation.
+- **Transport wiring:** `AbstractHttpClient.createConnection()` forwards non-null `sslContext` and `sslParameters` directly to `java.net.http.HttpClient.Builder`.
+- **Full test coverage:** 17 tests across `SslConfigTest` (unit configuration & fail-fast) and `HttpsSslTest` (WireMock HTTPS integration, negative untrusted cert rejection, positive custom `SSLContext`, `SSLParameters` TLSv1.3 pinning & cipher suite validation, async `CompletableFuture` and streaming `InputStream` over HTTPS).
+
+Gates (session #98, clean rebuild):
+- `./gradlew test` **437/437** (53 classes, 0 failures/errors; +17 tests in ADR-0020 across `SslConfigTest` and `HttpsSslTest`).
+- `compileJava` and `compileTestJava` 0 warnings under permanent `-Xlint:all -Werror`.
+- `javadoc` 0 warnings under permanent `-Xdoclint:all -Werror`.
+- Zero external runtime dependencies preserved.
+
+After the epic: candidate #2 — transparent GZIP / Deflate decompression (mailbox #94: `GZIPInputStream`/`InflaterInputStream` zero-dep core); candidate #3 — response headers & metadata access (mailbox #94: `Link` pagination, `ETag`, `Location`, rate limits while preserving ADR-0004 transparent methods); candidate #4 — test-javadoc (ADR-0013 Non-goals). ADR number **0021** free.
 
 ## Post-0.5.0 shortlist (not scheduled — see ADR-0003)
 

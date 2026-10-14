@@ -1,43 +1,24 @@
-# DRAFT: Эпик SSL / Custom Certificates & mTLS (ADR-0020)
+# DRAFT: активная зона после закрытия эпика SSL / mTLS (ADR-0020)
 
-> Эпик открыт в сессии #97 в рамках векторов зрелости библиотеки (mailbox Антона от 2026-10-14 23:25).
-> Концепт и архитектурные решения зафиксированы в `docs/0.10.0/ADR-0020-ssl-custom-certificates-mtls.md`.
+> Эпик SSL / Custom Certificates & mTLS (ADR-0020, `docs/0.10.0/`) закрыт 4/4 (сессии #97–#98):
+> концепт (#97) → реализация конфигурации ModuleInfo/SimpleModuleInfo/JRestlyClient + unit-тесты SslConfigTest (#97) →
+> интеграционные тесты с WireMock HTTPS HttpsSslTest (8 тестов: negative untrusted cert, positive custom SSLContext,
+> SSLParameters TLSv1.3 & cipher suite pinning, async CompletableFuture & streaming body, #98) →
+> дистилляция в ROADMAP («SSL/TLS configuration, custom certificates & mTLS (ADR-0020) — COMPLETE ✅») + гейты 437/437 тестов (#98).
+> Следующий ход — свободный, выбор из активной зоны.
 
-## Шаги эпика
+## Активная зона (кандидаты на следующий эпик)
 
-- [x] **Шаг 1: Концепт и дизайн (сессия #97)**
-  - Архитектурное решение ADR-0020 (`docs/0.10.0/ADR-0020-ssl-custom-certificates-mtls.md`).
-  - Анализ вариантов mTLS, корпоративных CA, self-signed сертов, протоколов TLS и SNI.
-  - Zero-dep инвариант: типы `javax.net.ssl.SSLContext` и `javax.net.ssl.SSLParameters` из `java.base`.
-- [x] **Шаг 2: Реализация конфигурационной поверхности (сессия #97)**
-  - `ModuleInfo`: `default SSLContext getSslContext() { return null; }`, `default SSLParameters getSslParameters() { return null; }`.
-  - `SimpleModuleInfo` и `SimpleModuleInfo.Builder`: хранение, геттеры и fluent-методы `sslContext(SSLContext)` / `sslParameters(SSLParameters)` с fail-fast на `null`.
-  - `JRestlyClient.Builder`: делегирование в `moduleInfoBuilder`.
-  - `AbstractHttpClient.createConnection()`: проброс `sslContext` и `sslParameters` в `HttpClient.Builder`.
-  - Unit-тесты `SslConfigTest` (9 тестов, проверяющие дефолты null, явную передачу, fail-fast на null).
-- [ ] **Шаг 3: Интеграционные тесты с WireMock HTTPS (сессия #98)**
-  - Поднятие WireMock на динамическом HTTPS порту (`dynamicHttpsPort()`).
-  - Отрицательный тест: клиент с дефолтным `SSLContext` отклоняет самоподписанный сертификат с SSLHandshake/SSLException.
-  - Положительный тест: клиент с кастомным `SSLContext` (trust-all или truststore WireMock) успешно выполняет декларативные запросы.
-  - Тест с `SSLParameters`: клиент с кастомными `SSLParameters` (протоколы TLS, endpoint identification algorithm).
-- [ ] **Шаг 4: Гейты и финализация эпика**
-  - Полный прогон `./gradlew test compileJava compileTestJava javadoc`.
-  - Фиксация результатов, обновление статуса ADR-0020 (Accepted) и дистилляция в ROADMAP.md.
-
----
-
-## Активная зона (кандидаты на следующие эпики)
-
-- **Кандидат №2 — Прозрачный GZIP / Deflate decompression** (mailbox #94):
-  JDK `HttpClient` не распаковывает сжатые ответы автоматически. Поддержка `Accept-Encoding: gzip, deflate`
+- **Кандидат №1 — Прозрачный GZIP / Deflate decompression** (mailbox #94, вектор зрелости №2):
+  JDK `HttpClient` не распаковывает сжатые ответы автоматически. Поддержка отправки `Accept-Encoding: gzip, deflate`
   и прозрачная распаковка потока ответа через `GZIPInputStream` и `InflaterInputStream` в Java
-  standard library (zero-dep), экономия трафика и удобство работы.
-- **Кандидат №3 — Элегантный доступ к метаданным заголовков** (mailbox #94):
+  standard library (zero-dep), экономия трафика и удобство работы. Следующий ADR-0021.
+- **Кандидат №2 — Элегантный доступ к метаданным заголовков** (mailbox #94, вектор зрелости №3):
   Пагинация по заголовку `Link`, доступ к `ETag`, `Location`, рейт-лимитам (`X-RateLimit-*`, `Retry-After`)
   при строгом сохранении инварианта прозрачных методов без `Response<T>` (ADR-0004). Исследование
   подходов: thread-scoped metadata context, consumer/holder аргументы в сигнатуре метода, либо
   интеграция с `ResponseInterceptor`.
-- **Кандидат №4 — test-javadoc** (ADR-0013 Non-goals):
+- **Кандидат №3 — test-javadoc** (ADR-0013 Non-goals):
   Test-source javadoc вынесен за скобки аудита; наведение лоска в тестовых классах.
 
 ---
@@ -63,8 +44,7 @@
   HTTP-клиент для современной Java; (3) эргономика для современных
   API — все 4 эпика direction 3 закрыты (ADR-0015–0018), packaging в 0.9.0 завершён.
 - **Векторы зрелости библиотеки (Антон, 2026-10-14 23:25, живая нить):**
-  донастройка SSL (кастомные серты, mTLS), прозрачный GZIP/Deflate,
+  донастройка SSL (кастомные серты, mTLS) — закрыт в ADR-0020! Прозрачный GZIP/Deflate,
   элегантный доступ к метаданным заголовков (пагинация, ETag, Location, rate limits).
-  SSL взят в работу в ADR-0020!
 - **Коммиты — краткие, не дублируют ченджлог** (Антон).
 - **Объём одной сессии в 2–3 раза меньше** — один маленький шаг.

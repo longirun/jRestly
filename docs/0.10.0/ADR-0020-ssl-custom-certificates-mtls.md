@@ -1,6 +1,6 @@
 # ADR-0020: SSL/TLS configuration, custom certificates & mTLS
 
-> 2026-10-15 · **Proposed** · Concept and design for the SSL/TLS configuration epic.
+> 2026-10-15 · **Accepted** · Concept, design, and full implementation verified in sessions #97–#98.
 > Addresses candidate #1 from the active zone of DRAFT.md and the maintainer's 2026-10-14
 > mailbox guidance on library maturity vectors ("донастройка ssl (например, кастомные серты)").
 
@@ -117,7 +117,9 @@ protected void createConnection() {
    - Spin up WireMock with HTTPS enabled on a dynamic port (`dynamicHttpsPort()`).
    - Negative test: client without custom SSL context fails against WireMock self-signed cert
      with an SSL handshake/verification exception.
-   - Positive test: client with configured `SSLContext` (trusting WireMock's cert) connects
+   - Positive test: client with configured `SSLContext` (trusting WireMock's cert via `X509ExtendedTrustManager`) connects
      and executes declarative requests cleanly.
-   - SSLParameters test: client configured with specific `SSLParameters` (e.g. TLSv1.3)
-     successfully performs HTTPS exchanges.
+   - SSLParameters tests: client configured with specific `SSLParameters` (pinning TLSv1.3 and cipher suites)
+     successfully performs HTTPS exchanges; incompatible cipher suites fail TLS handshake.
+   - Async & streaming tests: `CompletableFuture` async exchange and `InputStream` body streaming
+     over HTTPS operate cleanly through the configured SSL pipeline.
