@@ -35,6 +35,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.UUID;
@@ -219,6 +220,26 @@ public class HttpTemplateBuilder {
                         continue;
                     }
 
+                    if (arg instanceof Map<?, ?> map) {
+                        for (Map.Entry<?, ?> entry : map.entrySet()) {
+                            if (entry.getKey() == null || entry.getValue() == null) {
+                                continue;
+                            }
+                            String headerName = String.valueOf(entry.getKey());
+                            Object val = entry.getValue();
+                            if (val instanceof Collection<?> collection) {
+                                for (Object o : collection) {
+                                    if (o != null) {
+                                        result.add(new Header(headerName, o.toString()));
+                                    }
+                                }
+                            } else {
+                                result.add(new Header(headerName, val.toString()));
+                            }
+                        }
+                        continue;
+                    }
+
                     RequestHeader headerAnnotation = parameters[i].getAnnotation(RequestHeader.class);
                     String name = headerAnnotation.name().isEmpty()
                             ? parameters[i].getName()
@@ -288,6 +309,29 @@ public class HttpTemplateBuilder {
 
                 Parameter parameter = parameters[i];
                 RequestParam annotation = parameter.getAnnotation(RequestParam.class);
+
+                if (args[i] instanceof Map<?, ?> map) {
+                    String prefix = annotation.name();
+                    for (Map.Entry<?, ?> entry : map.entrySet()) {
+                        if (entry.getKey() == null || entry.getValue() == null) {
+                            continue;
+                        }
+                        String paramName = prefix.isEmpty()
+                                ? String.valueOf(entry.getKey())
+                                : prefix + "[" + entry.getKey() + "]";
+                        Object val = entry.getValue();
+                        if (val instanceof Collection<?> collection) {
+                            for (Object o : collection) {
+                                if (o != null) {
+                                    result.add(new Param(paramName, o.toString()));
+                                }
+                            }
+                        } else {
+                            result.add(new Param(paramName, val.toString()));
+                        }
+                    }
+                    continue;
+                }
 
                 String name = annotation.name().isEmpty()
                         ? parameter.getName()
@@ -372,6 +416,29 @@ public class HttpTemplateBuilder {
 
                 Parameter parameter = parameters[i];
                 RequestParam annotation = parameter.getAnnotation(RequestParam.class);
+
+                if (args[i] instanceof Map<?, ?> map) {
+                    String prefix = annotation.name();
+                    for (Map.Entry<?, ?> entry : map.entrySet()) {
+                        if (entry.getKey() == null || entry.getValue() == null) {
+                            continue;
+                        }
+                        String partName = prefix.isEmpty()
+                                ? String.valueOf(entry.getKey())
+                                : prefix + "[" + entry.getKey() + "]";
+                        Object val = entry.getValue();
+                        if (val instanceof Collection<?> collection) {
+                            for (Object o : collection) {
+                                if (o != null) {
+                                    parts.add(MultipartPart.text(partName, o.toString()));
+                                }
+                            }
+                        } else {
+                            parts.add(MultipartPart.text(partName, val.toString()));
+                        }
+                    }
+                    continue;
+                }
 
                 String name = annotation.name().isEmpty()
                         ? parameter.getName()

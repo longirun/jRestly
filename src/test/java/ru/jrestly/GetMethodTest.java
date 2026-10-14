@@ -2,16 +2,32 @@ package ru.jrestly;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import ru.jrestly.annotation.Get;
+import ru.jrestly.annotation.RequestParam;
 import ru.jrestly.fixtures.TestDto;
 
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 class GetMethodTest extends BaseWireMockTest {
+
+    interface DynamicQueryController {
+        @Get(path = "/api/search/dynamic")
+        String searchWithMap(@RequestParam Map<String, ?> params);
+
+        @Get(path = "/api/search/prefixed")
+        String searchWithPrefixedMap(@RequestParam(name = "filter") Map<String, ?> filter);
+    }
+
+    private DynamicQueryController dynamicQueryController() {
+        return client.get(DynamicQueryController.class);
+    }
 
     @Test
     @DisplayName("GET with @PathVariable substitutes value into path")
@@ -192,5 +208,122 @@ class GetMethodTest extends BaseWireMockTest {
         List<TestDto> result = controller.getWithCollectionParam(null);
 
         assertNotNull(result);
+    }
+
+    @Test
+    @DisplayName("GET with @RequestParam Map expands entries into individual query parameters")
+    void getWithMapRequestParamExpandsIndividualParams() {
+        stubFor(get(urlEqualTo("/api/search/dynamic?q=java&page=2"))
+                .willReturn(aResponse()
+                        .withStatus(200)
+                        .withBody("found")));
+
+        Map<String, Object> params = new LinkedHashMap<>();
+        params.put("q", "java");
+        params.put("page", 2);
+
+        String result = dynamicQueryController().searchWithMap(params);
+
+        assertEquals("found", result);
+        verify(getRequestedFor(urlPathEqualTo("/api/search/dynamic"))
+                .withQueryParam("q", equalTo("java"))
+                .withQueryParam("page", equalTo("2")));
+    }
+
+    @Test
+    @DisplayName("GET with @RequestParam(name) Map prefixes parameters with name[key]")
+    void getWithPrefixedMapRequestParam() {
+        stubFor(get(urlPathEqualTo("/api/search/prefixed"))
+                .willReturn(aResponse()
+                        .withStatus(200)
+                        .withBody("prefixed-ok")));
+
+        Map<String, Object> filter = new LinkedHashMap<>();
+        filter.put("status", "active");
+        filter.put("role", "admin");
+
+        String result = dynamicQueryController().searchWithPrefixedMap(filter);
+
+        assertEquals("prefixed-ok", result);
+        verify(getRequestedFor(urlPathEqualTo("/api/search/prefixed"))
+                .withQueryParam("filter[status]", equalTo("active"))
+                .withQueryParam("filter[role]", equalTo("admin")));
+    }
+
+    @Test
+    @DisplayName("GET with @RequestParam Map containing Collection expands into repeated parameters")
+    void getWithMapContainingCollectionExpandsRepeatedParams() {
+        stubFor(get(urlPathEqualTo("/api/search/dynamic"))
+                .willReturn(aResponse()
+                        .withStatus(200)
+                        .withBody("collection-ok")));
+
+        Map<String, Object> params = new LinkedHashMap<>();
+        params.put("tags", List.of("jvm", "http"));
+
+        String result = dynamicQueryController().searchWithMap(params);
+
+        assertEquals("collection-ok", result);
+        verify(getRequestedFor(urlPathEqualTo("/api/search/dynamic"))
+                .withQueryParam("tags", equalTo("jvm"))
+                .withQueryParam("tags", equalTo("http")));
+    }
+
+    @Test
+    @DisplayName("GET with @RequestParam(name) Map containing Collection prefixes repeated parameters")
+    void getWithPrefixedMapContainingCollectionExpandsRepeatedParams() {
+        stubFor(get(urlPathEqualTo("/api/search/prefixed"))
+                .willReturn(aResponse()
+                        .withStatus(200)
+                        .withBody("prefixed-collection-ok")));
+
+        Map<String, Object> filter = new LinkedHashMap<>();
+        filter.put("tags", List.of("jvm", "http"));
+
+        String result = dynamicQueryController().searchWithPrefixedMap(filter);
+
+        assertEquals("prefixed-collection-ok", result);
+        verify(getRequestedFor(urlPathEqualTo("/api/search/prefixed"))
+                .withQueryParam("filter[tags]", equalTo("jvm"))
+                .withQueryParam("filter[tags]", equalTo("http")));
+    }
+
+    @Test
+    @DisplayName("GET with @RequestParam Map skips null keys, null values, and null collection elements")
+    void getWithMapSkipsNullKeysAndValues() {
+        stubFor(get(urlPathEqualTo("/api/search/dynamic"))
+                .willReturn(aResponse()
+                        .withStatus(200)
+                        .withBody("clean-ok")));
+
+        Map<String, Object> params = new LinkedHashMap<>();
+        params.put(null, "skipped");
+        params.put("ignored", null);
+        params.put("valid", "ok");
+        params.put("tags", Arrays.asList("one", null, "two"));
+
+        String result = dynamicQueryController().searchWithMap(params);
+
+        assertEquals("clean-ok", result);
+        verify(getRequestedFor(urlPathEqualTo("/api/search/dynamic"))
+                .withoutQueryParam("null")
+                .withoutQueryParam("ignored")
+                .withQueryParam("valid", equalTo("ok"))
+                .withQueryParam("tags", equalTo("one"))
+                .withQueryParam("tags", equalTo("two")));
+    }
+
+    @Test
+    @DisplayName("GET with null or empty @RequestParam Map omits query string")
+    void getWithNullOrEmptyMapOmitsQueryString() {
+        stubFor(get(urlEqualTo("/api/search/dynamic"))
+                .willReturn(aResponse()
+                        .withStatus(200)
+                        .withBody("empty-ok")));
+
+        dynamicQueryController().searchWithMap(Map.of());
+        dynamicQueryController().searchWithMap(null);
+
+        verify(2, getRequestedFor(urlEqualTo("/api/search/dynamic")));
     }
 }

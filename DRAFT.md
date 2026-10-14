@@ -3,7 +3,7 @@
 > Эпик "Гибкость параметров запроса" (ADR-0017, `docs/0.9.0/ADR-0017-request-parameter-flexibility.md`)
 > открыт в сессии #78. Это третий эргономический срез направления #3 (входящее Антона 2026-10-14 09:10:
 > "гибкость параметров запроса, стриминг данных, ЛЛМ, тонкая настройка пайплайна").
-> Базовый сьюйт: **337/337** (44 класса), 0 warnings под `-Xlint:all -Werror` и `-Xdoclint:all -Werror`,
+> Базовый сьюйт: **355/355** (44 класса), 0 warnings под `-Xlint:all -Werror` и `-Xdoclint:all -Werror`,
 > `build.gradle` 0.8.0.
 
 ## Эпик: Request parameter & header flexibility (ADR-0017)
@@ -21,10 +21,12 @@
       пропуск `null`-элементов в коллекциях `@RequestParam` и `@RequestHeader`, строгая валидация `null`
       в `@PathVariable` с понятным `IllegalArgumentException`. Unit/WireMock тесты в `RequestHeadersTest`,
       `PathVariableEncodingTest`, `GetMethodTest` и `MultipartTest`. +11 тестов (337/337).
-- [ ] **Шаг 3: Dynamic Map parameters (TDD).**
+- [x] **Шаг 3: Dynamic Map parameters (TDD).**
       Реализация Aspect 2: поддержка `Map<?, ?>` в `@RequestParam` (query string, form-urlencoded body,
-      multipart text parts) и `@RequestHeader`. Раскрытие вложенных коллекций, пропуск null-значений,
-      поддержка префикса `name[key]` при непустом имени аннотации. Тесты всех вариантов мап.
+      multipart text parts) и `@RequestHeader`. Раскрытие вложенных коллекций, пропуск null-значений
+      и null-ключей, поддержка префикса `name[key]` при непустом имени аннотации, `default ""` для
+      `RequestHeader.name()`. TDD тесты в `RequestHeadersTest`, `GetMethodTest`, `PostMethodTest`,
+      `MultipartTest`. +18 тестов (355/355).
 - [ ] **Шаг 4: Class-level and method-level `@RequestHeader` & `@RequestDefaultParam` (TDD).**
       Реализация Aspect 3, 4, 5: расширение `@Target` аннотаций, создание контейнеров `@RequestHeaders`
       и `@RequestDefaultParams` с `@Repeatable`, сбор статических заголовков и дефолтных параметров с

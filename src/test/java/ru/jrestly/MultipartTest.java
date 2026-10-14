@@ -3,8 +3,12 @@ package ru.jrestly;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import ru.jrestly.annotation.MultipartFormFile;
+import ru.jrestly.annotation.Post;
+import ru.jrestly.annotation.RequestParam;
 import ru.jrestly.http.FileContent;
 import ru.jrestly.http.MultipartPart;
+import ru.jrestly.http.RequestType;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -13,7 +17,9 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Random;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.*;
@@ -24,6 +30,20 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class MultipartTest extends BaseWireMockTest {
+
+    interface DynamicMultipartController {
+        @Post(path = "/api/upload/dynamic", requestType = RequestType.MULTIPART_FORM_DATA)
+        String uploadWithMap(@MultipartFormFile(partName = "file") FileContent file,
+                             @RequestParam Map<String, ?> meta);
+
+        @Post(path = "/api/upload/prefixed", requestType = RequestType.MULTIPART_FORM_DATA)
+        String uploadWithPrefixedMap(@MultipartFormFile(partName = "file") FileContent file,
+                                     @RequestParam(name = "meta") Map<String, ?> meta);
+    }
+
+    private DynamicMultipartController dynamicMultipartController() {
+        return client.get(DynamicMultipartController.class);
+    }
 
     @TempDir
     Path tempDir;
@@ -688,5 +708,129 @@ class MultipartTest extends BaseWireMockTest {
 
         assertThrows(NullPointerException.class, () ->
                 new MultipartPart(null, "good.txt", "text/plain", "content", null));
+    }
+
+    @Test
+    @DisplayName("MULTIPART upload with @RequestParam Map sends entries as text parts")
+    void uploadWithMapRequestParam() {
+        stubFor(post(urlEqualTo("/api/upload/dynamic"))
+                .willReturn(aResponse()
+                        .withStatus(200)
+                        .withBody("uploaded-dynamic")));
+
+        Map<String, Object> meta = new LinkedHashMap<>();
+        meta.put("author", "john");
+        meta.put("version", 1);
+
+        FileContent file = FileContent.of("doc.txt", "content".getBytes(StandardCharsets.UTF_8));
+        String response = dynamicMultipartController().uploadWithMap(file, meta);
+
+        assertEquals("uploaded-dynamic", response);
+        verify(postRequestedFor(urlEqualTo("/api/upload/dynamic"))
+                .withHeader("Content-Type", containing("multipart/form-data"))
+                .withRequestBodyPart(aMultipart()
+                        .withName("file")
+                        .withFileName("doc.txt")
+                        .withBody(equalTo("content"))
+                        .build())
+                .withRequestBodyPart(aMultipart()
+                        .withName("author")
+                        .withBody(equalTo("john"))
+                        .build())
+                .withRequestBodyPart(aMultipart()
+                        .withName("version")
+                        .withBody(equalTo("1"))
+                        .build()));
+    }
+
+    @Test
+    @DisplayName("MULTIPART upload with @RequestParam(name) Map sends prefixed text parts name[key]")
+    void uploadWithPrefixedMapRequestParam() {
+        stubFor(post(urlEqualTo("/api/upload/prefixed"))
+                .willReturn(aResponse()
+                        .withStatus(200)
+                        .withBody("uploaded-prefixed")));
+
+        Map<String, Object> meta = new LinkedHashMap<>();
+        meta.put("category", "reports");
+
+        FileContent file = FileContent.of("doc.txt", "content".getBytes(StandardCharsets.UTF_8));
+        String response = dynamicMultipartController().uploadWithPrefixedMap(file, meta);
+
+        assertEquals("uploaded-prefixed", response);
+        verify(postRequestedFor(urlEqualTo("/api/upload/prefixed"))
+                .withHeader("Content-Type", containing("multipart/form-data"))
+                .withRequestBodyPart(aMultipart()
+                        .withName("file")
+                        .withFileName("doc.txt")
+                        .withBody(equalTo("content"))
+                        .build())
+                .withRequestBodyPart(aMultipart()
+                        .withName("meta[category]")
+                        .withBody(equalTo("reports"))
+                        .build()));
+    }
+
+    @Test
+    @DisplayName("MULTIPART upload with @RequestParam Map containing Collection sends multiple text parts")
+    void uploadWithMapContainingCollection() {
+        stubFor(post(urlEqualTo("/api/upload/dynamic"))
+                .willReturn(aResponse()
+                        .withStatus(200)
+                        .withBody("uploaded-multi")));
+
+        Map<String, Object> meta = new LinkedHashMap<>();
+        meta.put("tags", List.of("finance", "quarterly"));
+
+        FileContent file = FileContent.of("doc.txt", "content".getBytes(StandardCharsets.UTF_8));
+        String response = dynamicMultipartController().uploadWithMap(file, meta);
+
+        assertEquals("uploaded-multi", response);
+        verify(postRequestedFor(urlEqualTo("/api/upload/dynamic"))
+                .withHeader("Content-Type", containing("multipart/form-data"))
+                .withRequestBodyPart(aMultipart()
+                        .withName("tags")
+                        .withBody(equalTo("finance"))
+                        .build())
+                .withRequestBodyPart(aMultipart()
+                        .withName("tags")
+                        .withBody(equalTo("quarterly"))
+                        .build()));
+    }
+
+    @Test
+    @DisplayName("MULTIPART upload with @RequestParam Map skips null keys, null values, and null collection elements")
+    void uploadWithMapSkipsNullKeysAndValues() {
+        stubFor(post(urlEqualTo("/api/upload/dynamic"))
+                .willReturn(aResponse()
+                        .withStatus(200)
+                        .withBody("uploaded-clean")));
+
+        Map<String, Object> meta = new LinkedHashMap<>();
+        meta.put(null, "skipped");
+        meta.put("ignored", null);
+        meta.put("valid", "present");
+        meta.put("tags", Arrays.asList("alpha", null, "beta"));
+
+        FileContent file = FileContent.of("doc.txt", "content".getBytes(StandardCharsets.UTF_8));
+        String response = dynamicMultipartController().uploadWithMap(file, meta);
+
+        assertEquals("uploaded-clean", response);
+        verify(postRequestedFor(urlEqualTo("/api/upload/dynamic"))
+                .withHeader("Content-Type", containing("multipart/form-data"))
+                .withRequestBody(notContaining("name=\"null\""))
+                .withRequestBody(notContaining("name=\"ignored\""))
+                .withRequestBodyPart(aMultipart()
+                        .withName("valid")
+                        .withBody(equalTo("present"))
+                        .build())
+                .withRequestBodyPart(aMultipart()
+                        .withName("tags")
+                        .withBody(equalTo("alpha"))
+                        .build())
+                .withRequestBodyPart(aMultipart()
+                        .withName("tags")
+                        .withBody(equalTo("beta"))
+                        .build()));
     }
 }

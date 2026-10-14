@@ -8,7 +8,9 @@ import ru.jrestly.annotation.RequestHeader;
 
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.*;
 import static org.junit.jupiter.api.Assertions.*;
@@ -20,8 +22,17 @@ class RequestHeadersTest extends BaseWireMockTest {
         String getWithMultiHeader(@RequestHeader(name = "X-Tag") List<String> tags);
     }
 
+    interface MapHeaderController {
+        @Get(path = "/api/headers/dynamic")
+        String getWithMapHeaders(@RequestHeader Map<String, ?> headers);
+    }
+
     private HeaderFeatureController headerController() {
         return client.get(HeaderFeatureController.class);
+    }
+
+    private MapHeaderController mapHeaderController() {
+        return client.get(MapHeaderController.class);
     }
 
     @Test
@@ -138,5 +149,81 @@ class RequestHeadersTest extends BaseWireMockTest {
 
         verify(getRequestedFor(urlEqualTo("/api/auth-check"))
                 .withHeader("Authorization", equalTo("Bearer test-token")));
+    }
+
+    @Test
+    @DisplayName("@RequestHeader with Map sends each entry as an individual header")
+    void mapHeaderSendsIndividualHeaders() {
+        stubFor(get(urlEqualTo("/api/headers/dynamic"))
+                .willReturn(aResponse()
+                        .withStatus(200)
+                        .withBody("ok")));
+
+        Map<String, Object> headers = new LinkedHashMap<>();
+        headers.put("X-Trace-Id", "trace-123");
+        headers.put("X-Client-Version", 42);
+
+        String result = mapHeaderController().getWithMapHeaders(headers);
+
+        assertEquals("ok", result);
+        verify(getRequestedFor(urlEqualTo("/api/headers/dynamic"))
+                .withHeader("X-Trace-Id", equalTo("trace-123"))
+                .withHeader("X-Client-Version", equalTo("42")));
+    }
+
+    @Test
+    @DisplayName("@RequestHeader with Map containing Collection values sends multiple headers")
+    void mapHeaderWithCollectionSendsMultipleHeaders() {
+        stubFor(get(urlEqualTo("/api/headers/dynamic"))
+                .willReturn(aResponse()
+                        .withStatus(200)
+                        .withBody("ok")));
+
+        Map<String, Object> headers = new LinkedHashMap<>();
+        headers.put("X-Role", List.of("admin", "editor"));
+
+        String result = mapHeaderController().getWithMapHeaders(headers);
+
+        assertEquals("ok", result);
+        verify(getRequestedFor(urlEqualTo("/api/headers/dynamic"))
+                .withHeader("X-Role", equalTo("admin"))
+                .withHeader("X-Role", equalTo("editor")));
+    }
+
+    @Test
+    @DisplayName("@RequestHeader with Map skips null keys, null values, and null collection elements")
+    void mapHeaderSkipsNullKeysAndValues() {
+        stubFor(get(urlEqualTo("/api/headers/dynamic"))
+                .willReturn(aResponse()
+                        .withStatus(200)
+                        .withBody("ok")));
+
+        Map<String, Object> headers = new LinkedHashMap<>();
+        headers.put(null, "should-be-skipped");
+        headers.put("X-Null-Val", null);
+        headers.put("X-Tags", Arrays.asList("active", null, "verified"));
+
+        String result = mapHeaderController().getWithMapHeaders(headers);
+
+        assertEquals("ok", result);
+        verify(getRequestedFor(urlEqualTo("/api/headers/dynamic"))
+                .withoutHeader("null")
+                .withoutHeader("X-Null-Val")
+                .withHeader("X-Tags", equalTo("active"))
+                .withHeader("X-Tags", equalTo("verified")));
+    }
+
+    @Test
+    @DisplayName("@RequestHeader with null or empty Map is omitted")
+    void mapHeaderNullOrEmptyIsOmitted() {
+        stubFor(get(urlEqualTo("/api/headers/dynamic"))
+                .willReturn(aResponse()
+                        .withStatus(200)
+                        .withBody("ok")));
+
+        mapHeaderController().getWithMapHeaders(Map.of());
+        mapHeaderController().getWithMapHeaders(null);
+
+        verify(2, getRequestedFor(urlEqualTo("/api/headers/dynamic")));
     }
 }
