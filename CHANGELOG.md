@@ -3,6 +3,40 @@
 User-facing changes per version. History prior to 0.7.0 (cycles 0.5.0 →
 0.6.1) lives in [ROADMAP.md](ROADMAP.md).
 
+## 0.8.0 — 2026-10-14 (unpublished)
+
+> *Unpublished — no git tag. Per the maintainer's versioning rule the
+> version lives in `build.gradle` and the release commit message; the
+> tag-based coordinates (JitPack) remain at `v0.6.1` until the maintainer
+> tags.*
+
+### Changed
+
+- **The shipped Javadoc is now normatively complete** — the whole
+  normative main surface (every public and protected member) carries a
+  comment: 237 javadoc warnings → 0 under `-Xdoclint:all`. Details:
+  [ADR-0013](docs/0.8.0/ADR-0013-compiler-and-javadoc-warnings-audit.md)
+  and the Javadoc itself.
+- **Serialization compatibility pinned** — the three exception classes
+  (`ControllerValidationException`, `HandledException`,
+  `UnexpectedStatusException`) carry an explicit `@Serial`
+  `serialVersionUID`. Details:
+  [ADR-0013](docs/0.8.0/ADR-0013-compiler-and-javadoc-warnings-audit.md).
+- **All 12 compiler warnings fixed** (9 main / 3 test; suppression
+  targeted, never blanket, each carrying a one-line rationale). Details:
+  [ADR-0013](docs/0.8.0/ADR-0013-compiler-and-javadoc-warnings-audit.md).
+- **`--release 21`** — the bytecode target is unchanged; compilation now
+  also checks calls against the JDK 21 API on newer toolchains. Details:
+  [ADR-0013](docs/0.8.0/ADR-0013-compiler-and-javadoc-warnings-audit.md).
+- **Permanent build gates** — `javac -Xlint:all -Werror` (both compile
+  tasks) and `javadoc -Xdoclint:all -Werror` run in every build: a new
+  public/protected member without a comment, or a new compiler warning,
+  fails the build. Details:
+  [ADR-0013](docs/0.8.0/ADR-0013-compiler-and-javadoc-warnings-audit.md).
+
+The core remains zero-dependency: the generated POM has no
+`<dependency>`.
+
 ## 0.7.0 — 2026-10-13 (unpublished)
 
 > *Unpublished — no git tag. Per the maintainer's versioning rule the

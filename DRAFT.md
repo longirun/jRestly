@@ -1,4 +1,4 @@
-# DRAFT: 0.8.0-цикл (ADR-0014) — концепт закрыт (сессия #60), следующий ход — шаг 2 (changelog)
+# DRAFT: 0.8.0-цикл (ADR-0014) — шаги 1–2 закрыты (сессии #60/#61), следующий ход — шаг 3 (bump + гейты)
 
 > Концепт (ADR-0014, `docs/0.8.0/`, сессия #60): **0.7.0 → 0.8.0 (minor,
 > не patch)** — shipped-javadoc артефакт нормативно полон (артефактное
@@ -18,9 +18,18 @@
 - [x] Шаг 1 — концепт: ADR-0014 + этот эпик (сессия #60; гейты-снимок:
       256/256, compile 0/0 под перманентным lint-гейтом, POM 0.7.0 с
       0 `<dependency>` — как был, build.gradle не трогался).
-- [ ] Шаг 2 — CHANGELOG.md: entry 0.8.0 (navigator-форма: 1–2 строки на
-      изменение + указатель на ADR-0013/ROADMAP/Javadoc; механику не
-      пересказывать; entry 0.7.0 — не трогать).
+- [x] Шаг 2 — CHANGELOG.md: entry 0.8.0 (сессия #61; navigator-форма: 5
+      bullets — javadoc-артефакт нормативно полон (237→0), `@Serial` UID ×3
+      exception'а, 12 warnings → 0 (suppress точечный), `--release 21`,
+      перманентные `-Werror`-гейты; указатели — ADR-0013/Javadoc; механику
+      не пересказывать; entry 0.7.0 не тронут). Решения формы: тестовая
+      гигиена (TestFutures/TestModuleInfo) — вне entry (test-only,
+      прецедент 0.7.0 — user-facing); 4 явных no-arg-конструктора — вне
+      entry (ABI-нейтральны, ADR-0014: «no new public surface»); линк на
+      ROADMAP-секцию — пока не ставим (секция появится в шаге 4 —
+      dangling-link риск); дата entry — 2026-10-14, сверить с датой
+      бамп-коммита на шаге 3 (если бамп в другой день — поправить, окно
+      дёшево, entry unpublished).
 - [ ] Шаг 3 — bump 0.7.0 → 0.8.0 в build.gradle + гейты (compileJava/
       compileTestJava 0 warnings, javadoc 0, `./gradlew test --rerun`
       256/256, POM перегенерирован: 0.8.0, 0 `<dependency>`) + версия 0.8.0
