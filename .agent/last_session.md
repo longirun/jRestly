@@ -1,67 +1,45 @@
-# Handover Note: Сессия 88 (ADR-0018 шаг 4/6 — Исполнение интерцепторов в HttpTemplate закрыто; сьюйт 398 → 411/411; следующий ход — шаг 5 end-to-end WireMock сьюйт, документация, README и Javadoc)
+# Handover Note: Сессия 89 (ADR-0018 шаг 5/6 — end-to-end WireMock сьюйт, документация, README и Javadoc закрыто; сьюйт 411 → 420/420; следующий ход — шаг 6 дистилляция в ROADMAP.md, перевод ADR-0018 в Accepted и зачистка DRAFT.md)
 
 ## Что сделано в этой сессии
-- **Ход:** шаг 4 эпика ADR-0018 «Тонкая настройка пайплайна запросов» (исполнение в `HttpTemplate`: sync `exchange()` и async `exchangeAsync()` twins execution seam, цепочка `RequestInterceptor`, хуки `ResponseInterceptor`, передача контекста и атрибутов, изоляция сбоев хуков, стрим-безопасность TDD).
-- **Реализация в ядре (`ru.jrestly.http.HttpTemplate`):**
-  - **Zero-cost путь:** при `requestInterceptors.isEmpty() && responseInterceptors.isEmpty()` контексты `RequestContext` и `ResponseContext` не создаются, `whenComplete` к `CompletableFuture` не прикрепляется — отсутствие накладных расходов на горячем пути по умолчанию.
-  - **Создание `RequestContext`:**
-    - Инициализация `SimpleRequestContext(modName, ctrlClass, mtd, callArgs)`.
-    - Безопасные fallbacks: имя модуля из `moduleInfo.getName()` (или "default"), контроллер из `controllerClass` (или `HttpTemplate.class`), метод из `method` (или `HttpTemplate.class.getMethod("exchange")`), аргументы вызова.
-  - **Выполнение цепочки `RequestInterceptor`:**
-    - Последовательное применение `interceptor.intercept(effectiveRequest, requestContext)`.
-    - Валидация на `null`: если интерцептор вернул `null`, выбрасывается `NullPointerException("RequestInterceptor returned null WireRequest")`.
-    - Граблина сессии (находка TDD): при возврате `null` интерцептором сохранять последний валидный `current` WireRequest, чтобы `ResponseContext` получал валидный non-null запрос, а не падал на валидации `SimpleResponseContext`.
-    - Запрос логируется `logRequest(effectiveRequest)` после применения интерцепторов (в логах виден итоговый wire-запрос).
-  - **Выполнение `ResponseInterceptor` (sync seam):**
-    - Блок `finally` в `exchange()` гарантирует вызов `invokeResponseInterceptors(...)` при любом исходе вызова (успех 2xx, `@OnError` исключение `HandledException`, неожиданный статус `UnexpectedStatusException`, транспортный `IOException`).
-    - Изоляция сбоев хуков: перехват всех `Throwable` в цикле `interceptor.onResponse(context)` с логированием `logger.log(Level.WARNING, "ResponseInterceptor failed", t)` — ошибка в одном хуке (метрики, аудит) не ломает результат вызова и не прерывает цепочку остальных хуков.
-  - **Выполнение `ResponseInterceptor` (async seam):**
-    - Неблокирующий хук `.whenComplete((res, ex) -> ...)` в `exchangeAsync`.
-    - Сохранение `WireResponse` через `AtomicReference` на шаге `thenApply` для доступности в `ResponseContext` даже при последующей ошибке десериализации/статуса.
-    - Распаковка `unwrapCause(ex)` для передачи точного исключения (`HandledException`, `UnexpectedStatusException`, `RuntimeException(IOException)`).
-    - Результат и ошибки асинхронного `CompletableFuture` полностью сохраняются.
-  - **Стрим-безопасность (`InputStream`, SSE, lines):**
-    - Для потоковых ответов `ResponseContext` передает метаданные (`statusCode`, заголовки, `stream != null`) без вычитывания тела стрима; вызывающий код получает живой, невычитанный поток.
-- **TDD тесты (`src/test/java/ru/jrestly/http/RequestPipelineTest.java`, 13 тестов):**
-  - `requestInterceptorsExecutedInOrderAndModifyRequest`: последовательное применение интерцепторов и мутация заголовков.
-  - `requestInterceptorCanInspectCallMetadata`: чтение метаданных вызова (`moduleName`, `controllerClass`, `method`, `args`) из `RequestContext`.
-  - `requestInterceptorReturningNullThrowsNullPointerException`: возврат `null` выбрасывает понятный NPE и уведомляет `ResponseInterceptor`.
-  - `responseInterceptorReceivesSuccessfulResponseAndTiming`: получение 200 OK, атрибутов, длительности `duration >= 0` и заголовков.
-  - `responseInterceptorReceivesHandledExceptionOnConfiguredErrorStatus`: перехват `HandledException` на 400 статусе с `@OnError`.
-  - `responseInterceptorReceivesUnexpectedStatusExceptionOnUnconfiguredErrorStatus`: перехват `UnexpectedStatusException` на 500 статусе.
-  - `responseInterceptorReceivesTransportFailureOnNetworkError`: перехват `IOException` сетевого уровня при `response().isEmpty()`.
-  - `responseInterceptorExceptionIsIsolatedAndDoesNotBreakCallOrOtherInterceptors`: ошибка в одном хуке не ломает вызов и не останавливает другие хуки.
-  - `asyncTwinRequestAndResponseInterceptorsExecuteSymmetrically`: неблокирующее исполнение в async twin `CompletableFuture<String>`.
-  - `asyncTwinResponseInterceptorCapturesFailure`: перехват ошибок в async twin.
-  - `asyncTwinRequestInterceptorExceptionFailsFutureAndNotifiesResponseInterceptor`: ошибка в `RequestInterceptor` при async вызове переводит future в exceptional completion.
-  - `streamResponseInterceptorReceivesMetadataWithoutConsumingBody`: стрим-безопасность для `InputStream`.
-  - `zeroCostPathWhenNoInterceptorsConfigured`: штатная работа без интерцепторов.
+- **Ход:** шаг 5 эпика ADR-0018 «Тонкая настройка пайплайна запросов» (комплексный end-to-end WireMock сьюйт, документация в `README.md`, проверка нормативного Javadoc под `-Werror`).
+- **End-to-end WireMock сьюйт (`src/test/java/ru/jrestly/RequestPipelineWireMockTest.java`, 9 тестов):**
+  - `bearerAuthTokenInjectionAndPropagation`: динамическая инжекция заголовка `Authorization: Bearer sec-tok-999` через `RequestInterceptor`, верификация заголовка на стороне WireMock (`verify(getRequestedFor(...))`).
+  - `distributedTracingCorrelationIdPropagationAndContextAttribute`: генерация `X-Correlation-ID` в request-фазе, сохранение в `RequestContext.setAttribute("cid", ...)`, проверка типизированного извлечения `ctx.getAttribute("cid", String.class)`, проверка 200 OK и серверного трейс-заголовка в `ResponseInterceptor`.
+  - `latencyAuditAndInvocationMetadataCollection`: сбор метаданных вызова (`moduleName` = "audit-module", `controllerClass`, `method`, `args`), статуса `200`, `isSuccess() == true`, длительности `duration >= 0`.
+  - `handledErrorCapturedByResponseInterceptorWithDecodedErrorObject`: перехват 400 Bad Request с `@OnError(errorObject = TestErrorDto.class)` — `ResponseInterceptor` получает `HandledException` с десериализованным DTO (`getDetails()`), статус 400, `isSuccess() == false`.
+  - `unexpectedErrorCapturedByResponseInterceptorWithRawPayload`: перехват 500 статуса без `@OnError` — `ResponseInterceptor` получает `UnexpectedStatusException`, доступ к `getRawBody()`, статус 500.
+  - `networkFaultCapturedByResponseInterceptor`: симуляция сетевого сбоя WireMock `Fault.CONNECTION_RESET_BY_PEER` — `ResponseInterceptor` получает `IOException` (исходную причину `RuntimeException`), статус `-1`, `response().isEmpty() == true`.
+  - `asyncTwinInterceptorsExecuteSymmetrically`: симметричное неблокирующее выполнение цепочки интерцепторов в асинхронном близнеце `CompletableFuture<String>`.
+  - `responseInterceptorFailureIsolationDuringRealHttpCall`: изоляция сбоев хуков — исключение в одном `ResponseInterceptor` (`RuntimeException`) логируется, не ломает результат реального сетевого HTTP-вызова и не мешает выполнению других `ResponseInterceptor`.
+  - `requestInterceptorChainWithUnaryOperatorAndContextualInterceptor`: упорядоченное выполнение функционального оператора `UnaryOperator<WireRequest>` и контекстуального `RequestInterceptor`.
+- **Архитектурная находка (из Javadoc `AbstractHttpClient`):**
+  - `AbstractHttpClient` намеренно не реализует интерфейс `AutoCloseable` («app-lifetime singleton, and the interface would provoke per-request try-with-resources usage»), предоставляя явный метод `close()`. В тестах зарегистрирован пул клиентов для закрытия в `@AfterEach`.
+- **Документация (`README.md`):**
+  - Обновлен блок `Features` (добавлены пункты о Server-Sent Events / LLM и Request pipeline interceptors & hooks).
+  - Добавлена новая секция `## Request pipeline: Interceptors & hooks` с практическими примерами `RequestInterceptor` (Bearer auth, correlation IDs, `UnaryOperator`) и `ResponseInterceptor` (метрики, latency, аудит), описанием контекстов и атрибутов, изоляции сбоев и симметрии sync/async.
 - **Гейты:**
-  - `./gradlew test --rerun`: **411/411** (+13 тестов, 50 тестовых классов, 0 fail/err по XML).
+  - `./gradlew test --rerun`: **420/420** (+9 тестов, 51 тестовый класс, 0 fail/err по XML).
   - `./gradlew compileJava compileTestJava javadoc --rerun-tasks`: **0 warnings** под перманентными `-Xlint:all -Werror` и `-Xdoclint:all -Werror`.
   - `build.gradle` не менялся (0.8.0 unreleased).
 - **Память:**
-  - `DRAFT.md`: шаг 4 отмечен `[x]`, сьюйт обновлен до 411/411 (50 классов).
-  - Дневник дня `.agent/days/2026-10-14.md` пополнен заметкой сессии #88 и обновлением в «Итог дня».
+  - `DRAFT.md`: шаг 5 отмечен `[x]`, сьюйт обновлен до 420/420 (51 класс).
+  - Дневник дня `.agent/days/2026-10-14.md` пополнен заметкой сессии #89 и обновлением в «Итог дня».
 
-## Контекст для следующей сессии (#89)
+## Контекст для следующей сессии (#90)
 
-### Состояние: шаг 4 ADR-0018 закрыт, активный эпик в DRAFT.md
+### Состояние: шаг 5 ADR-0018 закрыт, финал эпика в DRAFT.md
 - **Рекомендуемый следующий шаг:**
-  - Шаг 5 эпика ADR-0018: end-to-end WireMock сьюйт, документация, README и Javadoc:
-    - Комплексный сьюйт `RequestPipelineWireMockTest`:
-      - Динамический bearer auth токен (интерцептор обновляет заголовок `Authorization: Bearer ...`).
-      - Distributed tracing `X-Correlation-ID` propagation.
-      - Сбор метрик и latency audit через `ResponseInterceptor`.
-      - Обработка 4xx/5xx `@OnError` и unexpected status в WireMock.
-      - Сетевые ошибки/таймауты в WireMock.
-      - Async `CompletableFuture` twins в WireMock.
-    - Лаконичный Javadoc нормативной поверхности под `-Werror` (проверить doclint на всех новых/измененных сайтах).
-    - Обновление секции в `README.md` с примерами `RequestInterceptor` и `ResponseInterceptor`.
-    - Проверка всех гейтов (`./gradlew test compileJava compileTestJava javadoc`), отметка шага 5 `[x]` в `DRAFT.md`.
+  - Шаг 6 эпика ADR-0018: дистилляция в `ROADMAP.md` и зачистка `DRAFT.md`:
+    - Добавить секцию в `ROADMAP.md`: `### Request pipeline: Interceptors & hooks (ADR-0018) — COMPLETE ✅ (2026-10-14, unreleased)` с указателями на ADR-0018, сессии #84–#89, фактами гейтов (420/420 тестов, 51 класс, 0 warnings, zero-dep).
+    - Перевести статус в `docs/0.9.0/ADR-0018-request-pipeline-interceptors.md` в `Accepted`.
+    - Зачистить `DRAFT.md` от закрытого эпика ADR-0018, поднять кандидатов в активную зону (кандидат №1 — release-цикл 0.9.0, кандидат №2 — test-javadoc).
+    - Проверить все гейты (`./gradlew test --rerun compileJava compileTestJava javadoc --rerun-tasks`).
 
 ### Грабли (актуальный набор)
 - **`GRADLE_USER_HOME=/tmp/opencode/gradle-home`**: всегда указывать при запуске `./gradlew` в этой среде.
+- **`AbstractHttpClient` намеренно не `AutoCloseable`**: клиент является app-lifetime синглтоном; в тестах регистрировать создаваемые экземпляры и закрывать через `.close()` в `@AfterEach` (#89).
+- **Сетевой сбой и `ctx.failure()`**: при транспортном сбое `HttpTemplate.exchange()` выбрасывает `RuntimeException(ioe)`, а в `ResponseContext.failure()` передается исходный `IOException` (#89).
+- **`HandledException.getDetails()`**: getter типизированного DTO ошибки называется `getDetails()`, а не `getErrorObject()` (#89).
 - **Интерцепторы и `SimpleResponseContext`**: при сбое в `RequestInterceptor` (включая возврат `null`) в `invokeResponseInterceptors` передавать последний валидный (non-null) `WireRequest`, так как `SimpleResponseContext` строго валидирует `request != null` (#88).
 - **WireMock query matching с Map**: в `Map.of(...)` порядок ключей не гарантирован, поэтому использовать `urlPathEqualTo(...)` с `.withQueryParam(...)`, а не посимвольный `urlEqualTo("...?a=1&b=2")` (#82).
 - **`UnexpectedStatusException.getRawBody()`**: getter называется `getRawBody()`, не `getResponseBody()`.
@@ -71,7 +49,7 @@
 - **Changelog — навигатор, не зеркало** (#40): entry 0.9.0 пишем в release-цикле 0.9.0; сейчас CHANGELOG не трогать.
 - **Коммит-субъект: краткий, без дублирования ченджлога** (Антон); body — гейты-факты.
 - **`./gradlew test --rerun`** — «UP-TO-DATE ≠ мой прогон».
-- **Подсчёт тестов:** `grep -h -o 'tests="[0-9]*"' build/test-results/test/*.xml | awk -F'"' '{s+=$2} END{print s}'` (сейчас — 411).
+- **Подсчёт тестов:** `grep -h -o 'tests="[0-9]*"' build/test-results/test/*.xml | awk -F'"' '{s+=$2} END{print s}'` (сейчас — 420).
 - **«Итог дня» — живая секция:** дописывать фрагментом « + **... (сессия #N)**», не переписывать; сессионные заметки — до «Итога дня», не после.
 - **Mailbox-гигиена:** решённый обмен удаляем; живые нитки и последние 2–3 сообщения оставляем (сейчас 3).
 
@@ -79,5 +57,5 @@
 1. `GRADLE_USER_HOME=/tmp/opencode/gradle-home ./gradlew ...` (тёплый кэш).
 2. `pids.max = 1000`. Полный `./gradlew test --rerun` без init-скрипта.
 3. Ветка `agent-loop`.
-4. Версия в build.gradle: **0.8.0**. Тесты: **411/411** (50 классов).
+4. Версия в build.gradle: **0.8.0**. Тесты: **420/420** (51 класс).
 5. Warnings: main 0, test 0, javadoc 0 (под `-Werror`).

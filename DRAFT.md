@@ -4,7 +4,7 @@
 > тонкая настройка пайплайна запросов (RequestInterceptor, ResponseInterceptor,
 > RequestContext, ResponseContext, wither-методы WireRequest, zero-cost default path,
 > устойчивость и симметрия sync/async).
-> Сьюйт: **411/411** (50 классов, 0 fail/err), 0 warnings под перманентными
+> Сьюйт: **420/420** (51 класс, 0 fail/err), 0 warnings под перманентными
 > `-Xlint:all -Werror` и `-Xdoclint:all -Werror`.
 > `build.gradle` — 0.8.0 unreleased (не меняется до 0.9.0-цикла).
 
@@ -41,14 +41,17 @@
       стрим-безопасности для `InputStream` / SSE; 13 unit TDD тестов в `RequestPipelineTest`,
       сьют: 398 → **411/411** (+13 тестов в `RequestPipelineTest`, 50 классов, 0 fail/err),
       0 warnings под `-Xlint:all -Werror` и `-Xdoclint:all -Werror`.
-- [ ] **Шаг 5 (следующая сессия): end-to-end WireMock сьюйт, документация и Javadoc.**
-      Комплексный сьюйт `RequestPipelineWireMockTest` (динамический bearer auth токен,
-      propagation correlation-id, сбор latency/метрик, обработка ошибок 4xx/5xx и сетевых сбоев,
-      async CompletableFuture twin), лаконичный Javadoc нормативной поверхности под `-Werror`,
-      секция в `README.md`.
-- [ ] **Шаг 6: дистилляция в `ROADMAP.md` и зачистка `DRAFT.md`.**
+- [x] **Шаг 5 (сессия #89): end-to-end WireMock сьюйт, документация и Javadoc.**
+      Комплексный сьюйт `RequestPipelineWireMockTest` (9 тестов: dynamic bearer auth токен,
+      propagation correlation-id, сбор latency/метрик, обработка ошибок 400 @OnError и 500 unexpected status,
+      сетевые сбои connection reset, async CompletableFuture twin, failure isolation при сбоях хуков,
+      цепочка UnaryOperator + RequestInterceptor);
+      секция «Request pipeline: Interceptors & hooks» и обновление Features в `README.md`;
+      0 warnings под перманентными `-Xlint:all -Werror` и `-Xdoclint:all -Werror`;
+      сьют: 411 → **420/420** (+9 тестов в `RequestPipelineWireMockTest`, 51 класс, 0 fail/err).
+- [ ] **Шаг 6 (следующая сессия): дистилляция в `ROADMAP.md` и зачистка `DRAFT.md`.**
       Фиксация завершения эпика ADR-0018 в `ROADMAP.md`, перевод ADR-0018 в статус Accepted,
-      зачистка DRAFT.md, формирование следующей активной зоны.
+      зачистка DRAFT.md, выбор следующего эпика из кандидатов (release-цикл 0.9.0).
 
 ## Кандидаты после закрытия эпика ADR-0018
 

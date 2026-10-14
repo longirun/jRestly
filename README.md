@@ -13,6 +13,8 @@ A declarative HTTP client for Java. Define an interface, get a working client �
 - Path variables (`@PathVariable` + `${var}`), query params and form fields (`@RequestParam`, `@RequestDefaultParam`), headers (`@RequestHeader`), dynamic `Map<?, ?>` parameters and headers, repeatable class-level defaults and static headers, request body (`@RequestBody`)
 - Content types: `application/json` (default), `application/x-www-form-urlencoded`, `multipart/form-data`
 - Response streaming via `InputStream` (and `CompletableFuture<InputStream>`): direct streaming via `BodyHandlers.ofInputStream()` without whole-body buffering; bypasses the JSON codec on success; error responses consume the stream and preserve typed error mapping
+- Server-Sent Events & line streaming via `Stream<ServerSentEvent>` and `Stream<String>` (and `CompletableFuture<Stream<...>>`): parse real-time event streams and LLM tokens on the fly with lazy consumption and auto-closing
+- Request pipeline: interceptors & hooks: `RequestInterceptor` (transform outgoing requests, inject auth tokens, correlation IDs) and `ResponseInterceptor` (metrics, latency, audit logging, failure observation), uniform sync/async twins execution with failure isolation
 - Multipart uploads via `@MultipartFormFile(partName = …)`: any number of files from disk, memory, or arbitrary streams (`FileContent`), streamed with bounded buffering; per-part `Content-Type` derived from the file extension, overridable per parameter
 - Per-method typed error mapping: `@OnError(statuses = {…}, errorObject = X.class)` throws `HandledException` with the deserialized body
 - Strict status validation: any status not in `@OnError` and not in `@ExpectStatus` (or not 2xx when `@ExpectStatus` is absent) throws `UnexpectedStatusException` with the raw body. Use `@ExpectStatus(statuses = {202})` for strict 2xx contracts
@@ -205,6 +207,44 @@ public interface SearchApi extends BaseApi {
 - **Dynamic `Map<?, ?>` headers:** `@RequestHeader Map<?, ?>` binds arbitrary dynamic headers. Entries with `null` keys or values are omitted.
 - **Class-level & method-level static declarations:** `@RequestHeader` and `@RequestDefaultParam` can be declared directly on controller interfaces or individual methods with `@Repeatable` support. Interface inheritance applies parent declarations first, allowing child interfaces to specialize headers and defaults.
 - **Override precedence:** Runtime parameter arguments override default query parameters and static headers (compared case-insensitively per RFC 9110), eliminating key duplication when overriding a default.
+
+## Request pipeline: Interceptors & hooks
+
+jRestly provides a lightweight, zero-dependency execution pipeline for cross-cutting request transformation and response observation (ADR-0018):
+
+- **`RequestInterceptor`**: transforms or decorates the outgoing `WireRequest` before it is placed on the network. Use it for dynamic bearer token injection, distributed tracing headers (`X-Correlation-ID`), or custom query parameters.
+- **`ResponseInterceptor`**: post-execution hook called once the HTTP call concludes (whether successful or exceptional). Use it for latency metrics, audit logging, and failure observation.
+- **Context & attributes**: `RequestContext` and `ResponseContext` provide invocation metadata (module name, controller interface, method, args) and thread-safe attributes (`setAttribute` / `getAttribute`) to propagate state between request and response phases.
+- **Sync & async symmetry**: interceptors execute symmetrically across synchronous calls and `CompletableFuture` asynchronous methods.
+- **Failure isolation**: exceptions thrown inside a `ResponseInterceptor` are logged at `WARNING` level and do not break the client call or abort subsequent interceptors.
+
+```java
+JRestlyClient client = JRestlyClient.builder()
+        .baseUrl("https://api.example.com")
+        // Request interceptor: dynamic bearer token and tracing correlation ID
+        .addRequestInterceptor((request, context) -> {
+            String token = tokenProvider.getValidToken();
+            String correlationId = UUID.randomUUID().toString();
+            context.setAttribute("cid", correlationId);
+            return request
+                    .withHeader("Authorization", "Bearer " + token)
+                    .withHeader("X-Correlation-ID", correlationId);
+        })
+        // Response interceptor: metrics and latency audit
+        .addResponseInterceptor(context -> {
+            long millis = context.duration().toMillis();
+            int status = context.statusCode();
+            String method = context.method().getName();
+            logger.info("Call {} completed in {} ms with status {}", method, millis, status);
+        })
+        .build();
+```
+
+For stateless request transformation, you can pass a `UnaryOperator<WireRequest>` directly:
+
+```java
+clientBuilder.addRequestInterceptor(req -> req.withHeader("X-App-Client", "v1"));
+```
 
 ## Retry with backoff
 
