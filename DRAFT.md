@@ -6,7 +6,7 @@
 > Новые типы возврата: `Stream<String>` (line streaming) и `Stream<ServerSentEvent>`
 > (WHATWG SSE), плюс их асинхронные близнецы `CompletableFuture<Stream<...>>`.
 > Базовая версия `build.gradle` — 0.8.0 (не меняется до release-цикла 0.9.0).
-> Текущий сьюйт: **282/282** (40 классов), 0 warnings под перманентными `-Xlint:all -Werror`
+> Текущий сьюйт: **295/295** (41 класс), 0 warnings под перманентными `-Xlint:all -Werror`
 > и `-Xdoclint:all -Werror`.
 
 ## Шаги эпика ADR-0016
@@ -16,10 +16,11 @@
       переиспользование шва ADR-0015 `WireResponse.stream`, WHATWG SSE спецификация,
       ошибочные пути с сохранением единого контракта `HandledException`/`UnexpectedStatusException`,
       `onClose()` lifecycle hook для закрытия сетевого соединения, кодировка из Content-Type).
-- [ ] **Шаг 2:** Модель `ServerSentEvent` и streaming-парсер `ServerSentEventParser`
+- [x] **Шаг 2 (сессия #73):** Модель `ServerSentEvent` и streaming-парсер `ServerSentEventParser`
       (чистый unit TDD: WHATWG SSE спецификация, multi-line data, comments `:` ignored,
       id, event, retry, LLM-маркер `[DONE]`, lazy evaluation через `Spliterator`/`Iterator`,
-      закрытие источника при `stream.close()`).
+      закрытие источника при `stream.close()`; 13 unit TDD тестов в `ServerSentEventTest`,
+      282 → 295/295, 0 warnings).
 - [ ] **Шаг 3:** Wire & engine seam для `Stream<String>` и `Stream<ServerSentEvent>`
       (`HttpTemplateBuilder` детекция эффективного return type, `HttpTemplate.processResponse`
       line/SSE стримы, charset resolution из Content-Type с дефолтом UTF-8,
