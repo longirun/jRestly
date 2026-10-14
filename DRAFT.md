@@ -1,4 +1,4 @@
-# DRAFT: warnings и модернизация (ADR-0013) — шаг 5 идёт: HttpMethod/RequestType закрыты, 48→37 (сессия #54)
+# DRAFT: warnings и модернизация (ADR-0013) — шаг 5 идёт: блок 4×3 закрыт, 37→25 (сессия #55)
 
 > Свободный ход после 0.7.0-цикла: кандидат №1 (warnings/рефакторинг-аудит,
 > fallback с #30) открыт как эпик. Сессия #41 — сам аудит (кандидат так и
@@ -136,9 +136,42 @@
       `createMultipartParts` + `ControllerValidator`: JSON — дефолт
       всех verb-аннотаций + `@RequestBody` через codec; form/multipart
       — без query-параметров, ≥1 параметр, boundary `jrestly-<uuid>`).
-      Остаток (21 файл): 4 файла × 3
-      (JacksonCodec/WireResponse/HttpTemplateBuilder/AuthHeaderProvider),
-      8 × 2, 9 × 1.
+      Сессия #55 закрыла блок 4 файла × 3 (37→25; поверхности 0; ноль
+      кода — чистый Javadoc; `WireResponse` — 3 record-`@param`
+      (house-style #52: статус — классификация @OnError/@ExpectStatus/
+      redirect-статусов, headers — один `Header` на запись JDK-карты,
+      body — null при пустом ответе; факты по
+      `HttpTemplate.toWireResponse`/`processResponse`/
+      `redirectLocation`); `AuthHeaderProvider` — class-doc (дефолтный
+      `AuthProvider`: `SimpleModuleInfo` ставит его при отсутствии
+      кастомного — с парой `authHeader`, если задана, иначе пустым;
+      initial-пара из конструктора, fresh-пара из
+      `updateAuthHeader` (capture по `@SetAuthDetails`) приоритетна,
+      пока обе её части non-null) + 2 конструктора (null-ность частей
+      допустима — шлётся только полная пара); `HttpTemplateBuilder` —
+      class-doc (per-invocation: создаётся в proxy-dispatch на каждый
+      вызов, discarded после `build()`, движок — в шаблоне) +
+      `@param` конструктора (controller — имя логгера запросов) +
+      `build()` (verb-аннотация → method/path/type, UOE — backstop за
+      controller-validation на proxy-создании; `@PathVariable` —
+      URL-encoded в путь, относительный путь — + base URL окружения;
+      headers — auth-заголовки модуля + `@RequestHeader`;
+      `@RequestParam`/`@RequestDefaultParam` → query, у form/multipart
+      — в body; body по типу: JSON — `@RequestBody` через codec
+      (String — as-is, GET — без тела), urlencoded — params, multipart
+      — `@MultipartFormFile` + `@RequestParam` части под сгенерированным
+      boundary `jrestly-<uuid>`; `CompletableFuture<T>` — async, `T` —
+      wire-контракт; `@OnError`-парсер только при аннотации (иначе
+      null); `@ExpectStatus`/`@FollowRedirects`/`@HttpVersion` —
+      when present; per-method `@Retry` заменяет policy клиента
+      целиком — ADR-0008); `JacksonCodec` — конструктор (mapper
+      as-is, без reconfigure — «configure it before handing it in») +
+      2× `@return` у `defaults(...)` (зеркало граблины #46/#54:
+      description + `@return` — обе обязательны). Граблина дня:
+      `@param`-секция БЕЗ main description у конструктора — doclint
+      требует main description у ВСЕХ сайтов (в первый заход
+      пропустил, всплыло на повторном замере — «no main description»).
+      Остаток (17 файлов): 8 × 2 + 9 × 1.
 - [ ] Шаг 6 — gate: `javadoc { Xdoclint=all, Werror }` в build.gradle,
       полный ре-аудит (`-Xlint:all` → 0, javadoc → 0), дистилляция в
       ROADMAP.

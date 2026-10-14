@@ -40,6 +40,16 @@ import java.util.UUID;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
+/**
+ * Builds the {@link HttpTemplate} for a single controller-method
+ * invocation.
+ *
+ * <p>Instantiated on every proxy dispatch (see
+ * {@link ru.jrestly.AbstractHttpClient#createController}) from the
+ * module's configuration, the client's {@link HttpClient}, the invoked
+ * method, its arguments, and the controller interface; discarded after
+ * {@link #build()} — the stateful engine lives in the produced template.
+ */
 public class HttpTemplateBuilder {
 
     private final ModuleInfo moduleInfo;
@@ -50,6 +60,15 @@ public class HttpTemplateBuilder {
 
     private RequestMeta requestMeta;
 
+    /**
+     * Creates a builder for the given invocation.
+     *
+     * @param moduleInfo the module configuration (environment, codec, auth provider, retry policy)
+     * @param httpClient the client's preconfigured {@link HttpClient}
+     * @param method the invoked controller method; its verb annotation drives the request
+     * @param args the invocation arguments
+     * @param controller the proxied controller interface; names the request logger
+     */
     public HttpTemplateBuilder(ModuleInfo moduleInfo, HttpClient httpClient, Method method, Object[] args, Class<?> controller) {
         this.moduleInfo = moduleInfo;
         this.httpClient = httpClient;
@@ -58,6 +77,36 @@ public class HttpTemplateBuilder {
         this.controller = controller;
     }
 
+    /**
+     * Assembles the template for the invocation this builder was created
+     * for.
+     *
+     * <p>The verb annotation fixes the HTTP method, the path, and the
+     * request type (an unannotated method is a controller-validation error
+     * at proxy creation; the {@link UnsupportedOperationException} thrown
+     * here is the backstop). {@code @PathVariable} arguments are
+     * URL-encoded into the path; a path not starting with {@code http} is
+     * prefixed with the environment's base URL. Headers combine the
+     * module's auth headers with the {@code @RequestHeader} arguments.
+     * {@code @RequestParam} and {@code @RequestDefaultParam} arguments
+     * become query parameters — for form and multipart requests they go
+     * into the body instead.
+     *
+     * <p>The body follows the request type: JSON — the {@code @RequestBody}
+     * argument serialized by the module's codec (a {@code String} argument
+     * is sent as is; a {@code GET} never carries a body); urlencoded — the
+     * request parameters URL-encoded into the body; multipart —
+     * {@code @MultipartFormFile} and {@code @RequestParam} parts under a
+     * generated {@code jrestly-<uuid>} boundary. A
+     * {@code CompletableFuture<T>} return type marks the call async with
+     * {@code T} as the wire contract. The {@code @OnError} parser is
+     * installed only when the annotation is present; {@code @ExpectStatus},
+     * {@code @FollowRedirects}, and {@code @HttpVersion} are carried
+     * through when present; a per-method {@code @Retry} replaces the
+     * client's retry policy entirely (ADR-0008).
+     *
+     * @return the assembled template, ready for {@link HttpTemplate#exchange()}
+     */
     public HttpTemplate build() {
         requestMeta = resolveRequestMeta(method);
 

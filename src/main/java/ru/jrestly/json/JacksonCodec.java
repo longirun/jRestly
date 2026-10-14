@@ -72,6 +72,14 @@ public class JacksonCodec implements JsonCodec {
 
     private final ObjectMapper mapper;
 
+    /**
+     * Creates a codec backed by the given mapper.
+     *
+     * <p>The mapper is used as is and never reconfigured — configure it
+     * before handing it in.
+     *
+     * @param mapper the {@link ObjectMapper} backing this codec
+     */
     public JacksonCodec(ObjectMapper mapper) {
         this.mapper = mapper;
     }
@@ -80,6 +88,8 @@ public class JacksonCodec implements JsonCodec {
      * A default codec whose {@link LocalDateTime} values use the classic
      * {@link LocalDateTimeFormat#SPACE} wire format (byte-compatible with the
      * historical output).
+     *
+     * @return a new codec with the default settings and the classic {@link LocalDateTimeFormat#SPACE} wire format
      */
     public static JacksonCodec defaults() {
         return defaults(LocalDateTimeFormat.SPACE);
@@ -93,6 +103,7 @@ public class JacksonCodec implements JsonCodec {
      * @param localDateTimeFormat the serialization format for
      *        {@link LocalDateTime}; never {@code null}
      * @throws NullPointerException if the format is {@code null}
+     * @return a new codec with the default settings and the given {@code LocalDateTime} wire format
      */
     public static JacksonCodec defaults(LocalDateTimeFormat localDateTimeFormat) {
         Objects.requireNonNull(localDateTimeFormat, "localDateTimeFormat");
