@@ -791,7 +791,31 @@ Gates (session #101, clean rebuild):
 - `javadoc` 0 warnings under permanent `-Xdoclint:all -Werror`.
 - Zero external runtime dependencies preserved (0 dependencies in Maven POM).
 
-After the epic: candidate #1 — test-javadoc (ADR-0013 Non-goals); candidate #2 — Form-data & multipart flexibility (nullable part values, explicit charset per part). ADR number **0024** free.
+After the epic: candidate #1 — test-javadoc (ADR-0013 Non-goals); candidate #2 — Form-data & multipart flexibility (nullable part values, explicit charset per part) — done, section below. ADR number **0024** — form-data epic, **0025** free.
+
+## Form-data & multipart flexibility (ADR-0024) — COMPLETE ✅ (2026-10-15, unreleased)
+
+> Source of truth (concept, architecture decisions, content-type and charset resolution, test strategy, status):
+> [`docs/0.10.0/ADR-0024-form-data-and-multipart-flexibility.md`](docs/0.10.0/ADR-0024-form-data-and-multipart-flexibility.md).
+> Session #102 (agent-loop). Real-world REST API ergonomics (candidate #2 from DRAFT.md).
+> Support for explicit Content-Type, custom charsets (e.g. windows-1251, ISO-8859-1), JSON DTO parts,
+> and null-safe form handling across multipart/form-data and application/x-www-form-urlencoded requests.
+> 100% zero-dependency on standard Java 21 platform classes.
+
+Key decisions (ADR-0024):
+- **Explicit `contentType` in `@RequestParam`:** Added `String contentType() default ""` to `@RequestParam`. When specified in multipart requests, sets the part's `Content-Type` header. For JSON MIME types (e.g. `application/json`), complex DTO arguments and collections are automatically serialized to JSON using the client's configured `JsonCodec`.
+- **Charset negotiation per part:** If `contentType` specifies a charset (e.g. `text/plain; charset=windows-1251` or `text/plain; charset="ISO-8859-1"`), text values are encoded using the designated `Charset`, defaulting to UTF-8.
+- **`MultipartPart` factories & null-safety:** Extended `MultipartPart` with `text(name, value, charset)`, `part(name, contentType, bytes)`, and `part(name, filename, contentType, bytes)`. `text(name, null)` is hardened to be null-safe (produces 0-length byte array instead of throwing NPE).
+- **Form-urlencoded null safety:** In `HttpTemplateBuilder.createUrlEncodedBody`, parameters with null values serialize as `name=` without throwing `NullPointerException`.
+- **Full test coverage:** 16 new tests (+16 cases, total suite 517/517 across 61 classes) spanning `MultipartPartFlexibilityTest` (9 unit tests: charsets, null-safety, part factories, CRLF validation) and `MultipartFlexibilityWireMockTest` (7 WireMock E2E tests: JSON DTO entity part + file part, JSON String part, windows-1251 charset bytes, quoted ISO-8859-1 charset, raw byte[] with MIME type, collection of JSON DTOs, form-urlencoded empty/null parameter).
+
+Gates (session #102, clean rebuild):
+- `./gradlew test` **517/517** (61 classes, 0 failures/errors; +16 tests in ADR-0024).
+- `compileJava` and `compileTestJava` 0 warnings under permanent `-Xlint:all -Werror`.
+- `javadoc` 0 warnings under permanent `-Xdoclint:all -Werror`.
+- Zero external runtime dependencies preserved (0 dependencies in Maven POM).
+
+After the epic: candidate #1 — test-javadoc (ADR-0013 Non-goals); candidate #2 — reactive/virtual thread ergonomics or custom URI template expansions. ADR number **0025** free.
 
 ## Post-0.5.0 shortlist (not scheduled — see ADR-0003)
 

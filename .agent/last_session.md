@@ -1,48 +1,54 @@
-# Handover Note: Сессия 101 (Завершение эпика Conditional requests, 304 Not Modified & Optional returns ADR-0023; тесты перешагнули 500 — 501/501 в 59 классах; следующий ход — кандидат №1 test-javadoc или №2 form-data flexibility)
+# Handover Note: Сессия 102 (Завершение эпика Form-data & multipart flexibility ADR-0024; тесты выросли до 517/517 в 61 классе; следующий ход — кандидат №1 test-javadoc или кандидат №2 URI template expansion)
 
-## Что сделано в этой сессии (#101)
-- **Ход:** полное проектирование (ADR-0023), реализация и верификация поддержки HTTP условных запросов (RFC 9110 / RFC 7232), автоматического распознавания `304 Not Modified` и нативной поддержки возвращаемого типа `Optional<T>` (включая `CompletableFuture<Optional<T>>`).
-- **Архитектура и реализация (ADR-0023):**
-  - **Условные запросы & 304:** `HttpTemplateBuilder.isConditionalRequest(headers)` выявляет `If-None-Match`, `If-Modified-Since`, `If-Match`, `If-Unmodified-Since` и проставляет `conditional = true`. При наличии этих заголовков или при `Optional<T>` статус `304 Not Modified` автоматически признается валидным успехом в `HttpTemplate.isExpectedStatus` без необходимости явных аннотаций `@ExpectStatus`.
-  - **Нативный `Optional<T>`:** `HttpTemplateBuilder.resolveReturnType` извлекает внутренний generic тип `T` (например, `User` или `List<Item>`). `HttpTemplate.processResponse` при 404 Not Found, 304 Not Modified, 204 No Content или пустом теле возвращает `Optional.empty()`. При успешном ответе тело десериализуется в `T` через настроенный `JsonCodec` и оборачивается в `Optional.ofNullable(...)`. Работает с любым кодеком (Jackson без модуля jdk8, Gson, Moshi). Приоритет явных `@OnError` и `@ExpectStatus` строго сохраняется.
-  - **Хелперы кэширования в `ResponseHeaders`:** добавлены методы `isNotModified()` (304), `isNotFound()` (404), `lastModified()`, `lastModifiedInstant()` (парсинг RFC 1123 HTTP-date через `DateTimeFormatter.RFC_1123_DATE_TIME` в `java.time.Instant`), `cacheControl()`.
-  - **Поддержка в retry loop:** `probePayloadDecode` учитывает `Optional` семантику.
-- **Тесты (+18 тестов, итого 501/501 тест в 59 классах):**
-  - `ResponseHeadersTest` (+1 тест): кэш-заголовки, парсинг RFC 1123 HTTP-date, проверка статусов.
-  - `OptionalReturnTest` (11 интеграционных тестов с WireMock): 200 OK -> `Optional.of(DTO)`, 404 -> `Optional.empty()`, 204 -> `Optional.empty()`, 304 -> `Optional.empty()`, пустой 200 -> `Optional.empty()`, `Optional<String>`, `Optional<Void>`, `Optional<List<DTO>>`, `CompletableFuture<Optional<T>>`, приоритет `@OnError`, приоритет явного `@ExpectStatus({200})`.
-  - `ConditionalRequestWireMockTest` (6 интеграционных тестов с WireMock): условный GET с `If-None-Match` (200 OK vs 304 Not Modified), `If-Modified-Since` с `lastModifiedInstant()`, связка с `Optional<Item>`, `ResponseHeaders.capture` с 304, асинхронный `CompletableFuture<Item>` с 304.
+## Что сделано в этой сессии (#102)
+- **Ход:** полное проектирование (ADR-0024), реализация и верификация гибкости `multipart/form-data` и `application/x-www-form-urlencoded` запросов (явные Content-Type, кастомные кодировки, авто-сериализация JSON DTO частей формы и null-safety).
+- **Архитектура и реализация (ADR-0024):**
+  - **Явный `contentType` в `@RequestParam`:** добавлен `String contentType() default ""` в аннотацию `RequestParam`.
+  - **Автоматическая сериализация JSON DTO в multipart:** если в multipart запросе передан DTO объект с `contentType = "application/json"`, `HttpTemplateBuilder` автоматически сериализует его через сконфигурированный `JsonCodec` и формирует правильный MIME-заголовок `Content-Type: application/json`.
+  - **Согласование charsets per part:** из `contentType` извлекается кодировка (например `windows-1251`, `ISO-8859-1`, `UTF-8`), включая значения в кавычках (`charset="ISO-8859-1"`). Текст кодируется в байты согласно этой кодировке.
+  - **Фабрики и null-safety `MultipartPart`:** добавлены методы `MultipartPart.text(name, value, charset)`, `MultipartPart.part(name, contentType, bytes)`, `MultipartPart.part(name, filename, contentType, bytes)`. `text(name, null)` и `part(name, contentType, null)` безопасны и генерируют пустое тело `byte[0]` без `NullPointerException`.
+  - **Null-safety в form-urlencoded:** в `createUrlEncodedBody` параметры с null значением сериализуются как `name=` без NPE.
+- **Тесты (+16 тестов, итого 517/517 тестов в 61 классе):**
+  - `MultipartPartFlexibilityTest` (9 unit тестов): `text` в UTF-8, null-safety в `text`, `text` с кастомным charset, null-safety с charset, fail-fast NPE при null charset, `part` без filename, null-safety в `part`, `part` с filename, валидация CRLF инъекций.
+  - `MultipartFlexibilityWireMockTest` (7 интеграционных тестов с WireMock):
+    1. Сериализация JSON DTO объекта в `application/json` часть вместе с файловой частью (`@MultipartFormFile`).
+    2. Отправка строкового JSON с `Content-Type: application/json`.
+    3. Кодирование текста с явным `windows-1251` charset (проверка побайтового совпадения).
+    4. Поддержка `charset="ISO-8859-1"` в кавычках.
+    5. Отправка сырых `byte[]` с произвольным MIME type (`application/octet-stream`).
+    6. Сериализация коллекции JSON DTO объектов.
+    7. Form-urlencoded обработка пустых параметров (`name=alpha&extra=`).
 - **Гейты:**
-  - `./gradlew test`: **501/501** тестов (59 классов, +18 тестов к 483) зелёные. Преодолена отметка в 500 тестов!
+  - `./gradlew test`: **517/517** тестов (61 класс, +16 тестов к 501) зелёные.
   - `./gradlew compileJava compileTestJava javadoc`: 0 warnings под постоянными флагами `-Xlint:all -Werror` и `-Xdoclint:all -Werror`.
   - Zero-dep инвариант в ядре строго сохранен (0 dependencies в Maven POM).
 - **Память и координация:**
-  - `docs/0.10.0/ADR-0023-conditional-requests-and-optional-returns.md`: статус **Accepted**, зафиксированы решения и тесты.
-  - `ROADMAP.md`: секция `## Conditional requests, 304 Not Modified & Optional returns (ADR-0023) — COMPLETE ✅`, следующий свободный ADR — **0024**.
+  - `docs/0.10.0/ADR-0024-form-data-and-multipart-flexibility.md`: статус **Accepted**, зафиксированы решения и тесты.
+  - `ROADMAP.md`: секция `## Form-data & multipart flexibility (ADR-0024) — COMPLETE ✅`, следующий свободный ADR — **0025**.
   - `DRAFT.md`: эпик закрыт, активная зона обновлена.
-  - `mailbox.md`: Антону отправлен статус о реализации эпика ADR-0023, проведена гигиеническая зачистка промежуточных логов.
-  - `days/2026-10-15.md`: оформлена запись сессии #101.
+  - `mailbox.md`: Антону отправлен статус о реализации эпика ADR-0024.
+  - `days/2026-10-15.md`: оформлена запись сессии #102.
 
-## Контекст для следующей сессии (#102)
+## Контекст для следующей сессии (#103)
 
 ### Активная зона DRAFT.md (выбор следующего эпика)
 - **Кандидат №1: test-javadoc** (ADR-0013 Non-goals):
   - Test-source javadoc вынесен за скобки аудита; наведение лоска в тестовых классах.
-- **Кандидат №2: Form-data & multipart flexibility**:
-  - Nullable part values, explicit charset per part.
+- **Кандидат №2: URI template expansion / matrix params / path expressions**:
+  - Углубление шаблонизации параметров URI.
 
 ### Грабли (актуальный набор)
 - **`GRADLE_USER_HOME=/tmp/opencode/gradle-home`**: всегда указывать при запуске `./gradlew`.
 - **`AbstractHttpClient` намеренно не `AutoCloseable`**: в тестах регистрировать и закрывать через `.close()` в `@AfterEach` (или try/finally).
 - **Path variables в jRestly**: всегда синтаксис `${param}` (не `{param}`).
-- **Jetty GzipHandler добавляет `--gzip` к ETag**: при ассертах ETag на 200 учитывать возможность суффикса или проверять `contains(...)`.
-- **Подсчёт тестов:** `grep -h -o 'tests="[0-9]*"' build/test-results/test/*.xml | awk -F'"' '{s+=$2} END{print s}'` (сейчас 501).
+- **Подсчёт тестов:** `grep -h -o 'tests="[0-9]*"' build/test-results/test/*.xml | awk -F'"' '{s+=$2} END{print s}'` (сейчас 517).
 - **Mailbox-гигиена:** решённый обмен удаляем; живые нитки и последние 2–3 сообщения оставляем.
 - **Коммит-субъект: краткий, без дублирования ченджлога** (Антон); body — гейты-факты.
 - **No git tags:** теги не создавать (релизы запаузены per maintainer agreement).
-- **Next free ADR number:** ADR-0024.
+- **Next free ADR number:** ADR-0025.
 
 ### Среда
 1. `GRADLE_USER_HOME=/tmp/opencode/gradle-home ./gradlew ...` (тёплый кэш).
 2. Ветка `agent-loop`.
-3. Версия в `build.gradle`: **0.9.0**. Тесты: **501/501** (59 классов).
+3. Версия в `build.gradle`: **0.9.0**. Тесты: **517/517** (61 класс).
 4. Warnings: main 0, test 0, javadoc 0 (под `-Werror`).

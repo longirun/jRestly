@@ -28,6 +28,7 @@ import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
 import java.net.URLEncoder;
 import java.net.http.HttpClient;
+import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -558,6 +559,9 @@ public class HttpTemplateBuilder {
 
                 Parameter parameter = parameters[i];
                 RequestParam annotation = parameter.getAnnotation(RequestParam.class);
+                String explicitContentType = annotation.contentType().isEmpty()
+                        ? null
+                        : annotation.contentType();
 
                 if (args[i] instanceof Map<?, ?> map) {
                     String prefix = annotation.name();
@@ -572,11 +576,11 @@ public class HttpTemplateBuilder {
                         if (val instanceof Collection<?> collection) {
                             for (Object o : collection) {
                                 if (o != null) {
-                                    parts.add(MultipartPart.text(partName, o.toString()));
+                                    parts.add(createPartFromValue(partName, o, explicitContentType));
                                 }
                             }
                         } else {
-                            parts.add(MultipartPart.text(partName, val.toString()));
+                            parts.add(createPartFromValue(partName, val, explicitContentType));
                         }
                     }
                     continue;
@@ -589,16 +593,67 @@ public class HttpTemplateBuilder {
                 if (args[i] instanceof Collection<?> collection) {
                     for (Object o : collection) {
                         if (o != null) {
-                            parts.add(MultipartPart.text(name, o.toString()));
+                            parts.add(createPartFromValue(name, o, explicitContentType));
+                        }
+                    }
+                } else if (args[i] instanceof Object[] array) {
+                    for (Object o : array) {
+                        if (o != null) {
+                            parts.add(createPartFromValue(name, o, explicitContentType));
                         }
                     }
                 } else {
-                    parts.add(MultipartPart.text(name, args[i].toString()));
+                    parts.add(createPartFromValue(name, args[i], explicitContentType));
                 }
             }
         }
 
         return parts;
+    }
+
+    private MultipartPart createPartFromValue(String partName, Object value, String explicitContentType) {
+        if (explicitContentType == null || explicitContentType.isEmpty()) {
+            return MultipartPart.text(partName, value != null ? value.toString() : "");
+        }
+        Charset charset = parseCharset(explicitContentType, StandardCharsets.UTF_8);
+        if (value instanceof byte[] bytes) {
+            return MultipartPart.part(partName, explicitContentType, bytes);
+        }
+        if (explicitContentType.toLowerCase(Locale.ROOT).contains("json")) {
+            if (value instanceof String str) {
+                return MultipartPart.part(partName, explicitContentType, str.getBytes(charset));
+            }
+            String json = moduleInfo.getJsonCodec().serialize(value);
+            return MultipartPart.part(partName, explicitContentType, json.getBytes(charset));
+        }
+        if (value instanceof String str) {
+            return MultipartPart.part(partName, explicitContentType, str.getBytes(charset));
+        }
+        return MultipartPart.part(partName, explicitContentType,
+                value != null ? value.toString().getBytes(charset) : new byte[0]);
+    }
+
+    private static Charset parseCharset(String contentType, Charset defaultCharset) {
+        if (contentType == null || contentType.isEmpty()) {
+            return defaultCharset;
+        }
+        int idx = contentType.toLowerCase(Locale.ROOT).indexOf("charset=");
+        if (idx >= 0) {
+            String csName = contentType.substring(idx + 8).trim();
+            int semi = csName.indexOf(';');
+            if (semi >= 0) {
+                csName = csName.substring(0, semi).trim();
+            }
+            if (csName.startsWith("\"") && csName.endsWith("\"") && csName.length() >= 2) {
+                csName = csName.substring(1, csName.length() - 1);
+            }
+            try {
+                return Charset.forName(csName);
+            } catch (Exception ignored) {
+                return defaultCharset;
+            }
+        }
+        return defaultCharset;
     }
 
     private MultipartPart createFilePart(String partName, Object arg, String explicitContentType) {
@@ -656,7 +711,7 @@ public class HttpTemplateBuilder {
         return createRequestParams().stream()
                 .map(param -> URLEncoder.encode(param.name(), StandardCharsets.UTF_8)
                         + "="
-                        + URLEncoder.encode(param.value(), StandardCharsets.UTF_8))
+                        + (param.value() != null ? URLEncoder.encode(param.value(), StandardCharsets.UTF_8) : ""))
                 .collect(Collectors.joining("&"))
                 .getBytes(StandardCharsets.UTF_8);
     }

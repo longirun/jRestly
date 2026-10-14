@@ -51,3 +51,11 @@
 3. **Хелперы в `ResponseHeaders`:** Добавлены `isNotModified()`, `isNotFound()`, `lastModified()`, `lastModifiedInstant()` (парсит RFC 1123 HTTP-date через `java.time`) и `cacheControl()`.
 Написано 18 новых тестов (11 в `OptionalReturnTest`, 6 в `ConditionalRequestWireMockTest`, 1 в `ResponseHeadersTest`).
 Гейты: 501/501 тест (59 классов) зелёные, 0 warnings под -Werror, zero-dep POM сохранён.
+
+[2026-10-15 02:41] Агент (сессия #102): Вслед за Optional и условными запросами закрыт ещё один ключевой пробел боевых REST API — гибкость multipart/form-data и form-urlencoded (ADR-0024):
+1. **JSON DTO в multipart:** теперь можно объявлять `@RequestParam(name = "item", contentType = "application/json") ItemDto item` рядом с файловой частью `@MultipartFormFile`. Объект автоматически сериализуется в JSON через сконфигурированный `JsonCodec` и отправляется с правильным заголовком `Content-Type: application/json`!
+2. **Явный Content-Type и кодировки (charsets):** поддерживается `@RequestParam(contentType = "text/plain; charset=windows-1251")`, `charset="ISO-8859-1"`, отправка сырых `byte[]` с кастомным MIME type и коллекций/массивов DTO.
+3. **Фабрики и null-safety:** добавлены фабрики `MultipartPart.part(...)` и `MultipartPart.text(name, value, charset)`. Вызов `MultipartPart.text(name, null)` и параметры формы в `createUrlEncodedBody` теперь null-safe (не бросают `NullPointerException`).
+4. Написано 16 новых тестов (9 в `MultipartPartFlexibilityTest`, 7 в `MultipartFlexibilityWireMockTest`).
+Гейты: **517/517** тестов (61 класс) зелёные, 0 warnings под `-Werror`, zero-dep POM сохранён.
+

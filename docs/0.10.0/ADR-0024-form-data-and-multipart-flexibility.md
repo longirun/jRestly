@@ -1,0 +1,44 @@
+# ADR-0024: Form-data & Multipart Flexibility (Explicit Content-Type, Charsets, JSON DTO Parts & Null-Safety)
+
+## Status
+Accepted (Session #102, 2026-10-15)
+
+## Context & Motivation
+jRestly offers first-class support for `multipart/form-data` and `application/x-www-form-urlencoded` requests (ADR-0002, ADR-0005).
+However, modern web APIs (Spring Boot `@RequestPart`, FastAPI, AWS S3, Google Drive, payment gateways) frequently require:
+1. **JSON DTO or custom MIME parts in multipart requests:** A common REST pattern is sending a metadata entity alongside a binary file in the same multipart request (e.g. `item: {"name":"invoice", "total": 100}` with `Content-Type: application/json` and `file: invoice.pdf` with `Content-Type: application/pdf`). Previously, all `@RequestParam` parts in multipart were strictly stringified via `toString()` and forced to `Content-Type: text/plain; charset=UTF-8`.
+2. **Explicit Charset & MIME type per part:** Legacy or localized systems often require non-UTF-8 charsets (e.g. `windows-1251`, `ISO-8859-1`) or specific text formats (`text/csv`, `text/html`, `application/xml`).
+3. **Null-Safety & Nullable part values:** Calling `MultipartPart.text(name, null)` threw an unhandled `NullPointerException`. In `application/x-www-form-urlencoded`, any param value evaluating to null triggered NPE during `URLEncoder.encode`.
+
+## Decisions
+
+### 1. Explicit `contentType` in `@RequestParam`
+Add `String contentType() default ""` to `ru.jrestly.annotation.RequestParam`:
+- When empty (default): multipart text parts continue to produce `Content-Type: text/plain; charset=UTF-8` for backward compatibility.
+- When explicitly specified (e.g. `@RequestParam(name = "metadata", contentType = "application/json")`):
+  - If the argument is a domain DTO (not String, byte[], File, Path, or FileContent), it is serialized to JSON using the client's configured `JsonCodec`.
+  - If the argument is a `String`, it is encoded into bytes using the charset extracted from `contentType` (e.g., `charset=ISO-8859-1` or `charset=windows-1251`), defaulting to `UTF-8` if omitted.
+  - If the argument is `byte[]`, the bytes are sent verbatim with the specified `Content-Type`.
+  - Supports collections and arrays: each element is serialized with the part's configured `contentType`.
+
+### 2. Ergonomic `MultipartPart` Factories
+Extend `ru.jrestly.http.MultipartPart` with:
+- `public static MultipartPart text(String name, String value, Charset charset)`: creates a text part with an explicit charset. Null-safe (null `value` produces empty byte array `byte[0]`).
+- `public static MultipartPart text(String name, String value)`: hardened to be null-safe (null `value` produces `byte[0]`).
+- `public static MultipartPart part(String name, String contentType, byte[] content)`: creates a non-file part without `filename` attribute in `Content-Disposition`, carrying explicit `contentType` and content bytes (null-safe).
+- `public static MultipartPart part(String name, String filename, String contentType, byte[] content)`: creates a part with explicit filename, contentType, and content bytes.
+
+### 3. Nullable & Empty Form-Urlencoded Safety
+In `HttpTemplateBuilder.createUrlEncodedBody`:
+- If `param.value()` is null, render `URLEncoder.encode(param.name()) + "="` with an empty value instead of throwing `NullPointerException`.
+
+## Non-Goals & Invariants
+- **Zero dependencies:** Everything is implemented strictly on Java 21 standard library (`java.net.http`, `java.nio.charset`, `java.lang.reflect`). No external multipart or MIME parsing libraries.
+- **Strict backward compatibility:** Existing `@RequestParam` without `contentType` continues to behave identically.
+
+## Verification
+1. Unit tests in `MultipartPartTest` / `MultipartTest`: custom charsets, null-safety, explicit parts.
+2. WireMock integration tests:
+   - Multipart upload with JSON DTO part + file part.
+   - Multipart upload with custom charset (e.g. ISO-8859-1 or Windows-1251).
+   - Form-urlencoded with empty and null parameters.

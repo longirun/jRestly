@@ -1,18 +1,21 @@
-# DRAFT: активная зона после закрытия эпика условных запросов и Optional (ADR-0023)
+# DRAFT: активная зона после закрытия эпика form-data & multipart flexibility (ADR-0024)
 
-> Эпик Conditional requests, 304 Not Modified & Optional returns (ADR-0023, `docs/0.10.0/`) закрыт 5/5 (сессия #101):
-> концепт и ADR-0023 → кэширующие хелперы в `ResponseHeaders` (`isNotModified()`, `isNotFound()`, `lastModified()`, `lastModifiedInstant()`, `cacheControl()`) +
-> автоматическое распознавание `304 Not Modified` для условных запросов (`If-None-Match`, `If-Modified-Since`, etc.) +
-> распаковка и поддержка `Optional<T>` и `CompletableFuture<Optional<T>>` с безопасным маппингом 404/304/204/empty в `Optional.empty()` без внешних зависимостей +
-> unit и WireMock интеграционные тесты (`OptionalReturnTest` 11 тестов, `ConditionalRequestWireMockTest` 6 тестов, `ResponseHeadersTest` +1 тест) →
-> дистилляция в ROADMAP («Conditional requests, 304 Not Modified & Optional returns (ADR-0023) — COMPLETE ✅») + гейты 501/501 тестов (59 классов).
+> Эпик Form-data & multipart flexibility (ADR-0024, `docs/0.10.0/`) закрыт 5/5 (сессия #102):
+> концепт и ADR-0024 → `String contentType() default ""` в `@RequestParam` +
+> поддержка явного Content-Type, автоматическая сериализация сложных JSON DTO частей через `JsonCodec`,
+> согласование charset (windows-1251, ISO-8859-1, UTF-8) +
+> расширение фабрик `MultipartPart` (`text(name, value, charset)`, `part(name, contentType, bytes)`) с гарантией null-safety +
+> null-safe кодирование параметров формы в `createUrlEncodedBody` +
+> unit и WireMock интеграционные тесты (`MultipartPartFlexibilityTest` 9 тестов, `MultipartFlexibilityWireMockTest` 7 тестов) →
+> дистилляция в ROADMAP («Form-data & multipart flexibility (ADR-0024) — COMPLETE ✅») + гейты 517/517 тестов (61 класс).
 > Следующий ход — свободный, выбор из активной зоны.
 
 ## Активная зона (кандидаты на следующий эпик)
 
 - **Кандидат №1 — test-javadoc** (ADR-0013 Non-goals):
   Test-source javadoc вынесен за скобки аудита; наведение лоска в тестовых классах.
-- **Кандидат №2 — Form-data & multipart flexibility** (nullable part values, explicit charset per part).
+- **Кандидат №2 — URI template expansion / matrix params / path expressions**:
+  Углубление возможностей шаблонизации URL.
 
 ---
 
@@ -38,6 +41,7 @@
   API.
 - **Векторы зрелости библиотеки (Антон, 2026-10-14 23:25, живая нить):**
   все 3 вектора полностью реализованы: SSL/mTLS (ADR-0020), прозрачный GZIP/Deflate (ADR-0021),
-  доступ к метаданным заголовков (ADR-0022), а также условные запросы & Optional (ADR-0023).
+  доступ к метаданным заголовков (ADR-0022), а также условные запросы & Optional (ADR-0023)
+  и гибкость form-data/multipart (ADR-0024).
 - **Коммиты — краткие, не дублируют ченджлог** (Антон).
 - **Объём одной сессии в 2–3 раза меньше** — один маленький шаг.

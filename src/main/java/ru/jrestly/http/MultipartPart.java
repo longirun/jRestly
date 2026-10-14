@@ -72,11 +72,50 @@ public record MultipartPart(String name, String filename, String contentType, Ob
      * Creates a plain-text part (no filename, {@code text/plain; charset=UTF-8}).
      *
      * @param name the part's form field name
-     * @param value the part content
+     * @param value the part content, or {@code null} for an empty body
      * @return a text part carrying the given value
      */
     public static MultipartPart text(String name, String value) {
-        return new MultipartPart(name, null, "text/plain; charset=UTF-8", value.getBytes(StandardCharsets.UTF_8), null);
+        return text(name, value, StandardCharsets.UTF_8);
+    }
+
+    /**
+     * Creates a plain-text part with an explicit character encoding.
+     *
+     * @param name the part's form field name
+     * @param value the part content, or {@code null} for an empty body
+     * @param charset the character encoding to encode the value with
+     * @return a text part carrying the given value encoded in the specified charset
+     */
+    public static MultipartPart text(String name, String value, java.nio.charset.Charset charset) {
+        java.util.Objects.requireNonNull(charset, "charset");
+        byte[] bytes = value != null ? value.getBytes(charset) : new byte[0];
+        return new MultipartPart(name, null, "text/plain; charset=" + charset.name(), bytes, null);
+    }
+
+    /**
+     * Creates a form part carrying arbitrary bytes and an explicit MIME type without a filename.
+     *
+     * @param name the part's form field name
+     * @param contentType the part's MIME type
+     * @param content the raw bytes, or {@code null} for empty content
+     * @return a part with the given name and content type
+     */
+    public static MultipartPart part(String name, String contentType, byte[] content) {
+        return new MultipartPart(name, null, contentType, content != null ? content : new byte[0], null);
+    }
+
+    /**
+     * Creates a form part carrying arbitrary bytes, an explicit filename, and a MIME type.
+     *
+     * @param name the part's form field name
+     * @param filename the filename sent on the wire, or {@code null} for a non-file part
+     * @param contentType the part's MIME type
+     * @param content the raw bytes, or {@code null} for empty content
+     * @return a part with the given framing fields
+     */
+    public static MultipartPart part(String name, String filename, String contentType, byte[] content) {
+        return new MultipartPart(name, filename, contentType, content != null ? content : new byte[0], null);
     }
 
     /**
