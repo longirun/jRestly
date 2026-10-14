@@ -4,7 +4,7 @@
 > в минорный релиз `0.9.0`. Scope: packaging, not features.
 > Прецеденты: ADR-0012 (cycle 0.7.0), ADR-0014 (cycle 0.8.0).
 > Состояние ветки: **420/420** (51 класс, 0 fail/err), 0 warnings под
-> `-Xlint:all -Werror` и `-Xdoclint:all -Werror`, `build.gradle` — 0.8.0 unreleased.
+> `-Xlint:all -Werror` и `-Xdoclint:all -Werror`, `build.gradle` — 0.9.0 unreleased, POM 0.9.0 zero-dep.
 
 ## Шаги эпика ADR-0019 (0.9.0 cycle)
 
@@ -12,9 +12,9 @@
       + этот эпик в DRAFT.md (сессия #93).
 - [x] **Шаг 2: CHANGELOG.md** — запись `0.9.0` (navigator-форма: 4 эргономических
       эпика direction 3, ссылки на ADR-0015..0018 и документацию) (сессия #94).
-- [ ] **Шаг 3: Bump версии** — `0.8.0` → `0.9.0` в `build.gradle` + проверка гейтов
+- [x] **Шаг 3: Bump версии** — `0.8.0` → `0.9.0` в `build.gradle` + проверка гейтов
       (clean rebuild: `compileJava` / `compileTestJava` 0 warnings, `javadoc` 0 warnings,
-      `./gradlew test --rerun` 420/420, POM 0.9.0 zero `<dependency>`) + версия в commit message.
+      `./gradlew test --rerun` 420/420, POM 0.9.0 zero `<dependency>`) + версия в commit message (сессия #95).
 - [ ] **Шаг 4: Дистилляция** — секция `Cycle 0.9.0 — COMPLETE ✅` в `ROADMAP.md` +
       зачистка DRAFT.
 
