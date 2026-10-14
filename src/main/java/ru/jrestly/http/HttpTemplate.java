@@ -35,6 +35,7 @@ import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
@@ -116,6 +117,8 @@ public class HttpTemplate {
     private String multipartBoundary;
     private Type returnType;
     private boolean async;
+    private boolean optional;
+    private boolean conditional;
     private boolean streamBody;
     private OnErrorParser onErrorParser;
     private List<Integer> expectStatuses;
@@ -396,6 +399,15 @@ public class HttpTemplate {
             // ADR-0015 Aspect 5: the payload line is skipped for stream
             // responses — logging must not consume the body
             logger.log(System.Logger.Level.INFO, streamingPayloadLine("streaming", responseHeaders));
+            if (optional) {
+                if (statusCode == 404 || statusCode == 304 || statusCode == 204) {
+                    closeQuietly(stream);
+                    return (T) Optional.empty();
+                }
+                if (InputStream.class.equals(returnType)) {
+                    return (T) Optional.of(stream);
+                }
+            }
             return (T) stream;
         }
 
@@ -411,6 +423,23 @@ public class HttpTemplate {
 
         if (!isExpectedStatus(statusCode)) {
             throw new UnexpectedStatusException(statusCode, payload == null ? "" : payload, responseHeaders);
+        }
+
+        if (optional) {
+            if (statusCode == 404 || statusCode == 304 || statusCode == 204 || payload == null) {
+                logger.log(System.Logger.Level.INFO, "No response or empty/status for Optional return.");
+                return (T) Optional.empty();
+            }
+            if (String.class.equals(returnType)) {
+                logger.log(System.Logger.Level.INFO, "Response size: " + payload.length() + " bytes\n" + payload);
+                return (T) Optional.of(payload);
+            }
+            if (Void.class.equals(returnType) || void.class.equals(returnType)) {
+                return (T) Optional.empty();
+            }
+            logger.log(System.Logger.Level.INFO, "Response size: " + payload.length() + " bytes\n" + jsonCodec.prettyPrint(payload));
+            Object deserialized = jsonCodec.deserialize(payload, returnType);
+            return (T) Optional.ofNullable(deserialized);
         }
 
         if (payload == null) {
@@ -666,6 +695,16 @@ public class HttpTemplate {
         }
         byte[] bytes = response.body();
         String payload = (bytes != null && bytes.length > 0) ? new String(bytes, StandardCharsets.UTF_8) : null;
+        if (optional) {
+            if (status == 404 || status == 304 || status == 204 || payload == null) {
+                return true;
+            }
+            if (String.class.equals(returnType) || Void.class.equals(returnType) || void.class.equals(returnType)) {
+                return true;
+            }
+            jsonCodec.deserialize(payload, returnType);
+            return true;
+        }
         if (payload == null) {
             return true; // no body
         }
@@ -1218,7 +1257,16 @@ public class HttpTemplate {
         if (expectStatuses != null) {
             return expectStatuses.contains(statusCode);
         }
-        return statusCode >= 200 && statusCode < 300;
+        if (statusCode >= 200 && statusCode < 300) {
+            return true;
+        }
+        if (conditional && statusCode == 304) {
+            return true;
+        }
+        if (optional && (statusCode == 304 || statusCode == 404)) {
+            return true;
+        }
+        return false;
     }
 
     /**
@@ -1378,6 +1426,33 @@ public class HttpTemplate {
      */
     public void setAsync(boolean async) {
         this.async = async;
+    }
+
+    /**
+     * Whether the method's return type is {@code Optional<T>} (or {@code CompletableFuture<Optional<T>>}).
+     *
+     * @param optional true for Optional-returning methods
+     */
+    public void setOptional(boolean optional) {
+        this.optional = optional;
+    }
+
+    /**
+     * Whether the request carries conditional headers (e.g. {@code If-None-Match}, {@code If-Modified-Since}).
+     *
+     * @param conditional true for conditional requests
+     */
+    public void setConditional(boolean conditional) {
+        this.conditional = conditional;
+    }
+
+    /**
+     * Returns whether the request carries conditional headers.
+     *
+     * @return true for conditional requests
+     */
+    public boolean isConditional() {
+        return conditional;
     }
 
     /**

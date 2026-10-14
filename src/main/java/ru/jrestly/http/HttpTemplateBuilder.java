@@ -35,8 +35,10 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.UUID;
@@ -124,7 +126,9 @@ public class HttpTemplateBuilder {
         result.setUrl(createUrl());
         result.setHttpMethod(requestMeta.httpMethod());
         result.setContentType(requestType.mime());
-        result.setHeaders(createHeaders());
+        List<Header> headers = createHeaders();
+        result.setHeaders(headers);
+        result.setConditional(isConditionalRequest(headers));
         // Header names to drop on cross-origin redirects
         result.setAuthHeaderNames(moduleInfo.getAuthProvider().getAuthHeaders().stream()
                 .map(Header::name)
@@ -197,12 +201,38 @@ public class HttpTemplateBuilder {
         } else {
             effective = genericReturnType;
         }
+
+        if (effective instanceof ParameterizedType parameterized
+                && Optional.class.equals(parameterized.getRawType())) {
+            result.setOptional(true);
+            effective = parameterized.getActualTypeArguments()[0];
+        } else if (Optional.class.equals(effective)) {
+            result.setOptional(true);
+            effective = Object.class;
+        }
+
         result.setReturnType(effective);
         if (InputStream.class.equals(effective)
                 || HttpTemplate.isStreamType(effective, String.class)
                 || HttpTemplate.isStreamType(effective, ServerSentEvent.class)) {
             result.setStreamBody(true);
         }
+    }
+
+    private static boolean isConditionalRequest(List<Header> headers) {
+        if (headers == null) {
+            return false;
+        }
+        for (Header h : headers) {
+            if (h.name() != null) {
+                String name = h.name().toLowerCase(Locale.ROOT);
+                if (name.equals("if-none-match") || name.equals("if-modified-since")
+                        || name.equals("if-match") || name.equals("if-unmodified-since")) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     private String createUrl() {

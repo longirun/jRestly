@@ -765,7 +765,33 @@ Gates (session #100, clean rebuild):
 - `javadoc` 0 warnings under permanent `-Xdoclint:all -Werror`.
 - Zero external runtime dependencies preserved.
 
-After the epic: candidate #1 — test-javadoc (ADR-0013 Non-goals); candidate #2 — conditional requests & caching headers (ETag validation, 304 Not Modified). ADR number **0023** free.
+After the epic: candidate #1 — test-javadoc (ADR-0013 Non-goals); candidate #2 — conditional requests & caching headers (ETag validation, 304 Not Modified) — done, section below. ADR number **0023** — conditional requests epic, **0024** free.
+
+## Conditional requests, 304 Not Modified & Optional returns (ADR-0023) — COMPLETE ✅ (2026-10-15, unreleased)
+
+> Source of truth (concept, architecture decisions, Optional unpacking, 304 handling, test strategy, status):
+> [`docs/0.10.0/ADR-0023-conditional-requests-and-optional-returns.md`](docs/0.10.0/ADR-0023-conditional-requests-and-optional-returns.md).
+> Session #101 (agent-loop). Library maturity & ergonomics (candidate #2 from DRAFT.md).
+> Native support for HTTP conditional requests (RFC 9110 / RFC 7232: `If-None-Match`, `If-Modified-Since`, `If-Match`, `If-Unmodified-Since`),
+> automatic recognition and acceptance of `304 Not Modified`, native `Optional<T>` return type support across sync and async
+> (`CompletableFuture<Optional<T>>`) pipelines, and HTTP caching/condition helpers in `ResponseHeaders`.
+> 100% zero-dependency on standard Java 21 platform classes.
+
+Key decisions (ADR-0023):
+- **Protocol-aware 304 Not Modified acceptance:** Requests carrying conditional headers (`If-None-Match`, `If-Modified-Since`, etc.) or methods returning `Optional<T>` automatically treat `304 Not Modified` as an expected status code without requiring manual `@ExpectStatus(statuses = {200, 304})` annotations. Strict precedence of explicit `@ExpectStatus` and `@OnError` annotations is preserved.
+- **Domain vs Optional return on 304:** For domain returns `T` (e.g. `Item`), 304 returns `null` (since body is 0 bytes) and exposes metadata via `ResponseHeaders` (`headers.isNotModified() == true`). For `Optional<T>`, 304 returns `Optional.empty()`.
+- **Native `Optional<T>` container unwrapping:** Methods returning `Optional<T>` or `CompletableFuture<Optional<T>>` have the generic argument `T` extracted by `HttpTemplateBuilder`. Successful responses deserialize payload into `T` and wrap into `Optional.ofNullable(...)` without requiring Jackson `jackson-datatype-jdk8` or external modules.
+- **404/204/empty handling for Optional:** For `Optional<T>` methods, HTTP `404 Not Found`, `204 No Content`, and empty responses naturally evaluate to `Optional.empty()` without throwing `UnexpectedStatusException(404)`, while explicit `@OnError` continues to take precedence.
+- **`ResponseHeaders` caching helpers:** Added `isNotModified()` (304), `isNotFound()` (404), `lastModified()`, `lastModifiedInstant()` (parses RFC 1123 HTTP-date into `java.time.Instant`), and `cacheControl()`.
+- **Full test coverage:** 18 new tests (+18 cases, total suite 501/501 across 59 classes) spanning `ResponseHeadersTest` (+1 test: caching headers, RFC 1123 date parsing, status checks), `OptionalReturnTest` (11 tests: 200, 404, 204, 304, empty body, raw String, Void, generic List collections, async CompletableFuture, @OnError precedence, @ExpectStatus precedence), and `ConditionalRequestWireMockTest` (6 tests: conditional GET on 200 with new ETag, 304 Not Modified, If-Modified-Since with RFC 1123 date, Optional return on 304, ResponseHeaders.capture pattern, and async CompletableFuture twin).
+
+Gates (session #101, clean rebuild):
+- `./gradlew test` **501/501** (59 classes, 0 failures/errors; +18 tests in ADR-0023).
+- `compileJava` and `compileTestJava` 0 warnings under permanent `-Xlint:all -Werror`.
+- `javadoc` 0 warnings under permanent `-Xdoclint:all -Werror`.
+- Zero external runtime dependencies preserved (0 dependencies in Maven POM).
+
+After the epic: candidate #1 — test-javadoc (ADR-0013 Non-goals); candidate #2 — Form-data & multipart flexibility (nullable part values, explicit charset per part). ADR number **0024** free.
 
 ## Post-0.5.0 shortlist (not scheduled — see ADR-0003)
 

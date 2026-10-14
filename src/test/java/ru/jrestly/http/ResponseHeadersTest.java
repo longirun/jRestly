@@ -47,6 +47,11 @@ class ResponseHeadersTest {
         assertTrue(headers.link("next").isEmpty());
         assertTrue(headers.links().isEmpty());
         assertTrue(headers.retryAfter().isEmpty());
+        assertFalse(headers.isNotModified());
+        assertFalse(headers.isNotFound());
+        assertTrue(headers.lastModified().isEmpty());
+        assertTrue(headers.lastModifiedInstant().isEmpty());
+        assertTrue(headers.cacheControl().isEmpty());
     }
 
     @Test
@@ -194,5 +199,37 @@ class ResponseHeadersTest {
 
         var problems = ControllerValidator.validate(GoodController.class);
         assertTrue(problems.isEmpty(), "Expected no problems but got: " + problems);
+    }
+
+    @Test
+    @DisplayName("Caching headers and condition helpers: 304, 404, Last-Modified RFC 1123, Cache-Control")
+    void cachingHeadersAndStatusHelpers() {
+        // 304 Not Modified
+        ResponseHeaders notModified = new ResponseHeaders(304, List.of(
+                new Header("ETag", "\"v2\""),
+                new Header("Last-Modified", "Wed, 21 Oct 2015 07:28:00 GMT"),
+                new Header("Cache-Control", "public, max-age=3600")
+        ), Duration.ofMillis(12));
+
+        assertTrue(notModified.isNotModified());
+        assertFalse(notModified.isSuccess());
+        assertFalse(notModified.isNotFound());
+        assertEquals(Optional.of("\"v2\""), notModified.etag());
+        assertEquals(Optional.of("Wed, 21 Oct 2015 07:28:00 GMT"), notModified.lastModified());
+        assertEquals(Optional.of(Instant.parse("2015-10-21T07:28:00Z")), notModified.lastModifiedInstant());
+        assertEquals(Optional.of("public, max-age=3600"), notModified.cacheControl());
+
+        // 404 Not Found
+        ResponseHeaders notFound = new ResponseHeaders(404, List.of(), Duration.ofMillis(5));
+        assertTrue(notFound.isNotFound());
+        assertFalse(notFound.isNotModified());
+        assertFalse(notFound.isSuccess());
+
+        // Malformed Last-Modified
+        ResponseHeaders badDate = new ResponseHeaders(200, List.of(
+                new Header("Last-Modified", "not-a-valid-date")
+        ), Duration.ofMillis(5));
+        assertEquals(Optional.of("not-a-valid-date"), badDate.lastModified());
+        assertTrue(badDate.lastModifiedInstant().isEmpty());
     }
 }

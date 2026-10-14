@@ -33,17 +33,6 @@
 вызовах современных API (например, но не исчерпывась: гибкость параметров запроса, стриминг данных, 
 ЛЛМ, тонкая настройка пайплайна запросов и т.д.).
 
-[2026-10-14 09:5x] Агент (сессия #62): Принял — спасибо за автономию
-и рамку. Три направления взял как курс: инварианты (zero-dep,
-прозрачность, анти-комбайн) — как ограничение, не как фичу; ниша —
-декларативный HTTP-клиент для современной Java; эргономика (параметры
-запроса, стриминг, ЛЛМ, пайплайн) — вижу основным следующим курсом.
-Сейчас довожу упаковочный цикл 0.8.0 (закрыл шаг 3/4: bump 0.8.0 +
-гейты, всё зелёное — 256/256, 0 warnings, POM 0.8.0 zero-dep), дальше
-дистилляция и выбор следующего эпика. С концептом вернусь сюда, если
-захочу вашего мнения. Лаконичность комментариев — принял, учту в
-следующих Javadoc'ах.
-
 [2026-10-14 23:25] Антон: я заметил, что у нас для зрелости библиотеки могут понадобиться (или нет? проанализируй):
 * донастройка ssl (например, кастомные серты);
 * прозрачный GZIP / Deflate;
@@ -51,21 +40,14 @@
 * я думаю еще в реалном исползовании есть миллион важных вещей?
 Это не приказ бросаться сразу все делать, просто можно учесть и разобрать в будущем. 
 
-[2026-10-14 23:33] Агент (сессия #94): Отличные и жизненные векторы для зрелости! Проанализировал предварительно:
-1. **SSL / кастомные серты**: напрашивается очень естественно — `JRestlyClient.builder().sslContext(SSLContext)` с пробросом в `HttpClient.Builder.sslContext()`. Чистый zero-dep core, критично для корпоративных CA, self-signed и mTLS.
-2. **Прозрачный GZIP / Deflate**: JDK `HttpClient` не распаковывает их сам, но в Java core есть `GZIPInputStream` и `InflaterInputStream`. Мы можем прозрачно оборачивать поток ответа при `Content-Encoding: gzip/deflate` — это сохранит zero-dep и сэкономит трафик.
-3. **Элегантный доступ к метаданным заголовков** (пагинация `Link`, `ETag`, `Location`, рейт-лимиты): главная архитектурная планка — сохранить наш инвариант прозрачных методов (ADR-0004: никакого `Response<T>`). Уже сейчас `ResponseInterceptor` видит `ResponseContext` со всеми заголовками и статусом; для точечного доступа на вызывающей стороне можно исследовать holder/consumer аргументы или thread-scoped metadata.
-4. Взял все три направления в пул кандидатов для DRAFT/ROADMAP сразу после упаковки 0.9.0. Сейчас на шаге 2/4 релиза 0.9.0: запись в CHANGELOG.md готова, тесты 420/420 зелёные.
-
-[2026-10-15 00:30] Агент (сессия #97): Взял вектор №1 в работу — эпик SSL / кастомные сертификаты / mTLS (ADR-0020). Шаги 1 и 2 закрыты: концепт оформлен в docs/0.10.0/ADR-0020, методы sslContext и sslParameters добавлены в ModuleInfo, SimpleModuleInfo и JRestlyClient.Builder с пробросом в HttpClient.Builder. Тесты конфигурации SslConfigTest добавлены (429/429 тестов, 52 класса, 0 warnings). В следующей сессии — интеграционные тесты с WireMock HTTPS.
-
-[2026-10-15 00:55] Агент (сессия #98): Вектор №1 (SSL/TLS, custom certs & mTLS, ADR-0020) полностью завершён! Написан набор интеграционных тестов HttpsSslTest с WireMock HTTPS (8 тестов: отклонение self-signed сертификата по дефолту, успешные запросы с custom SSLContext через X509ExtendedTrustManager, пиннинг TLSv1.3 и cipher suites через SSLParameters, отказ при несовместимых шифрах, async CompletableFuture и стриминг по HTTPS). Все гейты зелёные (437/437 тестов, 53 класса, 0 warnings под -Werror). Следующий кандидат — вектор №2: прозрачный GZIP/Deflate (ADR-0021).
-
-[2026-10-15 01:18] Агент (сессия #99): Вектор №2 (прозрачный GZIP / Deflate, ADR-0021) полностью реализован и закрыт! Полный zero-dep на java.util.zip (GZIPInputStream, InflaterInputStream, Inflater fallback). Автоматически шлёт Accept-Encoding: gzip, deflate (с сохранением кастомных заголовков пользователя), прозрачно распаковывает gzip, x-gzip, zlib deflate и raw deflate. Очищает заголовки Content-Encoding и Content-Length для downstream-гигиены. Работает для sync, async CompletableFuture, бинарного стриминга InputStream, line streaming Stream<String>, а также для тел ошибок в @OnError и UnexpectedStatusException. Отключается через decompression(false). Написано 28 тестов (17 в DecompressionConfigTest и 11 в GzipDeflateDecompressionTest с WireMock). Все гейты зелёные (465/465 тестов, 55 классов, 0 warnings под -Werror). Следующий кандидат из твоего списка — вектор №3: доступ к метаданным заголовков (пагинация Link, ETag, Location, rate limits).
-
 [2026-10-15 01:43] Агент (сессия #100): Юбилейная сотая сессия, и все три твоих вектора зрелости закрыты! Вектор №3 (доступ к метаданным заголовков, ADR-0022) полностью реализован и покрыт тестами. Мы сохранили фундамент ADR-0004 (никакого Response<T> — методы по-прежнему возвращают чистый доменный тип T, User, List<Item>, InputStream или Stream<String>). Доступ к метаданным поддержан двумя элегантными способами:
 1. Аргумент-holder в сигнатуре метода: `List<Item> getItems(@RequestParam("page") int page, ResponseHeaders headers)` — в headers прилетают статус-код, duration, Map заголовков, `etag()`, `location()`, `locationUri()`, `firstLongValue("X-RateLimit-Remaining")`, и встроенный RFC 8288 парсер пагинации `headers.link("next")` / `links()`. Работает и для async `CompletableFuture<T>`, и для стриминга, и для ошибок `@OnError` / `UnexpectedStatusException`.
 2. Capture-паттерн без изменения сигнатуры интерфейса: `CapturedResponse<List<Item>> captured = ResponseHeaders.capture(() -> client.getItems(1));` — возвращает пару (result, headers) через безопасный scoped ThreadLocal.
 Написано 17 новых тестов (8 unit в `ResponseHeadersTest` и 9 WireMock E2E в `ResponseHeadersWireMockTest`). Все гейты абсолютно зелёные (483/483 тестов в 57 классах, 0 warnings под -Werror, zero-dep POM). Библиотека стала на порядок мощнее и удобнее для реальных боевых API!
 
-
+[2026-10-15 02:13] Агент (сессия #101): Развил тему зрелости и боевого использования дальше — реализован эпик условных запросов (Conditional Requests RFC 9110 / RFC 7232), автоматической обработки `304 Not Modified` и нативной поддержки возвращаемого типа `Optional<T>` (ADR-0023):
+1. **Условные запросы & 304:** При наличии заголовков `If-None-Match`, `If-Modified-Since` (или при возврате `Optional<T>`) статус `304 Not Modified` автоматически считается валидным успехом без необходимости вешать костыли `@ExpectStatus(statuses = {200, 304})`. Для методов `T` возвращается `null` (тело 0 байт), а `ResponseHeaders` содержит `isNotModified() == true` и актуальные кэш-заголовки.
+2. **Нативный `Optional<T>`:** Методы могут возвращать `Optional<User>` или `CompletableFuture<Optional<User>>`. Библиотека сама извлекает тип `User`, десериализует тело и упаковывает в `Optional.ofNullable(...)`. При статусах 404 Not Found (ресурс отсутствует), 304 Not Modified, 204 No Content или пустом теле возвращается `Optional.empty()` без выброса исключений! Работает с любым кодеком без модуля Jackson jdk8. При этом `@OnError` сохраняет строгий приоритет.
+3. **Хелперы в `ResponseHeaders`:** Добавлены `isNotModified()`, `isNotFound()`, `lastModified()`, `lastModifiedInstant()` (парсит RFC 1123 HTTP-date через `java.time`) и `cacheControl()`.
+Написано 18 новых тестов (11 в `OptionalReturnTest`, 6 в `ConditionalRequestWireMockTest`, 1 в `ResponseHeadersTest`).
+Гейты: 501/501 тест (59 классов) зелёные, 0 warnings под -Werror, zero-dep POM сохранён.

@@ -3,6 +3,7 @@ package ru.jrestly.http;
 import java.net.URI;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
@@ -136,6 +137,24 @@ public class ResponseHeaders {
     }
 
     /**
+     * Returns whether the HTTP status code is {@code 304 Not Modified}.
+     *
+     * @return {@code true} if status code is 304
+     */
+    public boolean isNotModified() {
+        return statusCode == 304;
+    }
+
+    /**
+     * Returns whether the HTTP status code is {@code 404 Not Found}.
+     *
+     * @return {@code true} if status code is 404
+     */
+    public boolean isNotFound() {
+        return statusCode == 404;
+    }
+
+    /**
      * Returns the total round-trip duration of the HTTP exchange.
      *
      * @return the call duration, never {@code null}
@@ -249,6 +268,39 @@ public class ResponseHeaders {
      */
     public Optional<String> contentType() {
         return firstValue("Content-Type");
+    }
+
+    /**
+     * Returns the value of the {@code Last-Modified} header, if present.
+     *
+     * @return the Last-Modified header string, or empty if absent
+     */
+    public Optional<String> lastModified() {
+        return firstValue("Last-Modified");
+    }
+
+    /**
+     * Parses the {@code Last-Modified} header as an {@link Instant} using RFC 1123 format, if present and valid.
+     *
+     * @return the parsed Instant, or empty if absent or malformed
+     */
+    public Optional<Instant> lastModifiedInstant() {
+        return lastModified().flatMap(lm -> {
+            try {
+                return Optional.of(ZonedDateTime.parse(lm.trim(), DateTimeFormatter.RFC_1123_DATE_TIME).toInstant());
+            } catch (DateTimeParseException ignored) {
+                return Optional.empty();
+            }
+        });
+    }
+
+    /**
+     * Returns the value of the {@code Cache-Control} header, if present.
+     *
+     * @return the Cache-Control header string, or empty if absent
+     */
+    public Optional<String> cacheControl() {
+        return firstValue("Cache-Control");
     }
 
     /**

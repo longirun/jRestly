@@ -1,19 +1,18 @@
-# DRAFT: активная зона после закрытия эпика доступа к метаданным заголовков (ADR-0022)
+# DRAFT: активная зона после закрытия эпика условных запросов и Optional (ADR-0023)
 
-> Эпик Response headers and metadata access (ADR-0022, `docs/0.10.0/`) закрыт 5/5 (сессия #100):
-> концепт и ADR-0022 → реализация класса `ResponseHeaders` (с RFC 8288 link parser, firstValue, allValues, firstLongValue, etag, location, statusCode, duration, capture) +
-> `CapturedResponse<T>` record → интеграция параметра метода `ResponseHeaders` в `HttpTemplateBuilder` и `HttpTemplate` (с поддержкой async `CompletableFuture`, streaming `InputStream`, `@OnError` и `UnexpectedStatusException`) +
-> поддержка в `ControllerValidator` →
-> unit-тесты `ResponseHeadersTest` (8 тестов) и WireMock integration тесты `ResponseHeadersWireMockTest` (9 тестов) →
-> дистилляция в ROADMAP («Response headers and metadata access (ADR-0022) — COMPLETE ✅») + гейты 483/483 тестов (57 классов).
+> Эпик Conditional requests, 304 Not Modified & Optional returns (ADR-0023, `docs/0.10.0/`) закрыт 5/5 (сессия #101):
+> концепт и ADR-0023 → кэширующие хелперы в `ResponseHeaders` (`isNotModified()`, `isNotFound()`, `lastModified()`, `lastModifiedInstant()`, `cacheControl()`) +
+> автоматическое распознавание `304 Not Modified` для условных запросов (`If-None-Match`, `If-Modified-Since`, etc.) +
+> распаковка и поддержка `Optional<T>` и `CompletableFuture<Optional<T>>` с безопасным маппингом 404/304/204/empty в `Optional.empty()` без внешних зависимостей +
+> unit и WireMock интеграционные тесты (`OptionalReturnTest` 11 тестов, `ConditionalRequestWireMockTest` 6 тестов, `ResponseHeadersTest` +1 тест) →
+> дистилляция в ROADMAP («Conditional requests, 304 Not Modified & Optional returns (ADR-0023) — COMPLETE ✅») + гейты 501/501 тестов (59 классов).
 > Следующий ход — свободный, выбор из активной зоны.
 
 ## Активная зона (кандидаты на следующий эпик)
 
 - **Кандидат №1 — test-javadoc** (ADR-0013 Non-goals):
   Test-source javadoc вынесен за скобки аудита; наведение лоска в тестовых классах.
-- **Кандидат №2 — Conditional requests & caching headers** (ETag validation, `If-None-Match`, `If-Modified-Since`, 304 Not Modified).
-- **Кандидат №3 — Form-data & multipart flexibility** (nullable part values, explicit charset per part).
+- **Кандидат №2 — Form-data & multipart flexibility** (nullable part values, explicit charset per part).
 
 ---
 
@@ -36,9 +35,9 @@
   (1) инварианты — zero-dep, прозрачные методы (ADR-0004),
   анти-комбайн (ADR-0003); (2) ниша — идеальный декларативный
   HTTP-клиент для современной Java; (3) эргономика для современных
-  API — все 4 эпика direction 3 закрыты (ADR-0015–0018), packaging в 0.9.0 завершён.
+  API.
 - **Векторы зрелости библиотеки (Антон, 2026-10-14 23:25, живая нить):**
   все 3 вектора полностью реализованы: SSL/mTLS (ADR-0020), прозрачный GZIP/Deflate (ADR-0021),
-  доступ к метаданным заголовков (ADR-0022).
+  доступ к метаданным заголовков (ADR-0022), а также условные запросы & Optional (ADR-0023).
 - **Коммиты — краткие, не дублируют ченджлог** (Антон).
 - **Объём одной сессии в 2–3 раза меньше** — один маленький шаг.
