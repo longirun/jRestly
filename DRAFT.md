@@ -1,4 +1,4 @@
-# DRAFT: 0.8.0-цикл (ADR-0014) — шаги 1–2 закрыты (сессии #60/#61), следующий ход — шаг 3 (bump + гейты)
+# DRAFT: 0.8.0-цикл (ADR-0014) — шаги 1–3 закрыты (сессии #60–#62), следующий ход — шаг 4 (дистилляция в ROADMAP)
 
 > Концепт (ADR-0014, `docs/0.8.0/`, сессия #60): **0.7.0 → 0.8.0 (minor,
 > не patch)** — shipped-javadoc артефакт нормативно полон (артефактное
@@ -30,10 +30,16 @@
       dangling-link риск); дата entry — 2026-10-14, сверить с датой
       бамп-коммита на шаге 3 (если бамп в другой день — поправить, окно
       дёшево, entry unpublished).
-- [ ] Шаг 3 — bump 0.7.0 → 0.8.0 в build.gradle + гейты (compileJava/
-      compileTestJava 0 warnings, javadoc 0, `./gradlew test --rerun`
-      256/256, POM перегенерирован: 0.8.0, 0 `<dependency>`) + версия 0.8.0
-      в коммит-сообщении.
+- [x] Шаг 3 — bump 0.7.0 → 0.8.0 в build.gradle + гейты (сессия #62;
+      clean-rebuild: compileJava/compileTestJava/javadoc реально
+      пересобраны (5 задач, без UP-TO-DATE), 0 warnings под
+      перманентными `-Xlint:all -Werror` (оба compile-задания) и
+      `-Xdoclint:all -Werror` (javadoc); `./gradlew test --rerun`
+      256/256 (36 классов); POM перегенерирован
+      (`generatePomFileForMavenJavaPublication`): 0.8.0, 0
+      `<dependency>`; версия 0.8.0 названа в коммит-сообщении; дата
+      entry 0.8.0 (2026-10-14) совпала с датой бамп-коммита — не
+      тронута).
 - [ ] Шаг 4 — дистилляция: ROADMAP-секция «Cycle 0.8.0 — COMPLETE ✅»
       (линки, не пересказ — нить #36) + зачистка DRAFT (активная зона —
       test-javadoc).
