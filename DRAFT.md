@@ -6,7 +6,7 @@
 > Новые типы возврата: `Stream<String>` (line streaming) и `Stream<ServerSentEvent>`
 > (WHATWG SSE), плюс их асинхронные близнецы `CompletableFuture<Stream<...>>`.
 > Базовая версия `build.gradle` — 0.8.0 (не меняется до release-цикла 0.9.0).
-> Текущий сьюйт: **305/305** (42 класса), 0 warnings под перманентными `-Xlint:all -Werror`
+> Текущий сьюйт: **316/316** (43 класса), 0 warnings под перманентными `-Xlint:all -Werror`
 > и `-Xdoclint:all -Werror`.
 
 ## Шаги эпика ADR-0016
@@ -28,10 +28,13 @@
       из `Content-Type` с дефолтом UTF-8, жизненный цикл закрытия `onClose` с гарантированным
       освобождением `InputStream`, логирование `"streaming lines"` / `"streaming events"`;
       10 unit TDD тестов в `HttpTemplateLineAndEventStreamTest`, 295 → 305/305, 0 warnings).
-- [ ] **Шаг 4:** Контракт ошибок и Async twins (`CompletableFuture<Stream<String>>`,
+- [x] **Шаг 4 (сессия #75):** Контракт ошибок и Async twins (`CompletableFuture<Stream<String>>`,
       `CompletableFuture<Stream<ServerSentEvent>>`). Ошибки 4xx/5xx вычитывают stream,
-      декодируют `@OnError` или сохраняют raw body, бросают типизированные исключения;
-      async future завершается активным стримом.
+      декодируют `@OnError` в `HandledException` или сохраняют raw body в `UnexpectedStatusException`,
+      гарантированное закрытие сетевого `InputStream`; async twins завершаются активным живым
+      стримом на успехе и exceptional completion на ошибках (включая transport failure);
+      probePayloadDecode подтвержден как decode-proof без обращения к кодеку;
+      11 unit TDD тестов в `HttpTemplateLineAndEventStreamErrorAndAsyncTest`, 305 → 316/316, 0 warnings).
 - [ ] **Шаг 5:** Документация, валидация (`ControllerValidator`), end-to-end WireMock
       тесты для LLM/SSE и line streaming (chat stream, ndjson stream, error path,
       connection fault, Javadoc-контракт, README с примерами для LLM API).
