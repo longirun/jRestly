@@ -8,6 +8,7 @@ import ru.jrestly.annotation.Put;
 import ru.jrestly.annotation.RequestDefaultParam;
 import ru.jrestly.annotation.RequestHeader;
 import ru.jrestly.http.RequestType;
+import ru.jrestly.http.ResponseHeaders;
 
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
@@ -150,7 +151,10 @@ public final class ControllerValidator {
             }
         }
 
-        if (method.getParameters().length == 0) {
+        long payloadParamCount = Arrays.stream(method.getParameters())
+                .filter(p -> !ResponseHeaders.class.equals(p.getType()))
+                .count();
+        if (payloadParamCount == 0) {
             RequestType requestType = resolveRequestType(method);
             if (requestType == RequestType.MULTIPART_FORM_DATA) {
                 problems.add(method.getName() + "(): MULTIPART_FORM_DATA method must have at least one parameter");

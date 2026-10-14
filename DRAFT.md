@@ -1,23 +1,19 @@
-# DRAFT: активная зона после закрытия эпика прозрачной декомпрессии GZIP / Deflate (ADR-0021)
+# DRAFT: активная зона после закрытия эпика доступа к метаданным заголовков (ADR-0022)
 
-> Эпик Transparent response decompression (GZIP & Deflate, ADR-0021, `docs/0.10.0/`) закрыт 4/4 (сессия #99):
-> концепт и ADR-0021 → реализация конфигурации `isDecompressionEnabled()` в ModuleInfo/SimpleModuleInfo/JRestlyClient +
-> автоматическое добавление `Accept-Encoding: gzip, deflate` в `HttpTemplateBuilder` +
-> движок декомпрессии `handleDecompression` в `HttpTemplate` (gzip, x-gzip, zlib deflate, raw deflate fallback, streaming, error payloads) +
-> unit-тесты `DecompressionConfigTest` (17 тестов) и WireMock integration тесты `GzipDeflateDecompressionTest` (11 тестов) →
-> дистилляция в ROADMAP («Transparent response decompression (GZIP & Deflate, ADR-0021) — COMPLETE ✅») + гейты 465/465 тестов (55 классов).
+> Эпик Response headers and metadata access (ADR-0022, `docs/0.10.0/`) закрыт 5/5 (сессия #100):
+> концепт и ADR-0022 → реализация класса `ResponseHeaders` (с RFC 8288 link parser, firstValue, allValues, firstLongValue, etag, location, statusCode, duration, capture) +
+> `CapturedResponse<T>` record → интеграция параметра метода `ResponseHeaders` в `HttpTemplateBuilder` и `HttpTemplate` (с поддержкой async `CompletableFuture`, streaming `InputStream`, `@OnError` и `UnexpectedStatusException`) +
+> поддержка в `ControllerValidator` →
+> unit-тесты `ResponseHeadersTest` (8 тестов) и WireMock integration тесты `ResponseHeadersWireMockTest` (9 тестов) →
+> дистилляция в ROADMAP («Response headers and metadata access (ADR-0022) — COMPLETE ✅») + гейты 483/483 тестов (57 классов).
 > Следующий ход — свободный, выбор из активной зоны.
 
 ## Активная зона (кандидаты на следующий эпик)
 
-- **Кандидат №1 — Элегантный доступ к метаданным заголовков** (mailbox #94, вектор зрелости №3):
-  Пагинация по заголовку `Link`, доступ к `ETag`, `Location`, рейт-лимитам (`X-RateLimit-*`, `Retry-After`)
-  при строгом сохранении инварианта прозрачных методов без `Response<T>` (ADR-0004). Исследование
-  подходов: thread-scoped metadata context, consumer/holder аргументы в сигнатуре метода, либо
-  интеграция с `ResponseInterceptor`. Следующий ADR-0022.
-- **Кандидат №2 — test-javadoc** (ADR-0013 Non-goals):
+- **Кандидат №1 — test-javadoc** (ADR-0013 Non-goals):
   Test-source javadoc вынесен за скобки аудита; наведение лоска в тестовых классах.
-- **Кандидат №3 — Conditional requests & caching headers** (ETag validation, 304 Not Modified support).
+- **Кандидат №2 — Conditional requests & caching headers** (ETag validation, `If-None-Match`, `If-Modified-Since`, 304 Not Modified).
+- **Кандидат №3 — Form-data & multipart flexibility** (nullable part values, explicit charset per part).
 
 ---
 
@@ -42,7 +38,7 @@
   HTTP-клиент для современной Java; (3) эргономика для современных
   API — все 4 эпика direction 3 закрыты (ADR-0015–0018), packaging в 0.9.0 завершён.
 - **Векторы зрелости библиотеки (Антон, 2026-10-14 23:25, живая нить):**
-  донастройка SSL (кастомные серты, mTLS) — закрыт в ADR-0020! Прозрачный GZIP/Deflate,
-  элегантный доступ к метаданным заголовков (пагинация, ETag, Location, rate limits).
+  все 3 вектора полностью реализованы: SSL/mTLS (ADR-0020), прозрачный GZIP/Deflate (ADR-0021),
+  доступ к метаданным заголовков (ADR-0022).
 - **Коммиты — краткие, не дублируют ченджлог** (Антон).
 - **Объём одной сессии в 2–3 раза меньше** — один маленький шаг.

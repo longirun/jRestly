@@ -127,6 +127,7 @@ public class HttpTemplate {
     private Class<?> controllerClass;
     private Method method;
     private Object[] args;
+    private ResponseHeaders responseHeadersHolder;
 
     /**
      * Creates an empty template. Not intended for direct use: instances
@@ -336,15 +337,25 @@ public class HttpTemplate {
     private <T> T processResponse(WireRequest request, WireResponse response, long startNanos)
             throws IOException {
         long elapsedMs = (System.nanoTime() - startNanos) / 1_000_000;
+        Duration callDuration = Duration.ofNanos(System.nanoTime() - startNanos);
 
         List<Header> responseHeaders = response.headers();
+        int statusCode = response.statusCode();
+
+        // ADR-0022: Populate response headers holder and thread-local captor
+        if (responseHeadersHolder != null) {
+            responseHeadersHolder.populate(statusCode, responseHeaders, callDuration);
+        }
+        Consumer<ResponseHeaders> captor = ResponseHeaders.CURRENT_CAPTOR.get();
+        if (captor != null) {
+            captor.accept(new ResponseHeaders(statusCode, responseHeaders, callDuration));
+        }
+
         if (authDetailsConsumer != null) {
             authDetailsConsumer.accept(responseHeaders);
         }
 
         logResponse(response, elapsedMs);
-
-        int statusCode = response.statusCode();
 
         // ADR-0015 Aspect 3: an InputStream return declares byte binding —
         // the success path hands the stream over untouched (codec-free),
@@ -1548,5 +1559,23 @@ public class HttpTemplate {
      */
     public Object[] getArgs() {
         return args;
+    }
+
+    /**
+     * Sets the response headers holder (ADR-0022).
+     *
+     * @param responseHeadersHolder the holder to populate with response metadata
+     */
+    public void setResponseHeadersHolder(ResponseHeaders responseHeadersHolder) {
+        this.responseHeadersHolder = responseHeadersHolder;
+    }
+
+    /**
+     * The response headers holder (ADR-0022).
+     *
+     * @return the holder, or {@code null}
+     */
+    public ResponseHeaders getResponseHeadersHolder() {
+        return responseHeadersHolder;
     }
 }

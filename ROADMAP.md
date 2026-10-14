@@ -740,7 +740,32 @@ Gates (session #99, clean rebuild):
 - `javadoc` 0 warnings under permanent `-Xdoclint:all -Werror`.
 - Zero external runtime dependencies preserved.
 
-After the epic: candidate #1 — response headers & metadata access (mailbox #94: `Link` pagination, `ETag`, `Location`, rate limits while preserving ADR-0004 transparent methods); candidate #2 — test-javadoc (ADR-0013 Non-goals). ADR number **0022** free.
+After the epic: candidate #1 — response headers & metadata access (mailbox #94: `Link` pagination, `ETag`, `Location`, rate limits while preserving ADR-0004 transparent methods) — done, section below; candidate #2 — test-javadoc (ADR-0013 Non-goals). ADR number **0022** — response headers epic, **0023** free.
+
+## Response headers and metadata access (ADR-0022) — COMPLETE ✅ (2026-10-15, unreleased)
+
+> Source of truth (concept, architecture decisions, holder model, test strategy, status):
+> [`docs/0.10.0/ADR-0022-response-headers-and-metadata-access.md`](docs/0.10.0/ADR-0022-response-headers-and-metadata-access.md).
+> Session #100 (agent-loop). Library maturity vector #3 (maintainer's 2026-10-14 23:25 mailbox:
+> "элегантный доступ к метаданных заголовков (для пагинации, ETag, Location и рейт-лимитов, и т.д.)").
+> Provides elegant, zero-wrapper access to HTTP response headers and call metadata while strictly
+> preserving the transparent return type invariant (ADR-0004: methods return domain types, never `Response<T>`).
+> 100% zero-dependency on standard Java 21 platform classes.
+
+Key decisions (ADR-0022):
+- **`ResponseHeaders` holder container:** Encapsulates status code, duration, raw headers, case-insensitive map, `firstValue`, `allValues`, `firstLongValue` (rate limits, sizes), `etag()`, `location()`, `locationUri()`, `contentType()`, `link(rel)`, `links()`, `retryAfter()`, `isSuccess()`, and `isPopulated()`.
+- **Method parameter binding:** Controller interface methods can declare an unannotated `ResponseHeaders` parameter. `ControllerValidator` validates it as an intrinsic hook without requiring annotations. `HttpTemplateBuilder` records the holder without serializing it into the request. `HttpTemplate.processResponse` populates it before payload deserialization and before error dispatch.
+- **Capture pattern (`ResponseHeaders.capture`):** Synchronous calls can capture response metadata without modifying controller interface signatures via `CapturedResponse<T> response = ResponseHeaders.capture(() -> client.call())`. Operates via scoped, reentrant `ThreadLocal`.
+- **RFC 8288 Web Linking parser:** Robust, zero-dependency parser for `Link` headers supporting comma-separated multi-links, quoted/unquoted `rel` attributes, and space-separated multi-relations.
+- **Full test coverage:** 17 tests (+18 cases, total suite 483/483 across 57 classes) spanning `ResponseHeadersTest` (8 unit tests) and `ResponseHeadersWireMockTest` (9 E2E integration tests: pagination, capture, Location, ETag, rate limits, async CompletableFuture, streaming InputStream, @OnError, UnexpectedStatusException, and null-safety).
+
+Gates (session #100, clean rebuild):
+- `./gradlew test` **483/483** (57 classes, 0 failures/errors; +18 tests in ADR-0022 across `ResponseHeadersTest` and `ResponseHeadersWireMockTest`).
+- `compileJava` and `compileTestJava` 0 warnings under permanent `-Xlint:all -Werror`.
+- `javadoc` 0 warnings under permanent `-Xdoclint:all -Werror`.
+- Zero external runtime dependencies preserved.
+
+After the epic: candidate #1 — test-javadoc (ADR-0013 Non-goals); candidate #2 — conditional requests & caching headers (ETag validation, 304 Not Modified). ADR number **0023** free.
 
 ## Post-0.5.0 shortlist (not scheduled — see ADR-0003)
 

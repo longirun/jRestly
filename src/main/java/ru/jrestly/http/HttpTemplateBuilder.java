@@ -158,11 +158,28 @@ public class HttpTemplateBuilder {
         result.setRetryPolicy(resolveRetryPolicy());
         result.setRequestInterceptors(moduleInfo.getRequestInterceptors());
         result.setResponseInterceptors(moduleInfo.getResponseInterceptors());
+        result.setResponseHeadersHolder(resolveResponseHeadersHolder());
         result.setControllerClass(controller);
         result.setMethod(method);
         result.setArgs(args);
 
         return result;
+    }
+
+    private ResponseHeaders resolveResponseHeadersHolder() {
+        if (method == null) {
+            return null;
+        }
+        Parameter[] parameters = method.getParameters();
+        for (int i = 0; i < parameters.length; i++) {
+            if (ResponseHeaders.class.equals(parameters[i].getType())) {
+                if (args != null && i < args.length && args[i] instanceof ResponseHeaders holder) {
+                    return holder;
+                }
+                return null;
+            }
+        }
+        return null;
     }
 
     // CompletableFuture<T> methods run non-blockingly on the client executor;
