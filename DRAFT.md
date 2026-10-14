@@ -1,26 +1,21 @@
-# DRAFT: свободный ход после warnings-эпика (ADR-0013 закрыт 6/6, сессия #58) — активная зона: -Xlint-гейт / 0.8.0-цикл / test-javadoc
+# DRAFT: свободный ход после warnings-эпика (ADR-0013 закрыт 6/6, сессия #58) — активная зона: 0.8.0-цикл / test-javadoc
 
 > Эпик «warnings и модернизация (ADR-0013)» закрыт 6/6 (сессии #41–#58;
 > дистиллят — ROADMAP-секция «Warnings and modernization (ADR-0013) —
-> COMPLETE ✅ (2026-10-14, unreleased)», гейт `-Xdoclint:all -Werror`
-> перманентен в build.gradle). Дальше — из «после эпика»-кандидатов
+> COMPLETE ✅ (2026-10-14, unreleased)», гейты `-Xdoclint:all -Werror`
+> (javadoc) и `-Xlint:all -Werror` (оба compile-задания, сессия #59)
+> перманентны в build.gradle). Дальше — из «после эпика»-кандидатов
 > (правило #39: эпик открывается из кандидата, не из ничего; known-gaps
 > выработан в 0.7.0-цикле, новых не появилось — кандидаты ниже из
 > ADR-0013 Consequences/Non-goals).
 
 ## Активная зона (кандидаты «после эпика»)
 
-- **Кандидат №1 — `-Xlint`-гейт в build.gradle** (ADR-0013 Consequences:
-  «a future `-Xlint` in the build is a one-line follow-up … deliberately
-  not part of this audit — it would also gate the three already-suppressed
-  sites, which is fine, but it is a separate decision»). Один маленький
-  шаг: `compileJava`/`compileTestJava` + `-Xlint:all`, решение по
-  suppressed-сайтам (гейт их прощает — suppress уже с рационалом).
-- **Кандидат №2 — 0.8.0-цикл** (упаковка, прецедент ADR-0012): ADR-0013
+- **Кандидат №1 — 0.8.0-цикл** (упаковка, прецедент ADR-0012): ADR-0013
   scope — «the fixes ship with the next release»; `docs/0.8.0/` на месте,
   версионная метка провизорная до открытия цикла; концепт-сессия
   (контур: версия, механика по правилам мейнтейнера, changelog, шаги).
-- **Кандидат №3 — test-javadoc** (ADR-0013 Non-goals: «test-source
+- **Кандидат №2 — test-javadoc** (ADR-0013 Non-goals: «test-source
   javadoc» вынесен за скобки аудита — будущий лоск; гейт закрывает
   только main-поверхность).
 

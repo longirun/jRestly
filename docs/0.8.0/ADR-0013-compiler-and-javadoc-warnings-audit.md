@@ -190,10 +190,15 @@ toolchain (the source/target pin is deliberate — no auto-provisioning).
   6. gate: `-Xdoclint=all` + `-Werror` in `build.gradle`, a full re-audit
      (`-Xlint:all` → 0 javac warnings, `javadoc` → 0), distillation.
 - After the epic: `./gradlew build` is warning-free under the default
-  configuration **and** under lint; a future `-Xlint` in the build is a
-  one-line follow-up (deliberately not part of this audit — it would also
-  gate the three already-suppressed sites, which is fine, but it is a
-  separate decision).
+  configuration **and** under lint. The `-Xlint` follow-up (deliberately
+  separate from this audit) is done — session #59: `-Xlint:all -Werror` on
+  both `compileJava` and `compileTestJava`, mirroring the javadoc gate's
+  shape. The audit's seven suppressions (five main: serial ×3, this-escape,
+  unchecked; two test: unchecked ×2) are forgiven by the gate by design —
+  each already carries a one-line rationale. Negative-tested on both sides:
+  a rawtypes probe fails `compileJava` and `compileTestJava` respectively
+  ("warnings found and -Werror specified"); with the probe removed the
+  build is green (256/256).
 - The per-file javadoc table above is the work list for steps 4–5; it is a
   gate snapshot (session #41, `-Xdoclint=all`), to be re-measured, not
   re-read, by the step that touches it.

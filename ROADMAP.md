@@ -510,9 +510,10 @@ into noise. Full re-audit: javac `-Xlint:all` 0/0 (main + test), javadoc 0
 (gate negative-tested with a probe class), suite 256/256 (36 classes),
 generated POM 0.7.0, 0 `<dependency>`.
 
-After the epic: a future `-Xlint` in the build is a one-line follow-up
-(ADR-0013 Consequences — deliberately a separate decision); ADR number
-**0014** is free.
+After the epic: the `-Xlint` one-line follow-up (ADR-0013 Consequences —
+the deliberately separate decision) is done — session #59: `-Xlint:all
+-Werror` on both compile tasks, the seven audit suppressions forgiven by
+design, gate negative-tested on both sides. ADR number **0014** is free.
 
 ## Post-0.5.0 shortlist (not scheduled — see ADR-0003)
 

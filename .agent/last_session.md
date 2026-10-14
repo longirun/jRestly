@@ -1,76 +1,84 @@
-# Handover Note: Сессия 58 (шаг 6 warnings-эпика ЗАКРЫТ: гейт `-Xdoclint:all -Werror` в build.gradle, полный ре-аудит, эпик 6/6, дистиллят в ROADMAP, DRAFT зачищен; следующий ход — из активной зоны DRAFT)
+# Handover Note: Сессия 59 (кандидат №1 закрыт: гейт `-Xlint:all -Werror` в обоих compile-заданиях, отрицательный тест с обеих сторон, ADR-0013/ROADMAP/DRAFT обновлены; следующий ход — 0.8.0-цикл, концепт-сессия)
 
 ## Что сделано в этой сессии
-- **Входящее:** нет — живых ниток с Антоном нет (автономный ход).
-- **Ход:** шаг 6 — гейт (последний чекбокс) + полный ре-аудит +
-  дистилляция в ROADMAP + зачистка DRAFT. Эпик ADR-0013 закрыт 6/6.
-- **build.gradle:** `javadoc { options.addStringOption('Xdoclint:all');
-  options.addBooleanOption('Werror', true) }` — ОДНОАРГУМЕНТНАЯ форма
-  (двоеточие внутри строки; ADR-0013 D2, поправка #45). В handover'е
-  #57 форма записана противоречиво (и двухаргументная названа
-  «одиночной») — источник истины ADR, и он подтвердился прогоном.
-- **Отрицательный тест гейта:** probe-класс `GateProbe` (публичный класс
-  + метод, ноль Javadoc) → 3 warnings, «warnings found and -Werror
-  specified», BUILD FAILED; удаление → зелёный. Новая постоянная нить:
-  «гейт без отрицательного теста — не гейт».
-- **Полный ре-аудит:** javac `-Xlint:all` (init-скрипт `lint-init.gradle`,
-  `--rerun-tasks`) — **0/0** (main+test; оба compile-задания реально
-  отработали — проверено по логу, не по BUILD SUCCESSFUL); javadoc — 0
-  (гейт); `./gradlew test --rerun` — **256/256** (36 классов, 0 fail/err
-  по XML); POM перегенерирован: **0.7.0, 0 `<dependency>`**.
-- **ROADMAP:** секция «Warnings and modernization (ADR-0013) — COMPLETE
-  ✅ (2026-10-14, unreleased)» (после «Cycle 0.7.0», перед Post-0.5.0
-  shortlist; линки, не пересказ: ADR-0013, sessions #41–#58, scope
-  D1–D4 as executed, гейт + ре-аудит-факты, after-the-epic: -Xlint
-  one-line follow-up, ADR-0014 free). In-place-фикс в 0.7.0-секции:
-  «0013 is free» → взят эпиком, 0014 free (гигиена: чинить сразу).
-- **DRAFT:** зачистка по прецеденту #39 — эпик убран целиком (дистиллят —
-  в ROADMAP), активная зона: кандидат №1 — `-Xlint`-гейт в build.gradle
-  (ADR-0013 Consequences — deliberate-отдельное решение), №2 — 0.8.0-
-  цикл (упаковка, прецедент ADR-0012; `docs/0.8.0/` на месте, метка
-  провизорная), №3 — test-javadoc (ADR-0013 Non-goals). Постоянные нити
-  сохранены + новая (отрицательный тест гейта). «Пометки из mailbox»
-  сверены (актуальны; дата 2026-10-14).
-- **Mailbox:** не трогал (входящих нет; по существу нечего — рутина).
+- **Входящее:** нет — живых ниток с Антоном нет (автономный ход, как с
+  #46–#58).
+- **Ход:** кандидат №1 активной зоны — `-Xlint`-гейт в build.gradle
+  (one-line follow-up из ADR-0013 Consequences — deliberately-
+  отдельное решение, как обещал эпик).
+- **build.gradle:** `options.compilerArgs << '-Xlint:all'` +
+  `<< '-Werror'` в ОБА существующих блока — `compileJava` и
+  `compileTestJava` (house-style — отдельные блоки, не
+  `withType(JavaCompile)`). Решение по форме: без `-Werror` гейт —
+  шум (warnings печатаются, сборка не падает); симметрия с javadoc-
+  гейтом шага 6 (`-Xdoclint:all -Werror`). ADR говорил «one-line» —
+  реально два флага × две задачи.
+- **Отрицательный тест** (постоянная нить «гейт без отрицательного
+  теста — не гейт» — второе применение, теперь на новом гейте): probe
+  `LintGateProbe` (rawtype-поле, Javadoc на месте — чистый javac-
+  warning, не doclint) — в main: `compileJava` роняется «warnings
+  found and -Werror specified» (2 warnings → 1 error); перенёс в test —
+  `compileTestJava` роняется так же; удалил — зелёный. Обе стороны
+  гейта проверены, а не одна.
+- **Гейт прощает 7 suppress-сайтов аудита** (5 в main: serial ×3,
+  this-escape, unchecked; 2 в test: unchecked ×2 — `TestModuleInfo.
+  getEnvironment` и shared `TestFutures.causeOf`): базовая сборка с
+  ними зелёная — suppress уже с рационалом, гейт их не трогает.
+- **Гейты:** `compileJava compileTestJava --rerun-tasks` — **0
+  warnings** (по логам, что compile-задания реально отработали —
+  граблина #58); `./gradlew test --rerun` — **256/256** (0 fail/err по
+  XML); `./gradlew build` — зелёный; POM перегенерирован: **0.7.0,
+  0 `<dependency>`** (lint-флаги POM не трогают — файл побайтово
+  совпал с закоммиченным, в коммит не попал).
+- **ADR-0013:** «After the epic»-пул Consequences обновлён in-line —
+  follow-up выполнен (сессия #59: форма, 7 suppress-сайтов с
+  рационалом, отрицательный тест с обеих сторон); audit-time «three
+  already-suppressed sites» — фактическая семёрка.
+- **ROADMAP:** in-place-фикс «After the epic»-строки в
+  COMPLETE-секции «Warnings and modernization (ADR-0013)» (гигиена:
+  чинить сразу).
+- **DRAFT:** кандидат №1 убран (дистиллят — ADR/ROADMAP), оставшиеся
+  перенумерованы: №1 — 0.8.0-цикл, №2 — test-javadoc; шапка — оба
+  гейта перманентны.
+- **Mailbox:** не трогал (входящих нет; по существу нечего — ожидаемый
+  one-line follow-up выполнен как описан в ADR; не рутина, не спор).
 
-## Контекст для следующей сессии (#59)
+## Контекст для следующей сессии (#60)
 
-### Состояние: свободный ход, эпик ADR-0013 закрыт, активная зона DRAFT
-1. **Кандидат №1 — `-Xlint`-гейт в build.gradle** (маленький шаг,
-   ADR-0013 Consequences): `compileJava`/`compileTestJava` + `-Xlint:all`
-   (или в общий `tasks.withType(JavaCompile)` — решение на месте;
-   house-style build.gradle — отдельные блоки compileJava/
-   compileTestJava, так что, вероятно, `options.compilerArgs <<
-   '-Xlint:all'` в оба существующие блоки). Гейт не роняет: дерево 0/0
-   под `-Xlint:all` (проверено в #58 init-скриптом). Suppress-сайты (3 ×
-   serial + this-escape + 1 test) гейт прощает — suppress уже с
-   рационалом (ADR-0013 D1). Отрицательный тест гейта — по новой
-   постоянной нити (probe с warning'ом). Валидация: `./gradlew build`
-   (дефолтный build с -Xlint → 0 warnings, suite зелёный), POM — deps
-   не создаёт (но правило: проверить), 256/256. После — зачистка
-   кандидата в DRAFT (следующий — №2) + дневник/last_session/коммит.
-2. **Кандидат №2 — 0.8.0-цикл** (упаковка; прецедент ADR-0012):
-   концепт-сессия (контур: версия 0.7.0→0.8.0, механика по правилам
-   мейнтейнера — build.gradle + commit message, без тега; changelog-
-   entry 0.8.0 — форма «навигатор, не зеркало»; шаги цикла). Концепт —
-   отдельная сессия (прецедент концепт-шагов), не в одном шаге с
-   код-кандидатом.
-3. **Кандидат №3 — test-javadoc** (ADR-0013 Non-goals): гейт закрывает
-   main-поверхность; test-источники — будущий лоск.
-4. **Живых ниток с Антоном нет** — автономный ход; писать — по
+### Состояние: свободный ход, warnings-эпик + -Xlint-follow-up закрыты, активная зона DRAFT (2 кандидата)
+1. **Кандидат №1 — 0.8.0-цикл** (упаковка, прецедент ADR-0012):
+   концепт-сессия — контур: версия 0.7.0→0.8.0, механика по правилам
+   мейнтейнера (build.gradle + commit message, без гит-тега — «работаем
+   в agent-loop, наружу не мержим», цитата в ADR-0012), changelog-
+   entry 0.8.0 в форме «навигатор, не зеркало» (нить #40: 1–2 строки +
+   указатель, с 0.7.1 писать сразу в этой форме), контур шагов цикла.
+   Концепт — отдельная сессия (прецедент концепт-шагов: #41, #36), не
+   в одном шаге с код-кандидатом. Что попадает в 0.8.0: весь
+   warnings-эпик (ADR-0013) + `-Xlint`-гейт (#59) — оба «unreleased» с
+   2026-10-14. `docs/0.8.0/` на месте (ADR-0013), версионная метка
+   провизорная до открытия цикла. Дизайн-решения не переосмыслять —
+   они в ADR 0007…0011 и COMPLETE-секциях ROADMAP (нить #36: цикл —
+   упаковка, не фича; концепт ссылается, не пересказывает).
+2. **Кандидат №2 — test-javadoc** (ADR-0013 Non-goals): гейт закрывает
+   main-поверхность; test-источники — будущий лоск (если дойдём).
+3. **Живых ниток с Антоном нет** — автономный ход; писать — по
    существу (архитектурные споры/инсайты), не по рутине.
 
 ### Грабли (актуальный набор)
+- **Гейт без отрицательного теста — не гейт** (сессии #58/#59,
+  применено дважды): новый gate в build.gradle проверять и
+  отрицательной стороной — probe обязан ронять сборку, после удаления —
+  давать зелёную. Форма сообщения «warnings found and -Werror
+  specified» — и у javac, и у javadoc гейтов.
+- **`-Xlint` без `-Werror` — гейт-шум** (сессия #59): warnings
+  печатаются, сборка проходит; гейт = `-Xlint:all` + `-Werror` парой.
 - **Одноаргументная форма `-Xdoclint:all`** (сессии #45/#58): Gradle
   `options.addStringOption('Xdoclint:all')` — ОДИН аргумент (двоеточие
   внутри строки); двухаргументный `('Xdoclint', 'all')` — «No source
   files for package all». CLI — `-Xdoclint:all` (двоеточие), не
   `-Xdoclint=all` («invalid flag»).
-- **Гейт без отрицательного теста — не гейт** (сессия #58): новый
-  gate в build.gradle проверять и отрицательной стороной (probe-класс
-  без Javadoc обязан ронять сборку).
 - **«2 s» в выводе Gradle — не индульгенция** (сессия #58): для
-  `-Xlint`-ре-аудита проверить по логу, что compile-задания реально
+  compile-замеров проверить по логу, что compile-задания реально
   отработали (`> Task :compileJava` без UP-TO-DATE), не по BUILD
   SUCCESSFUL.
 - **doclint требует main description у ВСЕХ сайтов** (сессия #55):
@@ -99,7 +107,8 @@
   пересказывает.
 - **POM — не артефакт `test`** (сессия #38): после изменения
   build.gradle — перегенерировать
-  `generatePomFileForMavenJavaPublication`.
+  `generatePomFileForMavenJavaPublication` (#59: lint-флаги POM не
+  трогают — побайтово совпал).
 - **Коммит-субъект: краткий, без дублирования ченджлога** (Антон, с
   #33); body — гейты-факты.
 - **`./gradlew test --rerun`** — «UP-TO-DATE ≠ мой прогон».
@@ -107,8 +116,8 @@
   test/*.xml | awk -F'"' '{s+=$2} END{print s}'` (awk по XML-заголовкам;
   python3/bc не переживают ребут).
 - **POM zero-dep:** после любой правки build.gradle — 0 `<dependency>`.
-- **ADR-номера:** 0013 — закрыт (warnings-эпик); **0014 — свободен**
-  (следующий).
+- **ADR-номера:** 0013 — закрыт (warnings-эпик + -Xlint-follow-up);
+  **0014 — свободен** (следующий).
 - **Сторонние API — по jar/javap/тегам, не из головы; NPE ≠ NFE.**
 - **«Итог дня» — живая секция:** дописывать фрагментом « + **...
   (сессия #N)**», не переписывать.
@@ -120,29 +129,31 @@
 - **`[this-escape]` suppressится в месте escape** (сессия #42).
 - **Generic-override должен нести `<T>` интерфейса** (сессия #43).
 - **Shared helper между классами — `public static`** (сессия #43).
-- **Дефолтный build молчит о warnings'ах** (прецедент #41): замеры —
-  через init-скрипты в `/tmp/opencode/` (`lint-init.gradle` —
-  переживает).
+- **Дефолтный build молчит о warnings'ах** (прецедент #41) — с #59
+  это почти неактуально: `-Xlint:all -Werror` перманентен в
+  build.gradle, init-скрипт `/tmp/opencode/lint-init.gradle` — запасной
+  инструмент.
 
 ### Среда
 1. `GRADLE_USER_HOME=/tmp/opencode/gradle-home ./gradlew ...` (тёплый
-   кэш пережил сессии #36–#58).
+   кэш пережил сессии #36–#59).
 2. `pids.max = 1000`. Полный `./gradlew test --rerun` без init-скрипта.
 3. Ветка `agent-loop`. Демон Gradle переживает падения тестов.
 4. Коммиты агента: `longirun-agent <sinyagovsky@gmail.com>`; счётчик
-   сессий подкручивает harness (сейчас 58 → после следующей 59).
+   сессий подкручивает harness (сейчас 59 → после следующей 60).
 5. Часы контейнера: UTC+4; mailbox-время — местное.
 6. `docs/` — ADR-папки по версиям цикла: `0.5.0/`, `0.6.0/`, `0.7.0/`,
-   **`0.8.0/` (ADR-0013 закрыт; версионная метка провизорная до
-   открытия 0.8.0-цикла)**; lint-инит-скрипт `/tmp/opencode/
-   lint-init.gradle`, classpath `/tmp/opencode/cp.txt`, логи замеров —
-   в `/tmp/opencode/` (javadoc-*.log 45–57 — история шагов 4–5;
-   `lint-58.log` — ре-аудит #58, 0 warnings).
+   **`0.8.0/` (ADR-0013 закрыт + -Xlint-follow-up; версионная метка
+   провизорная до открытия 0.8.0-цикла)**; lint-инит-скрипт
+   `/tmp/opencode/lint-init.gradle`, classpath `/tmp/opencode/cp.txt`,
+   логи замеров — в `/tmp/opencode/` (javadoc-*.log 45–57 — история
+   шагов 4–5; `lint-58.log` — ре-аудит #58; `lint-gate-59.log` —
+   compile-замер #59, 0 warnings).
 7. Системный JDK: `/opt/java/openjdk` (Temurin 21) — `javadoc`-бинарь
    для прямых замеров.
 
 ### Состояние git
-- HEAD: коммит сессии #58 (гейт + ре-аудит + дистилляция) поверх
+- HEAD: коммит сессии #59 (-Xlint-гейт) поверх `f4f0b29` (#58),
   `59d1ec8` (#57), `75b1497` (#56), `76ed1cd` (#55), `3975d4e` (#54),
   `590ac26` (#53), `7f32ccf` (#52), `20b23b7` (#51), `7fb7e85` (#50),
   `38e5aba` (#49), `0bed4fa` (#48). Всё на `agent-loop`. Последний тег
@@ -150,6 +161,7 @@
 - Версия в build.gradle: **0.7.0**; POM `pom-default.xml`: **0.7.0**,
   0 `<dependency>`.
 - Тесты: **256/256** (36 классов).
-- Warnings: javac main+test — **0/0** под `-Xlint:all`; javadoc — **0**
-  (гейт `-Xdoclint:all -Werror` перманентен в build.gradle,
-  отрицательный тест пройден).
+- Warnings: javac main+test — **0/0** (гейт `-Xlint:all -Werror`
+  перманентен в build.gradle, обе стороны отрицательно протестированы);
+  javadoc — **0** (гейт `-Xdoclint:all -Werror` перманентен в
+  build.gradle, отрицательный тест пройден в #58).

@@ -38,12 +38,19 @@ java {
 compileJava {
     options.release = 21
     options.compilerArgs << '-parameters'
+    // ADR-0013 follow-up: -Xlint:all gate (a deliberate separate decision) —
+    // the tree is 0/0 and the audit's suppressions carry one-line rationales,
+    // so -Werror forgives them; any new warning fails the build
+    options.compilerArgs << '-Xlint:all'
+    options.compilerArgs << '-Werror'
 }
 
 compileTestJava {
     options.release = 21
     // @PathVariable name-fallback reads parameter names; tests exercise that branch too
     options.compilerArgs << '-parameters'
+    options.compilerArgs << '-Xlint:all'
+    options.compilerArgs << '-Werror'
 }
 
 javadoc {
