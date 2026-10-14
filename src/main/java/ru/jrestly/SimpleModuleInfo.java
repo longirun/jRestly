@@ -48,6 +48,7 @@ public class SimpleModuleInfo implements ModuleInfo {
     private final List<ResponseInterceptor> responseInterceptors;
     private final SSLContext sslContext;
     private final SSLParameters sslParameters;
+    private final boolean decompressionEnabled;
 
     private SimpleModuleInfo(Builder builder) {
         this.name = builder.name;
@@ -65,6 +66,7 @@ public class SimpleModuleInfo implements ModuleInfo {
         this.responseInterceptors = List.copyOf(builder.responseInterceptors);
         this.sslContext = builder.sslContext;
         this.sslParameters = builder.sslParameters;
+        this.decompressionEnabled = builder.decompressionEnabled;
     }
 
     /**
@@ -142,6 +144,11 @@ public class SimpleModuleInfo implements ModuleInfo {
         return sslParameters;
     }
 
+    @Override
+    public boolean isDecompressionEnabled() {
+        return decompressionEnabled;
+    }
+
     /**
      * A builder for {@link SimpleModuleInfo}, pre-set to the defaults:
      * name {@code "default"}, 5 s connect timeout, 30 s socket timeout,
@@ -165,6 +172,7 @@ public class SimpleModuleInfo implements ModuleInfo {
         private final List<ResponseInterceptor> responseInterceptors = new ArrayList<>();
         private SSLContext sslContext;
         private SSLParameters sslParameters;
+        private boolean decompressionEnabled = true;
 
         /**
          * A builder pre-set to the defaults; {@code baseUrl} must still
@@ -367,6 +375,18 @@ public class SimpleModuleInfo implements ModuleInfo {
          */
         public Builder sslParameters(SSLParameters sslParameters) {
             this.sslParameters = Objects.requireNonNull(sslParameters, "sslParameters");
+            return this;
+        }
+
+        /**
+         * Sets whether transparent response decompression is enabled (ADR-0021).
+         * Enabled by default ({@code true}).
+         *
+         * @param enabled {@code true} to enable decompression, {@code false} to disable
+         * @return this builder, for chaining
+         */
+        public Builder decompression(boolean enabled) {
+            this.decompressionEnabled = enabled;
             return this;
         }
 

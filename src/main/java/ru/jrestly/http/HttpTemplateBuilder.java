@@ -295,6 +295,14 @@ public class HttpTemplateBuilder {
             }
         }
 
+        if (moduleInfo != null && moduleInfo.isDecompressionEnabled()) {
+            boolean hasAcceptEncoding = result.stream()
+                    .anyMatch(h -> h.name() != null && h.name().equalsIgnoreCase("Accept-Encoding"));
+            if (!hasAcceptEncoding) {
+                result.add(new Header("Accept-Encoding", "gzip, deflate"));
+            }
+        }
+
         return result;
     }
 

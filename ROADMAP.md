@@ -712,7 +712,35 @@ Gates (session #98, clean rebuild):
 - `javadoc` 0 warnings under permanent `-Xdoclint:all -Werror`.
 - Zero external runtime dependencies preserved.
 
-After the epic: candidate #2 — transparent GZIP / Deflate decompression (mailbox #94: `GZIPInputStream`/`InflaterInputStream` zero-dep core); candidate #3 — response headers & metadata access (mailbox #94: `Link` pagination, `ETag`, `Location`, rate limits while preserving ADR-0004 transparent methods); candidate #4 — test-javadoc (ADR-0013 Non-goals). ADR number **0021** free.
+After the epic: candidate #2 — transparent GZIP / Deflate decompression (mailbox #94: `GZIPInputStream`/`InflaterInputStream` zero-dep core) — done, section below; candidate #3 — response headers & metadata access (mailbox #94: `Link` pagination, `ETag`, `Location`, rate limits while preserving ADR-0004 transparent methods); candidate #4 — test-javadoc (ADR-0013 Non-goals). ADR number **0021** — decompression epic, **0022** free.
+
+## Transparent response decompression (GZIP & Deflate, ADR-0021) — COMPLETE ✅ (2026-10-15, unreleased)
+
+> Source of truth (concept, architecture decisions, SPI contract, status):
+> [`docs/0.10.0/ADR-0021-transparent-decompression-gzip-deflate.md`](docs/0.10.0/ADR-0021-transparent-decompression-gzip-deflate.md).
+> Session #99 (agent-loop). Library maturity vector #2 (maintainer's 2026-10-14 23:25 mailbox:
+> "прозрачный GZIP / Deflate"). Transparent response decompression for `gzip`, `x-gzip`, and `deflate`
+> (RFC 1950 zlib and RFC 1951 raw deflate fallback) using standard `java.util.zip` from `java.base` (100% zero-dep).
+> Automatically negotiates `Accept-Encoding: gzip, deflate` (when enabled and not explicitly specified by the caller).
+> Header hygiene: `Content-Encoding` and `Content-Length` are stripped from `WireResponse` so downstream codecs
+> and interceptors receive clean payloads. Transparent across sync, async (`CompletableFuture`), streaming (`InputStream`),
+> line streaming (`Stream<String>`), SSE (`Stream<ServerSentEvent>`), and error payloads (`@OnError` & `UnexpectedStatusException`).
+
+Key decisions (ADR-0021):
+- **Zero-dep core:** Uses strictly Java 21 standard library types from `java.util.zip` (`GZIPInputStream`, `InflaterInputStream`, `Inflater`) from `java.base`.
+- **SPI surface (`ModuleInfo`):** Added `default boolean isDecompressionEnabled() { return true; }`.
+- **Builder ergonomics:** Added fluent `decompression(boolean)` to `SimpleModuleInfo.Builder` and `JRestlyClient.Builder`.
+- **Automatic header negotiation:** `HttpTemplateBuilder.createHeaders()` appends `Accept-Encoding: gzip, deflate` when decompression is enabled and no explicit `Accept-Encoding` was provided by caller or auth provider.
+- **Engine decompression (`HttpTemplate.handleDecompression`):** Decompresses raw `byte[]` and wraps live streaming `InputStream`; strips `Content-Encoding` and `Content-Length`.
+- **Full test coverage:** 28 tests across `DecompressionConfigTest` (17 tests: unit defaults, builder settings, explicit header preservation, gzip, x-gzip, zlib deflate, raw deflate fallback, streaming, empty body, corrupted stream error handling) and `GzipDeflateDecompressionTest` (11 tests: WireMock E2E for DTO deserialization, x-gzip, zlib, raw deflate, String return, binary InputStream streaming, line streaming, async CompletableFuture, @OnError error DTO, UnexpectedStatusException raw payload, and opt-out).
+
+Gates (session #99, clean rebuild):
+- `./gradlew test` **465/465** (55 classes, 0 failures/errors; +28 tests in ADR-0021 across `DecompressionConfigTest` and `GzipDeflateDecompressionTest`).
+- `compileJava` and `compileTestJava` 0 warnings under permanent `-Xlint:all -Werror`.
+- `javadoc` 0 warnings under permanent `-Xdoclint:all -Werror`.
+- Zero external runtime dependencies preserved.
+
+After the epic: candidate #1 — response headers & metadata access (mailbox #94: `Link` pagination, `ETag`, `Location`, rate limits while preserving ADR-0004 transparent methods); candidate #2 — test-javadoc (ADR-0013 Non-goals). ADR number **0022** free.
 
 ## Post-0.5.0 shortlist (not scheduled — see ADR-0003)
 

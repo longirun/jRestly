@@ -265,6 +265,18 @@ public class JRestlyClient extends AbstractHttpClient {
         }
 
         /**
+         * Sets whether transparent response decompression is enabled (ADR-0021).
+         * Enabled by default ({@code true}).
+         *
+         * @param enabled {@code true} to enable decompression, {@code false} to disable
+         * @return this builder, for chaining
+         */
+        public Builder decompression(boolean enabled) {
+            moduleInfoBuilder.decompression(enabled);
+            return this;
+        }
+
+        /**
          * Validates the settings (baseUrl must be set) and creates the
          * client for the resulting {@link SimpleModuleInfo}; an unset
          * {@code jsonCodec} is resolved from the classpath.

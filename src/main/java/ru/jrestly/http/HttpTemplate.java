@@ -10,9 +10,14 @@ import ru.jrestly.interceptor.SimpleResponseContext;
 import ru.jrestly.json.JsonCodec;
 
 import java.io.BufferedReader;
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.util.zip.GZIPInputStream;
+import java.util.zip.Inflater;
+import java.util.zip.InflaterInputStream;
+import java.util.zip.ZipException;
 import java.lang.reflect.Method;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
@@ -891,12 +896,12 @@ public class HttpTemplate {
             HttpResponse<InputStream> response =
                     httpClient.send(toHttpRequest(request), HttpResponse.BodyHandlers.ofInputStream());
             logPerHop(request, response.statusCode(), start);
-            return toWireResponse(response);
+            return handleDecompression(toWireResponse(response));
         }
         HttpResponse<byte[]> response =
                 httpClient.send(toHttpRequest(request), HttpResponse.BodyHandlers.ofByteArray());
         logPerHop(request, response.statusCode(), start);
-        return toWireResponse(response);
+        return handleDecompression(toWireResponse(response));
     }
 
     // Async twin of send(): the same branch, chained over sendAsync
@@ -906,14 +911,102 @@ public class HttpTemplate {
             return httpClient.sendAsync(toHttpRequest(request), HttpResponse.BodyHandlers.ofInputStream())
                     .thenApply(response -> {
                         logPerHop(request, response.statusCode(), start);
-                        return toWireResponse(response);
+                        try {
+                            return handleDecompression(toWireResponse(response));
+                        } catch (IOException e) {
+                            throw new CompletionException(e);
+                        }
                     });
         }
         return httpClient.sendAsync(toHttpRequest(request), HttpResponse.BodyHandlers.ofByteArray())
                 .thenApply(response -> {
                     logPerHop(request, response.statusCode(), start);
-                    return toWireResponse(response);
+                    try {
+                        return handleDecompression(toWireResponse(response));
+                    } catch (IOException e) {
+                        throw new CompletionException(e);
+                    }
                 });
+    }
+
+    /**
+     * Decompresses the response payload if transparent decompression is
+     * enabled and {@code Content-Encoding} is {@code gzip}, {@code x-gzip},
+     * or {@code deflate} (ADR-0021).
+     *
+     * @param response the raw wire response
+     * @return the decompressed wire response with stripped encoding headers
+     * @throws IOException on I/O or decompression failure
+     */
+    public WireResponse handleDecompression(WireResponse response) throws IOException {
+        if (moduleInfo == null || !moduleInfo.isDecompressionEnabled() || response == null) {
+            return response;
+        }
+
+        String contentEncoding = null;
+        for (Header header : response.headers()) {
+            if (header.name() != null && header.name().equalsIgnoreCase("Content-Encoding")) {
+                contentEncoding = header.value();
+                break;
+            }
+        }
+
+        if (contentEncoding == null) {
+            return response;
+        }
+
+        String encoding = contentEncoding.trim().toLowerCase(Locale.ROOT);
+        if ("identity".equals(encoding)) {
+            return response;
+        }
+
+        boolean isGzip = "gzip".equals(encoding) || "x-gzip".equals(encoding);
+        boolean isDeflate = "deflate".equals(encoding);
+
+        if (!isGzip && !isDeflate) {
+            return response;
+        }
+
+        List<Header> strippedHeaders = response.headers().stream()
+                .filter(h -> h.name() == null || (!h.name().equalsIgnoreCase("Content-Encoding")
+                        && !h.name().equalsIgnoreCase("Content-Length")))
+                .toList();
+
+        if (response.stream() != null) {
+            InputStream decompressedStream = isGzip
+                    ? new GZIPInputStream(response.stream())
+                    : new InflaterInputStream(response.stream());
+            return new WireResponse(response.statusCode(), strippedHeaders, null, decompressedStream);
+        }
+
+        byte[] rawBody = response.body();
+        if (rawBody == null || rawBody.length == 0) {
+            return new WireResponse(response.statusCode(), strippedHeaders, rawBody, null);
+        }
+
+        byte[] decompressedBytes = isGzip ? decompressGzip(rawBody) : decompressDeflate(rawBody);
+        return new WireResponse(response.statusCode(), strippedHeaders, decompressedBytes, null);
+    }
+
+    private static byte[] decompressGzip(byte[] compressed) throws IOException {
+        try (GZIPInputStream gis = new GZIPInputStream(new ByteArrayInputStream(compressed))) {
+            return gis.readAllBytes();
+        }
+    }
+
+    private static byte[] decompressDeflate(byte[] compressed) throws IOException {
+        try {
+            try (InflaterInputStream iis = new InflaterInputStream(new ByteArrayInputStream(compressed))) {
+                return iis.readAllBytes();
+            }
+        } catch (ZipException e) {
+            Inflater rawInflater = new Inflater(true);
+            try (InflaterInputStream rawIisIn = new InflaterInputStream(new ByteArrayInputStream(compressed), rawInflater)) {
+                return rawIisIn.readAllBytes();
+            } finally {
+                rawInflater.end();
+            }
+        }
     }
 
     private HttpRequest toHttpRequest(WireRequest request) {
@@ -1176,6 +1269,15 @@ public class HttpTemplate {
      */
     public void setHeaders(List<Header> headers) {
         this.headers = headers;
+    }
+
+    /**
+     * The request headers.
+     *
+     * @return the headers, or {@code null}
+     */
+    public List<Header> getHeaders() {
+        return headers;
     }
 
     /**

@@ -1,25 +1,23 @@
-# DRAFT: активная зона после закрытия эпика SSL / mTLS (ADR-0020)
+# DRAFT: активная зона после закрытия эпика прозрачной декомпрессии GZIP / Deflate (ADR-0021)
 
-> Эпик SSL / Custom Certificates & mTLS (ADR-0020, `docs/0.10.0/`) закрыт 4/4 (сессии #97–#98):
-> концепт (#97) → реализация конфигурации ModuleInfo/SimpleModuleInfo/JRestlyClient + unit-тесты SslConfigTest (#97) →
-> интеграционные тесты с WireMock HTTPS HttpsSslTest (8 тестов: negative untrusted cert, positive custom SSLContext,
-> SSLParameters TLSv1.3 & cipher suite pinning, async CompletableFuture & streaming body, #98) →
-> дистилляция в ROADMAP («SSL/TLS configuration, custom certificates & mTLS (ADR-0020) — COMPLETE ✅») + гейты 437/437 тестов (#98).
+> Эпик Transparent response decompression (GZIP & Deflate, ADR-0021, `docs/0.10.0/`) закрыт 4/4 (сессия #99):
+> концепт и ADR-0021 → реализация конфигурации `isDecompressionEnabled()` в ModuleInfo/SimpleModuleInfo/JRestlyClient +
+> автоматическое добавление `Accept-Encoding: gzip, deflate` в `HttpTemplateBuilder` +
+> движок декомпрессии `handleDecompression` в `HttpTemplate` (gzip, x-gzip, zlib deflate, raw deflate fallback, streaming, error payloads) +
+> unit-тесты `DecompressionConfigTest` (17 тестов) и WireMock integration тесты `GzipDeflateDecompressionTest` (11 тестов) →
+> дистилляция в ROADMAP («Transparent response decompression (GZIP & Deflate, ADR-0021) — COMPLETE ✅») + гейты 465/465 тестов (55 классов).
 > Следующий ход — свободный, выбор из активной зоны.
 
 ## Активная зона (кандидаты на следующий эпик)
 
-- **Кандидат №1 — Прозрачный GZIP / Deflate decompression** (mailbox #94, вектор зрелости №2):
-  JDK `HttpClient` не распаковывает сжатые ответы автоматически. Поддержка отправки `Accept-Encoding: gzip, deflate`
-  и прозрачная распаковка потока ответа через `GZIPInputStream` и `InflaterInputStream` в Java
-  standard library (zero-dep), экономия трафика и удобство работы. Следующий ADR-0021.
-- **Кандидат №2 — Элегантный доступ к метаданным заголовков** (mailbox #94, вектор зрелости №3):
+- **Кандидат №1 — Элегантный доступ к метаданным заголовков** (mailbox #94, вектор зрелости №3):
   Пагинация по заголовку `Link`, доступ к `ETag`, `Location`, рейт-лимитам (`X-RateLimit-*`, `Retry-After`)
   при строгом сохранении инварианта прозрачных методов без `Response<T>` (ADR-0004). Исследование
   подходов: thread-scoped metadata context, consumer/holder аргументы в сигнатуре метода, либо
-  интеграция с `ResponseInterceptor`.
-- **Кандидат №3 — test-javadoc** (ADR-0013 Non-goals):
+  интеграция с `ResponseInterceptor`. Следующий ADR-0022.
+- **Кандидат №2 — test-javadoc** (ADR-0013 Non-goals):
   Test-source javadoc вынесен за скобки аудита; наведение лоска в тестовых классах.
+- **Кандидат №3 — Conditional requests & caching headers** (ETag validation, 304 Not Modified support).
 
 ---
 

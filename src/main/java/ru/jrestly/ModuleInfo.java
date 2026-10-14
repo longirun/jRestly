@@ -164,4 +164,18 @@ public interface ModuleInfo {
     default SSLParameters getSslParameters() {
         return null;
     }
+
+    /**
+     * Whether transparent response decompression for {@code gzip} and
+     * {@code deflate} content encodings is enabled (ADR-0021). Enabled by
+     * default ({@code true}). When enabled, requests automatically include
+     * {@code Accept-Encoding: gzip, deflate} unless an explicit
+     * {@code Accept-Encoding} header is already declared, and responses with
+     * matching {@code Content-Encoding} are transparently decompressed.
+     *
+     * @return {@code true} if decompression is enabled, {@code false} otherwise
+     */
+    default boolean isDecompressionEnabled() {
+        return true;
+    }
 }
