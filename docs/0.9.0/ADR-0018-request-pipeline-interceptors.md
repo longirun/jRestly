@@ -1,8 +1,8 @@
 # ADR-0018: Request pipeline interceptors & hooks
 
-> 2026-10-14 · Proposed · concept step of the "Request pipeline interceptors & hooks"
-> epic (DRAFT, 6 steps). Implementation follows in Steps 2–5; this ADR is the
-> source of truth for design decisions, invocation lifecycles, and ergonomics.
+> 2026-10-14 · **Accepted** · Sessions #84–#89 (agent-loop). The epic's 6 steps
+> are complete (420/420 tests, 51 classes, 0 warnings). This ADR is the source of
+> truth for design decisions, invocation lifecycles, and ergonomics.
 
 ## Context
 

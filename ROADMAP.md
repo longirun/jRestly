@@ -627,6 +627,28 @@ Gates (session #83, clean rebuild):
 
 After the epic: candidate #1 — request pipeline tuning (request/response interceptors / hooks, header customization, metrics — ADR-0018), candidate #2 — test-javadoc. ADR number **0018** free.
 
+## Request pipeline: Interceptors & hooks (ADR-0018) — COMPLETE ✅ (2026-10-14, unreleased)
+
+> Source of truth (concept, decisions, invocation lifecycles, Javadoc contract, status):
+> [`docs/0.9.0/ADR-0018-request-pipeline-interceptors.md`](docs/0.9.0/ADR-0018-request-pipeline-interceptors.md).
+> Sessions #84–#89 (agent-loop). The fourth ergonomics slice of direction 3 (maintainer's 2026-10-14 mailbox: "request parameter flexibility, data streaming, LLM, request pipeline tuning"). Pre-execution request transformation and post-execution observability hooks with zero-cost default path. No version bump / tag — releases paused per maintainer agreement (0.8.0 in `build.gradle`).
+
+Key decisions (ADR-0018):
+- **Surface:** `RequestInterceptor` (pre-execution request transformation/decoration, with `of(UnaryOperator)` adapter for functional style), `ResponseInterceptor` (post-execution observability: metrics, logging, audit). Zero new annotations, zero wrapper types (ADR-0003, ADR-0004).
+- **Context model:** `RequestContext` (method, controller class, args, thread-safe attributes for pre→post state propagation) and `ResponseContext` (delegates to RequestContext + status, duration, response/failure, `isSuccess()` helper). `SimpleRequestContext` / `SimpleResponseContext` implementations with defensive copying and strict null validation.
+- **WireRequest wither methods:** `withHeader`, `withHeaders`, `withoutHeader` (case-insensitive), `withUri`, `withMethod`, `withBody`, `withContentType`, `withParts`, plus fluent `Builder` (`builder()`, `toBuilder()`).
+- **Configuration:** `ModuleInfo.getRequestInterceptors()` / `getResponseInterceptors()` with `List.of()` defaults (non-breaking). Builder methods on `SimpleModuleInfo.Builder` and `JRestlyClient.Builder` with defensive copying and non-null validation.
+- **Execution:** Interceptor chains run in `HttpTemplate` — request interceptors before the call (with null-guard, last-valid-request preservation), response interceptors in `finally`/`whenComplete` (fault-isolated: exception in one hook logs warning, doesn't break the result or other hooks). Zero-cost path when lists are empty. Stream-safe for `InputStream` / SSE.
+- **Symmetry:** Uniform across sync `exchange()` and async `exchangeAsync()` twins — identical interceptor semantics in both circuits.
+
+Gates (session #89, clean rebuild):
+- `./gradlew test --rerun` **420/420** (51 classes, 0 failures/errors; +22 tests in ADR-0018 across `WireRequestTest`, `RequestContextTest`, `InterceptorConfigurationTest`, `RequestPipelineTest`, `RequestPipelineWireMockTest`).
+- `compileJava` and `compileTestJava` 0 warnings under permanent `-Xlint:all -Werror`.
+- `javadoc` 0 warnings under permanent `-Xdoclint:all -Werror`.
+- `build.gradle` untouched (0.8.0 unreleased).
+
+After the epic: the four ergonomics slices of direction 3 are complete (ADR-0015 response streaming, ADR-0016 SSE/LLM, ADR-0017 params/headers flexibility, ADR-0018 request pipeline). Next candidates: release cycle 0.9.0 (packaging), test-javadoc (ADR-0013 non-goals). ADR number **0019** free.
+
 ## Post-0.5.0 shortlist (not scheduled — see ADR-0003)
 
 - ~~Retry with backoff (integrates with `@OnError` semantics)~~ — done 2026-10-13, section above
