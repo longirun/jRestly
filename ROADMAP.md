@@ -494,8 +494,8 @@ cycle's ADR (`docs/0.8.0/`), **0015** free.
 > [`docs/0.8.0/ADR-0013-compiler-and-javadoc-warnings-audit.md`](docs/0.8.0/ADR-0013-compiler-and-javadoc-warnings-audit.md).
 > Sessions #41–#58 (agent-loop). Cleanup without new public surface (ADR-0013
 > Nature): every fix lands on existing classes, seams and the build file. No
-> version bump / tag — releases paused per maintainer agreement (0.7.0 in
-> `build.gradle`).
+> version bump / tag — releases paused per maintainer agreement (the
+> version in `build.gradle` — 0.8.0, still untagged).
 
 Scope (ADR-0013 D1–D4, as executed): all 12 compiler warnings fixed
 (9 main / 3 test; suppression targeted, never blanket, each carrying a
@@ -516,6 +516,53 @@ the deliberately separate decision) is done — session #59: `-Xlint:all
 -Werror` on both compile tasks, the seven audit suppressions forgiven by
 design, gate negative-tested on both sides. ADR number **0014** — the 0.8.0
 cycle's ADR (`docs/0.8.0/`), **0015** free.
+
+## Cycle 0.8.0 — COMPLETE ✅ (2026-10-14, unreleased)
+
+> Source of truth (cycle shape, versioning decisions, release-notes form, gates, status):
+> [`docs/0.8.0/ADR-0014-release-0.8.0-cycle.md`](docs/0.8.0/ADR-0014-release-0.8.0-cycle.md).
+> Sessions #60–#63 (agent-loop). The cycle packaged the one unreleased set
+> accumulated since 0.7.0 — the warnings & modernization epic (ADR-0013,
+> sessions #41–#58) plus its deliberate `-Xlint` follow-up (session #59);
+> scope is packaging, not features (ADR-0014 Decision 4).
+
+Contents — the single section above; it is the source of truth for the
+shipped set (linked, not restated):
+
+1. [Warnings and modernization (ADR-0013)](#warnings-and-modernization-adr-0013--complete--2026-10-14-unreleased)
+
+Versioning (ADR-0014 Decisions 1–2): `0.7.0` → **0.8.0** — a semver *minor*:
+the shipped `javadocJar` gains normative completeness (a user-visible
+artifact change, not a bug fix), the build pins the Java 21 API surface
+with `--release 21`, and the three exception classes gain an explicit
+`@Serial` UID (a serialization-compatibility guarantee). No breaking or
+behavior change — the four explicit no-arg constructors are ABI-neutral, so
+ADR-0013's "no new public surface" nature holds. Mechanics per ADR-0012
+Decision 2, unchanged: the bump in `build.gradle` on the gate step (session
+#62), the version named in the release commit message, **no git tag** — the
+tag-based JitPack coordinates stay at `v0.6.1` until the maintainer tags.
+
+Release notes (ADR-0014 Decision 3): the `0.8.0` entry in
+[`CHANGELOG.md`](CHANGELOG.md) (unpublished), written from the start in the
+navigator form (1–2 lines per change + a pointer to the source of truth);
+the `0.7.0` entry (unpublished) stays untouched — both entries await the
+maintainer's tag.
+
+Cycle shape (ADR-0014 Decision 5): one epic, four steps (sessions #60–#63):
+concept (ADR-0014 + the DRAFT epic) → `CHANGELOG.md` entry (session #61) →
+bump `0.8.0` + the gates (session #62) → distillation (this section) + DRAFT
+cleanup (session #63). The gates are already permanent (sessions #58/#59),
+so the cycle gate verifies, it does not install — session #62, clean
+rebuild: `compileJava` / `compileTestJava` 0 warnings under the permanent
+`-Xlint:all -Werror`, javadoc 0 under the permanent `-Xdoclint:all -Werror`,
+`./gradlew test --rerun` **256/256** (36 classes), generated POM **0.8.0**,
+0 `<dependency>` (zero-dep preserved).
+
+After the cycle: the DRAFT active zone holds two candidates — the
+ergonomics-for-modern-APIs direction (the maintainer's 2026-10-14 mailbox,
+direction 3 — declared the main next course; the next epic, concept per the
+ADR-0012 precedent) and test-javadoc (ADR-0013 Non-goals). ADR number
+**0015** free — the next cycle's `docs/` folder.
 
 ## Post-0.5.0 shortlist (not scheduled — see ADR-0003)
 
