@@ -48,6 +48,14 @@ public class MoshiCodec implements JsonCodec {
 
     private final Moshi moshi;
 
+    /**
+     * Creates a codec backed by the given Moshi instance.
+     *
+     * <p>The instance is used as is and never reconfigured — configure it
+     * before handing it in.
+     *
+     * @param moshi the {@link Moshi} backing this codec
+     */
     public MoshiCodec(Moshi moshi) {
         this.moshi = moshi;
     }
@@ -56,6 +64,8 @@ public class MoshiCodec implements JsonCodec {
      * A default codec built on a plain {@code Moshi.Builder().build()}:
      * compact JSON, Moshi's native leniency and null handling, no add-on
      * adapters.
+     *
+     * @return a new codec built on a plain {@code Moshi.Builder().build()}
      */
     public static MoshiCodec defaults() {
         return new MoshiCodec(new Moshi.Builder().build());

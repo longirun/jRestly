@@ -11,6 +11,17 @@ import java.lang.annotation.Target;
 @Target(ElementType.METHOD)
 @Retention(RetentionPolicy.RUNTIME)
 public @interface RequestDefaultParam {
+    /**
+     * The name of the parameter.
+     *
+     * @return the name of the parameter
+     */
     String name();
+
+    /**
+     * The value the parameter takes on every call of the annotated method.
+     *
+     * @return the value the parameter takes on every call of the annotated method
+     */
     String value();
 }

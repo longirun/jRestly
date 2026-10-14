@@ -49,6 +49,14 @@ public class GsonCodec implements JsonCodec {
     private final Gson gson;
     private volatile Gson prettyTwin;
 
+    /**
+     * Creates a codec backed by the given Gson instance.
+     *
+     * <p>The instance is used as is and never reconfigured — configure it
+     * before handing it in.
+     *
+     * @param gson the {@link Gson} backing this codec
+     */
     public GsonCodec(Gson gson) {
         this.gson = gson;
     }
@@ -56,6 +64,8 @@ public class GsonCodec implements JsonCodec {
     /**
      * A default codec built on a plain {@code GsonBuilder().create()}:
      * compact JSON, Gson's native date handling, unknown properties ignored.
+     *
+     * @return a new codec built on a plain {@code GsonBuilder().create()}
      */
     public static GsonCodec defaults() {
         return new GsonCodec(new GsonBuilder().create());

@@ -15,11 +15,34 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * Validates a controller interface before its proxy is created.
+ *
+ * <p>Collects every non-synthetic, non-static method of the interface
+ * and its parent interfaces (a sub-interface method wins over a parent
+ * declaration with the same signature) and checks each one: it carries
+ * exactly one HTTP verb annotation — {@code @Get}, {@code @Post},
+ * {@code @Put}, {@code @Patch} or {@code @Delete} — and a method without
+ * parameters is not declared form- or multipart-typed (those request
+ * types need at least one parameter to build a body from).
+ *
+ * <p>Runs at proxy creation ({@link AbstractHttpClient#createController}):
+ * with the module's controller validation enabled, a non-empty result
+ * fails the creation with a {@link ControllerValidationException}; with
+ * it disabled, the problems are only logged.
+ */
 public final class ControllerValidator {
 
     private ControllerValidator() {
     }
 
+    /**
+     * Finds the validation problems of the given controller interface.
+     *
+     * @param controller the controller interface to validate (together
+     *        with its parent interfaces)
+     * @return the human-readable problems found, empty when the interface is valid
+     */
     public static List<String> validate(Class<?> controller) {
         Map<String, Method> methods = new LinkedHashMap<>();
         collectMethods(controller, methods);

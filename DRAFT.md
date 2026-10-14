@@ -1,4 +1,4 @@
-# DRAFT: warnings и модернизация (ADR-0013) — шаг 5 идёт: блок 4×3 закрыт, 37→25 (сессия #55)
+# DRAFT: warnings и модернизация (ADR-0013) — шаг 5 идёт: блок 8×2 закрыт, 25→9 (сессия #56)
 
 > Свободный ход после 0.7.0-цикла: кандидат №1 (warnings/рефакторинг-аудит,
 > fallback с #30) открыт как эпик. Сессия #41 — сам аудит (кандидат так и
@@ -171,7 +171,39 @@
       `@param`-секция БЕЗ main description у конструктора — doclint
       требует main description у ВСЕХ сайтов (в первый заход
       пропустил, всплыло на повторном замере — «no main description»).
-      Остаток (17 файлов): 8 × 2 + 9 × 1.
+      Остаток (17 файлов): 8 × 2 + 9 × 1. Сессия #56 закрыла блок 8
+      файлов × 2 (25→9; поверхности 0; ноль кода — чистый Javadoc;
+      `MoshiCodec`/`GsonCodec` — конструкторы (зеркало JacksonCodec #55:
+      «used as is, never reconfigured — configure it before handing it
+      in» + `@param`) + `@return` у `defaults()`; `Param`/`Header` —
+      `@param` record-компонентов (house-style #52); `ControllerValidator`
+      — class-doc (валидация controller-интерфейса до создания proxy:
+      методы интерфейса + родительских, sub-interface выигрывает по
+      сигнатуре, ровно одна verb-аннотация, form/multipart — ≥1
+      параметр) + `validate()` (`@param`/`@return`; «кто вызывает и что
+      с результатом» — по `AbstractHttpClient.validateController`:
+      eager — `ControllerValidationException`, отключена — только лог)
+      + `RequestDefaultParam` name/value (шлётся с каждым вызовом
+      аннотированного метода — `createRequestDefaultParams`) + `OnError`
+      statuses (`empty by default, so no status triggers it` — `canParse`
+      = `statuses.contains`) + errorObject (`Void.class` by default;
+      пустой payload — null-тело в `HandledException` —
+      `HttpTemplate.processResponse`) + `MultipartFormFile` partName
+      (общий для всех частей, порождённых из аргумента —
+      `createMultipartParts`) + `@return` у contentType (пусто →
+      `contentTypeFor(filename)` — встроенная таблица расширений,
+      иначе `application/octet-stream` — `MultipartPart.file`).
+      Граблина дня: атрибут аннотации — метод, description без
+      `@return` недостаточен (3 single-line-атрибута — «no @return» на
+      повторном замере; зеркало #46/#54 в сторону аннотаций). Остаток
+      (9 файлов, 9 × 1 — природа измерена, не гадана): 7 атрибутов
+      аннотаций с description без `@return` (`ExpectStatus`,
+      `FollowRedirects`, `HttpVersion`, `PathVariable`, `RequestHeader`,
+      `RequestParam`, `SetAuthDetails`), `JsonCodecResolver.resolve()`
+      (description без `@return`), `RequestMeta` (class-комментария нет
+      вовсе — внимание: после добавления class-комментария могут
+      появиться 4 × `no @param` record-компонентов, прецедент
+      `Param`/`Header` — замерить и закрыть одним шагом).
 - [ ] Шаг 6 — gate: `javadoc { Xdoclint=all, Werror }` в build.gradle,
       полный ре-аудит (`-Xlint:all` → 0, javadoc → 0), дистилляция в
       ROADMAP.

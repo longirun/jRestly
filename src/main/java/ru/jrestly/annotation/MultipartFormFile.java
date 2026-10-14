@@ -14,8 +14,17 @@ import java.lang.annotation.Target;
 @Target(ElementType.PARAMETER)
 @Retention(RetentionPolicy.RUNTIME)
 public @interface MultipartFormFile {
+    /**
+     * The name of each part produced from the annotated argument.
+     *
+     * @return the name of each part produced from the annotated argument
+     */
     String partName();
 
-    /** Part Content-Type; if empty, derived from the file extension. */
+    /**
+     * Part Content-Type; if empty, derived from the file extension.
+     *
+     * @return the part's Content-Type, or the empty string (the default) to derive it from the file extension
+     */
     String contentType() default "";
 }
