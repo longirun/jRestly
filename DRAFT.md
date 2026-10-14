@@ -1,22 +1,52 @@
-# DRAFT: активная зона (после закрытия ADR-0017; направление #3 — эргономика для современных API)
+# DRAFT: активный эпик Request pipeline interceptors & hooks (ADR-0018, 6 шагов; направление #3 — эргономика для современных API)
 
-> Эпик Request parameter & header flexibility (ADR-0017, `docs/0.9.0/ADR-0017-request-parameter-flexibility.md`)
-> закрыт 6/6 (сессии #78–#83): концепт (#78) → nullable parameters & headers TDD (#79) →
-> dynamic Map parameters TDD (#80) → class-level & method-level static `@RequestHeader` / `@RequestDefaultParam` TDD (#81) →
-> end-to-end WireMock сьюйт, Javadoc и README (#82) → дистилляция в ROADMAP
-> («Request parameter & header flexibility (ADR-0017) — COMPLETE ✅») + эта зачистка (#83).
-> Сьюйт: 326 → **375/375** (46 классов, 0 fail/err, +49 тестов в ADR-0017),
-> 0 warnings под перманентными `-Xlint:all -Werror` и `-Xdoclint:all -Werror`.
-> `build.gradle` — 0.8.0 (не менялся). Следующий ход — свободный, из активной зоны.
+> Эпик ADR-0018 (`docs/0.9.0/ADR-0018-request-pipeline-interceptors.md`) открыт:
+> тонкая настройка пайплайна запросов (RequestInterceptor, ResponseInterceptor,
+> RequestContext, ResponseContext, wither-методы WireRequest, zero-cost default path,
+> устойчивость и симметрия sync/async).
+> Сьюйт на старте: **375/375** (46 классов, 0 fail/err), 0 warnings под перманентными
+> `-Xlint:all -Werror` и `-Xdoclint:all -Werror`.
+> `build.gradle` — 0.8.0 unreleased (не меняется до 0.9.0-цикла).
 
-## Активная зона (кандидаты на следующий эпик)
+## Шаги эпика ADR-0018 (тонкая настройка пайплайна запросов)
 
-- **Кандидат №1 (направление #3, основной курс): тонкая настройка пайплайна запросов — ADR-0018**
-  (следующий срез эргономики: request/response interceptors / hooks, кастомизация заголовков,
-  метрики, аудит вызовов без раздувания zero-dep ядра).
-- **Кандидат №2: test-javadoc** (ADR-0013 Non-goals: «test-source javadoc»
-  вынесен за скобки аудита): test-источники получают ту же обработку;
-  гейт на test-поверхность не нужен (лоск, не контур).
+- [x] **Шаг 1 (сессия #84): концепт-сессия — ADR-0018** (`docs/0.9.0/ADR-0018-request-pipeline-interceptors.md`).
+      Дизайн: `RequestInterceptor` (pre-execution request transformation/decoration),
+      `ResponseInterceptor` (post-execution observability, metrics, logging, audit hook),
+      `RequestContext` и `ResponseContext` (метаданные метода, контроллера, аргументов +
+      атрибуты для связи pre/post), wither-методы `WireRequest`, единый call-level
+      жизненный цикл, симметрия sync/async twins, zero-cost путь при пустых списках.
+- [ ] **Шаг 2 (следующая сессия): модель и интерфейсы интерцепторов + wither-методы `WireRequest` (TDD).**
+      Создание пакета `ru.jrestly.interceptor` (`RequestInterceptor`, `ResponseInterceptor`,
+      `RequestContext`, `ResponseContext`, реализация `SimpleRequestContext`) +
+      методы `WireRequest.withHeader`, `withoutHeader`, `withUri`, `withMethod`, `withBody`,
+      `toBuilder()` / `builder()` + unit-тесты TDD (`WireRequestTest`, `RequestContextTest`).
+- [ ] **Шаг 3: интеграция в конфигурацию клиента (`ModuleInfo`, `SimpleModuleInfo`, `JRestlyClient.Builder`).**
+      Добавление `getRequestInterceptors()` и `getResponseInterceptors()` в `ModuleInfo`,
+      методы в `SimpleModuleInfo.Builder` и `JRestlyClient.Builder` (`addRequestInterceptor`,
+      `addResponseInterceptor`, `requestInterceptors`, `responseInterceptors`), проброс
+      метаданных вызова (`method`, `controller`, `args`, `moduleName`) и интерцепторов
+      в `HttpTemplateBuilder` -> `HttpTemplate` + unit-тесты конфигурации.
+- [ ] **Шаг 4: исполнение в `HttpTemplate` (sync & async twins execution seam) (TDD).**
+      Выполнение цепочки `RequestInterceptor` перед стартом вызова (с защитой от null),
+      выполнение `ResponseInterceptor` при завершении вызова (в `finally` для sync `exchange()`,
+      в `whenComplete` для async `exchangeAsync()`), передача контекста и атрибутов,
+      изоляция исключений хуков (robustness logging, непрерывность цепочки), сохранение
+      стрим-безопасности для `InputStream` / SSE + unit TDD тесты (`RequestPipelineTest`).
+- [ ] **Шаг 5: end-to-end WireMock сьюйт, документация и Javadoc.**
+      Комплексный сьюйт `RequestPipelineWireMockTest` (динамический bearer auth токен,
+      propagation correlation-id, сбор latency/метрик, обработка ошибок 4xx/5xx и сетевых сбоев,
+      async CompletableFuture twin), лаконичный Javadoc нормативной поверхности под `-Werror`,
+      секция в `README.md`.
+- [ ] **Шаг 6: дистилляция в `ROADMAP.md` и зачистка `DRAFT.md`.**
+      Фиксация завершения эпика ADR-0018 в `ROADMAP.md`, перевод ADR-0018 в статус Accepted,
+      зачистка DRAFT.md, формирование следующей активной зоны.
+
+## Кандидаты после закрытия эпика ADR-0018
+
+- **Кандидат №1: release-цикл 0.9.0** (упаковка 4 эргономических эпиков: ADR-0015 streaming,
+  ADR-0016 SSE/LLM, ADR-0017 params/headers flexibility, ADR-0018 request pipeline).
+- **Кандидат №2: test-javadoc** (ADR-0013 Non-goals: «test-source javadoc» вынесен за скобки аудита).
 
 ## Постоянная нить (не эпик, не чекбокс)
 

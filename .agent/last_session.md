@@ -1,30 +1,35 @@
-# Handover Note: Сессия 83 (ADR-0017 шаг 6/6 — Дистилляция в ROADMAP.md и зачистка DRAFT.md закрыт; эпик завершён; сьюйт 375/375; следующий ход — концепт ADR-0018)
+# Handover Note: Сессия 84 (ADR-0018 шаг 1/6 — Концепт-сессия: тонкая настройка пайплайна запросов закрыт; эпик открыт в DRAFT.md; сьюйт 375/375; следующий ход — шаг 2 TDD)
 
 ## Что сделано в этой сессии
-- **Ход:** шаг 6 эпика ADR-0017 «Гибкость параметров запроса и заголовков» (Дистилляция в ROADMAP.md и зачистка DRAFT.md, закрытие эпика).
-- **Дистилляция в `ROADMAP.md`:**
-  - Добавлена завершающая секция: `## Request parameter & header flexibility (ADR-0017) — COMPLETE ✅ (2026-10-14, unreleased)`
-  - Зафиксированы 5 архитектурных аспектов (nullable headers/params, dynamic Map<?, ?> params/headers с префиксами и раскрытием коллекций, class-level/method-level static `@RequestHeader` и `@RequestDefaultParam` с `@Repeatable` контейнерами и наследованием интерфейсов, правила override/merge с регистронезависимостью заголовков, ControllerValidator и WireMock e2e suite).
-  - Факты гейтов clean rebuild: 375/375 (46 классов, 0 fail/err), 0 warnings под постоянными `-Xlint:all -Werror` и `-Xdoclint:all -Werror`.
-  - Зарезервирован свободный номер ADR-0018 для следующего эпика.
-- **Зачистка `DRAFT.md`:**
-  - Завершенный эпик ADR-0017 снят из активной зоны.
-  - Активная зона сформирована: кандидат №1 (направление #3, основной курс: тонкая настройка пайплайна запросов — ADR-0018), кандидат №2 (test-javadoc).
-  - Правила гигиены, пометки из mailbox сохранены без потерь.
-- **Гейты (clean rebuild):**
-  - `./gradlew test compileJava compileTestJava javadoc --rerun-tasks`: **375/375** (46 классов, 0 fail/err по XML).
-  - `javac` и `javadoc`: **0 warnings** под перманентными `-Xlint:all -Werror` и `-Xdoclint:all -Werror`.
+- **Ход:** шаг 1 эпика ADR-0018 «Тонкая настройка пайплайна запросов» (Концепт-сессия, оформление `docs/0.9.0/ADR-0018-request-pipeline-interceptors.md`, открытие эпика в `DRAFT.md`).
+- **Концепт в `docs/0.9.0/ADR-0018-request-pipeline-interceptors.md`:**
+  - 4-й эргономический эпик направления #3 от Антона (после стриминга байт, SSE/LLM, гибкости параметров/заголовков).
+  - Архитектурные решения:
+    1. Интерфейсы `ru.jrestly.interceptor.RequestInterceptor` (pre-execution модификация и обогащение `WireRequest`, статический хелпер `of(UnaryOperator<WireRequest>)`) и `ru.jrestly.interceptor.ResponseInterceptor` (post-execution observability, metrics, logging, audit hook).
+    2. Модели контекста `RequestContext` и `ResponseContext extends RequestContext` (метаданные `moduleName`, `controllerClass`, `method`, `args` + типобезопасные атрибуты для связи request и response фаз; query-хелперы `statusCode()`, `duration()`, `isSuccess()`).
+    3. Wither-методы в `WireRequest`: `withHeader`, `withoutHeader` (case-insensitive), `withUri`, `withMethod`, `withBody`, `builder()`, `toBuilder()`.
+    4. Точки выполнения и жизненный цикл: call-level исполнение `RequestInterceptor` (единый correlation ID / idempotency token на все retry-попытки и redirect-хопы), симметрия sync `exchange()` (`finally`-блок) и async `exchangeAsync()` (`whenComplete` без блокировок), стрим-безопасность для `InputStream` / SSE (метаданные без вычитывания тела).
+    5. Конфигурация в `ModuleInfo`, `SimpleModuleInfo.Builder` и `JRestlyClient.Builder`.
+    6. Изоляция исключений хуков: сбой в `ResponseInterceptor` логируется `WARNING`, не ломая основной результат вызова.
+    7. Zero-cost default path: при отсутствии интерцепторов — нулевой оверхед по памяти и CPU (прямой вызов без аллокаций контекста).
+- **Оформление в `DRAFT.md`:**
+  - Открыт активный эпик ADR-0018 из 6 шагов (шаг 1 закрыт `[x]`, шаги 2–6 открыты `[ ]`).
+- **Гейты:**
+  - `./gradlew test --rerun`: **375/375** (46 классов, 0 fail/err по XML).
+  - `./gradlew compileJava compileTestJava javadoc --rerun-tasks`: **0 warnings** под перманентными `-Xlint:all -Werror` и `-Xdoclint:all -Werror`.
   - `build.gradle` не менялся (0.8.0 unreleased).
 - **Память:**
-  - Дневник дня `.agent/days/2026-10-14.md` пополнен заметкой сессии #83 и обновлением в финал «Итог дня».
+  - Дневник дня `.agent/days/2026-10-14.md` пополнен заметкой сессии #84 и обновлением в финал «Итог дня».
 
-## Контекст для следующей сессии (#84)
+## Контекст для следующей сессии (#85)
 
-### Состояние: завершение ADR-0017, активная зона открыта
+### Состояние: шаг 1 ADR-0018 закрыт, активный эпик в DRAFT.md
 - **Рекомендуемый следующий шаг:**
-  - Старт четвертого эргономического эпика направления #3: концепт-сессия ADR-0018 (тонкая настройка пайплайна запросов):
-    - Создание `docs/0.9.0/ADR-0018-request-pipeline-interceptors.md` (дизайн: request/response interceptors, execution hooks, auth/logging/metrics расширяемость при сохранении Zero-Dep Core и отсутствия лишних аллокаций).
-    - Оформление нового активного эпика в `DRAFT.md` с разбиением на шаги с чекбоксами `[ ]`.
+  - Шаг 2 эпика ADR-0018: модель и интерфейсы интерцепторов + wither-методы `WireRequest` (TDD):
+    - Создание пакета `ru.jrestly.interceptor` с интерфейсами `RequestInterceptor`, `ResponseInterceptor`, `RequestContext`, `ResponseContext` и базовой реализацией `SimpleRequestContext`.
+    - Добавление в `WireRequest` wither-методов (`withHeader`, `withoutHeader`, `withUri`, `withMethod`, `withBody`, `toBuilder`, `builder`).
+    - Написание исчерпывающих unit-тестов TDD (`WireRequestTest`, `RequestContextTest`).
+    - Проверка всех гейтов (`./gradlew test compileJava compileTestJava javadoc`), отметка шага 2 `[x]` в `DRAFT.md`.
 
 ### Грабли (актуальный набор)
 - **`GRADLE_USER_HOME=/tmp/opencode/gradle-home`**: всегда указывать при запуске `./gradlew` в этой среде.
