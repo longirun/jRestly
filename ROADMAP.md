@@ -485,7 +485,8 @@ first, cycle after" closed the last substantive gap, so 0.7.0 ships a
 complete retry contract (transport + status + decode) with no residual
 substantive gap. Next candidates: the warnings / refactor audit (fallback
 #1, deferred since session #30) — done, section below; ADR number
-**0013** — the warnings epic's ADR (`docs/0.8.0/`), **0014** free.
+**0013** — the warnings epic's ADR (`docs/0.8.0/`), **0014** — the 0.8.0
+cycle's ADR (`docs/0.8.0/`), **0015** free.
 
 ## Warnings and modernization (ADR-0013) — COMPLETE ✅ (2026-10-14, unreleased)
 
@@ -513,7 +514,8 @@ generated POM 0.7.0, 0 `<dependency>`.
 After the epic: the `-Xlint` one-line follow-up (ADR-0013 Consequences —
 the deliberately separate decision) is done — session #59: `-Xlint:all
 -Werror` on both compile tasks, the seven audit suppressions forgiven by
-design, gate negative-tested on both sides. ADR number **0014** is free.
+design, gate negative-tested on both sides. ADR number **0014** — the 0.8.0
+cycle's ADR (`docs/0.8.0/`), **0015** free.
 
 ## Post-0.5.0 shortlist (not scheduled — see ADR-0003)
 
