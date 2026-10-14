@@ -484,8 +484,35 @@ After the cycle: the known-gaps backlog is exhausted — ADR-0011's "feature
 first, cycle after" closed the last substantive gap, so 0.7.0 ships a
 complete retry contract (transport + status + decode) with no residual
 substantive gap. Next candidates: the warnings / refactor audit (fallback
-#1, deferred since session #30); ADR number **0013** is free (the next
-cycle's `docs/` folder).
+#1, deferred since session #30) — done, section below; ADR number
+**0013** — the warnings epic's ADR (`docs/0.8.0/`), **0014** free.
+
+## Warnings and modernization (ADR-0013) — COMPLETE ✅ (2026-10-14, unreleased)
+
+> Source of truth (audit, findings, scope decisions D1–D4, the step plan):
+> [`docs/0.8.0/ADR-0013-compiler-and-javadoc-warnings-audit.md`](docs/0.8.0/ADR-0013-compiler-and-javadoc-warnings-audit.md).
+> Sessions #41–#58 (agent-loop). Cleanup without new public surface (ADR-0013
+> Nature): every fix lands on existing classes, seams and the build file. No
+> version bump / tag — releases paused per maintainer agreement (0.7.0 in
+> `build.gradle`).
+
+Scope (ADR-0013 D1–D4, as executed): all 12 compiler warnings fixed
+(9 main / 3 test; suppression targeted, never blanket, each carrying a
+one-line rationale), all 237 javadoc warnings fixed — the whole normative
+main surface documented (the audit's "100" was the javadoc tool's per-run
+cap, session #44), `options.release = 21`, hot path re-checked with no new
+findings, Java 21 idioms: no legacy fragments exist (a finding, not a fix).
+
+The gate (step 6, session #58): `build.gradle` runs javadoc with
+`-Xdoclint:all -Werror` — `javadocJar` is in every build, so a public/
+protected member without a comment fails the build instead of decaying back
+into noise. Full re-audit: javac `-Xlint:all` 0/0 (main + test), javadoc 0
+(gate negative-tested with a probe class), suite 256/256 (36 classes),
+generated POM 0.7.0, 0 `<dependency>`.
+
+After the epic: a future `-Xlint` in the build is a one-line follow-up
+(ADR-0013 Consequences — deliberately a separate decision); ADR number
+**0014** is free.
 
 ## Post-0.5.0 shortlist (not scheduled — see ADR-0003)
 

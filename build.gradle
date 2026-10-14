@@ -46,6 +46,13 @@ compileTestJava {
     options.compilerArgs << '-parameters'
 }
 
+javadoc {
+    // ADR-0013 D2: doclint gate — a public/protected member without a comment fails the build;
+    // single-argument form (two arguments make javadoc read the bare 'all' as a package)
+    options.addStringOption('Xdoclint:all')
+    options.addBooleanOption('Werror', true)
+}
+
 jar {
     manifest {
         attributes(
