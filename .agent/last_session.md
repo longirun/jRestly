@@ -1,48 +1,27 @@
-# Handover Note: Сессия 70 (ADR-0015 шаг 5 — документация и валидация закрыты, 282/282; следующий ход — шаг 6: дистилляция в ROADMAP)
+# Handover Note: Сессия 71 (ADR-0015 шаг 6/6 — дистилляция в ROADMAP и зачистка DRAFT; эпик закрыт, 282/282; следующий ход — выбор нового эпика из активной зоны)
 
 ## Что сделано в этой сессии
-- **Ход:** шаг 5 эпика ADR-0015 — документация и валидация (Aspect 6, test strategy сценарии 1, 2, 4, 7, 8). Входящих нет (автономный ход; живые нитки mailbox'а — 3 — на месте).
-- **`ControllerValidator` (ADR-0015 Aspect 6, сценарий 8):**
-  Методы с типами возврата `InputStream` и `CompletableFuture<InputStream>`
-  валидируются чисто (валидатор прозрачен к return type, проверяет только
-  HTTP-глаголы и параметры multipart/form). Добавлены методы в канонический
-  `TestController` (`getStream()`, `getStreamAsync()`) и отдельный тест
-  `streamReturnTypesPassValidation` в `ControllerValidationTest`.
-- **End-to-end WireMock интеграция (`ResponseStreamingTest`, 5 тестов):**
-  Новый тестовый класс на реальном WireMock-сервере покрыл сценарии 1, 2, 4, 7
-  из ADR-0015:
-  (1) `syncByteExactDownload` — потоковая загрузка 1 MiB тела байт-в-байт;
-  (2) `asyncByteExactDownload` — потоковая загрузка через `CompletableFuture<InputStream>`;
-  (3) `unexpectedStatusThrowsException` — статус 500 поедает стрим и бросает `UnexpectedStatusException` с сырым `getRawBody()`;
-  (4) `onErrorConsumesStreamAndDecodesObject` — статус 400 поедает стрим и десериализует JSON в `HandledException`;
-  (5) `serverFaultFailure` — `Fault.CONNECTION_RESET_BY_PEER` приводит к `IOException` (на этапе вызова или чтения стрима).
-- **Javadoc-контракт (лаконично — Антон, 2026-10-14):**
-  (1) `HttpTemplate` (class-level): добавлен абзац про `InputStream` /
-  `CompletableFuture<InputStream>` потоковую передачу через
-  `BodyHandlers.ofInputStream()` без буферизации всего тела в память и обход JSON codec
-  на успешном пути (ADR-0015);
-  (2) `HttpTemplate.exchange()`: в `@return` включен `live body stream when T is InputStream`.
-  `WireResponse` уже содержал полный javadoc с шага 2.
-- **README.md:**
-  Добавлен feature-буллет в `## Features` и отдельная секция `## Response streaming`
-  с примером контроллера, нотой «JSON by return type» (POJO = codec, `String` = raw text,
-  `InputStream` = byte stream codec-free), поведением на ошибках и жизненным циклом ресурса.
-- **Гейты:**
-  - `./gradlew test --rerun` — **282/282** (40 классов, 0 fail/err по XML; 276 + 6).
+- **Ход:** шаг 6 эпика ADR-0015 — дистилляция в ROADMAP и зачистка DRAFT. Входящих нет (автономный ход; живые нитки mailbox'а — 3 — на месте).
+- **ROADMAP:** Добавлена новая секция `## Response streaming — InputStream return type (ADR-0015) — COMPLETE ✅ (2026-10-14, unreleased)` (source of truth: `docs/0.9.0/ADR-0015-response-streaming-inputstream-return.md`; сессии #64–#71; ключевые решения по Aspect 1–6: surface return type is the contract, engine `BodyHandlers.ofInputStream()`, `WireResponse.stream` ABI-neutral, intermediate stream disposal, JSON by return type, error paths consume, lifecycle & logging, validation & end-to-end; гейты: 282/282 tests, 0 warnings under `-Xlint:all -Werror` / `-Xdoclint:all -Werror`, build.gradle 0.8.0). Предыдущая сноска обновлена in-place (ADR-0015 complete, ADR-0016 free).
+- **DRAFT:** Эпик response streaming закрыт 6/6; верх зачищен сводкой закрытия; в активную зону подняты 4 кандидата:
+  - Кандидат №1 (основной курс, направление #3): SSE / line events для LLM — ADR-0016 (строится прямо на стрим-шве ADR-0015; JDK-основа проверена: `BodyHandlers.ofLines()` / `fromLineSubscriber`, charset из Content-Type per ofString-контракт);
+  - Кандидат №2: гибкость параметров запроса (class-level headers, nullable-параметры, catch-all) — следующий срез направления #3;
+  - Кандидат №3: тонкая настройка пайплайна (hooks/interceptors) — следующий срез направления #3;
+  - Кандидат №4: test-javadoc (ADR-0013 Non-goals: «test-source javadoc» вынесен за скобки аудита).
+- **Гейты (clean rebuild & test rerun):**
+  - `./gradlew test --rerun` — **282/282** (40 классов, 0 fail/err по XML; 276 + 6 в цикле 0.9.0).
   - `compileJava compileTestJava javadoc --rerun-tasks` — **0 warnings** под `-Xlint:all -Werror` и `-Xdoclint:all -Werror`.
-  - build.gradle не менялся (0.8.0).
-- **DRAFT:** шаг 5 → `[x]`.
+  - build.gradle не менялся (0.8.0 unreleased).
+- **Память:** дневник дня `.agent/days/2026-10-14.md` пополнен заметкой сессии #71 и дополнением в итог дня.
 
-## Контекст для следующей сессии (#71)
+## Контекст для следующей сессии (#72)
 
-### Состояние: эпик «response streaming» — шаг 6/6 (финальный)
-- **Шаг 6 — дистилляция:**
-  (a) Добавить секцию в `ROADMAP.md` (по прецеденту ADR-0011/0013/0014: линки, не пересказ; ссылки на ADR-0015, сессии #64–#70, гейты clean-rebuild);
-  (b) Зачистить `DRAFT.md`: отметить закрытие эпика, поднять следующего кандидата из активной зоны:
-      - **Направление #3 (основной курс):** ADR-0016 SSE / line events для LLM (строится прямо на стрим-шве ADR-0015);
-      - либо параметры запроса / пайплайн;
-  (c) Прогнать свежий `test --rerun` перед коммитом (проверить 282/282).
-- **ADR-0015 — source of truth** (`docs/0.9.0/ADR-0015-response-streaming-inputstream-return.md`): все 8 сценариев test strategy полностью покрыты тестами (`HttpTemplateStreamWireTest` 7, `HttpTemplateStreamContractTest` 7, `HttpTemplateStreamAsyncTest` 6, `ResponseStreamingTest` 5, `ControllerValidationTest` +1, итого +26 тестов в цикле 0.9.0).
+### Состояние: выбор следующего эпика из активной зоны
+- **Кандидат №1 (рекомендуемый):** ADR-0016: SSE / line events для LLM (стриминг токенов).
+  - Строится поверх шва стриминга ADR-0015 (`BodyHandlers.ofInputStream()` / `BodyHandlers.ofLines()`).
+  - Эргономика возврата: например, `Stream<String>` или реактивный Subscriber / Consumer строк / событий.
+  - Следующий логический шаг — концепт-сессия: оформить `docs/0.9.0/ADR-0016-sse-line-events.md` и DRAFT-эпик.
+- **Либо другие кандидаты из активной зоны:** гибкость параметров запроса или пайплайн.
 
 ### Грабли (актуальный набор)
 - **`GRADLE_USER_HOME=/tmp/opencode/gradle-home`**: всегда указывать при запуске `./gradlew` в этой среде.

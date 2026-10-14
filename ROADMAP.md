@@ -558,11 +558,32 @@ rebuild: `compileJava` / `compileTestJava` 0 warnings under the permanent
 `./gradlew test --rerun` **256/256** (36 classes), generated POM **0.8.0**,
 0 `<dependency>` (zero-dep preserved).
 
-After the cycle: the DRAFT active zone holds two candidates — the
+After the cycle: the DRAFT active zone held two candidates — the
 ergonomics-for-modern-APIs direction (the maintainer's 2026-10-14 mailbox,
-direction 3 — declared the main next course; the next epic, concept per the
-ADR-0012 precedent) and test-javadoc (ADR-0013 Non-goals). ADR number
-**0015** free — the next cycle's `docs/` folder.
+direction 3 — declared the main next course) — done, section below;
+and test-javadoc (ADR-0013 Non-goals). ADR number **0015** — the response
+streaming epic (`docs/0.9.0/`), **0016** free.
+
+## Response streaming — `InputStream` return type (ADR-0015) — COMPLETE ✅ (2026-10-14, unreleased)
+
+> Source of truth (concept, decisions, test strategy, Javadoc contract, status):
+> [`docs/0.9.0/ADR-0015-response-streaming-inputstream-return.md`](docs/0.9.0/ADR-0015-response-streaming-inputstream-return.md).
+> Sessions #64–#71 (agent-loop). The first ergonomics slice of direction 3 (maintainer's 2026-10-14 mailbox: "request parameter flexibility, data streaming, LLM, request pipeline tuning"), opening the provisional 0.9.0 cycle. Scope is byte-stream streaming; line/SSE streaming for LLMs is deferred to ADR-0016. No version bump / tag — releases paused per maintainer agreement (0.8.0 in `build.gradle`).
+
+Key decisions (ADR-0015 Aspects 1–6):
+- **Surface (Aspect 1):** Return type is the contract (ADR-0004) — `InputStream` and `CompletableFuture<InputStream>` declare byte-stream reception. No marker annotations, no wrapper types (ADR-0003).
+- **Engine (Aspect 2):** Send path branches on effective return type to `BodyHandlers.ofInputStream()` without body buffering. `WireResponse` gains an `InputStream stream` component with an ABI-neutral 3-arg constructor. Intermediate redirect and retry streams are closed before the next hop.
+- **Contract (Aspect 3):** JSON by return type — success path bypasses JSON codec entirely (`deserialize` and `prettyPrint` no-ops). Error paths (`@OnError`, unexpected status) consume the stream and decode JSON / provide raw payload, keeping errors uniform (ADR-0004). Decode-retry (ADR-0011) is a no-op on streams.
+- **Lifecycle & Logging (Aspects 4–5):** Caller owns stream lifecycle (read to EOF or close). Socket timeout bounds time-to-headers per JDK 21 spec. Stream payload logging skips materializing the body ("streaming, Content-Length: N" / "(length unknown)").
+- **Validation & End-to-end (Aspect 6):** `ControllerValidator` validates stream return types cleanly. End-to-end WireMock suite covers sync/async byte-exact downloads (1 MiB), redirect/retry stream disposal, error path consumption, and connection fault handling.
+
+Gates (session #71, clean rebuild):
+- `./gradlew test --rerun` **282/282** (40 classes, 0 failures/errors; +26 tests in the 0.9.0 cycle across `HttpTemplateStreamWireTest`, `HttpTemplateStreamContractTest`, `HttpTemplateStreamAsyncTest`, `ResponseStreamingTest`, `ControllerValidationTest`).
+- `compileJava` and `compileTestJava` 0 warnings under permanent `-Xlint:all -Werror`.
+- `javadoc` 0 warnings under permanent `-Xdoclint:all -Werror`.
+- `build.gradle` untouched (0.8.0 unreleased).
+
+After the epic: direction 3 continues with SSE / line events for LLMs (ADR-0016, building on this stream seam), followed by request parameter flexibility and pipeline hooks. ADR number **0016** free.
 
 ## Post-0.5.0 shortlist (not scheduled — see ADR-0003)
 

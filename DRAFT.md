@@ -1,75 +1,30 @@
-# DRAFT: response streaming — `InputStream` return type (ADR-0015, `docs/0.9.0/`; 0.9.0-цикл, первый эргономики-эпик направления #3)
+# DRAFT: активная зона (после закрытия ADR-0015; направление #3 — эргономика для современных API)
 
-> Первый эргономики-эпик (входящее Антона 2026-10-14, направление #3 —
-> объявлен основным следующим курсом). Концепт — сессия #64 (ADR-0015):
-> `docs/0.9.0/` — новая папка, 0.9.0 — **проvisional**-метка по прецеденту
-> ADR-0014 (метка предшествует cycle-ADR, который фиксирует версию; release-
-> cycle ADR — после закрытия фич цикла, прецедент ADR-0012). Scope сужен:
-> байт-стриминг; LLM/line-slice (SSE) — ADR-0016 на этом шве; параметры и
-> пайплайн — следующие циклы. Рамка-ограничение (направление #1): zero-dep
-> (JDK `BodyHandlers.ofInputStream`, новый SPI не нужен), прозрачность
-> (return type IS the contract — ADR-0004), анти-комбайн (wrapper-тип не
-> нужен — ADR-0003). Оговорка Антона про «неявную JSON-сериализацию» —
-> оформлена: codec становится свойством return type — `InputStream`
-> объявляет зависимость от байтов (codec не трогается), POJO — от codec
-> (SPI уже ADR-0001/0007).
+> Эпик response streaming (`InputStream` return type, ADR-0015, `docs/0.9.0/`)
+> закрыт 6/6 (сессии #64–#71): концепт (#64) → wire seam (`WireResponse.stream`,
+> `BodyHandlers.ofInputStream()`, #65) → sync контракт (`processResponse` stream
+> branch, error paths consume, streaming payload log, #66) → async twin
+> (`CompletableFuture<InputStream>`, #67) → документация и валидация
+> (`ControllerValidator`, `HttpTemplate`, README, WireMock suite, #70) →
+> дистилляция в ROADMAP («Response streaming — `InputStream` return type
+> (ADR-0015) — COMPLETE ✅») + эта зачистка (#71). Сьюйт: 256 → **282/282**
+> (40 классов, 0 fail/err, +26 тестов в цикле 0.9.0), 0 warnings под
+> перманентными `-Xlint:all -Werror` и `-Xdoclint:all -Werror`. `build.gradle` —
+> 0.8.0 (не менялся). Следующий ход — свободный, из активной зоны.
 
-## Эпик: response streaming — `InputStream` return type (ADR-0015)
+## Активная зона (кандидаты на следующий эпик)
 
-- [x] 1. **Концепт — ADR-0015 + этот DRAFT-эпик** (сессия #64). Поверхность
-      (return type IS the contract; аннотация и wrapper-тип — отклонены;
-      async twin — `CompletableFuture<InputStream>`); движок (ветка send-path
-      на effective return type: `ofInputStream` vs `ofByteArray`;
-      `WireResponse` + компонент `stream` — ровно один из `body`/`stream`
-      non-null; ABI-нейтральный secondary 3-arg конструктор — call sites
-      main ×1 / test ×3 сверены; промежуточные хопы закрывают свой stream —
-      redirect + retry, sync + async twins); контракт (JSON by return type;
-      `@OnError` и unexpected-status **поедают** stream и несут объект/
-      полный raw payload; decode-ось ADR-0011 — no-op); жизненный цикл
-      (JDK-контракт 21: EOF/close, timeout = до заголовков, interrupt →
-      `IOException` на read-месте — javadoc-факты верифицированы 2026-10-14);
-      логирование (payload-строка не читает тело; Content-Length из
-      заголовка); retry (пересечения ADR-0008/0010/0011); test strategy
-      (8 сценариев). JDK-факты — в ADR (javap по jmods + Oracle javadoc 21).
-- [x] 2. **Wire seam** — `WireResponse`: компонент `InputStream stream` +
-      secondary 3-arg конструктор (ABI-нейтрально); send-path ветка на
-      effective return type (`BodyHandlers.ofInputStream` vs `ofByteArray`,
-      sync + `sendAsync`); close промежуточных стримов (redirect-хопы +
-      retry-попытки, обе ветки + async twins). Gate: suite green; промежу-
-      точный stream закрыт до следующего хопа (отрицательная проверка).
-- [x] 3. **Синх-контракт** — `processResponse`: stream-ветка (успех =
-      stream as-is; `@OnError` — consume via `readAllBytes` + decode;
-      unexpected status — consume + полный raw payload в
-      `UnexpectedStatusException`); `probePayloadDecode`: stream = «decode
-      не может упасть» (зеркало `String`-возврата); лог-ветка (payload-
-      строка пропускается; «streaming, Content-Length: N» / «(length
-      unknown)»). Gate: suite green включая error-path-тесты (test strategy
-      4).
-- [x] 4. **Async twin** — `CompletableFuture<InputStream>` (ветка
-      `sendAsync`, exception mapping не меняется — future completes после
-      заголовков со stream). Gate: suite green включая async-тесты (test
-      strategy 2).
-- [x] 5. **Документация** — `ControllerValidator` (`InputStream`-возврат
-      валидируется чисто), Javadoc-контракт на затронутую публичную
-      поверхность (лаконично — Антон, 2026-10-14), README (feature-буллет
-      + «JSON by return type»-нота). Gate: javadoc 0 под
-      `-Xdoclint:all -Werror`, suite green.
-- [ ] 6. **Дистилляция** — ROADMAP-секция (линки, не пересказ) + зачистка
-      DRAFT. Gate: свежий `test --rerun`.
-
-## Активная зона (после эпика)
-
-- **Направление #3 — остаток (Антон, 2026-10-14, основной курс):**
-  - **SSE / line events для ЛЛМ — ADR-0016** (концепт после этого эпика;
-        строится на стрим-шве ADR-0015; JDK-основа проверена:
-        `ofLines()`/`fromLineSubscriber`, charset из Content-Type per
-        ofString-контракт).
-  - Гибкость параметров запроса (class-level headers, nullable-параметры,
-        catch-all) — следующий цикл.
-  - Тонкая настройка пайплайна (hooks/interceptors) — следующий цикл.
-- **Кандидат №2 — test-javadoc** (ADR-0013 Non-goals: «test-source javadoc»
-  вынесен за скобки аудита): test-источники получают ту же обработку; гейт
-  на test-поверхность не нужен (лоск, не контур).
+- **Кандидат №1 (основной курс, направление #3): SSE / line events для ЛЛМ — ADR-0016**
+  (концепт следующего эпика; строится прямо на стрим-шве ADR-0015; JDK-основа
+  проверена: `BodyHandlers.ofLines()` / `fromLineSubscriber`, charset из
+  Content-Type per ofString-контракт; стриминг токенов для LLM API).
+- **Кандидат №2: гибкость параметров запроса** (class-level headers,
+  nullable-параметры, catch-all) — следующий срез направления #3.
+- **Кандидат №3: тонкая настройка пайплайна** (hooks/interceptors) —
+  следующий срез направления #3.
+- **Кандидат №4: test-javadoc** (ADR-0013 Non-goals: «test-source javadoc»
+  вынесен за скобки аудита): test-источники получают ту же обработку;
+  гейт на test-поверхность не нужен (лоск, не контур).
 
 ## Постоянная нить (не эпик, не чекбокс)
 
