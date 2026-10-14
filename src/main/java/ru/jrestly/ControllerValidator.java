@@ -5,15 +5,19 @@ import ru.jrestly.annotation.Get;
 import ru.jrestly.annotation.Patch;
 import ru.jrestly.annotation.Post;
 import ru.jrestly.annotation.Put;
+import ru.jrestly.annotation.RequestDefaultParam;
+import ru.jrestly.annotation.RequestHeader;
 import ru.jrestly.http.RequestType;
 
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Validates a controller interface before its proxy is created.
@@ -25,6 +29,10 @@ import java.util.Map;
  * {@code @Put}, {@code @Patch} or {@code @Delete} — and a method without
  * parameters is not declared form- or multipart-typed (those request
  * types need at least one parameter to build a body from).
+ *
+ * <p>Also validates that static {@code @RequestHeader} and
+ * {@code @RequestDefaultParam} declarations on controller interfaces
+ * and methods have non-blank {@code name()} attributes.
  *
  * <p>Runs at proxy creation ({@link AbstractHttpClient#createController}):
  * with the module's controller validation enabled, a non-empty result
@@ -44,14 +52,35 @@ public final class ControllerValidator {
      * @return the human-readable problems found, empty when the interface is valid
      */
     public static List<String> validate(Class<?> controller) {
+        List<String> problems = new ArrayList<>();
+        collectClassProblems(controller, problems, new HashSet<>());
+
         Map<String, Method> methods = new LinkedHashMap<>();
         collectMethods(controller, methods);
 
-        List<String> problems = new ArrayList<>();
         for (Method method : methods.values()) {
             problems.addAll(validateMethod(method));
         }
         return problems;
+    }
+
+    private static void collectClassProblems(Class<?> current, List<String> problems, Set<Class<?>> visited) {
+        if (current == null || !current.isInterface() || !visited.add(current)) {
+            return;
+        }
+        for (RequestHeader header : current.getAnnotationsByType(RequestHeader.class)) {
+            if (header.name().isBlank()) {
+                problems.add(current.getSimpleName() + ": @RequestHeader name must not be blank");
+            }
+        }
+        for (RequestDefaultParam param : current.getAnnotationsByType(RequestDefaultParam.class)) {
+            if (param.name().isBlank()) {
+                problems.add(current.getSimpleName() + ": @RequestDefaultParam name must not be blank");
+            }
+        }
+        for (Class<?> parent : current.getInterfaces()) {
+            collectClassProblems(parent, problems, visited);
+        }
     }
 
     private static void collectMethods(Class<?> current, Map<String, Method> methods) {
@@ -103,6 +132,24 @@ public final class ControllerValidator {
             return problems;
         }
 
+        for (RequestHeader header : method.getAnnotationsByType(RequestHeader.class)) {
+            if (header.name().isBlank()) {
+                problems.add(method.getName() + "(): @RequestHeader name must not be blank");
+            }
+        }
+
+        for (RequestDefaultParam param : method.getAnnotationsByType(RequestDefaultParam.class)) {
+            if (param.name().isBlank()) {
+                problems.add(method.getName() + "(): @RequestDefaultParam name must not be blank");
+            }
+        }
+
+        for (RequestDefaultParam param : resolveVerbDefaultParams(method)) {
+            if (param.name().isBlank()) {
+                problems.add(method.getName() + "(): @RequestDefaultParam name must not be blank");
+            }
+        }
+
         if (method.getParameters().length == 0) {
             RequestType requestType = resolveRequestType(method);
             if (requestType == RequestType.MULTIPART_FORM_DATA) {
@@ -112,6 +159,25 @@ public final class ControllerValidator {
             }
         }
         return problems;
+    }
+
+    private static RequestDefaultParam[] resolveVerbDefaultParams(Method method) {
+        if (method.isAnnotationPresent(Get.class)) {
+            return method.getAnnotation(Get.class).params();
+        }
+        if (method.isAnnotationPresent(Post.class)) {
+            return method.getAnnotation(Post.class).params();
+        }
+        if (method.isAnnotationPresent(Put.class)) {
+            return method.getAnnotation(Put.class).params();
+        }
+        if (method.isAnnotationPresent(Patch.class)) {
+            return method.getAnnotation(Patch.class).params();
+        }
+        if (method.isAnnotationPresent(Delete.class)) {
+            return method.getAnnotation(Delete.class).params();
+        }
+        return new RequestDefaultParam[0];
     }
 
     private static RequestType resolveRequestType(Method method) {

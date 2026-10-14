@@ -3,7 +3,7 @@
 > Эпик "Гибкость параметров запроса" (ADR-0017, `docs/0.9.0/ADR-0017-request-parameter-flexibility.md`)
 > открыт в сессии #78. Это третий эргономический срез направления #3 (входящее Антона 2026-10-14 09:10:
 > "гибкость параметров запроса, стриминг данных, ЛЛМ, тонкая настройка пайплайна").
-> Базовый сьюйт: **355/355** (44 класса), 0 warnings под `-Xlint:all -Werror` и `-Xdoclint:all -Werror`,
+> Базовый сьюйт: **370/370** (45 классов), 0 warnings под `-Xlint:all -Werror` и `-Xdoclint:all -Werror`,
 > `build.gradle` 0.8.0.
 
 ## Эпик: Request parameter & header flexibility (ADR-0017)
@@ -27,11 +27,12 @@
       и null-ключей, поддержка префикса `name[key]` при непустом имени аннотации, `default ""` для
       `RequestHeader.name()`. TDD тесты в `RequestHeadersTest`, `GetMethodTest`, `PostMethodTest`,
       `MultipartTest`. +18 тестов (355/355).
-- [ ] **Шаг 4: Class-level and method-level `@RequestHeader` & `@RequestDefaultParam` (TDD).**
+- [x] **Шаг 4: Class-level and method-level `@RequestHeader` & `@RequestDefaultParam` (TDD).**
       Реализация Aspect 3, 4, 5: расширение `@Target` аннотаций, создание контейнеров `@RequestHeaders`
       и `@RequestDefaultParams` с `@Repeatable`, сбор статических заголовков и дефолтных параметров с
       интерфейса и метода в `HttpTemplateBuilder`, логика переопределения (override) одноименных заголовков
-      и параметров вызовами параметров, валидация непустого `name()` в `ControllerValidator`.
+      и параметров вызовами параметров, валидация непустого `name()` в `ControllerValidator`. TDD тесты
+      в `StaticHeadersAndParamsTest` и `ControllerValidationTest`. +15 тестов (370/370).
 - [ ] **Шаг 5: Документация, end-to-end WireMock сьюйт и README.**
       Комплексный end-to-end сьюйт (динамические фильтры, опциональные заголовки, class-level defaults,
       наследование интерфейсов), актуализация Javadoc нормативной поверхности под `-Werror`,

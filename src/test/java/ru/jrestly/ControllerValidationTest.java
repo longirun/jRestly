@@ -70,4 +70,43 @@ public class ControllerValidationTest {
         JRestlyClient client = JRestlyClient.builder().baseUrl("http://localhost:1").build();
         assertNotNull(client.get(StreamController.class));
     }
+
+    @ru.jrestly.annotation.RequestHeader(name = "  ", value = "v")
+    interface BlankClassHeaderController {
+        @ru.jrestly.annotation.Get(path = "/test")
+        String call();
+    }
+
+    @ru.jrestly.annotation.RequestDefaultParam(name = "", value = "v")
+    interface BlankClassDefaultParamController {
+        @ru.jrestly.annotation.Get(path = "/test")
+        String call();
+    }
+
+    interface BlankMethodHeaderAndParamController {
+        @ru.jrestly.annotation.Get(path = "/test-header")
+        @ru.jrestly.annotation.RequestHeader(name = "", value = "v")
+        String blankHeader();
+
+        @ru.jrestly.annotation.Get(path = "/test-param")
+        @ru.jrestly.annotation.RequestDefaultParam(name = "   ", value = "v")
+        String blankParam();
+    }
+
+    @Test
+    void rejectsBlankHeaderOrParamNameOnClassAndMethod() {
+        var classHeaderProblems = ControllerValidator.validate(BlankClassHeaderController.class);
+        assertEquals(1, classHeaderProblems.size());
+        assertTrue(classHeaderProblems.getFirst().contains("@RequestHeader name must not be blank"));
+
+        var classParamProblems = ControllerValidator.validate(BlankClassDefaultParamController.class);
+        assertEquals(1, classParamProblems.size());
+        assertTrue(classParamProblems.getFirst().contains("@RequestDefaultParam name must not be blank"));
+
+        var methodProblems = ControllerValidator.validate(BlankMethodHeaderAndParamController.class);
+        assertEquals(2, methodProblems.size());
+        assertTrue(methodProblems.stream().anyMatch(p -> p.contains("blankHeader(): @RequestHeader name must not be blank")));
+        assertTrue(methodProblems.stream().anyMatch(p -> p.contains("blankParam(): @RequestDefaultParam name must not be blank")));
+    }
 }
+

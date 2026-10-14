@@ -37,6 +37,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.UUID;
 import java.util.function.Consumer;
@@ -211,7 +212,35 @@ public class HttpTemplateBuilder {
     private List<Header> createHeaders() {
         List<Header> result = new ArrayList<>(moduleInfo.getAuthProvider().getAuthHeaders());
 
+        // Class-level headers (hierarchy order: parent interfaces first, sub-interface wins)
+        List<Class<?>> hierarchy = collectInterfaceHierarchy(controller);
+        for (Class<?> iface : hierarchy) {
+            RequestHeader[] classHeaders = iface.getAnnotationsByType(RequestHeader.class);
+            if (classHeaders.length > 0) {
+                Set<String> declaredNames = Arrays.stream(classHeaders)
+                        .map(h -> h.name().toLowerCase())
+                        .collect(Collectors.toSet());
+                result.removeIf(h -> declaredNames.contains(h.name().toLowerCase()));
+                for (RequestHeader h : classHeaders) {
+                    result.add(new Header(h.name(), h.value()));
+                }
+            }
+        }
+
+        // Method-level static headers
         if (method != null) {
+            RequestHeader[] methodHeaders = method.getAnnotationsByType(RequestHeader.class);
+            if (methodHeaders.length > 0) {
+                Set<String> declaredNames = Arrays.stream(methodHeaders)
+                        .map(h -> h.name().toLowerCase())
+                        .collect(Collectors.toSet());
+                result.removeIf(h -> declaredNames.contains(h.name().toLowerCase()));
+                for (RequestHeader h : methodHeaders) {
+                    result.add(new Header(h.name(), h.value()));
+                }
+            }
+
+            // Parameter-level headers
             Parameter[] parameters = method.getParameters();
             for (int i = 0; i < parameters.length; i++) {
                 if (parameters[i].isAnnotationPresent(RequestHeader.class)) {
@@ -226,6 +255,7 @@ public class HttpTemplateBuilder {
                                 continue;
                             }
                             String headerName = String.valueOf(entry.getKey());
+                            result.removeIf(h -> h.name().equalsIgnoreCase(headerName));
                             Object val = entry.getValue();
                             if (val instanceof Collection<?> collection) {
                                 for (Object o : collection) {
@@ -245,6 +275,8 @@ public class HttpTemplateBuilder {
                             ? parameters[i].getName()
                             : headerAnnotation.name();
 
+                    result.removeIf(h -> h.name().equalsIgnoreCase(name));
+
                     if (arg instanceof Collection<?> collection) {
                         for (Object o : collection) {
                             if (o != null) {
@@ -259,6 +291,24 @@ public class HttpTemplateBuilder {
         }
 
         return result;
+    }
+
+    private static List<Class<?>> collectInterfaceHierarchy(Class<?> clazz) {
+        List<Class<?>> result = new ArrayList<>();
+        collectInterfaces(clazz, result);
+        return result;
+    }
+
+    private static void collectInterfaces(Class<?> current, List<Class<?>> result) {
+        if (current == null || !current.isInterface()) {
+            return;
+        }
+        for (Class<?> parent : current.getInterfaces()) {
+            collectInterfaces(parent, result);
+        }
+        if (!result.contains(current)) {
+            result.add(current);
+        }
     }
 
     private RequestMeta resolveRequestMeta(Method method) {
@@ -298,65 +348,97 @@ public class HttpTemplateBuilder {
     }
 
     private List<Param> createRequestParams() {
-        List<Param> result = new ArrayList<>(createRequestDefaultParams(requestMeta.defaultParams()));
+        List<Param> defaultParams = new ArrayList<>();
 
-        Parameter[] parameters = method.getParameters();
-        for (int i = 0; i < parameters.length; i++) {
-            if (parameters[i].isAnnotationPresent(RequestParam.class)) {
-                if (args[i] == null) {
-                    continue;
-                }
-
-                Parameter parameter = parameters[i];
-                RequestParam annotation = parameter.getAnnotation(RequestParam.class);
-
-                if (args[i] instanceof Map<?, ?> map) {
-                    String prefix = annotation.name();
-                    for (Map.Entry<?, ?> entry : map.entrySet()) {
-                        if (entry.getKey() == null || entry.getValue() == null) {
-                            continue;
-                        }
-                        String paramName = prefix.isEmpty()
-                                ? String.valueOf(entry.getKey())
-                                : prefix + "[" + entry.getKey() + "]";
-                        Object val = entry.getValue();
-                        if (val instanceof Collection<?> collection) {
-                            for (Object o : collection) {
-                                if (o != null) {
-                                    result.add(new Param(paramName, o.toString()));
-                                }
-                            }
-                        } else {
-                            result.add(new Param(paramName, val.toString()));
-                        }
-                    }
-                    continue;
-                }
-
-                String name = annotation.name().isEmpty()
-                        ? parameter.getName()
-                        : annotation.name();
-
-                if (args[i] instanceof Collection<?> collection) {
-                    for (Object o : collection) {
-                        if (o != null) {
-                            result.add(new Param(name, o.toString()));
-                        }
-                    }
-                } else {
-                    result.add(new Param(name, args[i].toString()));
+        // Class-level default params (hierarchy order: parent interfaces first, sub-interface wins)
+        List<Class<?>> hierarchy = collectInterfaceHierarchy(controller);
+        for (Class<?> iface : hierarchy) {
+            RequestDefaultParam[] classParams = iface.getAnnotationsByType(RequestDefaultParam.class);
+            if (classParams.length > 0) {
+                Set<String> declaredNames = Arrays.stream(classParams)
+                        .map(RequestDefaultParam::name)
+                        .collect(Collectors.toSet());
+                defaultParams.removeIf(p -> declaredNames.contains(p.name()));
+                for (RequestDefaultParam p : classParams) {
+                    defaultParams.add(new Param(p.name(), p.value()));
                 }
             }
         }
 
-        return result;
-    }
+        // Method-level default params (verb annotation params + method-level @RequestDefaultParam)
+        if (method != null) {
+            List<RequestDefaultParam> methodDefaults = new ArrayList<>(Arrays.asList(requestMeta.defaultParams()));
+            RequestDefaultParam[] methodDirectParams = method.getAnnotationsByType(RequestDefaultParam.class);
+            for (RequestDefaultParam p : methodDirectParams) {
+                methodDefaults.removeIf(existing -> existing.name().equals(p.name()));
+                methodDefaults.add(p);
+            }
 
-    private List<Param> createRequestDefaultParams(RequestDefaultParam[] params) {
-        List<Param> result = new ArrayList<>();
+            if (!methodDefaults.isEmpty()) {
+                Set<String> declaredNames = methodDefaults.stream()
+                        .map(RequestDefaultParam::name)
+                        .collect(Collectors.toSet());
+                defaultParams.removeIf(p -> declaredNames.contains(p.name()));
+                for (RequestDefaultParam p : methodDefaults) {
+                    defaultParams.add(new Param(p.name(), p.value()));
+                }
+            }
+        }
 
-        for (RequestDefaultParam param : params) {
-            result.add(new Param(param.name(), param.value()));
+        List<Param> result = new ArrayList<>(defaultParams);
+
+        if (method != null) {
+            Parameter[] parameters = method.getParameters();
+            for (int i = 0; i < parameters.length; i++) {
+                if (parameters[i].isAnnotationPresent(RequestParam.class)) {
+                    if (args[i] == null) {
+                        continue;
+                    }
+
+                    Parameter parameter = parameters[i];
+                    RequestParam annotation = parameter.getAnnotation(RequestParam.class);
+
+                    if (args[i] instanceof Map<?, ?> map) {
+                        String prefix = annotation.name();
+                        for (Map.Entry<?, ?> entry : map.entrySet()) {
+                            if (entry.getKey() == null || entry.getValue() == null) {
+                                continue;
+                            }
+                            String paramName = prefix.isEmpty()
+                                    ? String.valueOf(entry.getKey())
+                                    : prefix + "[" + entry.getKey() + "]";
+                            result.removeIf(p -> p.name().equals(paramName));
+                            Object val = entry.getValue();
+                            if (val instanceof Collection<?> collection) {
+                                for (Object o : collection) {
+                                    if (o != null) {
+                                        result.add(new Param(paramName, o.toString()));
+                                    }
+                                }
+                            } else {
+                                result.add(new Param(paramName, val.toString()));
+                            }
+                        }
+                        continue;
+                    }
+
+                    String name = annotation.name().isEmpty()
+                            ? parameter.getName()
+                            : annotation.name();
+
+                    result.removeIf(p -> p.name().equals(name));
+
+                    if (args[i] instanceof Collection<?> collection) {
+                        for (Object o : collection) {
+                            if (o != null) {
+                                result.add(new Param(name, o.toString()));
+                            }
+                        }
+                    } else {
+                        result.add(new Param(name, args[i].toString()));
+                    }
+                }
+            }
         }
 
         return result;
