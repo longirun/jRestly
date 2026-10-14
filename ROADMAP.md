@@ -815,7 +815,31 @@ Gates (session #102, clean rebuild):
 - `javadoc` 0 warnings under permanent `-Xdoclint:all -Werror`.
 - Zero external runtime dependencies preserved (0 dependencies in Maven POM).
 
-After the epic: candidate #1 — test-javadoc (ADR-0013 Non-goals); candidate #2 — reactive/virtual thread ergonomics or custom URI template expansions. ADR number **0025** free.
+After the epic: candidate #1 — test-javadoc (ADR-0013 Non-goals); candidate #2 — reactive/virtual thread ergonomics or custom URI template expansions — done, section below. ADR number **0025** — URI templates epic, **0026** free.
+
+## URI template expansion, path encoding controls & array parameters (ADR-0025) — COMPLETE ✅ (2026-10-15, unreleased)
+
+> Source of truth (concept, architecture decisions, path encoding controls, array parameters, test strategy, status):
+> [`docs/0.10.0/ADR-0025-uri-template-expansion-and-parameter-arrays.md`](docs/0.10.0/ADR-0025-uri-template-expansion-and-parameter-arrays.md).
+> Session #103 (agent-loop). Real-world REST API ergonomics and protocol compliance (candidate #2 from DRAFT.md).
+> Support for unencoded / multi-segment path variables (`@PathVariable(encoded = true)`), universal array parameter handling
+> across query parameters, headers, and form-urlencoded bodies, RFC 3986 compliant `#fragment` handling, and null-safe query params.
+> 100% zero-dependency on standard Java 21 platform classes.
+
+Key decisions (ADR-0025):
+- **Path variable encoding control (`@PathVariable(encoded = true)`):** Added `boolean encoded() default false` to `@PathVariable`. By default (`encoded = false`), preserves percent-encoding UTF-8 (`/` -> `%2F`, space -> `%20`). When `encoded = true`, substitutes values directly as-is, supporting multi-segment paths (e.g. `files/${path}` -> `files/docs/2026/spec.pdf`) and avoiding double-encoding already percent-encoded strings. Fail-fast validation on null path variables is strictly preserved.
+- **Universal array handling across parameters and headers:** Extended `createRequestParams`, `createUrlEncodedBody`, and `createHeaders` (alongside existing multipart array support from ADR-0024) to support Java arrays (`String[]`, `Object[]`, and primitive arrays `int[]`, `long[]`, etc. via reflection, excluding `byte[]` which serves as binary body). Empty arrays omit parameters/headers; null elements are skipped. Dynamic `Map<String, ?>` values containing arrays are also unpacked into repeated parameters/headers.
+- **RFC 3986 URI fragment placement:** Implemented `HttpTemplate.appendQuery(String url, String query)` ensuring that when a URL carries a `#fragment`, query parameters are inserted before `#` (`base + separator + query + fragment`), maintaining valid HTTP request URI semantics.
+- **Null-safe query parameter serialization:** In `createUri()`, `param.value() == null` is formatted safely as `encode(param.name())` without throwing `NullPointerException`.
+- **Full test coverage:** 19 new tests (+19 cases, total suite 536/536 across 64 classes) spanning `HttpTemplateUriTest` (5 unit tests: query appending with/without fragments and existing query strings), `PathVariableEncodedTest` (4 tests: multi-segment paths with slashes, pre-encoded values, default percent-encoding, null fail-fast), and `ArrayParameterWireMockTest` (10 tests: String[] and int[] query params, empty arrays, null elements, Map array values, String[] headers, empty header arrays, Map array headers, form-urlencoded arrays, #fragment URI query execution).
+
+Gates (session #103, clean rebuild):
+- `./gradlew test` **536/536** (64 classes, 0 failures/errors; +19 tests in ADR-0025).
+- `compileJava` and `compileTestJava` 0 warnings under permanent `-Xlint:all -Werror`.
+- `javadoc` 0 warnings under permanent `-Xdoclint:all -Werror`.
+- Zero external runtime dependencies preserved (0 dependencies in Maven POM).
+
+After the epic: candidate #1 — test-javadoc (ADR-0013 Non-goals); candidate #2 — reactive / virtual thread executor ergonomics. ADR number **0026** free.
 
 ## Post-0.5.0 shortlist (not scheduled — see ADR-0003)
 

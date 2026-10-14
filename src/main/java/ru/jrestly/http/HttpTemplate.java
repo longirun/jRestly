@@ -1181,10 +1181,35 @@ public class HttpTemplate {
         }
 
         String query = requestParams.stream()
-                .map(param -> encode(param.name()) + "=" + encode(param.value()))
+                .map(param -> {
+                    String encodedName = encode(param.name());
+                    return param.value() == null
+                            ? encodedName
+                            : encodedName + "=" + encode(param.value());
+                })
                 .collect(Collectors.joining("&"));
 
-        return URI.create(url + (url.contains("?") ? "&" : "?") + query);
+        return appendQuery(url, query);
+    }
+
+    /**
+     * Appends a query string to a URL while ensuring RFC 3986 fragment placement.
+     * If the URL contains a fragment ({@code #anchor}), the query is inserted before the fragment.
+     *
+     * @param url the base URL
+     * @param query the query string to append
+     * @return the combined URI
+     */
+    static URI appendQuery(String url, String query) {
+        if (query == null || query.isEmpty()) {
+            return URI.create(url);
+        }
+        int hashIndex = url.indexOf('#');
+        String base = hashIndex >= 0 ? url.substring(0, hashIndex) : url;
+        String fragment = hashIndex >= 0 ? url.substring(hashIndex) : "";
+
+        String separator = base.contains("?") ? "&" : "?";
+        return URI.create(base + separator + query + fragment);
     }
 
     private static String encode(String value) {

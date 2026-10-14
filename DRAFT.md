@@ -1,21 +1,21 @@
-# DRAFT: активная зона после закрытия эпика form-data & multipart flexibility (ADR-0024)
+# DRAFT: активная зона после закрытия эпика URI templates & parameter arrays (ADR-0025)
 
-> Эпик Form-data & multipart flexibility (ADR-0024, `docs/0.10.0/`) закрыт 5/5 (сессия #102):
-> концепт и ADR-0024 → `String contentType() default ""` в `@RequestParam` +
-> поддержка явного Content-Type, автоматическая сериализация сложных JSON DTO частей через `JsonCodec`,
-> согласование charset (windows-1251, ISO-8859-1, UTF-8) +
-> расширение фабрик `MultipartPart` (`text(name, value, charset)`, `part(name, contentType, bytes)`) с гарантией null-safety +
-> null-safe кодирование параметров формы в `createUrlEncodedBody` +
-> unit и WireMock интеграционные тесты (`MultipartPartFlexibilityTest` 9 тестов, `MultipartFlexibilityWireMockTest` 7 тестов) →
-> дистилляция в ROADMAP («Form-data & multipart flexibility (ADR-0024) — COMPLETE ✅») + гейты 517/517 тестов (61 класс).
+> Эпик URI template expansion, path encoding controls & array parameters (ADR-0025, `docs/0.10.0/`) закрыт 5/5 (сессия #103):
+> концепт и ADR-0025 → `boolean encoded() default false` в `@PathVariable` для multi-segment и предкодированных путей +
+> универсальная поддержка массивов (`String[]`, `Object[]`, примитивные `int[]`, `long[]` и т.д., включая значения в `Map`)
+> во всех параметрах: query `@RequestParam`, form-urlencoded и `@RequestHeader` +
+> RFC 3986 корректность в `HttpTemplate.appendQuery` (вставка query параметров перед `#fragment`) +
+> null-safety для query параметров (флаги без NPE) +
+> unit и WireMock интеграционные тесты (`HttpTemplateUriTest` 5 тестов, `PathVariableEncodedTest` 4 теста, `ArrayParameterWireMockTest` 10 тестов, итого +19 тестов) →
+> дистилляция в ROADMAP («URI template expansion, path encoding controls & array parameters (ADR-0025) — COMPLETE ✅») + гейты 536/536 тестов (64 класса).
 > Следующий ход — свободный, выбор из активной зоны.
 
 ## Активная зона (кандидаты на следующий эпик)
 
 - **Кандидат №1 — test-javadoc** (ADR-0013 Non-goals):
   Test-source javadoc вынесен за скобки аудита; наведение лоска в тестовых классах.
-- **Кандидат №2 — URI template expansion / matrix params / path expressions**:
-  Углубление возможностей шаблонизации URL.
+- **Кандидат №2 — Virtual Threads & Executor Customization**:
+  Настройка кастомного Executor / Virtual Threads per-client или per-request для асинхронного пайплайна `CompletableFuture<T>`.
 
 ---
 
@@ -40,8 +40,9 @@
   HTTP-клиент для современной Java; (3) эргономика для современных
   API.
 - **Векторы зрелости библиотеки (Антон, 2026-10-14 23:25, живая нить):**
-  все 3 вектора полностью реализованы: SSL/mTLS (ADR-0020), прозрачный GZIP/Deflate (ADR-0021),
-  доступ к метаданным заголовков (ADR-0022), а также условные запросы & Optional (ADR-0023)
-  и гибкость form-data/multipart (ADR-0024).
+  все направления зрелости последовательно реализуются: SSL/mTLS (ADR-0020),
+  прозрачный GZIP/Deflate (ADR-0021), доступ к метаданным заголовков (ADR-0022),
+  условные запросы & Optional (ADR-0023), гибкость form-data/multipart (ADR-0024),
+  шаблоны URI и массивы параметров (ADR-0025).
 - **Коммиты — краткие, не дублируют ченджлог** (Антон).
 - **Объём одной сессии в 2–3 раза меньше** — один маленький шаг.

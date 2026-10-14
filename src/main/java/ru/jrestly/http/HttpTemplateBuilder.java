@@ -252,8 +252,10 @@ public class HttpTemplateBuilder {
                     throw new IllegalArgumentException("Path variable '" + name + "' value cannot be null");
                 }
 
-                String encodedValue = URLEncoder.encode(args[i].toString(), StandardCharsets.UTF_8).replace("+", "%20");
-                path = path.replace("${" + name + "}", encodedValue);
+                String substitutedValue = pathAnnotation.encoded()
+                        ? args[i].toString()
+                        : URLEncoder.encode(args[i].toString(), StandardCharsets.UTF_8).replace("+", "%20");
+                path = path.replace("${" + name + "}", substitutedValue);
             }
         }
 
@@ -309,16 +311,7 @@ public class HttpTemplateBuilder {
                             }
                             String headerName = String.valueOf(entry.getKey());
                             result.removeIf(h -> h.name().equalsIgnoreCase(headerName));
-                            Object val = entry.getValue();
-                            if (val instanceof Collection<?> collection) {
-                                for (Object o : collection) {
-                                    if (o != null) {
-                                        result.add(new Header(headerName, o.toString()));
-                                    }
-                                }
-                            } else {
-                                result.add(new Header(headerName, val.toString()));
-                            }
+                            appendHeaderValues(result, headerName, entry.getValue());
                         }
                         continue;
                     }
@@ -329,16 +322,7 @@ public class HttpTemplateBuilder {
                             : headerAnnotation.name();
 
                     result.removeIf(h -> h.name().equalsIgnoreCase(name));
-
-                    if (arg instanceof Collection<?> collection) {
-                        for (Object o : collection) {
-                            if (o != null) {
-                                result.add(new Header(name, o.toString()));
-                            }
-                        }
-                    } else {
-                        result.add(new Header(name, arg.toString()));
-                    }
+                    appendHeaderValues(result, name, arg);
                 }
             }
         }
@@ -469,16 +453,7 @@ public class HttpTemplateBuilder {
                                     ? String.valueOf(entry.getKey())
                                     : prefix + "[" + entry.getKey() + "]";
                             result.removeIf(p -> p.name().equals(paramName));
-                            Object val = entry.getValue();
-                            if (val instanceof Collection<?> collection) {
-                                for (Object o : collection) {
-                                    if (o != null) {
-                                        result.add(new Param(paramName, o.toString()));
-                                    }
-                                }
-                            } else {
-                                result.add(new Param(paramName, val.toString()));
-                            }
+                            appendParamValues(result, paramName, entry.getValue());
                         }
                         continue;
                     }
@@ -488,16 +463,7 @@ public class HttpTemplateBuilder {
                             : annotation.name();
 
                     result.removeIf(p -> p.name().equals(name));
-
-                    if (args[i] instanceof Collection<?> collection) {
-                        for (Object o : collection) {
-                            if (o != null) {
-                                result.add(new Param(name, o.toString()));
-                            }
-                        }
-                    } else {
-                        result.add(new Param(name, args[i].toString()));
-                    }
+                    appendParamValues(result, name, args[i]);
                 }
             }
         }
@@ -776,5 +742,51 @@ public class HttpTemplateBuilder {
         }
 
         return moduleInfo.getRetryPolicy();
+    }
+
+    private static void appendHeaderValues(List<Header> result, String name, Object value) {
+        if (value == null) {
+            return;
+        }
+        if (value instanceof Collection<?> collection) {
+            for (Object o : collection) {
+                if (o != null) {
+                    result.add(new Header(name, o.toString()));
+                }
+            }
+        } else if (value.getClass().isArray() && !byte[].class.equals(value.getClass())) {
+            int length = java.lang.reflect.Array.getLength(value);
+            for (int i = 0; i < length; i++) {
+                Object o = java.lang.reflect.Array.get(value, i);
+                if (o != null) {
+                    result.add(new Header(name, o.toString()));
+                }
+            }
+        } else {
+            result.add(new Header(name, value.toString()));
+        }
+    }
+
+    private static void appendParamValues(List<Param> result, String name, Object value) {
+        if (value == null) {
+            return;
+        }
+        if (value instanceof Collection<?> collection) {
+            for (Object o : collection) {
+                if (o != null) {
+                    result.add(new Param(name, o.toString()));
+                }
+            }
+        } else if (value.getClass().isArray() && !byte[].class.equals(value.getClass())) {
+            int length = java.lang.reflect.Array.getLength(value);
+            for (int i = 0; i < length; i++) {
+                Object o = java.lang.reflect.Array.get(value, i);
+                if (o != null) {
+                    result.add(new Param(name, o.toString()));
+                }
+            }
+        } else {
+            result.add(new Param(name, value.toString()));
+        }
     }
 }

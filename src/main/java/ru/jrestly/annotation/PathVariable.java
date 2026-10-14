@@ -19,4 +19,16 @@ public @interface PathVariable {
      * or the empty string (the default) to use the Java parameter name
      */
     String name() default "";
+
+    /**
+     * Whether the value is already encoded or should be inserted raw without percent-encoding.
+     *
+     * <p>When {@code false} (the default), values are percent-encoded via UTF-8, encoding reserved
+     * characters such as {@code /} into {@code %2F} and spaces into {@code %20}.
+     * When {@code true}, values are substituted directly as-is into the path placeholder, allowing
+     * multi-segment paths (e.g. {@code files/2026/spec.pdf}) and pre-encoded strings.
+     *
+     * @return {@code true} if the value should be substituted without percent-encoding, {@code false} otherwise
+     */
+    boolean encoded() default false;
 }
