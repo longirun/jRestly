@@ -100,6 +100,10 @@ final class MethodMetadata {
     private final boolean hasRequestParams;
     private final boolean hasMultipartParams;
     private final int requestBodyIndex;
+    private final String staticCookieHeader;
+    private final boolean hasExplicitContentTypeInStaticHeaders;
+    private final boolean isStaticConditional;
+    private final boolean hasTrace;
 
     record MethodKey(Method method, Class<?> controllerClass) {}
 
@@ -166,7 +170,11 @@ final class MethodMetadata {
             boolean hasCookieParams,
             boolean hasRequestParams,
             boolean hasMultipartParams,
-            int requestBodyIndex
+            int requestBodyIndex,
+            String staticCookieHeader,
+            boolean hasExplicitContentTypeInStaticHeaders,
+            boolean isStaticConditional,
+            boolean hasTrace
     ) {
         this.requestMeta = requestMeta;
         this.methodContentType = methodContentType;
@@ -204,6 +212,10 @@ final class MethodMetadata {
         this.hasRequestParams = hasRequestParams;
         this.hasMultipartParams = hasMultipartParams;
         this.requestBodyIndex = requestBodyIndex;
+        this.staticCookieHeader = staticCookieHeader;
+        this.hasExplicitContentTypeInStaticHeaders = hasExplicitContentTypeInStaticHeaders;
+        this.isStaticConditional = isStaticConditional;
+        this.hasTrace = hasTrace;
     }
 
     /**
@@ -372,6 +384,10 @@ final class MethodMetadata {
         List<Header> staticHeaders = parseStaticHeaders(method, hierarchy, interfaceAccept, methodAccept);
         Map<String, String> staticCookies = parseStaticCookies(method, hierarchy);
         List<Param> staticDefaultParams = parseStaticDefaultParams(method, hierarchy, requestMeta);
+        String staticCookieHeader = formatCookieHeader(staticCookies);
+        boolean hasExplicitContentType = checkHasContentTypeHeader(staticHeaders);
+        boolean isStaticConditional = checkIsConditional(staticHeaders);
+        boolean hasTrace = effectiveTrace != null && effectiveTrace.enabled();
 
         return new MethodMetadata(
                 requestMeta,
@@ -409,7 +425,11 @@ final class MethodMetadata {
                 hasCookies,
                 hasReqParams,
                 hasMultipart,
-                reqBodyIdx
+                reqBodyIdx,
+                staticCookieHeader,
+                hasExplicitContentType,
+                isStaticConditional,
+                hasTrace
         );
     }
 
@@ -484,6 +504,50 @@ final class MethodMetadata {
             }
         }
         return List.copyOf(map.values());
+    }
+
+    private static String formatCookieHeader(Map<String, String> cookies) {
+        if (cookies == null || cookies.isEmpty()) {
+            return null;
+        }
+        StringBuilder sb = new StringBuilder();
+        boolean first = true;
+        for (Map.Entry<String, String> entry : cookies.entrySet()) {
+            if (!first) {
+                sb.append("; ");
+            }
+            sb.append(entry.getKey()).append('=').append(entry.getValue());
+            first = false;
+        }
+        return sb.toString();
+    }
+
+    private static boolean checkHasContentTypeHeader(List<Header> headers) {
+        if (headers == null) {
+            return false;
+        }
+        for (Header h : headers) {
+            if ("Content-Type".equalsIgnoreCase(h.name())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean checkIsConditional(List<Header> headers) {
+        if (headers == null) {
+            return false;
+        }
+        for (Header h : headers) {
+            if (h.name() != null) {
+                String name = h.name();
+                if (name.equalsIgnoreCase("if-none-match") || name.equalsIgnoreCase("if-modified-since")
+                        || name.equalsIgnoreCase("if-match") || name.equalsIgnoreCase("if-unmodified-since")) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     private static RequestMeta parseRequestMeta(Method method) {
@@ -1029,5 +1093,21 @@ final class MethodMetadata {
 
     int requestBodyIndex() {
         return requestBodyIndex;
+    }
+
+    String staticCookieHeader() {
+        return staticCookieHeader;
+    }
+
+    boolean hasExplicitContentTypeInStaticHeaders() {
+        return hasExplicitContentTypeInStaticHeaders;
+    }
+
+    boolean isStaticConditional() {
+        return isStaticConditional;
+    }
+
+    boolean hasTrace() {
+        return hasTrace;
     }
 }

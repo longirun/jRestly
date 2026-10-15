@@ -56,6 +56,23 @@ class MethodMetadataTest {
 
         @Get(path = "/stream")
         InputStream stream();
+
+        @Get(path = "/cookies")
+        @ru.jrestly.annotation.Cookie(name = "sessionId", value = "abc123xyz")
+        @ru.jrestly.annotation.Cookie(name = "theme", value = "dark")
+        String withCookies();
+
+        @Get(path = "/conditional")
+        @ru.jrestly.annotation.RequestHeader(name = "If-None-Match", value = "\"etag123\"")
+        String withConditional();
+
+        @Post(path = "/explicit-content")
+        @ru.jrestly.annotation.RequestHeader(name = "Content-Type", value = "text/plain")
+        String withExplicitContentType();
+
+        @Get(path = "/traced")
+        @ru.jrestly.annotation.Trace(enabled = true)
+        String withTrace();
     }
 
     @BeforeEach
@@ -149,5 +166,52 @@ class MethodMetadataTest {
 
         assertEquals(1, meta.declarativeRequestInterceptorClasses().size());
         assertEquals(SampleRequestInterceptor.class, meta.declarativeRequestInterceptorClasses().getFirst());
+    }
+
+    @Test
+    @DisplayName("Pre-computes staticCookieHeader and checks cookie params flag")
+    void testStaticCookieHeader() throws NoSuchMethodException {
+        Method withCookies = SampleController.class.getMethod("withCookies");
+        MethodMetadata meta = MethodMetadata.of(withCookies, SampleController.class);
+
+        assertEquals("sessionId=abc123xyz; theme=dark", meta.staticCookieHeader());
+        assertFalse(meta.hasCookieParams());
+
+        Method getUser = SampleController.class.getMethod("getUser", String.class, ResponseHeaders.class);
+        MethodMetadata userMeta = MethodMetadata.of(getUser, SampleController.class);
+        assertFalse(userMeta.hasCookieParams());
+        assertNotNull(userMeta.staticCookies());
+        assertTrue(userMeta.staticCookies().isEmpty());
+    }
+
+    @Test
+    @DisplayName("Pre-computes isStaticConditional and hasExplicitContentTypeInStaticHeaders")
+    void testConditionalAndContentTypeFlags() throws NoSuchMethodException {
+        Method withCond = SampleController.class.getMethod("withConditional");
+        MethodMetadata condMeta = MethodMetadata.of(withCond, SampleController.class);
+        assertTrue(condMeta.isStaticConditional());
+        assertFalse(condMeta.hasExplicitContentTypeInStaticHeaders());
+
+        Method withExplicit = SampleController.class.getMethod("withExplicitContentType");
+        MethodMetadata explicitMeta = MethodMetadata.of(withExplicit, SampleController.class);
+        assertFalse(explicitMeta.isStaticConditional());
+        assertTrue(explicitMeta.hasExplicitContentTypeInStaticHeaders());
+
+        Method stream = SampleController.class.getMethod("stream");
+        MethodMetadata streamMeta = MethodMetadata.of(stream, SampleController.class);
+        assertFalse(streamMeta.isStaticConditional());
+        assertFalse(streamMeta.hasExplicitContentTypeInStaticHeaders());
+    }
+
+    @Test
+    @DisplayName("Pre-computes hasTrace flag")
+    void testTraceFlag() throws NoSuchMethodException {
+        Method withTrace = SampleController.class.getMethod("withTrace");
+        MethodMetadata traceMeta = MethodMetadata.of(withTrace, SampleController.class);
+        assertTrue(traceMeta.hasTrace());
+
+        Method stream = SampleController.class.getMethod("stream");
+        MethodMetadata streamMeta = MethodMetadata.of(stream, SampleController.class);
+        assertFalse(streamMeta.hasTrace());
     }
 }

@@ -151,6 +151,7 @@ class HttpTemplate {
     private RateLimiter rateLimiter;
     private ru.jrestly.auth.TokenManager tokenManager;
     private boolean retryOnUnauthorized;
+    private ru.jrestly.engine.HttpEngineOptions engineOptions;
 
     /**
      * Creates an empty template. Not intended for direct use: instances
@@ -216,13 +217,15 @@ class HttpTemplate {
 
         WireResponse response = null;
         Throwable failure = null;
-        int[] attemptsHolder = new int[] {1};
+        int[] attemptsHolder = (hasMetrics || circuitBreaker != null) ? new int[] {1} : null;
         try {
             WireResponse shortCircuited = (requestContext != null)
                     ? requestContext.shortCircuitResponse().orElse(null)
                     : null;
             if (shortCircuited != null) {
-                attemptsHolder[0] = 0;
+                if (attemptsHolder != null) {
+                    attemptsHolder[0] = 0;
+                }
                 response = handleDecompression(shortCircuited);
             } else {
                 if (rateLimiter != null) {
@@ -240,7 +243,8 @@ class HttpTemplate {
                 }
             }
             T result = processResponse(effectiveRequest, response, start);
-            if (circuitBreaker != null && attemptsHolder[0] > 0) {
+            int attempts = attemptsHolder != null ? attemptsHolder[0] : 1;
+            if (circuitBreaker != null && attempts > 0) {
                 circuitBreaker.recordSuccess(System.nanoTime() - start);
             }
             return result;
@@ -258,7 +262,8 @@ class HttpTemplate {
             failure = t;
             throw t;
         } finally {
-            if (failure != null && circuitBreaker != null && attemptsHolder[0] > 0
+            int attempts = attemptsHolder != null ? attemptsHolder[0] : 1;
+            if (failure != null && circuitBreaker != null && attempts > 0
                     && !(failure instanceof CircuitBreakerOpenException)
                     && !(failure instanceof RateLimitExceededException)) {
                 circuitBreaker.recordFailure(System.nanoTime() - start, failure);
@@ -267,7 +272,7 @@ class HttpTemplate {
                 invokeResponseInterceptors(requestContext, effectiveRequest, response, failure, start);
             }
             if (hasMetrics) {
-                notifyCallComplete(requestContext, effectiveRequest, response, failure, start, attemptsHolder[0]);
+                notifyCallComplete(requestContext, effectiveRequest, response, failure, start, attempts);
             }
         }
     }
@@ -657,18 +662,20 @@ class HttpTemplate {
     private <T> T processResponse(WireRequest request, WireResponse response, long startNanos)
             throws IOException {
         long elapsedMs = (System.nanoTime() - startNanos) / 1_000_000;
-        Duration callDuration = Duration.ofNanos(System.nanoTime() - startNanos);
 
         List<Header> responseHeaders = response.headers();
         int statusCode = response.statusCode();
 
-        // ADR-0022 & ADR-0038: Populate response headers holder and thread-local captor
-        if (responseHeadersHolder != null) {
-            responseHeadersHolder.populate(statusCode, responseHeaders, callDuration, response.version(), response.trailers());
-        }
+        // ADR-0022 & ADR-0038: Populate response headers holder and thread-local captor (lazy duration allocation)
         Consumer<ResponseHeaders> captor = ResponseHeaders.CURRENT_CAPTOR.get();
-        if (captor != null) {
-            captor.accept(new ResponseHeaders(statusCode, responseHeaders, callDuration, response.version(), response.trailers()));
+        if (responseHeadersHolder != null || captor != null) {
+            Duration callDuration = Duration.ofNanos(System.nanoTime() - startNanos);
+            if (responseHeadersHolder != null) {
+                responseHeadersHolder.populate(statusCode, responseHeaders, callDuration, response.version(), response.trailers());
+            }
+            if (captor != null) {
+                captor.accept(new ResponseHeaders(statusCode, responseHeaders, callDuration, response.version(), response.trailers()));
+            }
         }
 
         if (authDetailsConsumer != null) {
@@ -949,7 +956,9 @@ class HttpTemplate {
         long lastDelayMillis = 0L;
 
         for (int attempt = 1; ; attempt++) {
-            attemptsHolder[0] = attempt;
+            if (attemptsHolder != null) {
+                attemptsHolder[0] = attempt;
+            }
             boolean last = attempt == maxAttempts;
 
             long attemptStart = System.nanoTime();
@@ -1367,16 +1376,19 @@ class HttpTemplate {
     // private seam — the unit tests exercise the branch directly.
     WireResponse send(WireRequest request) throws IOException, InterruptedException {
         long start = System.nanoTime();
-        Duration effectiveTimeout = timeout != null
-                ? timeout
-                : Duration.ofMillis(moduleInfo.getSocketTimeout());
-        ru.jrestly.engine.HttpEngineOptions options = new ru.jrestly.engine.HttpEngineOptions(
-                effectiveTimeout,
-                httpVersion,
-                streamBody,
-                uploadProgressListener,
-                downloadProgressListener
-        );
+        ru.jrestly.engine.HttpEngineOptions options = this.engineOptions;
+        if (options == null) {
+            Duration effectiveTimeout = timeout != null
+                    ? timeout
+                    : Duration.ofMillis(moduleInfo.getSocketTimeout());
+            options = new ru.jrestly.engine.HttpEngineOptions(
+                    effectiveTimeout,
+                    httpVersion,
+                    streamBody,
+                    uploadProgressListener,
+                    downloadProgressListener
+            );
+        }
         WireResponse response = httpEngine.send(request, options);
         logPerHop(request, response.statusCode(), start);
         return handleDecompression(response);
@@ -1385,16 +1397,19 @@ class HttpTemplate {
     // Async twin of send(): the same branch, chained over sendAsync
     private CompletableFuture<WireResponse> sendAsync(WireRequest request) {
         long start = System.nanoTime();
-        Duration effectiveTimeout = timeout != null
-                ? timeout
-                : Duration.ofMillis(moduleInfo.getSocketTimeout());
-        ru.jrestly.engine.HttpEngineOptions options = new ru.jrestly.engine.HttpEngineOptions(
-                effectiveTimeout,
-                httpVersion,
-                streamBody,
-                uploadProgressListener,
-                downloadProgressListener
-        );
+        ru.jrestly.engine.HttpEngineOptions options = this.engineOptions;
+        if (options == null) {
+            Duration effectiveTimeout = timeout != null
+                    ? timeout
+                    : Duration.ofMillis(moduleInfo.getSocketTimeout());
+            options = new ru.jrestly.engine.HttpEngineOptions(
+                    effectiveTimeout,
+                    httpVersion,
+                    streamBody,
+                    uploadProgressListener,
+                    downloadProgressListener
+            );
+        }
         CompletableFuture<WireResponse> raw = httpEngine.sendAsync(request, options);
         java.util.function.Function<WireResponse, WireResponse> mapper = response -> {
             logPerHop(request, response.statusCode(), start);
@@ -1570,16 +1585,19 @@ class HttpTemplate {
             return URI.create(url);
         }
 
-        String query = requestParams.stream()
-                .map(param -> {
-                    String encodedName = encode(param.name());
-                    return param.value() == null
-                            ? encodedName
-                            : encodedName + "=" + encode(param.value());
-                })
-                .collect(Collectors.joining("&"));
+        StringBuilder query = new StringBuilder();
+        for (int i = 0, size = requestParams.size(); i < size; i++) {
+            Param param = requestParams.get(i);
+            if (i > 0) {
+                query.append('&');
+            }
+            query.append(encode(param.name()));
+            if (param.value() != null) {
+                query.append('=').append(encode(param.value()));
+            }
+        }
 
-        return appendQuery(url, query);
+        return appendQuery(url, query.toString());
     }
 
     /**
@@ -1719,6 +1737,14 @@ class HttpTemplate {
      */
     ru.jrestly.engine.HttpEngine getHttpEngine() {
         return httpEngine;
+    }
+
+    void setEngineOptions(ru.jrestly.engine.HttpEngineOptions engineOptions) {
+        this.engineOptions = engineOptions;
+    }
+
+    ru.jrestly.engine.HttpEngineOptions getEngineOptions() {
+        return engineOptions;
     }
 
     /**

@@ -1866,6 +1866,57 @@ After the epic: candidate №1 — test-javadoc, candidate №2 — HTTP Trailer
 
 
 
+## Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055) — COMPLETE ✅
+
+> Source of truth: [`docs/0.10.0/ADR-0055-zero-garbage-dispatch-pipeline-and-hot-path-allocation-pruning.md`](docs/0.10.0/ADR-0055-zero-garbage-dispatch-pipeline-and-hot-path-allocation-pruning.md).
+> Session #135 (agent-loop). Completes the memory optimization track prompted by maintainer insight into eliminating unnecessary per-request allocations.
+
+**Problem:**
+1. In `HttpTemplateBuilder.resolveCookies()`, an intermediate `LinkedHashMap` and a Stream pipeline (`cookies.entrySet().stream().map(...).collect(...)`) were instantiated on every request, even when neither static cookies nor cookie parameters were present.
+2. `HttpTemplateBuilder.createHeaders()` unconditionally performed defensive copies of static headers (`new ArrayList<>(staticHeaders)`).
+3. Auth header name filtering executed `moduleInfo.getAuthProvider().getAuthHeaders().stream().map(Header::name).toList()` on every request, allocating stream pipelines for unauthenticated calls.
+4. Parameterless methods allocated `new ArrayList<>(0)` inside `createRequestParams()`.
+5. `HttpTemplate.createUri()` and `HttpTemplateBuilder.createUrlEncodedBody()` relied on Stream pipelines and lambdas to join query/form parameters.
+6. `HttpTemplate.processResponse()` allocated `Duration.ofNanos(System.nanoTime() - startNanos)` unconditionally, even when response headers were not captured.
+7. `HttpTemplate.send()` and `sendAsync()` created a fresh `HttpEngineOptions` on every send and redirect hop.
+8. `AbstractHttpClient.isLoginInBackgroundNeeded()` queried reflective annotations before verifying `moduleInfo.getAuthProvider().isAuthorized()`.
+9. `HttpTemplate.exchange()` unconditionally allocated `int[] attemptsHolder = new int[] {1}`.
+10. `HttpTemplateBuilder.resolveCompression()` instantiated a `new EffectiveCompression(...)` on every body-bearing request.
+
+**Solution:**
+- **Pre-computed & Cached Metadata in `MethodMetadata`:**
+  * Pre-formatted `staticCookieHeader` string (e.g. `"name=val; name2=val2"`) and `hasCookieParams` flag.
+  * Fast-path boolean flags: `hasExplicitContentTypeInStaticHeaders`, `isStaticConditional`, and `hasTrace`.
+- **Zero-Allocation Fast-Paths in `HttpTemplateBuilder`:**
+  * `resolveCookies()` returns `methodMetadata.staticCookieHeader()` directly when no cookie parameters exist (0 allocations).
+  * `createHeaders()` returns `staticHeaders` directly when no dynamic headers, cookies, tracing, or content-type removals apply.
+  * `getAuthHeaderNames()` returns `List.of()` when auth headers are empty, and extracts names with a direct loop when present.
+  * `createRequestParams()` is bypassed for parameterless methods, directly assigning `List.of()`.
+  * `resolveCompression()` reuses a static `DEFAULT_NO_COMPRESSION` singleton.
+- **Stream-Free Hot-Path Serialization:**
+  * `HttpTemplate.createUri()` and `HttpTemplateBuilder.createUrlEncodedBody()` rewritten to use direct `StringBuilder` iteration loops.
+  * `isConditionalRequest()` uses direct iteration and case-insensitive equality without allocating `.toLowerCase()` strings.
+- **Lazy Allocation in `HttpTemplate`:**
+  * `Duration.ofNanos(...)` deferred to only instantiate when `responseHeadersHolder != null` or `ResponseHeaders.CURRENT_CAPTOR.get() != null`.
+  * `attemptsHolder` allocated only when metrics listeners or circuit breakers are active.
+  * Pre-constructed `HttpEngineOptions` stored on `HttpTemplate` and reused across retries and redirect hops.
+- **Short-Circuit Authorization Check:**
+  * `AbstractHttpClient.isLoginInBackgroundNeeded()` checks `isAuthorized()` first, bypassing reflective annotation lookups on authorized dispatches.
+- **Automated Verification:**
+  * Unit tests in `MethodMetadataTest` (+3 tests) and integration tests in `ZeroGarbagePipelineTest` (+6 tests).
+  * Total suite: **1035/1035 tests** across 134 classes, 0 failures, 0 errors.
+
+Gates (session #135, clean rebuild):
+- `./gradlew test` **1035/1035** (134 classes, 0 failures/errors; +9 tests in ADR-0055).
+- `compileJava` and `compileTestJava` 0 warnings under permanent `-Xlint:all -Werror`.
+- `javadoc` 0 warnings under permanent `-Xdoclint:all -Werror`.
+- Zero external runtime dependencies strictly preserved (0 dependencies in root Maven POM).
+
+After the epic: candidate №1 — test-javadoc, candidate №2 — HTTP Trailers & Advanced Streaming ergonomics, candidate №3 — OkHttpEngine / ApacheHttpEngine external modules. ADR number **0056** free.
+
+
+
+
 ## Post-0.5.0 shortlist (not scheduled — see ADR-0003)
 
 - ~~Retry with backoff (integrates with `@OnError` semantics)~~ — done 2026-10-13, section above

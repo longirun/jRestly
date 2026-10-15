@@ -248,11 +248,14 @@ public abstract class AbstractHttpClient {
      * @return {@code true} when a background login is needed
      */
     protected boolean isLoginInBackgroundNeeded(Method method) {
+        boolean authorized = moduleInfo.getAuthProvider().isAuthorized();
+        if (authorized) {
+            return false;
+        }
         boolean isNotAuthorisation = method.getAnnotation(Authorization.class) == null;
         boolean hasNoAnonymousAnnotation = method.getAnnotation(Anonymous.class) == null;
-        boolean authorized = moduleInfo.getAuthProvider().isAuthorized();
 
-        return !authorized && isNotAuthorisation && hasNoAnonymousAnnotation;
+        return isNotAuthorisation && hasNoAnonymousAnnotation;
     }
 
     /**

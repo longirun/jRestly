@@ -1,14 +1,19 @@
-# DRAFT: активная зона после закрытия Zero-Copy Raw-Byte Codec Pipeline and Stream-Free Transport Headers (ADR-0054)
+# DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
-> Эпик Zero-Copy Raw-Byte Codec Pipeline and Stream-Free Transport Headers (ADR-0054, `docs/0.10.0/`) закрыт (сессия #134):
-> - В `JsonCodec` добавлены методы прямого чтения и записи байтов без промежуточной аллокации строк: `<T> T deserializeBytes(byte[], Type)` и `byte[] serializeToBytes(Object)`.
-> - `JacksonCodec` переведен на прямой streaming parse из byte-буферов (`mapper.readValue(payload, javaType)`) и сериализацию `mapper.writeValueAsBytes(value)`.
-> - `MoshiCodec` переведен на прямое чтение/запись Okio Buffer (`Buffer.write(payload)`, `Buffer.readByteArray()`).
-> - В `HttpTemplate.processResponse()` материализация `String payload` сделана ленивой (создается только при ошибках, прямом типе `String` или активном `INFO` логировании). Для DTO и `byte[]` парсинг идет напрямую из `byte[]`.
-> - В `JdkHttpEngine.toHeaders()` Stream API заменен на прямой плоский цикл, возвращающий `List.copyOf(list)` (1 аллокация).
-> - В `HttpTemplateBuilder.createHeaders()` добавлен fast-path для пустых auth-заголовков, устранивший создание `HashSet` и `removeIf`.
-> - Замеры JMH с `-prof gc`: аллокации на batch запросах снижены с **94.1 KB/op до 87.2 KB/op** (срезано ~7 КБ мусора с каждой операции!), паузы GC сократились с **12.0 ms до 7.0 ms**!
-> - Достигнута отметка **1026/1026 тестов** в 133 классах (+4 новых теста), 0 warnings под `-Werror`, POM строго zero-dep.
+> Эпик Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055, `docs/0.10.0/`) закрыт (сессия #135):
+> - В `MethodMetadata` предвычислены и закэшированы: `staticCookieHeader` (строка формата `k=v; k2=v2`), флаг `hasCookieParams`, флаги `hasExplicitContentTypeInStaticHeaders`, `isStaticConditional` и `hasTrace`.
+> - В `HttpTemplateBuilder.resolveCookies()` добавлен fast-path: при отсутствии динамических cookie-параметров возвращается `methodMetadata.staticCookieHeader()` напрямую без аллокаций `LinkedHashMap` (0 heap allocations).
+> - В `HttpTemplateBuilder.createHeaders()` добавлен fast-path для статических запросов: при отсутствии динамических заголовков, куки и auth список `staticHeaders` возвращается напрямую без создания промежуточных копий `ArrayList`.
+> - В `HttpTemplateBuilder` аудит auth-заголовков переведен на `List.of()` и плоский цикл, устранив Stream API из `authHeaderNames`.
+> - Для методов без query параметров `createRequestParams()` пропускается, устанавливая неизменяемый синглтон `List.of()`.
+> - В `HttpTemplate.createUri()` и `HttpTemplateBuilder.createUrlEncodedBody()` сборка параметров переведена с Java Stream API на прямые плоские циклы с `StringBuilder`.
+> - В `HttpTemplate.processResponse()` аллокация `Duration.ofNanos(System.nanoTime() - startNanos)` сделана строго ленивой (создается только при активном перехвате `ResponseHeaders`).
+> - В `HttpTemplate.exchange()` массив `attemptsHolder` аллоцируется строго лениво (только при активных метриках или circuit breaker).
+> - `HttpEngineOptions` предвычисляется один раз в `HttpTemplateBuilder` и кэшируется в `HttpTemplate`, устраняя повторные аллокации на каждый send/hop.
+> - В `AbstractHttpClient.isLoginInBackgroundNeeded()` проверка `isAuthorized()` вынесена на первое место, устраняя избыточные вызовы Reflection API на авторизованных запросах.
+> - В `HttpTemplateBuilder.resolveCompression()` задействован синглтон `DEFAULT_NO_COMPRESSION`.
+> - Замеры JMH с `-prof gc`: аллокации на `jrestly_getUser` снизились с **49898 B/op до 49378 B/op**, на `jrestly_ping_zeroDepRaw` снизились с **48030 B/op до 47392 B/op**.
+> - Достигнута отметка **1035/1035 тестов** в 134 классах (+9 новых тестов), 0 warnings под `-Werror`, POM строго zero-dep.
 > Следующий ход — свободный, выбор из активной зоны.
 
 ## Активная зона (кандидаты на следующий эпик)

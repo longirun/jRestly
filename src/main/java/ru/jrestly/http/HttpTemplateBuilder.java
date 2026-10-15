@@ -243,10 +243,12 @@ public class HttpTemplateBuilder {
                 : methodMetadata.interfaceContentType();
 
         Header explicitContentTypeHeader = null;
-        for (Header h : headers) {
-            if ("Content-Type".equalsIgnoreCase(h.name())) {
-                explicitContentTypeHeader = h;
-                break;
+        if (methodMetadata.hasExplicitContentTypeInStaticHeaders() || methodMetadata.hasRequestHeaders()) {
+            for (Header h : headers) {
+                if ("Content-Type".equalsIgnoreCase(h.name())) {
+                    explicitContentTypeHeader = h;
+                    break;
+                }
             }
         }
         boolean isContentTypeExplicit = explicitContentTypeHeader != null || declarativeContentType != null;
@@ -262,12 +264,23 @@ public class HttpTemplateBuilder {
         result.setHeaders(headers);
         result.setConditional(isConditionalRequest(headers));
         // Header names to drop on cross-origin redirects
-        result.setAuthHeaderNames(moduleInfo.getAuthProvider().getAuthHeaders().stream()
-                .map(Header::name)
-                .toList());
+        List<Header> authHeaders = moduleInfo.getAuthProvider().getAuthHeaders();
+        if (authHeaders == null || authHeaders.isEmpty()) {
+            result.setAuthHeaderNames(List.of());
+        } else {
+            List<String> authNames = new ArrayList<>(authHeaders.size());
+            for (int i = 0, size = authHeaders.size(); i < size; i++) {
+                authNames.add(authHeaders.get(i).name());
+            }
+            result.setAuthHeaderNames(authNames);
+        }
         result.setAuthDetailsConsumer(getAuthDetailsConsumer());
         if (!RequestType.MULTIPART_FORM_DATA.equals(requestType) && !RequestType.APPLICATION_FORM_URLENCODED.equals(requestType)) {
-            result.setRequestParams(createRequestParams());
+            if (!methodMetadata.hasRequestParams() && methodMetadata.staticDefaultParams().isEmpty()) {
+                result.setRequestParams(List.of());
+            } else {
+                result.setRequestParams(createRequestParams());
+            }
         }
 
         byte[] body = null;
@@ -350,6 +363,18 @@ public class HttpTemplateBuilder {
         result.setMethod(method);
         result.setArgs(args);
 
+        Duration effectiveTimeout = result.getTimeout() != null
+                ? result.getTimeout()
+                : Duration.ofMillis(moduleInfo.getSocketTimeout());
+        ru.jrestly.engine.HttpEngineOptions options = new ru.jrestly.engine.HttpEngineOptions(
+                effectiveTimeout,
+                getHttpVersion(),
+                rt.streamBody(),
+                result.getUploadProgressListener(),
+                result.getDownloadProgressListener()
+        );
+        result.setEngineOptions(options);
+
         return result;
     }
 
@@ -384,15 +409,19 @@ public class HttpTemplateBuilder {
     }
 
 
-    private static boolean isConditionalRequest(List<Header> headers) {
+    private boolean isConditionalRequest(List<Header> headers) {
+        if (!methodMetadata.hasRequestHeaders()) {
+            return methodMetadata.isStaticConditional();
+        }
         if (headers == null) {
             return false;
         }
-        for (Header h : headers) {
+        for (int i = 0, size = headers.size(); i < size; i++) {
+            Header h = headers.get(i);
             if (h.name() != null) {
-                String name = h.name().toLowerCase(Locale.ROOT);
-                if (name.equals("if-none-match") || name.equals("if-modified-since")
-                        || name.equals("if-match") || name.equals("if-unmodified-since")) {
+                String name = h.name();
+                if (name.equalsIgnoreCase("if-none-match") || name.equalsIgnoreCase("if-modified-since")
+                        || name.equalsIgnoreCase("if-match") || name.equalsIgnoreCase("if-unmodified-since")) {
                     return true;
                 }
             }
@@ -483,8 +512,14 @@ public class HttpTemplateBuilder {
         }
 
         if (moduleInfo != null && moduleInfo.isDecompressionEnabled()) {
-            boolean hasAcceptEncoding = result.stream()
-                    .anyMatch(h -> h.name() != null && h.name().equalsIgnoreCase("Accept-Encoding"));
+            boolean hasAcceptEncoding = false;
+            for (int i = 0, size = result.size(); i < size; i++) {
+                Header h = result.get(i);
+                if (h.name() != null && h.name().equalsIgnoreCase("Accept-Encoding")) {
+                    hasAcceptEncoding = true;
+                    break;
+                }
+            }
             if (!hasAcceptEncoding) {
                 result.add(new Header("Accept-Encoding", "gzip, deflate"));
             }
@@ -540,8 +575,14 @@ public class HttpTemplateBuilder {
                     String name = entry.getKey();
                     String value = entry.getValue();
                     if (name != null && value != null) {
-                        boolean exists = result.stream()
-                                .anyMatch(h -> h.name() != null && h.name().equalsIgnoreCase(name));
+                        boolean exists = false;
+                        for (int i = 0, size = result.size(); i < size; i++) {
+                            Header h = result.get(i);
+                            if (h.name() != null && h.name().equalsIgnoreCase(name)) {
+                                exists = true;
+                                break;
+                            }
+                        }
                         if (!exists) {
                             result.add(new Header(name, value));
                         }
@@ -552,11 +593,15 @@ public class HttpTemplateBuilder {
     }
 
     private String resolveCookies() {
+        if (!methodMetadata.hasCookieParams()) {
+            return methodMetadata.staticCookieHeader();
+        }
+
         Map<String, String> cookies = methodMetadata.staticCookies().isEmpty()
                 ? new java.util.LinkedHashMap<>()
                 : new java.util.LinkedHashMap<>(methodMetadata.staticCookies());
 
-        if (methodMetadata.hasCookieParams() && args != null) {
+        if (args != null) {
             for (MethodMetadata.ParameterDescriptor p : methodMetadata.parameterDescriptors()) {
                 if (p.isCookie() && p.index() < args.length) {
                     Object arg = args[p.index()];
@@ -593,9 +638,16 @@ public class HttpTemplateBuilder {
             return null;
         }
 
-        return cookies.entrySet().stream()
-                .map(e -> e.getKey() + "=" + e.getValue())
-                .collect(Collectors.joining("; "));
+        StringBuilder sb = new StringBuilder();
+        boolean first = true;
+        for (Map.Entry<String, String> e : cookies.entrySet()) {
+            if (!first) {
+                sb.append("; ");
+            }
+            sb.append(e.getKey()).append('=').append(e.getValue());
+            first = false;
+        }
+        return sb.toString();
     }
 
     private Consumer<List<Header>> getAuthDetailsConsumer() {
@@ -1011,17 +1063,27 @@ public class HttpTemplateBuilder {
             throw new UnsupportedOperationException("Cannot create urlencoded entity");
         }
 
-        Parameter[] parameters = method.getParameters();
-        if (parameters.length == 0) {
+        if (methodMetadata.parameterDescriptors().length == 0) {
             throw new UnsupportedOperationException("Urlencoded method has no parameters");
         }
 
-        return createRequestParams().stream()
-                .map(param -> URLEncoder.encode(param.name(), StandardCharsets.UTF_8)
-                        + "="
-                        + (param.value() != null ? URLEncoder.encode(param.value(), StandardCharsets.UTF_8) : ""))
-                .collect(Collectors.joining("&"))
-                .getBytes(StandardCharsets.UTF_8);
+        List<Param> params = createRequestParams();
+        if (params.isEmpty()) {
+            return new byte[0];
+        }
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0, size = params.size(); i < size; i++) {
+            Param param = params.get(i);
+            if (i > 0) {
+                sb.append('&');
+            }
+            sb.append(URLEncoder.encode(param.name(), StandardCharsets.UTF_8));
+            sb.append('=');
+            if (param.value() != null) {
+                sb.append(URLEncoder.encode(param.value(), StandardCharsets.UTF_8));
+            }
+        }
+        return sb.toString().getBytes(StandardCharsets.UTF_8);
     }
 
     private OnErrorParser createOnErrorParser() {
@@ -1229,6 +1291,9 @@ public class HttpTemplateBuilder {
 
     private record EffectiveCompression(boolean enabled, CompressionAlgorithm algorithm, int minSizeBytes) {}
 
+    private static final EffectiveCompression DEFAULT_NO_COMPRESSION =
+            new EffectiveCompression(false, CompressionAlgorithm.NONE, 0);
+
     private EffectiveCompression resolveCompression() {
         if (methodMetadata != null) {
             MethodMetadata.EffectiveCompression metaComp = methodMetadata.compression();
@@ -1243,7 +1308,7 @@ public class HttpTemplateBuilder {
                     Math.max(0, moduleInfo.getRequestCompressionThreshold()));
         }
 
-        return new EffectiveCompression(false, CompressionAlgorithm.NONE, 0);
+        return DEFAULT_NO_COMPRESSION;
     }
 
     private ContentCompressor resolveCompressor(CompressionAlgorithm algorithm) {
