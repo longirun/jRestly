@@ -1,5 +1,6 @@
 package ru.jrestly.annotation;
 
+import java.lang.annotation.Documented;
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
@@ -13,6 +14,7 @@ import java.lang.annotation.Target;
  */
 @Target(ElementType.PARAMETER)
 @Retention(RetentionPolicy.RUNTIME)
+@Documented
 public @interface RequestParam {
     /**
      * Parameter name. If empty, derived from the Java parameter name (for scalar/collection parameters)
@@ -33,4 +35,13 @@ public @interface RequestParam {
      * @return the part's Content-Type, or empty string (the default)
      */
     String contentType() default "";
+
+    /**
+     * Collection formatting style for this parameter.
+     * When set to {@link CollectionFormat#DEFAULT}, falls back to method/interface
+     * {@link QueryCollectionFormat} or {@link CollectionFormat#EXPLODE}.
+     *
+     * @return the collection format for this parameter
+     */
+    CollectionFormat format() default CollectionFormat.DEFAULT;
 }

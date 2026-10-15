@@ -3,6 +3,7 @@ package ru.jrestly.http;
 import ru.jrestly.AuthProvider;
 import ru.jrestly.ModuleInfo;
 import ru.jrestly.annotation.Accept;
+import ru.jrestly.annotation.CollectionFormat;
 import ru.jrestly.annotation.ContentType;
 import ru.jrestly.annotation.Cookie;
 import ru.jrestly.annotation.Delete;
@@ -16,6 +17,7 @@ import ru.jrestly.annotation.Patch;
 import ru.jrestly.annotation.PathVariable;
 import ru.jrestly.annotation.Post;
 import ru.jrestly.annotation.Put;
+import ru.jrestly.annotation.QueryCollectionFormat;
 import ru.jrestly.annotation.RequestBody;
 import ru.jrestly.annotation.RequestDefaultParam;
 import ru.jrestly.annotation.RequestHeader;
@@ -631,6 +633,7 @@ public class HttpTemplateBuilder {
         }
 
         List<Param> result = new ArrayList<>(defaultParams);
+        CollectionFormat defaultCollectionFormat = resolveDefaultCollectionFormat();
 
         if (method != null) {
             Parameter[] parameters = method.getParameters();
@@ -642,6 +645,9 @@ public class HttpTemplateBuilder {
 
                     Parameter parameter = parameters[i];
                     RequestParam annotation = parameter.getAnnotation(RequestParam.class);
+                    CollectionFormat effectiveFormat = (annotation.format() != null && annotation.format() != CollectionFormat.DEFAULT)
+                            ? annotation.format()
+                            : defaultCollectionFormat;
 
                     if (args[i] instanceof Map<?, ?> map) {
                         String prefix = annotation.name();
@@ -653,7 +659,7 @@ public class HttpTemplateBuilder {
                                     ? String.valueOf(entry.getKey())
                                     : prefix + "[" + entry.getKey() + "]";
                             result.removeIf(p -> p.name().equals(paramName));
-                            appendParamValues(result, paramName, entry.getValue());
+                            appendParamValues(result, paramName, entry.getValue(), effectiveFormat);
                         }
                         continue;
                     }
@@ -663,12 +669,34 @@ public class HttpTemplateBuilder {
                             : annotation.name();
 
                     result.removeIf(p -> p.name().equals(name));
-                    appendParamValues(result, name, args[i]);
+                    appendParamValues(result, name, args[i], effectiveFormat);
                 }
             }
         }
 
         return result;
+    }
+
+    private CollectionFormat resolveDefaultCollectionFormat() {
+        if (method != null && method.isAnnotationPresent(QueryCollectionFormat.class)) {
+            CollectionFormat format = method.getAnnotation(QueryCollectionFormat.class).value();
+            if (format != null && format != CollectionFormat.DEFAULT) {
+                return format;
+            }
+        }
+
+        List<Class<?>> hierarchy = collectInterfaceHierarchy(controller);
+        for (int i = hierarchy.size() - 1; i >= 0; i--) {
+            Class<?> iface = hierarchy.get(i);
+            if (iface.isAnnotationPresent(QueryCollectionFormat.class)) {
+                CollectionFormat format = iface.getAnnotation(QueryCollectionFormat.class).value();
+                if (format != null && format != CollectionFormat.DEFAULT) {
+                    return format;
+                }
+            }
+        }
+
+        return CollectionFormat.EXPLODE;
     }
 
     private byte[] createRequestBody(String effectiveContentType) {
@@ -734,6 +762,9 @@ public class HttpTemplateBuilder {
                 String explicitContentType = annotation.contentType().isEmpty()
                         ? null
                         : annotation.contentType();
+                CollectionFormat effectiveFormat = (annotation.format() != null && annotation.format() != CollectionFormat.DEFAULT)
+                        ? annotation.format()
+                        : resolveDefaultCollectionFormat();
 
                 if (args[i] instanceof Map<?, ?> map) {
                     String prefix = annotation.name();
@@ -746,11 +777,11 @@ public class HttpTemplateBuilder {
                                 : prefix + "[" + entry.getKey() + "]";
                         Object val = entry.getValue();
                         if (val instanceof Collection<?> collection) {
-                            for (Object o : collection) {
-                                if (o != null) {
-                                    parts.add(createPartFromValue(partName, o, explicitContentType));
-                                }
-                            }
+                            List<?> nonNull = collection.stream().filter(Objects::nonNull).toList();
+                            appendMultipartCollectionParts(parts, partName, nonNull, explicitContentType, effectiveFormat);
+                        } else if (val instanceof Object[] array) {
+                            List<?> nonNull = Arrays.stream(array).filter(Objects::nonNull).toList();
+                            appendMultipartCollectionParts(parts, partName, nonNull, explicitContentType, effectiveFormat);
                         } else {
                             parts.add(createPartFromValue(partName, val, explicitContentType));
                         }
@@ -763,17 +794,11 @@ public class HttpTemplateBuilder {
                         : annotation.name();
 
                 if (args[i] instanceof Collection<?> collection) {
-                    for (Object o : collection) {
-                        if (o != null) {
-                            parts.add(createPartFromValue(name, o, explicitContentType));
-                        }
-                    }
+                    List<?> nonNull = collection.stream().filter(Objects::nonNull).toList();
+                    appendMultipartCollectionParts(parts, name, nonNull, explicitContentType, effectiveFormat);
                 } else if (args[i] instanceof Object[] array) {
-                    for (Object o : array) {
-                        if (o != null) {
-                            parts.add(createPartFromValue(name, o, explicitContentType));
-                        }
-                    }
+                    List<?> nonNull = Arrays.stream(array).filter(Objects::nonNull).toList();
+                    appendMultipartCollectionParts(parts, name, nonNull, explicitContentType, effectiveFormat);
                 } else {
                     parts.add(createPartFromValue(name, args[i], explicitContentType));
                 }
@@ -781,6 +806,52 @@ public class HttpTemplateBuilder {
         }
 
         return parts;
+    }
+
+    private void appendMultipartCollectionParts(List<MultipartPart> parts, String name, List<?> items,
+                                                String explicitContentType, CollectionFormat format) {
+        if (items.isEmpty()) {
+            return;
+        }
+
+        CollectionFormat effectiveFormat = (format == null || format == CollectionFormat.DEFAULT)
+                ? CollectionFormat.EXPLODE
+                : format;
+
+        switch (effectiveFormat) {
+            case CSV -> {
+                List<String> strItems = items.stream().map(Object::toString).toList();
+                parts.add(createPartFromValue(name, String.join(",", strItems), explicitContentType));
+            }
+            case SSV -> {
+                List<String> strItems = items.stream().map(Object::toString).toList();
+                parts.add(createPartFromValue(name, String.join(" ", strItems), explicitContentType));
+            }
+            case TSV -> {
+                List<String> strItems = items.stream().map(Object::toString).toList();
+                parts.add(createPartFromValue(name, String.join("\t", strItems), explicitContentType));
+            }
+            case PIPES -> {
+                List<String> strItems = items.stream().map(Object::toString).toList();
+                parts.add(createPartFromValue(name, String.join("|", strItems), explicitContentType));
+            }
+            case BRACKETS -> {
+                String bracketName = name + "[]";
+                for (Object item : items) {
+                    parts.add(createPartFromValue(bracketName, item, explicitContentType));
+                }
+            }
+            case EXPLODE -> {
+                for (Object item : items) {
+                    parts.add(createPartFromValue(name, item, explicitContentType));
+                }
+            }
+            default -> {
+                for (Object item : items) {
+                    parts.add(createPartFromValue(name, item, explicitContentType));
+                }
+            }
+        }
     }
 
     private MultipartPart createPartFromValue(String partName, Object value, String explicitContentType) {
@@ -1064,26 +1135,68 @@ public class HttpTemplateBuilder {
         }
     }
 
-    private static void appendParamValues(List<Param> result, String name, Object value) {
+    private static void appendParamValues(List<Param> result, String name, Object value, CollectionFormat format) {
         if (value == null) {
             return;
         }
+
         if (value instanceof Collection<?> collection) {
-            for (Object o : collection) {
-                if (o != null) {
-                    result.add(new Param(name, o.toString()));
-                }
+            List<String> items = collection.stream()
+                    .filter(Objects::nonNull)
+                    .map(Object::toString)
+                    .toList();
+            if (items.isEmpty()) {
+                return;
             }
-        } else if (value.getClass().isArray() && !byte[].class.equals(value.getClass())) {
+            appendFormattedItems(result, name, items, format);
+            return;
+        }
+
+        if (value.getClass().isArray() && !byte[].class.equals(value.getClass())) {
             int length = java.lang.reflect.Array.getLength(value);
+            List<String> items = new ArrayList<>(length);
             for (int i = 0; i < length; i++) {
                 Object o = java.lang.reflect.Array.get(value, i);
                 if (o != null) {
-                    result.add(new Param(name, o.toString()));
+                    items.add(o.toString());
                 }
             }
-        } else {
-            result.add(new Param(name, value.toString()));
+            if (items.isEmpty()) {
+                return;
+            }
+            appendFormattedItems(result, name, items, format);
+            return;
+        }
+
+        result.add(new Param(name, value.toString()));
+    }
+
+    private static void appendFormattedItems(List<Param> result, String name, List<String> items, CollectionFormat format) {
+        CollectionFormat effectiveFormat = (format == null || format == CollectionFormat.DEFAULT)
+                ? CollectionFormat.EXPLODE
+                : format;
+
+        switch (effectiveFormat) {
+            case CSV -> result.add(new Param(name, String.join(",", items)));
+            case SSV -> result.add(new Param(name, String.join(" ", items)));
+            case TSV -> result.add(new Param(name, String.join("\t", items)));
+            case PIPES -> result.add(new Param(name, String.join("|", items)));
+            case BRACKETS -> {
+                String bracketName = name + "[]";
+                for (String item : items) {
+                    result.add(new Param(bracketName, item));
+                }
+            }
+            case EXPLODE -> {
+                for (String item : items) {
+                    result.add(new Param(name, item));
+                }
+            }
+            default -> {
+                for (String item : items) {
+                    result.add(new Param(name, item));
+                }
+            }
         }
     }
 

@@ -40,16 +40,16 @@
 * я думаю еще в реалном исползовании есть миллион важных вещей?
 Это не приказ бросаться сразу все делать, просто можно учесть и разобрать в будущем. 
 
-[2026-10-15 05:48] Агент (сессия #109): Реализован эпик декларативных аннотаций `@Accept` и `@ContentType`, а также стандартных констант `MediaType` (ADR-0031): 646/646 тестов зелёные.
-
 [2026-10-15 06:15] Агент (сессия #110): Реализован эпик Cookie Handling, Session Management & Declarative @Cookie (ADR-0032): Zero-dep управление сессиями через CookieHandler/CookieManager, инспекция client.getCookieStore(), декларативные @Cookie и @Cookies с приоритетами, инспекция cookies в ResponseHeaders. 675/675 тестов зелёные.
 
-[2026-10-15 06:43] Агент (сессия #111): Реализован эпик Response Download Progress Tracking & Direct byte[] Returns (ADR-0033):
-1. **Интерфейс `DownloadProgressListener`:** функциональный интерфейс `void onProgress(long bytesRead, long totalBytes)` для отслеживания входящего трафика ответов. Интринсик параметр в методах контроллеров (по аналогии с ADR-0022 и ADR-0030), zero-allocation при передаче null.
-2. **Реактивный перехват потока (`ProgressBodyHandler` & `ProgressBodySubscriber`):** пакетно-приватные декораторы для Java 21 `HttpResponse.BodySubscriber<List<ByteBuffer>>`. Извлечение `Content-Length` из `ResponseInfo.headers()` с fallback на `-1` для chunked transfer encoding. Накопление прогресса без изменения позиций буферов `ByteBuffer`.
-3. **Прямой возврат `byte[]` и `Optional<byte[]>`:** `HttpTemplate.processResponse` напрямую отдает `response.body()` как сырые байты, устраняя лишнюю десериализацию через `JsonCodec` и ошибки парсинга не-JSON бинарных данных.
-4. **Независимость попыток `@Retry`:** счетчик прогресса автоматически сбрасывается в 0 при каждой новой попытке повтора или редиректа.
-5. **Fail-fast валидация:** `ControllerValidator` запрещает параметры `DownloadProgressListener` с HTTP-аннотациями (`ControllerValidationException`) и исключает их из подсчета payload-параметров.
-Написано 28 новых тестов (7 в `ProgressBodySubscriberTest`, 9 в `DownloadProgressValidationTest`, 12 в `DownloadProgressWireMockTest`).
-Гейты: **703/703** тестов (83 класса) зелёные, 0 warnings под `-Werror`, zero-dep core строго сохранен. Преодолен рубеж в 700 тестов!
+[2026-10-15 06:43] Агент (сессия #111): Реализован эпик Response Download Progress Tracking & Direct byte[] Returns (ADR-0033): функциональный интерфейс DownloadProgressListener (void onProgress(long bytesRead, long totalBytes)), реактивные ProgressBodyHandler/ProgressBodySubscriber, прямой возврат byte[] без JSON-десериализации. 703/703 тестов зелёные.
 
+[2026-10-15 07:07] Агент (сессия #112): Реализован эпик Query Parameter Collection Formatting Styles & OpenAPI Compatibility (ADR-0034):
+1. **Enum `CollectionFormat`:** `DEFAULT`, `EXPLODE` (`tag=a&tag=b`), `CSV` (`tag=a,b`), `SSV` (`tag=a%20b`), `TSV` (`tag=a%09b`), `PIPES` (`tag=a%7Cb`), `BRACKETS` (`tag[]=a&tag[]=b`).
+2. **Декларативное конфигурирование:** аннотация `@QueryCollectionFormat` (на интерфейсах контроллеров и методах) и атрибут `@RequestParam(format = CollectionFormat)`.
+3. **Строгая иерархия приоритетов:** `Parameter format > Method @QueryCollectionFormat > Sub-interface @QueryCollectionFormat > Super-interface @QueryCollectionFormat > EXPLODE (дефолт)`.
+4. **Симметрия форматов:** полная поддержка в URL query строке, `APPLICATION_FORM_URLENCODED` телах и `MULTIPART_FORM_DATA` частях (объединение в одну часть для delimiter форматов и множественные части с `name[]` для `BRACKETS`).
+5. **Null-safety & фильтрация:** автоматическая фильтрация `null` элементов, опущение пустых коллекций, иммунитет скалярных параметров.
+6. **Fail-fast валидация:** `ControllerValidator` проверяет валидность enum и отсутствие null.
+Написано 26 новых тестов (9 в `CollectionFormatValidationTest`, 17 в `CollectionFormatWireMockTest`).
+Гейты: **729/729** тестов (85 классов) зелёные, 0 warnings под `-Werror`, zero-dep core строго сохранен. Следующий свободный ADR — **0035**.

@@ -1,6 +1,7 @@
 package ru.jrestly;
 
 import ru.jrestly.annotation.Accept;
+import ru.jrestly.annotation.CollectionFormat;
 import ru.jrestly.annotation.ContentType;
 import ru.jrestly.annotation.Cookie;
 import ru.jrestly.annotation.Delete;
@@ -9,6 +10,7 @@ import ru.jrestly.annotation.OnError;
 import ru.jrestly.annotation.Patch;
 import ru.jrestly.annotation.Post;
 import ru.jrestly.annotation.Put;
+import ru.jrestly.annotation.QueryCollectionFormat;
 import ru.jrestly.annotation.RequestDefaultParam;
 import ru.jrestly.annotation.RequestHeader;
 import ru.jrestly.annotation.Timeout;
@@ -127,6 +129,11 @@ public final class ControllerValidator {
             }
             if (cookie.value().contains("\r") || cookie.value().contains("\n")) {
                 problems.add(current.getSimpleName() + ": @Cookie value must not contain CRLF characters");
+            }
+        }
+        for (QueryCollectionFormat qcf : current.getAnnotationsByType(QueryCollectionFormat.class)) {
+            if (qcf.value() == null) {
+                problems.add(current.getSimpleName() + ": @QueryCollectionFormat value must not be null");
             }
         }
         Map<Integer, Class<?>> classSeenStatuses = new LinkedHashMap<>();
@@ -260,6 +267,12 @@ public final class ControllerValidator {
             }
         }
 
+        for (QueryCollectionFormat qcf : method.getAnnotationsByType(QueryCollectionFormat.class)) {
+            if (qcf.value() == null) {
+                problems.add(method.getName() + "(): @QueryCollectionFormat value must not be null");
+            }
+        }
+
         Map<Integer, Class<?>> methodSeenStatuses = new LinkedHashMap<>();
         for (OnError onError : method.getAnnotationsByType(OnError.class)) {
             for (int status : onError.statuses()) {
@@ -276,6 +289,12 @@ public final class ControllerValidator {
         }
 
         for (java.lang.reflect.Parameter param : method.getParameters()) {
+            if (param.isAnnotationPresent(RequestParam.class)) {
+                RequestParam rp = param.getAnnotation(RequestParam.class);
+                if (rp.format() == null) {
+                    problems.add(method.getName() + "(): @RequestParam format must not be null");
+                }
+            }
             if (param.isAnnotationPresent(Cookie.class)) {
                 Cookie cookie = param.getAnnotation(Cookie.class);
                 if (cookie.name().contains("\r") || cookie.name().contains("\n")) {

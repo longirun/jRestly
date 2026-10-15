@@ -1,24 +1,25 @@
-# DRAFT: активная зона после закрытия эпика Response Download Progress Tracking & Direct byte[] Returns (ADR-0033)
+# DRAFT: активная зона после закрытия эпика Query Parameter Collection Formatting Styles (ADR-0034)
 
-> Эпик Response Download Progress Tracking and Direct Byte Array Returns (ADR-0033, `docs/0.10.0/`) закрыт (сессия #111):
-> концепт и ADR-0033 → функциональный интерфейс `DownloadProgressListener` (`void onProgress(long bytesRead, long totalBytes)`) +
-> реактивный декоратор `ProgressBodyHandler` и `ProgressBodySubscriber` для перехвата `Flow.Subscriber<List<ByteBuffer>>` +
-> извлечение `Content-Length` из `ResponseInfo.headers()` и fallback на `-1` для chunked/потоковых ответов +
-> независимый сброс счетчика прогресса при повторных попытках `@Retry` или редиректах +
-> прямая передача `byte[]` и `Optional<byte[]>` в `HttpTemplate.processResponse` без лишней JSON-десериализации (Zero-Allocation Binary) +
-> fail-fast upfront валидация в `ControllerValidator` (`ControllerValidationException`) против аннотаций параметров +
-> unit тесты (`ProgressBodySubscriberTest`, 7 тестов; `DownloadProgressValidationTest`, 9 тестов) и WireMock интеграционные тесты (`DownloadProgressWireMockTest`, 12 тестов, итого +28 тестов) →
-> дистилляция в ROADMAP («Response Download Progress Tracking & Direct Byte Array Returns (ADR-0033) — COMPLETE ✅») + гейты 703/703 тестов (83 класса).
+> Эпик Query Parameter Collection Formatting Styles (ADR-0034, `docs/0.10.0/`) закрыт (сессия #112):
+> концепт и ADR-0034 → enum `CollectionFormat` (`DEFAULT`, `EXPLODE`, `CSV`, `SSV`, `TSV`, `PIPES`, `BRACKETS`) +
+> аннотация `@QueryCollectionFormat` (на интерфейсах и методах) +
+> атрибут `format` в `@RequestParam` +
+> разрешение иерархии приоритетов: Parameter > Method > Sub-interface > Super-interface > EXPLODE (default) +
+> симметрия для form-urlencoded (URL-encoded поля) и multipart/form-data (объединение в одну часть для delimiter форматов и `name[]` для BRACKETS) +
+> очистка от null элементов и безопасное опущение пустых коллекций +
+> fail-fast upfront валидация в `ControllerValidator` (`ControllerValidationException`) против null значений +
+> unit тесты (`CollectionFormatValidationTest`, 9 тестов) и WireMock интеграционные тесты (`CollectionFormatWireMockTest`, 17 тестов, итого +26 тестов) →
+> дистилляция в ROADMAP («Query Parameter Collection Formatting Styles (ADR-0034) — COMPLETE ✅») + гейты 729/729 тестов (85 классов).
 > Следующий ход — свободный, выбор из активной зоны.
 
 ## Активная зона (кандидаты на следующий эпик)
 
-- **Кандидат №1 — Query parameter multi-value formats (`explode`, comma-separated `tag=a,b`, pipe-separated `tag=a|b`, RFC 6570 style expansion)**:
-  Гибкое форматирование коллекций и массивов в URL query параметрах per-method или per-parameter.
-- **Кандидат №2 — Request body streaming from `Flow.Publisher<ByteBuffer>`**:
+- **Кандидат №1 — Request body streaming from `Flow.Publisher<ByteBuffer>`**:
   Симметричная поддержка реактивной передачи исходящего тела из реактивного источника данных.
-- **Кандидат №3 — test-javadoc** (ADR-0013 Non-goals):
+- **Кандидат №2 — test-javadoc** (ADR-0013 Non-goals):
   Test-source javadoc вынесен за скобки аудита; наведение лоска в тестовых классах.
+- **Кандидат №3 — Client Metrics & Observability SPI (Micrometer / OpenTelemetry readiness)**:
+  Исследование zero-dep SPI для экспорта метрик задержек, попыток retry и объемов переданных/полученных байт.
 
 ---
 

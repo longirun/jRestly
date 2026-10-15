@@ -1102,7 +1102,49 @@ Gates (session #111, clean rebuild):
 - `javadoc` 0 warnings under permanent `-Xdoclint:all -Werror`.
 - Zero external runtime dependencies preserved (0 dependencies in Maven POM).
 
-After the epic: candidate #1 — test-javadoc (ADR-0013 Non-goals); candidate #2 — Query parameter multi-value formats (`explode`, comma-separated `tag=a,b`, pipe-separated `tag=a|b`, RFC 6570 style expansion). ADR number **0034** free.
+After the epic: candidate #1 — test-javadoc (ADR-0013 Non-goals); candidate #2 — Query parameter multi-value formats (`explode`, comma-separated `tag=a,b`, pipe-separated `tag=a|b`, RFC 6570 style expansion) — done, section below. ADR number **0034** — query collection format epic, **0035** free.
+
+## Query Parameter Collection Formatting Styles (ADR-0034) — COMPLETE ✅ (2026-10-15, unreleased)
+
+> Source of truth (concept, architecture decisions, precedence hierarchy, validation, test strategy, status):
+> [`docs/0.10.0/ADR-0034-query-parameter-collection-formats.md`](docs/0.10.0/ADR-0034-query-parameter-collection-formats.md).
+> Session #112 (agent-loop). Real-world REST query parameter formatting ergonomics & OpenAPI compatibility (candidate #1 from DRAFT.md).
+> Introduces `CollectionFormat` enum (`DEFAULT`, `EXPLODE`, `CSV`, `SSV`, `TSV`, `PIPES`, `BRACKETS`),
+> `@QueryCollectionFormat` annotation on controller interfaces and methods,
+> and `@RequestParam(format = ...)` attribute on parameters.
+> Supports collections (`Collection<?>`), primitive and object arrays (`String[]`, `int[]`, etc.),
+> dynamic maps (`@RequestParam Map<String, Object>`), form-urlencoded requests, and multipart parts.
+> Strict precedence: `Parameter format > Method @QueryCollectionFormat > Sub-interface @QueryCollectionFormat > Super-interface @QueryCollectionFormat > EXPLODE (default)`.
+> 100% backward compatible and zero-dependency.
+
+Key decisions (ADR-0034):
+- **`CollectionFormat` Enum (`ru.jrestly.annotation.CollectionFormat`):**
+  - Defines supported collection formatting styles: `DEFAULT`, `EXPLODE` (`tag=a&tag=b`), `CSV` (`tag=a,b`), `SSV` (`tag=a%20b`), `TSV` (`tag=a%09b`), `PIPES` (`tag=a%7Cb`), and `BRACKETS` (`tag[]=a&tag[]=b`).
+- **Declarative Formatting (`@QueryCollectionFormat` & `@RequestParam.format`):**
+  - `@QueryCollectionFormat(CollectionFormat)` applicable at both `ElementType.TYPE` and `ElementType.METHOD`.
+  - `@RequestParam(format = CollectionFormat)` per-parameter override.
+  - Precedence hierarchy: Parameter format (if not `DEFAULT`) > Method `@QueryCollectionFormat` > Sub-interface `@QueryCollectionFormat` > Super-interface `@QueryCollectionFormat` > fallback `EXPLODE`.
+- **Value Extraction & Null Safety:**
+  - Empty collections or arrays containing only `null`s are completely omitted from query/form.
+  - Null items in collections/arrays are filtered out before applying formatting.
+  - Scalar arguments (e.g. `int page`) are unaffected by collection formatting and always serialize as `param=value`.
+  - Dynamic maps (`@RequestParam Map<String, Object>`) format collection and array values using effective collection format.
+- **Form-Urlencoded & Multipart Symmetry:**
+  - `APPLICATION_FORM_URLENCODED` serializes formatted parameters into URL-encoded body matching query formatting rules.
+  - `MULTIPART_FORM_DATA` concatenates collection values into a single part for delimiter-based formats (`CSV`, `SSV`, `TSV`, `PIPES`) and creates multiple parts with `name[]` for `BRACKETS`.
+- **Upfront Fail-Fast Validation (`ControllerValidator`):**
+  - Validates `@QueryCollectionFormat` and `@RequestParam.format` are non-null.
+- **Full test coverage:** 26 new tests (+26 cases, total suite 729/729 across 85 classes) spanning:
+  - `CollectionFormatValidationTest` (9 unit tests: validation pass across all formats, enum integrity, hierarchy resolution with sub-interface override, method override, parameter format override, scalar parameter immunity, empty/null collection omission, null element filtering, client proxy creation);
+  - `CollectionFormatWireMockTest` (17 WireMock integration tests: CSV List, CSV String[] array, CSV primitive int[] array, SSV List, TSV List, PIPES List, BRACKETS List with tag[] parameters, parameter-level override of method format, dynamic map collection formatting, single-item collection handling, interface-level format inheritance, method override of interface format, form-urlencoded CSV, form-urlencoded BRACKETS, multipart CSV single part, multipart BRACKETS parts named tags[], async CompletableFuture twin).
+
+Gates (session #112, clean rebuild):
+- `./gradlew test` **729/729** (85 classes, 0 failures/errors; +26 tests in ADR-0034).
+- `compileJava` and `compileTestJava` 0 warnings under permanent `-Xlint:all -Werror`.
+- `javadoc` 0 warnings under permanent `-Xdoclint:all -Werror`.
+- Zero external runtime dependencies preserved (0 dependencies in Maven POM).
+
+After the epic: candidate #1 — test-javadoc (ADR-0013 Non-goals); candidate #2 — Request body streaming from `Flow.Publisher<ByteBuffer>`. ADR number **0035** free.
 
 ## Post-0.5.0 shortlist (not scheduled — see ADR-0003)
 

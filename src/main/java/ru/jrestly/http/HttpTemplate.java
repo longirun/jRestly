@@ -1231,7 +1231,12 @@ public class HttpTemplate {
                 .toList();
     }
 
-    private URI createUri() {
+    /**
+     * Resolves the target URI by combining the base URL and query parameters.
+     *
+     * @return the resolved URI
+     */
+    public URI createUri() {
         if (requestParams == null || requestParams.isEmpty()) {
             return URI.create(url);
         }
@@ -1418,6 +1423,15 @@ public class HttpTemplate {
     }
 
     /**
+     * Returns the target URL string.
+     *
+     * @return the target URL string
+     */
+    public String getUrl() {
+        return url;
+    }
+
+    /**
      * The HTTP method of the call.
      *
      * @param httpMethod the method
@@ -1487,6 +1501,15 @@ public class HttpTemplate {
      */
     public void setRequestParams(List<Param> requestParams) {
         this.requestParams = requestParams;
+    }
+
+    /**
+     * Returns the configured request parameters.
+     *
+     * @return the parameters, or {@code null}
+     */
+    public List<Param> getRequestParams() {
+        return requestParams;
     }
 
     /**
