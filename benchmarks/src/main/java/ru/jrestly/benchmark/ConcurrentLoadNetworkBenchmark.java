@@ -40,6 +40,9 @@ public class ConcurrentLoadNetworkBenchmark {
 
     private BenchmarkHttpServer server;
     private JRestlyBenchmarkClient jrestlyClient;
+    private JRestlyBenchmarkClient jrestlyOkHttpClient;
+    private JRestlyBenchmarkClient jrestlyApache5Client;
+    private JRestlyBenchmarkClient jrestlyHttp11Client;
     private RawHttpClientBenchmarkClient rawHttpClient;
     private SpringRestClientBenchmarkClient springClient;
     private ApacheHttpClientBenchmarkClient apacheClient;
@@ -53,6 +56,9 @@ public class ConcurrentLoadNetworkBenchmark {
         String baseUrl = server.baseUrl();
 
         jrestlyClient = new JRestlyBenchmarkClient(baseUrl);
+        jrestlyOkHttpClient = new JRestlyBenchmarkClient(baseUrl, new ru.jrestly.benchmark.engine.OkHttpEngine());
+        jrestlyApache5Client = new JRestlyBenchmarkClient(baseUrl, new ru.jrestly.benchmark.engine.Apache5HttpEngine());
+        jrestlyHttp11Client = new JRestlyBenchmarkClient(baseUrl, java.net.http.HttpClient.Version.HTTP_1_1);
         rawHttpClient = new RawHttpClientBenchmarkClient(baseUrl);
         springClient = new SpringRestClientBenchmarkClient(baseUrl);
         apacheClient = new ApacheHttpClientBenchmarkClient(baseUrl);
@@ -64,6 +70,15 @@ public class ConcurrentLoadNetworkBenchmark {
     public void tearDown() {
         if (jrestlyClient != null) {
             jrestlyClient.close();
+        }
+        if (jrestlyOkHttpClient != null) {
+            jrestlyOkHttpClient.close();
+        }
+        if (jrestlyApache5Client != null) {
+            jrestlyApache5Client.close();
+        }
+        if (jrestlyHttp11Client != null) {
+            jrestlyHttp11Client.close();
         }
         if (rawHttpClient != null) {
             rawHttpClient.close();
@@ -90,6 +105,21 @@ public class ConcurrentLoadNetworkBenchmark {
     @Benchmark
     public UserDto jrestly_concurrentGetUser() {
         return jrestlyClient.getUser(42L);
+    }
+
+    @Benchmark
+    public UserDto jrestlyOkHttp_concurrentGetUser() {
+        return jrestlyOkHttpClient.getUser(42L);
+    }
+
+    @Benchmark
+    public UserDto jrestlyApache5_concurrentGetUser() {
+        return jrestlyApache5Client.getUser(42L);
+    }
+
+    @Benchmark
+    public UserDto jrestlyHttp11_concurrentGetUser() {
+        return jrestlyHttp11Client.getUser(42L);
     }
 
     @Benchmark
@@ -122,6 +152,21 @@ public class ConcurrentLoadNetworkBenchmark {
     @Benchmark
     public String jrestly_concurrentPing() {
         return jrestlyClient.ping();
+    }
+
+    @Benchmark
+    public String jrestlyOkHttp_concurrentPing() {
+        return jrestlyOkHttpClient.ping();
+    }
+
+    @Benchmark
+    public String jrestlyApache5_concurrentPing() {
+        return jrestlyApache5Client.ping();
+    }
+
+    @Benchmark
+    public String jrestlyHttp11_concurrentPing() {
+        return jrestlyHttp11Client.ping();
     }
 
     @Benchmark

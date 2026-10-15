@@ -33,8 +33,24 @@ public final class JRestlyBenchmarkClient implements AutoCloseable {
     private final UserApi api;
 
     public JRestlyBenchmarkClient(String baseUrl) {
+        this(baseUrl, (ru.jrestly.engine.HttpEngine) null);
+    }
+
+    public JRestlyBenchmarkClient(String baseUrl, ru.jrestly.engine.HttpEngine engine) {
+        var builder = JRestlyClient.builder()
+                .baseUrl(baseUrl)
+                .logger(ru.jrestly.benchmark.util.NoOpLogger.INSTANCE);
+        if (engine != null) {
+            builder.httpEngine(engine);
+        }
+        this.client = builder.build();
+        this.api = client.get(UserApi.class);
+    }
+
+    public JRestlyBenchmarkClient(String baseUrl, java.net.http.HttpClient.Version version) {
         this.client = JRestlyClient.builder()
                 .baseUrl(baseUrl)
+                .httpVersion(version)
                 .logger(ru.jrestly.benchmark.util.NoOpLogger.INSTANCE)
                 .build();
         this.api = client.get(UserApi.class);
