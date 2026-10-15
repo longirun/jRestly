@@ -25,6 +25,9 @@ public final class FeignBenchmarkClient implements AutoCloseable {
         @RequestLine("GET /api/ping")
         String ping();
 
+        @RequestLine("GET /api/users/batch")
+        java.util.List<UserDto> getUsersBatch();
+
         @RequestLine("POST /api/users")
         UserDto createUser(UserDto user);
     }
@@ -56,6 +59,10 @@ public final class FeignBenchmarkClient implements AutoCloseable {
 
     public String ping() {
         return api.ping();
+    }
+
+    public java.util.List<UserDto> getUsersBatch() {
+        return api.getUsersBatch();
     }
 
     public UserDto createUser(UserDto user) {

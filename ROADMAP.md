@@ -1707,7 +1707,47 @@ Gates (session #129, clean rebuild):
 - `javadoc` 0 warnings under permanent `-Xdoclint:all -Werror`.
 - Zero external runtime dependencies strictly preserved (0 dependencies in root Maven POM).
 
-After the epic: candidates — test-javadoc, HTTP Trailers & Advanced Streaming ergonomics. ADR number **0050** free.
+After the epic: ADR-0050 (Multi-Client Performance Benchmarks Under Concurrent Load & Allocation Profiling) — done, section below. ADR number **0050** used.
+
+## Multi-Client Performance Benchmarks Under Concurrent Load & Allocation Profiling (ADR-0050) — COMPLETE ✅ (2026-10-15, unreleased)
+
+> Source of truth: [`docs/0.10.0/ADR-0050-multi-client-concurrent-benchmarks-and-allocation-profiling.md`](docs/0.10.0/ADR-0050-multi-client-concurrent-benchmarks-and-allocation-profiling.md).
+
+**Problem:** Maintainer (Anton, mailbox 2026-10-15 17:15) requested comprehensive, reproducible empirical benchmarks comparing `jRestly` against enterprise heavyweights (Spring 6 RestClient / HTTP Interfaces, Apache HttpClient 5) under concurrent multi-threaded load (16 threads) and with rigorous memory allocation profiling (`-prof gc`).
+
+**Solution:**
+- **Enterprise Client Adapters in `benchmarks/`:**
+  * Added `org.apache.httpcomponents.client5:httpclient5:5.4.1` with `PoolingHttpClientConnectionManager` (200 conns).
+  * Added `org.springframework:spring-web:6.2.2` & `spring-context:6.2.2` implementing declarative `@HttpExchange` interfaces via `HttpServiceProxyFactory.builderFor(RestClientAdapter.create(restClient)).build()`.
+  * Preserved strict 0 runtime dependencies in the core `jRestly` POM.
+- **Concurrent Load Throughput (`ConcurrentLoadNetworkBenchmark`):**
+  * Evaluated 16 concurrent threads bombarding the server under loopback socket concurrency:
+    - Square Retrofit 2: 358.58 ops/s
+    - Apache HttpClient 5: 348.99 ops/s
+    - Raw JDK HttpClient: 313.42 ops/s
+    - **jRestly (Zero-Dep Proxy): 286.05 ops/s** (+6.1% higher throughput than Spring RestClient!)
+    - OpenFeign: 284.21 ops/s
+    - **Spring 6 RestClient: 269.57 ops/s**
+- **Memory Allocation Profiling (JMH `-prof gc`):**
+  * `·gc.alloc.rate.norm` (B/op) per REST request (`getUser`):
+    - Square Retrofit 2: 31.8 KB/op
+    - Apache HttpClient 5: 35.0 KB/op
+    - Raw JDK HttpClient: 42.6 KB/op (baseline JDK)
+    - **jRestly: 53.1 KB/op** (17.5% less garbage than Spring, 21% less than Feign!)
+    - **Spring 6 RestClient: 64.4 KB/op** (+11.2 KB garbage/op over jRestly)
+    - **OpenFeign: 67.2 KB/op** (+14.0 KB garbage/op over jRestly)
+  * Clean GC profile: `jRestly` held `gc.count ≈ 0` (0 ms GC pauses), whereas Feign and raw HttpClient triggered multiple GC pauses (up to 38 ms).
+- **Batch Payload Scenario:**
+  * Added `/api/users/batch` endpoint returning 50 `UserDto` objects (~6.5 KB JSON). Latency across all clients converges to ~47–49 ms as transport and Jackson serialization dominate.
+- **Automated Verification:** Expanded `BenchmarkSmokeTest` to verify all 6 clients across single GET/POST, batch collections, and concurrent multi-thread runs (+3 test methods, total 993/993 tests).
+
+Gates (session #130, clean rebuild):
+- `./gradlew test` **993/993** (128 classes, 0 failures/errors; +3 tests in ADR-0050).
+- `compileJava` and `compileTestJava` 0 warnings under permanent `-Xlint:all -Werror`.
+- `javadoc` 0 warnings under permanent `-Xdoclint:all -Werror`.
+- Zero external runtime dependencies strictly preserved (0 dependencies in root Maven POM).
+
+After the epic: candidates — test-javadoc, HTTP Trailers & Advanced Streaming ergonomics. ADR number **0051** free.
 
 
 

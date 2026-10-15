@@ -1,11 +1,11 @@
-# DRAFT: активная зона после закрытия эпика JMH Performance Benchmarks Suite (ADR-0049)
+# DRAFT: активная зона после закрытия эпика Multi-Client Concurrent Benchmarks & Allocation Profiling (ADR-0050)
 
-> Эпик JMH Performance Benchmarks Suite & Comparative Profiling (ADR-0049, `docs/0.10.0/`) закрыт (сессия #129):
-> - Субпроект `benchmarks/`: создан изолированный модуль бенчмаркинга с JMH 1.37, JDK HttpServer, comparative clients (`jRestly`, raw `HttpClient`, `Retrofit` OkHttp, `OpenFeign` http2client) и `BenchmarkSmokeTest`.
-> - Результаты замеров: latency jRestly (~48.47 µs) практически идентична сырому HttpClient (~48.45 µs), abstraction overhead < 0.1%. In-memory dynamic proxy dispatch: ~6.3 µs (raw text) / ~29.5 µs (JSON DTO).
-> - Устранение узкого места: добавлены `isLoggable(Level.INFO)` guards в `HttpTemplate.logRequest/logResponse/processResponse`, устранившие безусловный `prettyPrint` и конкатенации строк, что ускорило диспетчеризацию в > 250 раз!
-> - Эргономика логгера: `ModuleInfo.getLogger()`, `JRestlyClient.Builder.logger(System.Logger)`.
-> - Гейты: 990/990 тестов зелёные (128 классов), 0 warnings under `-Werror`, POM 0.9.0 строго zero-dep (0 dependencies).
+> Эпик Multi-Client Performance Benchmarks Under Concurrent Load & Allocation Profiling (ADR-0050, `docs/0.10.0/`) закрыт (сессия #130):
+> - Сравнение с гигантами индустрии: в субпроект `benchmarks/` добавлены Apache HttpClient 5.4.1 (пул соединений) и Spring 6.2.2 (декларативный RestClient + HttpServiceProxyFactory). Ядро jRestly строго сохраняет 0 dependencies в Maven POM.
+> - Многопоточная нагрузка (16 потоков ops/s): jRestly показал **286.05 ops/s**, обогнав Spring 6 RestClient (269.57 ops/s, +6.1% в пользу jRestly) и OpenFeign (284.21 ops/s).
+> - Профайлинг аллокаций памяти (`-prof gc`): jRestly генерирует **53.1 KB/op**, что на **17.5% меньше мусора, чем Spring RestClient** (64.4 KB/op) и на **21% меньше, чем OpenFeign** (67.2 KB/op)! jRestly показал `gc.count ≈ 0` (0 ms пауз GC), тогда как Feign и raw HttpClient вызвали по 4 сборки мусора (до 38 ms пауз).
+> - Пакетная нагрузка: добавлен эндпоинт `/api/users/batch` (массив из 50 UserDto, ~6.5 КБ JSON) и метод `getUsersBatch()` во все 6 клиентов.
+> - Гейты: 993/993 теста зелёные (128 классов, +3 теста в BenchmarkSmokeTest), 0 warnings under `-Werror`, POM 0.9.0 строго zero-dep (0 dependencies).
 > Следующий ход — свободный, выбор из активной зоны.
 
 ## Активная зона (кандидаты на следующий эпик)

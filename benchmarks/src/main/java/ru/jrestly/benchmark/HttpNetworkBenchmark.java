@@ -11,10 +11,12 @@ import org.openjdk.jmh.annotations.Setup;
 import org.openjdk.jmh.annotations.State;
 import org.openjdk.jmh.annotations.TearDown;
 import org.openjdk.jmh.annotations.Warmup;
+import ru.jrestly.benchmark.client.ApacheHttpClientBenchmarkClient;
 import ru.jrestly.benchmark.client.FeignBenchmarkClient;
 import ru.jrestly.benchmark.client.JRestlyBenchmarkClient;
 import ru.jrestly.benchmark.client.RawHttpClientBenchmarkClient;
 import ru.jrestly.benchmark.client.RetrofitBenchmarkClient;
+import ru.jrestly.benchmark.client.SpringRestClientBenchmarkClient;
 import ru.jrestly.benchmark.dto.UserDto;
 import ru.jrestly.benchmark.server.BenchmarkHttpServer;
 
@@ -24,7 +26,8 @@ import java.util.concurrent.TimeUnit;
 
 /**
  * End-to-end HTTP network benchmark comparing jRestly against raw JDK HttpClient,
- * Square Retrofit 2, and OpenFeign over loopback TCP sockets.
+ * Spring 6 RestClient, Apache HttpClient 5, Square Retrofit 2, and OpenFeign
+ * over loopback TCP sockets.
  */
 @State(Scope.Benchmark)
 @BenchmarkMode(Mode.AverageTime)
@@ -37,6 +40,8 @@ public class HttpNetworkBenchmark {
     private BenchmarkHttpServer server;
     private JRestlyBenchmarkClient jrestlyClient;
     private RawHttpClientBenchmarkClient rawHttpClient;
+    private SpringRestClientBenchmarkClient springClient;
+    private ApacheHttpClientBenchmarkClient apacheClient;
     private RetrofitBenchmarkClient retrofitClient;
     private FeignBenchmarkClient feignClient;
 
@@ -50,6 +55,8 @@ public class HttpNetworkBenchmark {
 
         jrestlyClient = new JRestlyBenchmarkClient(baseUrl);
         rawHttpClient = new RawHttpClientBenchmarkClient(baseUrl);
+        springClient = new SpringRestClientBenchmarkClient(baseUrl);
+        apacheClient = new ApacheHttpClientBenchmarkClient(baseUrl);
         retrofitClient = new RetrofitBenchmarkClient(baseUrl);
         feignClient = new FeignBenchmarkClient(baseUrl);
 
@@ -63,6 +70,12 @@ public class HttpNetworkBenchmark {
         }
         if (rawHttpClient != null) {
             rawHttpClient.close();
+        }
+        if (springClient != null) {
+            springClient.close();
+        }
+        if (apacheClient != null) {
+            apacheClient.close();
         }
         if (retrofitClient != null) {
             retrofitClient.close();
@@ -88,6 +101,16 @@ public class HttpNetworkBenchmark {
     }
 
     @Benchmark
+    public UserDto springRestClient_getUser() {
+        return springClient.getUser(42L);
+    }
+
+    @Benchmark
+    public UserDto apacheHttpClient_getUser() {
+        return apacheClient.getUser(42L);
+    }
+
+    @Benchmark
     public UserDto retrofit_getUser() {
         return retrofitClient.getUser(42L);
     }
@@ -110,6 +133,16 @@ public class HttpNetworkBenchmark {
     }
 
     @Benchmark
+    public String springRestClient_ping() {
+        return springClient.ping();
+    }
+
+    @Benchmark
+    public String apacheHttpClient_ping() {
+        return apacheClient.ping();
+    }
+
+    @Benchmark
     public String retrofit_ping() {
         return retrofitClient.ping();
     }
@@ -117,6 +150,38 @@ public class HttpNetworkBenchmark {
     @Benchmark
     public String feign_ping() {
         return feignClient.ping();
+    }
+
+    // --- GET /api/users/batch (Batch Payload / List<UserDto>) ---
+
+    @Benchmark
+    public List<UserDto> jrestly_getUsersBatch() {
+        return jrestlyClient.getUsersBatch();
+    }
+
+    @Benchmark
+    public List<UserDto> rawHttpClient_getUsersBatch() {
+        return rawHttpClient.getUsersBatch();
+    }
+
+    @Benchmark
+    public List<UserDto> springRestClient_getUsersBatch() {
+        return springClient.getUsersBatch();
+    }
+
+    @Benchmark
+    public List<UserDto> apacheHttpClient_getUsersBatch() {
+        return apacheClient.getUsersBatch();
+    }
+
+    @Benchmark
+    public List<UserDto> retrofit_getUsersBatch() {
+        return retrofitClient.getUsersBatch();
+    }
+
+    @Benchmark
+    public List<UserDto> feign_getUsersBatch() {
+        return feignClient.getUsersBatch();
     }
 
     // --- POST /api/users (JSON Serialization & Echo) ---
@@ -129,6 +194,16 @@ public class HttpNetworkBenchmark {
     @Benchmark
     public UserDto rawHttpClient_createUser() {
         return rawHttpClient.createUser(testUser);
+    }
+
+    @Benchmark
+    public UserDto springRestClient_createUser() {
+        return springClient.createUser(testUser);
+    }
+
+    @Benchmark
+    public UserDto apacheHttpClient_createUser() {
+        return apacheClient.createUser(testUser);
     }
 
     @Benchmark

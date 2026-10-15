@@ -20,6 +20,25 @@ public final class BenchmarkHttpServer {
     public static final String SAMPLE_USER_JSON = """
             {"id":42,"name":"Alice","email":"alice@example.com","active":true,"tags":["admin","engineer"],"createdAt":"2026-10-15T12:00:00Z"}""";
 
+    public static final String SAMPLE_BATCH_USERS_JSON;
+
+    static {
+        StringBuilder sb = new StringBuilder("[");
+        for (int i = 0; i < 50; i++) {
+            if (i > 0) {
+                sb.append(",");
+            }
+            sb.append("{\"id\":").append(i)
+                    .append(",\"name\":\"User_").append(i)
+                    .append("\",\"email\":\"user").append(i).append("@example.com\"")
+                    .append(",\"active\":true")
+                    .append(",\"tags\":[\"dev\",\"qa\"]")
+                    .append(",\"createdAt\":\"2026-10-15T12:00:00Z\"}");
+        }
+        sb.append("]");
+        SAMPLE_BATCH_USERS_JSON = sb.toString();
+    }
+
     private final HttpServer server;
     private final int port;
 
@@ -39,17 +58,20 @@ public final class BenchmarkHttpServer {
         server.setExecutor(Executors.newVirtualThreadPerTaskExecutor());
 
         byte[] userBytes = SAMPLE_USER_JSON.getBytes(StandardCharsets.UTF_8);
+        byte[] batchBytes = SAMPLE_BATCH_USERS_JSON.getBytes(StandardCharsets.UTF_8);
         byte[] pingBytes = "pong".getBytes(StandardCharsets.UTF_8);
 
         server.createContext("/api/users", new HttpHandler() {
             @Override
             public void handle(HttpExchange exchange) throws IOException {
                 String method = exchange.getRequestMethod();
+                String path = exchange.getRequestURI().getPath();
                 if ("GET".equalsIgnoreCase(method)) {
+                    byte[] payload = path.endsWith("/batch") ? batchBytes : userBytes;
                     exchange.getResponseHeaders().set("Content-Type", "application/json; charset=utf-8");
-                    exchange.sendResponseHeaders(200, userBytes.length);
+                    exchange.sendResponseHeaders(200, payload.length);
                     try (OutputStream os = exchange.getResponseBody()) {
-                        os.write(userBytes);
+                        os.write(payload);
                     }
                 } else if ("POST".equalsIgnoreCase(method)) {
                     byte[] requestBody;

@@ -50,6 +50,19 @@ public final class RawHttpClientBenchmarkClient implements AutoCloseable {
         }
     }
 
+    public java.util.List<UserDto> getUsersBatch() {
+        try {
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(baseUrl + "/api/users/batch"))
+                    .GET()
+                    .build();
+            HttpResponse<byte[]> response = httpClient.send(request, HttpResponse.BodyHandlers.ofByteArray());
+            return objectMapper.readValue(response.body(), new com.fasterxml.jackson.core.type.TypeReference<java.util.List<UserDto>>() {});
+        } catch (IOException | InterruptedException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
     public UserDto createUser(UserDto user) {
         try {
             byte[] body = objectMapper.writeValueAsBytes(user);

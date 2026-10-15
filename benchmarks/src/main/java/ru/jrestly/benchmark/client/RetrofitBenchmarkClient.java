@@ -28,6 +28,9 @@ public final class RetrofitBenchmarkClient implements AutoCloseable {
         @GET("/api/ping")
         Call<ResponseBody> ping();
 
+        @GET("/api/users/batch")
+        Call<java.util.List<UserDto>> getUsersBatch();
+
         @POST("/api/users")
         Call<UserDto> createUser(@Body UserDto user);
     }
@@ -57,6 +60,14 @@ public final class RetrofitBenchmarkClient implements AutoCloseable {
     public String ping() {
         try (ResponseBody body = api.ping().execute().body()) {
             return body != null ? body.string() : null;
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    public java.util.List<UserDto> getUsersBatch() {
+        try {
+            return api.getUsersBatch().execute().body();
         } catch (IOException e) {
             throw new RuntimeException(e);
         }

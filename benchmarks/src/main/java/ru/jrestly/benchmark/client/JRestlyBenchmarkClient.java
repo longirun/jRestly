@@ -22,6 +22,9 @@ public final class JRestlyBenchmarkClient implements AutoCloseable {
         @Get(path = "/api/ping")
         String ping();
 
+        @Get(path = "/api/users/batch")
+        java.util.List<UserDto> getUsersBatch();
+
         @Post(path = "/api/users")
         UserDto createUser(@RequestBody UserDto user);
     }
@@ -47,6 +50,10 @@ public final class JRestlyBenchmarkClient implements AutoCloseable {
 
     public String ping() {
         return api.ping();
+    }
+
+    public java.util.List<UserDto> getUsersBatch() {
+        return api.getUsersBatch();
     }
 
     public UserDto createUser(UserDto user) {
