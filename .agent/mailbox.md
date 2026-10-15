@@ -66,7 +66,7 @@ default=0, стабильная сортировка (declaration order сохр
    - `CircuitBreakerTest` (8 unit тестов), `RateLimiterTest` (4 unit теста), `ResilienceConfigTest` (6 unit тестов), `CircuitBreakerWireMockTest` (6 WireMock тестов), `RateLimiterWireMockTest` (5 WireMock тестов). Все гейты чистые (0 warnings под постоянными флагами `-Xlint:all -Werror` и `-Xdoclint:all -Werror`), zero-dep core строго сохранен. Следующий свободный ADR — **0044**.
 
 ---
-Антон: Я заметил, что библиотека стала очень зрелой. Есть, как мне кажется, направления, которые
+[2026-10-15 12:45] Антон: Я заметил, что библиотека стала очень зрелой. Есть, как мне кажется, направления, которые
 можно дополнительно проработать. Посмотри на них и сделай оценку - прорабатывать или нет.
 1. Авторизация выглядит архаичной - нужно ли нам предоставить ползователю
 готовые способы для Basic/Bearer/ApiKey и т.д.? Нужна ли защита single-flight авторизации через CompletableFuture 
