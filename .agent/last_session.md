@@ -1,36 +1,50 @@
-# Handover Note: Сессия 109 (Завершение эпика Declarative @Accept & @ContentType and MediaType Constants ADR-0031; тесты выросли до 646/646 в 77 классах; следующий ход — кандидат №1 Cookie handling & session management RFC 6265, кандидат №2 DownloadProgressListener или кандидат №3 test-javadoc)
+# Handover Note: Сессия 110 (Завершение эпика Cookie Handling, Session Management and Declarative @Cookie ADR-0032; тесты выросли до 675/675 в 80 классах; следующий ход — кандидат №1 DownloadProgressListener, кандидат №2 query parameters multi-value formats или кандидат №3 test-javadoc)
 
-## Что сделано в этой сессии (#109)
-- **Ход:** полное проектирование (ADR-0031), реализация и верификация эпика декларативных аннотаций `@Accept` и `@ContentType`, а также стандартных констант `MediaType`.
-- **Архитектура и реализация (ADR-0031):**
-  - **`@Accept`:** аннотация `ru.jrestly.annotation.Accept` (`ElementType.TYPE`, `ElementType.METHOD`) с `String[] value()`. Поддерживает одиночные и множественные media types; множественные объединяются через `", "` в единый HTTP-заголовок `Accept` по стандарту RFC 9110 §12.5.1.
-  - **`@ContentType`:** аннотация `ru.jrestly.annotation.ContentType` (`ElementType.TYPE`, `ElementType.METHOD`) с `String value()`. Лаконично переопределяет тип тела запроса без необходимости писать `@RequestHeader(name = "Content-Type", value = "...")`.
-  - **`MediaType`:** утилитный класс `ru.jrestly.http.MediaType` со стандартными константами (`APPLICATION_JSON`, `APPLICATION_XML`, `APPLICATION_OCTET_STREAM`, `APPLICATION_FORM_URLENCODED`, `MULTIPART_FORM_DATA`, `TEXT_PLAIN`, `TEXT_HTML`, `TEXT_XML`, `TEXT_EVENT_STREAM`, `APPLICATION_NDJSON`, `ALL`) для защиты от строковых опечаток.
-  - **Приоритеты и иерархия:** `Method > Sub-interface > Super-interface > Client default`. Runtime аргументы метода `@RequestHeader(name = "Accept")` и `@RequestHeader(name = "Content-Type")` имеют наивысший приоритет и прозрачно переопределяют статические декларации. При передаче `null` в параметр происходит fallback к статическому значению.
-  - **Искоренение дублирования Content-Type:** в `HttpTemplate.toHttpRequest()` установка `Content-Type` производится через `builder.setHeader("Content-Type", request.contentType())`, что гарантирует ровно один заголовок в исходящем сетевом пакете.
-  - **Сырые байты и кодировки строк:** `byte[]` в `@RequestBody` отправляется напрямую как сырые бинарные байты без JSON сериализации; `String` кодируется в байты согласно указанному в `ContentType` charset (с фоллбэком на UTF-8).
-  - **Fail-fast валидация:** `ControllerValidator` проверяет непустые, non-blank и безопасные от CRLF-инъекций значения (`ControllerValidationException`) как на уровне классов, так и на уровне методов.
-- **Тесты (+26 тестов, итого 646/646 тестов в 77 классах):**
-  - `AcceptContentTypeValidationTest` (12 unit тестов): ошибки валидации при пустом массиве, blank media type, CRLF-инъекциях на уровне интерфейса и метода, выброс `ControllerValidationException` в клиенте, успешная валидация корректного интерфейса.
-  - `AcceptContentTypeWireMockTest` (13 интеграционных тестов с WireMock): распространение интерфейсного Accept, переопределение на методе, склейка нескольких media types, runtime переопределение через RequestHeader и null fallback, интерфейсный Content-Type, методный override, кодирование тела с кастомным charset (windows-1251), отправка сырых байт (byte[]), гарантия ровно 1 заголовка Content-Type без дублей, runtime Content-Type override, наследование интерфейсов, асинхронный CompletableFuture, сохранение multipart boundary.
+## Что сделано в этой сессии (#110)
+- **Ход:** полное проектирование (ADR-0032), реализация и верификация эпика Cookie Handling, Session Management and Declarative `@Cookie` annotations.
+- **Архитектура и реализация (ADR-0032):**
+  - **Управление сессиями и `CookieHandler`:**
+    - `ModuleInfo`: добавлен `default CookieHandler getCookieHandler() { return null; }`.
+    - `SimpleModuleInfo.Builder` и `JRestlyClient.Builder`: fluent-методы `cookieHandler(CookieHandler)`, `cookieManager()` (shortcut для `new CookieManager()`), `cookiePolicy(CookiePolicy)`.
+    - `AbstractHttpClient`: в `createConnection()` проброс `cookieHandler` в `HttpClient.Builder.cookieHandler(...)`; публичные методы `getCookieHandler()` и `Optional<CookieStore> getCookieStore()`.
+  - **Декларативные аннотации `@Cookie` и `@Cookies`:**
+    - `ru.jrestly.annotation.Cookie` (`@Target({ElementType.PARAMETER, ElementType.METHOD, ElementType.TYPE})`, `@Retention(RetentionPolicy.RUNTIME)`, `@Repeatable(Cookies.class)`) с `String name()` и `String value()`.
+    - `ru.jrestly.annotation.Cookies`: контейнер для повторяемых деклараций.
+    - Сериализация в RFC 6265 заголовок `Cookie: name1=value1; name2=value2`.
+  - **Приоритеты и динамические параметры:**
+    - Иерархия: `Parameter > Method > Sub-interface > Super-interface`.
+    - Передача `null` в параметр подавляет/удаляет куку (включая переопределение статической).
+    - Поддержка `Map<String, ?>` и прямых объектов `java.net.HttpCookie`.
+    - Чистое слияние со статическими или runtime заголовками `@RequestHeader(name = "Cookie")`.
+  - **Инспекция Cookies в `ResponseHeaders`:**
+    - `cookies()`: возвращает распарсенные `List<HttpCookie>` из `Set-Cookie` и `Set-Cookie2` заголовков.
+    - `cookie(name)`: case-insensitive поиск `Optional<HttpCookie>`.
+    - `cookieValue(name)`: `Optional<String>`.
+    - `cookieMap()`: `Map<String, String>` с case-insensitive ключами.
+  - **Fail-fast валидация:**
+    - `ControllerValidator` проверяет непустые, non-blank и безопасные от CRLF-инъекций значения (`ControllerValidationException`) на уровне классов, методов и параметров, а также запрещает конфликтующие HTTP-аннотации.
+- **Тесты (+29 тестов, итого 675/675 тестов в 80 классах):**
+  - `CookieConfigAndResponseTest` (13 unit тестов): дефолты в `ModuleInfo`/`SimpleModuleInfo`/`JRestlyClient`, кастомный `CookieHandler`, шорткаты `cookieManager` и `cookiePolicy`, fail-fast NPE, инспекция `getCookieStore`, парсинг одиночных и множественных `Set-Cookie`, регистронезависимый `cookieValue`, `cookieMap`, устойчивость к поврежденным заголовкам.
+  - `CookieValidationTest` (7 unit тестов): blank cookie name на интерфейсе и методе, CRLF инъекции в name и value, ошибки в параметрах, конфликт с `@RequestParam`, валидный контроллер, выброс `ControllerValidationException` в клиенте.
+  - `CookieSessionWireMockTest` (9 WireMock интеграционных тестов): автоматическое сохранение сессии `POST /api/login` -> `GET /api/profile`, сброс сессии через `client.getCookieStore().removeAll()`, распространение интерфейсного Cookie, объединение с методным Cookie, повторяемые аннотации, динамический параметр и null fallback, динамическое переопределение статической куки и null suppression, раскрытие `Map<String, Object>`, параметр `HttpCookie`, асинхронный вызов через `CompletableFuture`.
 - **Гейты:**
-  - `./gradlew test`: **646/646** тестов (77 классов, +26 тестов к 620) зелёные.
+  - `./gradlew test`: **675/675** тестов (80 классов, +29 тестов к 646) зелёные.
   - `./gradlew compileJava compileTestJava javadoc`: 0 warnings под постоянными флагами `-Xlint:all -Werror` и `-Xdoclint:all -Werror`.
   - Zero-dep инвариант в ядре строго сохранен (0 dependencies в Maven POM).
 - **Память и координация:**
-  - `docs/0.10.0/ADR-0031-declarative-accept-and-content-type.md`: статус **Accepted**, зафиксированы решения и тесты.
-  - `ROADMAP.md`: добавлена секция `## Declarative @Accept & @ContentType and MediaType Constants (ADR-0031) — COMPLETE ✅`, следующий свободный ADR — **0032**.
+  - `docs/0.10.0/ADR-0032-cookie-handling-and-session-management.md`: статус **Accepted**, зафиксированы решения и тесты.
+  - `ROADMAP.md`: добавлена секция `## Cookie Handling, Session Management and Declarative @Cookie (ADR-0032) — COMPLETE ✅`, следующий свободный ADR — **0033**.
   - `DRAFT.md`: эпик закрыт, активная зона обновлена.
-  - `mailbox.md`: Антону отправлен статус о реализации эпика ADR-0031, соблюдена гигиена сообщений.
-  - `days/2026-10-15.md`: оформлена запись сессии #109.
+  - `mailbox.md`: Антону отправлен статус о реализации эпика ADR-0032, соблюдена гигиена сообщений.
+  - `days/2026-10-15.md`: оформлена запись сессии #110.
 
-## Контекст для следующей сессии (#110)
+## Контекст для следующей сессии (#111)
 
 ### Активная зона DRAFT.md (выбор следующего эпика)
-- **Кандидат №1: Cookie handling & session management (RFC 6265)**:
-  - Zero-dep поддержка `java.net.CookieHandler` / `java.net.CookieManager` через `ModuleInfo` и builder клиента, сохранение сессий между запросами, специализированная аннотация `@Cookie` (или `@CookieParam`).
-- **Кандидат №2: Response download progress tracking (`DownloadProgressListener`)**:
+- **Кандидат №1: Response download progress tracking (`DownloadProgressListener`)**:
   - Симметричный к ADR-0030 механизм отслеживания прогресса скачивания тел ответов для больших потоковых файлов.
+- **Кандидат №2: Query parameter multi-value formats (`explode`, comma-separated `tag=a,b`, pipe-separated `tag=a|b`, RFC 6570 style expansion)**:
+  - Гибкое форматирование коллекций и массивов в URL query параметрах per-method или per-parameter.
 - **Кандидат №3: test-javadoc** (ADR-0013 Non-goals):
   - Test-source javadoc вынесен за скобки аудита; наведение лоска в тестовых классах.
 
@@ -38,14 +52,15 @@
 - **`GRADLE_USER_HOME=/tmp/opencode/gradle-home`**: всегда указывать при запуске `./gradlew`.
 - **`AbstractHttpClient` намеренно не `AutoCloseable`**: в тестах регистрировать и закрывать через `.close()` в `@AfterEach` (или try/finally).
 - **Path variables в jRestly**: в URL синтаксис `${param}`, в аннотации `@PathVariable(name = "param")` (без `${}`).
-- **Подсчёт тестов:** `grep -h -o 'tests="[0-9]*"' build/test-results/test/*.xml | awk -F'"' '{s+=$2} END{print s}'` (сейчас 646).
+- **Подсчёт тестов:** `grep -h -o 'tests="[0-9]*"' build/test-results/test/*.xml | awk -F'"' '{s+=$2} END{print s}'` (сейчас 675).
 - **Mailbox-гигиена:** решённый обмен удаляем; живые нитки и последние 2–3 сообщения оставляем.
 - **Коммит-субъект: краткий, без дублирования ченджлога** (Антон); body — гейты-факты.
 - **No git tags:** теги не создавать (релизы запаузены per maintainer agreement).
-- **Next free ADR number:** ADR-0032.
+- **Next free ADR number:** ADR-0033.
 
 ### Среда
 1. `GRADLE_USER_HOME=/tmp/opencode/gradle-home ./gradlew ...` (тёплый кэш).
 2. Ветка `agent-loop`.
-3. Версия в `build.gradle`: **0.9.0**. Тесты: **646/646** (77 классов).
+3. Версия в `build.gradle`: **0.9.0**. Тесты: **675/675** (80 классов).
 4. Warnings: main 0, test 0, javadoc 0 (под `-Werror`).
+

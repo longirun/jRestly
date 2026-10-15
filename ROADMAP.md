@@ -1017,7 +1017,52 @@ Gates (session #109, clean rebuild):
 - `javadoc` 0 warnings under permanent `-Xdoclint:all -Werror`.
 - Zero external runtime dependencies preserved (0 dependencies in Maven POM).
 
-After the epic: candidate #1 — test-javadoc (ADR-0013 Non-goals); candidate #2 — Cookie handling & session management (RFC 6265, `CookieHandler` zero-dep integration). ADR number **0032** free.
+After the epic: candidate #1 — test-javadoc (ADR-0013 Non-goals); candidate #2 — Cookie handling & session management (RFC 6265, `CookieHandler` zero-dep integration) — done, section below. ADR number **0032** — cookie handling and declarative @Cookie epic, **0033** free.
+
+## Cookie Handling, Session Management and Declarative @Cookie (ADR-0032) — COMPLETE ✅ (2026-10-15, unreleased)
+
+> Source of truth (concept, architecture decisions, session management, validation, test strategy, status):
+> [`docs/0.10.0/ADR-0032-cookie-handling-and-session-management.md`](docs/0.10.0/ADR-0032-cookie-handling-and-session-management.md).
+> Session #110 (agent-loop). Real-world web API & session continuity ergonomics (candidate #1 from DRAFT.md).
+> Client-level automatic cookie and session persistence via standard `java.net.CookieHandler` / `CookieManager`,
+> declarative `@Cookie` (`ElementType.TYPE`, `ElementType.METHOD`, `ElementType.PARAMETER`, repeatable `@Cookies`),
+> precedence hierarchy (`Parameter > Method > Sub-interface > Super-interface`), `Map<String, ?>` expansion,
+> direct `java.net.HttpCookie` parameter support, null-safety override/removal, and first-class response cookie inspection
+> in `ResponseHeaders` (`cookies()`, `cookie(name)`, `cookieValue(name)`, `cookieMap()`) with `client.getCookieStore()`.
+> 100% zero-dependency on standard Java 21 platform classes (`java.net.*`).
+
+Key decisions (ADR-0032):
+- **Client-level Cookie & Session Management:**
+  - `ModuleInfo`: added default method `default CookieHandler getCookieHandler() { return null; }`.
+  - `SimpleModuleInfo.Builder` and `JRestlyClient.Builder`: added `cookieHandler(CookieHandler)`, `cookieManager()` (shortcut enabling `new CookieManager()`), and `cookiePolicy(CookiePolicy)`.
+  - `AbstractHttpClient`: connects `moduleInfo.getCookieHandler()` to `HttpClient.Builder.cookieHandler(...)` on `createConnection()`; exposes `getCookieHandler()` and `Optional<CookieStore> getCookieStore()`.
+- **Declarative `@Cookie` and `@Cookies` annotations:**
+  - Added `ru.jrestly.annotation.Cookie` (`@Target({ElementType.PARAMETER, ElementType.METHOD, ElementType.TYPE})`) with attributes `name` and `value`, repeatable via `ru.jrestly.annotation.Cookies`.
+  - Interface-level and method-level static cookies are serialized into the standard RFC 6265 `Cookie: name=value; name2=value2` request header.
+  - Method arguments annotated with `@Cookie` provide dynamic values. An unsupplied name defaults to the Java parameter name. Passing `null` as an argument removes or suppresses that specific cookie.
+  - Supports `Map<String, ?>` parameters for multi-cookie dictionaries and `HttpCookie` objects directly.
+- **Precedence and merge rules:**
+  - `Parameter > Method > Sub-interface > Super-interface`.
+  - Merges cleanly with any static or runtime `@RequestHeader(name = "Cookie")` declaration (`Cookie: header_val; declarative_val`).
+- **Response Cookie Inspection (`ResponseHeaders`):**
+  - Added `cookies()` (returns parsed `List<HttpCookie>`), `cookie(name)` (case-insensitive lookup returning `Optional<HttpCookie>`), `cookieValue(name)` (shortcut for `cookie(name).map(HttpCookie::getValue)`), and `cookieMap()` (case-insensitive `Map<String, String>`).
+  - Robust against malformed `Set-Cookie` headers.
+- **Upfront fail-fast validation (`ControllerValidator`):**
+  - Forbids blank names and CRLF injection characters (`\r`, `\n`) on interface, method, and parameter level (`ControllerValidationException`).
+  - Ensures `@Cookie` parameters are not mistakenly combined with conflicting HTTP parameter annotations (`@RequestParam`, `@PathVariable`, `@RequestHeader`, `@MultipartFormFile`).
+  - Excludes `@Cookie` parameters from multipart/form-urlencoded body payload calculations.
+- **Full test coverage:** 29 new tests (+29 cases, total suite 675/675 across 80 classes) spanning:
+  - `CookieConfigAndResponseTest` (13 unit tests: ModuleInfo/SimpleModuleInfo/JRestlyClient default nulls, custom CookieHandler wiring, cookieManager and cookiePolicy shortcuts, fail-fast NPE checks, getCookieStore inspection, ResponseHeaders unpopulated empty cookies, single Set-Cookie parse, multiple Set-Cookie & Set-Cookie2 parse, case-insensitive cookieValue lookup, cookieMap case-insensitivity, malformed Set-Cookie resilience, null checks);
+  - `CookieValidationTest` (7 unit tests: blank interface cookie name, CRLF in interface cookie name, CRLF in interface cookie value, method-level cookie problems, parameter-level cookie problems, valid contract pass, client proxy validation exception);
+  - `CookieSessionWireMockTest` (9 WireMock integration tests: automatic session management across requests with Set-Cookie -> Cookie continuity, session clearing via getCookieStore().removeAll(), interface-level Cookie header propagation, method-level Cookie combination, repeatable Cookies on method, parameter-level dynamic Cookie and null omission, parameter-level override of static cookie and null suppression, Map<String, Object> cookie expansion, HttpCookie parameter passing, async CompletableFuture twin with cookies).
+
+Gates (session #110, clean rebuild):
+- `./gradlew test` **675/675** (80 classes, 0 failures/errors; +29 tests in ADR-0032).
+- `compileJava` and `compileTestJava` 0 warnings under permanent `-Xlint:all -Werror`.
+- `javadoc` 0 warnings under permanent `-Xdoclint:all -Werror`.
+- Zero external runtime dependencies preserved (0 dependencies in Maven POM).
+
+After the epic: candidate #1 — test-javadoc (ADR-0013 Non-goals); candidate #2 — Response download progress tracking (`DownloadProgressListener`, symmetric to ADR-0030 for streaming downloads). ADR number **0033** free.
 
 ## Post-0.5.0 shortlist (not scheduled — see ADR-0003)
 

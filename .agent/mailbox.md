@@ -40,8 +40,6 @@
 * я думаю еще в реалном исползовании есть миллион важных вещей?
 Это не приказ бросаться сразу все делать, просто можно учесть и разобрать в будущем. 
 
-[2026-10-15 04:54] Агент (сессия #107): Реализован эпик декларативных интерцепторов `@WithInterceptor` per controller & method (ADR-0029): `@WithInterceptor` (`ElementType.TYPE`/`METHOD`, `@Repeatable`), поддержка дуальных интерцепторов, порядок пайплайна (Global &rarr; Super-interface &rarr; Sub-interface &rarr; Method), кэширование инстансов в клиенте (zero-allocation), fail-fast валидация. 596/596 тестов зелёные.
-
 [2026-10-15 05:20] Агент (сессия #108): Реализован эпик отслеживания прогресса отправки тела запросов и multipart-файлов (ADR-0030): интерфейс `UploadProgressListener`, реактивный `ProgressBodyPublisher`, интринсик параметр в сигнатурах методов, сброс отсчета при повторных попытках `@Retry`. 620/620 тестов зелёные.
 
 [2026-10-15 05:48] Агент (сессия #109): Реализован эпик декларативных аннотаций `@Accept` и `@ContentType`, а также стандартных констант `MediaType` (ADR-0031):
@@ -52,3 +50,13 @@
 5. **Fail-fast валидация:** `ControllerValidator` проверяет непустые, non-blank и безопасные от CRLF-инъекций значения (`ControllerValidationException`).
 Написано 25 новых тестов (12 в `AcceptContentTypeValidationTest`, 13 в `AcceptContentTypeWireMockTest`).
 Гейты: **646/646** тестов (77 классов) зелёные, 0 warnings под `-Werror`, zero-dep core строго сохранен.
+
+[2026-10-15 06:15] Агент (сессия #110): Реализован эпик Cookie Handling, Session Management & Declarative @Cookie (ADR-0032):
+1. **Управление сессиями и CookieHandler:** Zero-dep поддержка `java.net.CookieHandler` через `ModuleInfo` и fluent-шорткаты `cookieManager()` и `cookiePolicy()` в `SimpleModuleInfo.Builder` и `JRestlyClient.Builder`. Автоматическое сохранение `Set-Cookie` ответов и отправка `Cookie` заголовков в последующих запросах. Доступ к хранилищу сессии `client.getCookieStore()` для мгновенного сброса `removeAll()` между тестами.
+2. **Декларативные аннотации `@Cookie` и `@Cookies`:** `@Cookie` для интерфейсов, методов и параметров (`@Repeatable(Cookies.class)`). Сериализация в валидный RFC 6265 `Cookie: name1=value1; name2=value2` заголовок.
+3. **Иерархия приоритетов и null-safety:** `Parameter > Method > Sub-interface > Super-interface`. Передача `null` в параметр отменяет/удаляет куку. Поддержка `Map<String, ?>` и прямых объектов `java.net.HttpCookie`.
+4. **Инспекция Cookies в `ResponseHeaders`:** методы `cookies()`, `cookie(name)`, `cookieValue(name)` (с case-insensitive поиском), и `cookieMap()` для первоклассного доступа к сессионным и auth cookies без ручного парсинга.
+5. **Fail-fast валидация:** `ControllerValidator` проверяет непустые, non-blank и безопасные от CRLF-инъекций значения (`ControllerValidationException`).
+Написано 29 новых тестов (13 в `CookieConfigAndResponseTest`, 7 в `CookieValidationTest`, 9 в `CookieSessionWireMockTest`).
+Гейты: **675/675** тестов (80 классов) зелёные, 0 warnings под `-Werror`, zero-dep core строго сохранен.
+

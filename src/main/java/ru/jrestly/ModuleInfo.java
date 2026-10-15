@@ -8,6 +8,7 @@ import ru.jrestly.http.RetryPolicy;
 
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLParameters;
+import java.net.CookieHandler;
 import java.net.http.HttpClient;
 import java.util.List;
 import java.util.concurrent.Executor;
@@ -201,6 +202,17 @@ public interface ModuleInfo {
      */
     default boolean isVirtualThreads() {
         return false;
+    }
+
+    /**
+     * The cookie handler used for automatic cookie and session management (ADR-0032).
+     * When {@code null} (the default), no automatic cookie handling is performed by
+     * the underlying HTTP client.
+     *
+     * @return the cookie handler, or {@code null} for no automatic cookie handling
+     */
+    default CookieHandler getCookieHandler() {
+        return null;
     }
 }
 

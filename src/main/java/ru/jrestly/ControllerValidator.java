@@ -2,6 +2,7 @@ package ru.jrestly;
 
 import ru.jrestly.annotation.Accept;
 import ru.jrestly.annotation.ContentType;
+import ru.jrestly.annotation.Cookie;
 import ru.jrestly.annotation.Delete;
 import ru.jrestly.annotation.Get;
 import ru.jrestly.annotation.OnError;
@@ -114,6 +115,17 @@ public final class ControllerValidator {
             }
             if (contentType.value().contains("\r") || contentType.value().contains("\n")) {
                 problems.add(current.getSimpleName() + ": @ContentType must not contain CRLF characters");
+            }
+        }
+        for (Cookie cookie : current.getAnnotationsByType(Cookie.class)) {
+            if (cookie.name().isBlank()) {
+                problems.add(current.getSimpleName() + ": @Cookie name must not be blank");
+            }
+            if (cookie.name().contains("\r") || cookie.name().contains("\n")) {
+                problems.add(current.getSimpleName() + ": @Cookie name must not contain CRLF characters");
+            }
+            if (cookie.value().contains("\r") || cookie.value().contains("\n")) {
+                problems.add(current.getSimpleName() + ": @Cookie value must not contain CRLF characters");
             }
         }
         Map<Integer, Class<?>> classSeenStatuses = new LinkedHashMap<>();
@@ -235,6 +247,17 @@ public final class ControllerValidator {
                 problems.add(method.getName() + "(): @ContentType must not contain CRLF characters");
             }
         }
+        for (Cookie cookie : method.getAnnotationsByType(Cookie.class)) {
+            if (cookie.name().isBlank()) {
+                problems.add(method.getName() + "(): @Cookie name must not be blank");
+            }
+            if (cookie.name().contains("\r") || cookie.name().contains("\n")) {
+                problems.add(method.getName() + "(): @Cookie name must not contain CRLF characters");
+            }
+            if (cookie.value().contains("\r") || cookie.value().contains("\n")) {
+                problems.add(method.getName() + "(): @Cookie value must not contain CRLF characters");
+            }
+        }
 
         Map<Integer, Class<?>> methodSeenStatuses = new LinkedHashMap<>();
         for (OnError onError : method.getAnnotationsByType(OnError.class)) {
@@ -252,10 +275,23 @@ public final class ControllerValidator {
         }
 
         for (java.lang.reflect.Parameter param : method.getParameters()) {
+            if (param.isAnnotationPresent(Cookie.class)) {
+                Cookie cookie = param.getAnnotation(Cookie.class);
+                if (cookie.name().contains("\r") || cookie.name().contains("\n")) {
+                    problems.add(method.getName() + "(): @Cookie parameter name must not contain CRLF characters");
+                }
+                if (param.isAnnotationPresent(RequestParam.class)
+                        || param.isAnnotationPresent(PathVariable.class)
+                        || param.isAnnotationPresent(RequestHeader.class)
+                        || param.isAnnotationPresent(MultipartFormFile.class)) {
+                    problems.add(method.getName() + "(): parameter must not combine @Cookie with other HTTP parameter annotations");
+                }
+            }
             if (UploadProgressListener.class.equals(param.getType())) {
                 if (param.isAnnotationPresent(RequestParam.class)
                         || param.isAnnotationPresent(PathVariable.class)
                         || param.isAnnotationPresent(RequestHeader.class)
+                        || param.isAnnotationPresent(Cookie.class)
                         || param.isAnnotationPresent(MultipartFormFile.class)) {
                     problems.add(method.getName() + "(): UploadProgressListener parameter must not be annotated with HTTP parameter annotations");
                 }
@@ -263,7 +299,10 @@ public final class ControllerValidator {
         }
 
         long payloadParamCount = Arrays.stream(method.getParameters())
-                .filter(p -> !ResponseHeaders.class.equals(p.getType()) && !UploadProgressListener.class.equals(p.getType()))
+                .filter(p -> !ResponseHeaders.class.equals(p.getType())
+                        && !UploadProgressListener.class.equals(p.getType())
+                        && !p.isAnnotationPresent(Cookie.class)
+                        && !p.isAnnotationPresent(RequestHeader.class))
                 .count();
         if (payloadParamCount == 0) {
             RequestType requestType = resolveRequestType(method);

@@ -9,11 +9,15 @@ import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLParameters;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
+import java.net.CookieHandler;
+import java.net.CookieManager;
+import java.net.CookieStore;
 import java.net.http.HttpClient;
 import java.time.Duration;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
@@ -102,6 +106,11 @@ public abstract class AbstractHttpClient {
         SSLParameters sslParameters = moduleInfo.getSslParameters();
         if (sslParameters != null) {
             builder.sslParameters(sslParameters);
+        }
+
+        CookieHandler cookieHandler = moduleInfo.getCookieHandler();
+        if (cookieHandler != null) {
+            builder.cookieHandler(cookieHandler);
         }
 
         Executor customExecutor = moduleInfo.getExecutor();
@@ -244,6 +253,27 @@ public abstract class AbstractHttpClient {
      */
     public Executor getExecutor() {
         return executor;
+    }
+
+    /**
+     * Returns the cookie handler used by this client, or {@code null} if none is configured (ADR-0032).
+     *
+     * @return the cookie handler, or {@code null}
+     */
+    public CookieHandler getCookieHandler() {
+        return moduleInfo != null ? moduleInfo.getCookieHandler() : null;
+    }
+
+    /**
+     * Returns the cookie store if this client is configured with a {@link CookieManager} (ADR-0032).
+     *
+     * @return optional containing the cookie store, or empty if no CookieManager is active
+     */
+    public Optional<CookieStore> getCookieStore() {
+        if (moduleInfo != null && moduleInfo.getCookieHandler() instanceof CookieManager cm) {
+            return Optional.of(cm.getCookieStore());
+        }
+        return Optional.empty();
     }
 }
 

@@ -1,23 +1,24 @@
-# DRAFT: активная зона после закрытия эпика Declarative @Accept & @ContentType (ADR-0031)
+# DRAFT: активная зона после закрытия эпика Cookie Handling, Session Management & Declarative @Cookie (ADR-0032)
 
-> Эпик Declarative @Accept, @ContentType & MediaType Constants (ADR-0031, `docs/0.10.0/`) закрыт (сессия #109):
-> концепт и ADR-0031 → аннотации `ru.jrestly.annotation.Accept`, `ru.jrestly.annotation.ContentType` +
-> стандартный утилитный класс констант `ru.jrestly.http.MediaType` +
-> разрешение в `HttpTemplateBuilder` со склейкой нескольких media types через запятую (RFC 9110) +
-> строгая иерархия приоритетов (Method > Sub-interface > Super-interface > Client default, runtime `@RequestHeader` override) +
-> гарантированное устранение дублирования заголовка `Content-Type` в `toHttpRequest()` (`builder.setHeader("Content-Type", ...)`) +
-> прямая передача `byte[]` в `@RequestBody` без сериализации в JSON и charset-aware кодирование `String` тел запроса +
-> fail-fast валидация в `ControllerValidator` (`ControllerValidationException`) против пустых, blank и CRLF значений +
-> unit тесты (`AcceptContentTypeValidationTest`, 12 тестов) и WireMock интеграционные тесты (`AcceptContentTypeWireMockTest`, 13 тестов, итого +26 тестов) →
-> дистилляция в ROADMAP («Declarative @Accept & @ContentType and MediaType Constants (ADR-0031) — COMPLETE ✅») + гейты 646/646 тестов (77 классов).
+> Эпик Cookie Handling, Session Management and Declarative @Cookie Annotations (ADR-0032, `docs/0.10.0/`) закрыт (сессия #110):
+> концепт и ADR-0032 → интеграция `CookieHandler` в `ModuleInfo`, `SimpleModuleInfo`, `JRestlyClient` и `AbstractHttpClient` +
+> шорткаты `cookieManager()` и `cookiePolicy()` для сохранения сессий между запросами +
+> инспекция `client.getCookieStore()` для сброса состояния сессии в тестах +
+> аннотации `ru.jrestly.annotation.Cookie` и контейнер `ru.jrestly.annotation.Cookies` +
+> строгая иерархия приоритетов (Parameter > Method > Sub-interface > Super-interface) +
+> динамические параметры `@Cookie`: строки, объекты, `Map<String, ?>`, прямые `HttpCookie`, null-safety удаление/подавление +
+> первокллассный доступ к cookies в `ResponseHeaders` (`cookies()`, `cookie(name)`, `cookieValue(name)`, `cookieMap()`) +
+> fail-fast upfront валидация в `ControllerValidator` (`ControllerValidationException`) против blank и CRLF значений +
+> unit тесты (`CookieConfigAndResponseTest`, 13 тестов; `CookieValidationTest`, 7 тестов) и WireMock интеграционные тесты (`CookieSessionWireMockTest`, 9 тестов, итого +29 тестов) →
+> дистилляция в ROADMAP («Cookie Handling, Session Management and Declarative @Cookie (ADR-0032) — COMPLETE ✅») + гейты 675/675 тестов (80 классов).
 > Следующий ход — свободный, выбор из активной зоны.
 
 ## Активная зона (кандидаты на следующий эпик)
 
-- **Кандидат №1 — Cookie handling & session management (RFC 6265)**:
-  Zero-dep поддержка `java.net.CookieHandler` / `java.net.CookieManager` через `ModuleInfo` и builder клиента, сохранение сессий между запросами, специализированная аннотация `@Cookie` (или `@CookieParam`).
-- **Кандидат №2 — Response download progress tracking (`DownloadProgressListener`)**:
-  Симметричный к ADR-0030 механизм отслеживания прогресса скачивания тел ответов для больших потоковых файлов.
+- **Кандидат №1 — Response download progress tracking (`DownloadProgressListener`)**:
+  Симметричный к ADR-0030 механизм отслеживания прогресса скачивания тел ответов для больших потоковых файлов (по аналогии с UploadProgressListener).
+- **Кандидат №2 — Query parameter multi-value formats (`explode`, comma-separated `tag=a,b`, pipe-separated `tag=a|b`, RFC 6570 style expansion)**:
+  Гибкое форматирование коллекций и массивов в URL query параметрах per-method или per-parameter.
 - **Кандидат №3 — test-javadoc** (ADR-0013 Non-goals):
   Test-source javadoc вынесен за скобки аудита; наведение лоска в тестовых классах.
 

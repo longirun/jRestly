@@ -11,6 +11,9 @@ import ru.jrestly.json.JsonCodecResolver;
 
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLParameters;
+import java.net.CookieHandler;
+import java.net.CookieManager;
+import java.net.CookiePolicy;
 import java.net.http.HttpClient;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -53,6 +56,7 @@ public class SimpleModuleInfo implements ModuleInfo {
     private final boolean decompressionEnabled;
     private final Executor executor;
     private final boolean virtualThreads;
+    private final CookieHandler cookieHandler;
 
     private SimpleModuleInfo(Builder builder) {
         this.name = builder.name;
@@ -73,6 +77,7 @@ public class SimpleModuleInfo implements ModuleInfo {
         this.decompressionEnabled = builder.decompressionEnabled;
         this.executor = builder.executor;
         this.virtualThreads = builder.virtualThreads;
+        this.cookieHandler = builder.cookieHandler;
     }
 
     /**
@@ -165,6 +170,11 @@ public class SimpleModuleInfo implements ModuleInfo {
         return virtualThreads;
     }
 
+    @Override
+    public CookieHandler getCookieHandler() {
+        return cookieHandler;
+    }
+
     /**
      * A builder for {@link SimpleModuleInfo}, pre-set to the defaults:
      * name {@code "default"}, 5 s connect timeout, 30 s socket timeout,
@@ -191,6 +201,7 @@ public class SimpleModuleInfo implements ModuleInfo {
         private boolean decompressionEnabled = true;
         private Executor executor;
         private boolean virtualThreads = false;
+        private CookieHandler cookieHandler;
 
         /**
          * A builder pre-set to the defaults; {@code baseUrl} must still
@@ -468,6 +479,39 @@ public class SimpleModuleInfo implements ModuleInfo {
          */
         public Builder useVirtualThreads() {
             return virtualThreads(true);
+        }
+
+        /**
+         * Sets the custom cookie handler for automatic cookie and session management (ADR-0032).
+         *
+         * @param cookieHandler the cookie handler, not {@code null}
+         * @return this builder, for chaining
+         */
+        public Builder cookieHandler(CookieHandler cookieHandler) {
+            this.cookieHandler = Objects.requireNonNull(cookieHandler, "cookieHandler");
+            return this;
+        }
+
+        /**
+         * Enables automatic cookie and session management using a default {@link CookieManager} (ADR-0032).
+         *
+         * @return this builder, for chaining
+         */
+        public Builder cookieManager() {
+            this.cookieHandler = new CookieManager();
+            return this;
+        }
+
+        /**
+         * Enables automatic cookie and session management using a {@link CookieManager} with the given policy (ADR-0032).
+         *
+         * @param cookiePolicy the cookie policy, not {@code null}
+         * @return this builder, for chaining
+         */
+        public Builder cookiePolicy(CookiePolicy cookiePolicy) {
+            Objects.requireNonNull(cookiePolicy, "cookiePolicy");
+            this.cookieHandler = new CookieManager(null, cookiePolicy);
+            return this;
         }
 
         /**

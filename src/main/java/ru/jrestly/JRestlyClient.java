@@ -8,6 +8,9 @@ import ru.jrestly.json.JsonCodec;
 
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLParameters;
+import java.net.CookieHandler;
+import java.net.CookieManager;
+import java.net.CookiePolicy;
 import java.net.http.HttpClient;
 import java.time.Duration;
 import java.util.List;
@@ -330,6 +333,38 @@ public class JRestlyClient extends AbstractHttpClient {
          */
         public Builder useVirtualThreads() {
             moduleInfoBuilder.useVirtualThreads();
+            return this;
+        }
+
+        /**
+         * Sets the custom cookie handler for automatic cookie and session management (ADR-0032).
+         *
+         * @param cookieHandler the cookie handler, not {@code null}
+         * @return this builder, for chaining
+         */
+        public Builder cookieHandler(CookieHandler cookieHandler) {
+            moduleInfoBuilder.cookieHandler(cookieHandler);
+            return this;
+        }
+
+        /**
+         * Enables automatic cookie and session management using a default {@link CookieManager} (ADR-0032).
+         *
+         * @return this builder, for chaining
+         */
+        public Builder cookieManager() {
+            moduleInfoBuilder.cookieManager();
+            return this;
+        }
+
+        /**
+         * Enables automatic cookie and session management using a {@link CookieManager} with the given policy (ADR-0032).
+         *
+         * @param cookiePolicy the cookie policy, not {@code null}
+         * @return this builder, for chaining
+         */
+        public Builder cookiePolicy(CookiePolicy cookiePolicy) {
+            moduleInfoBuilder.cookiePolicy(cookiePolicy);
             return this;
         }
 

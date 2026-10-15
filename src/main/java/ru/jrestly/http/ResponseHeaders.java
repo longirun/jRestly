@@ -1,5 +1,6 @@
 package ru.jrestly.http;
 
+import java.net.HttpCookie;
 import java.net.URI;
 import java.time.Duration;
 import java.time.Instant;
@@ -58,6 +59,7 @@ public class ResponseHeaders {
     private volatile List<Header> rawHeaders = List.of();
     private volatile Map<String, List<String>> headerMap = Collections.emptyMap();
     private volatile Map<String, String> linkMap;
+    private volatile List<HttpCookie> parsedCookies;
 
     /**
      * Creates an empty, unpopulated response headers holder.
@@ -106,6 +108,7 @@ public class ResponseHeaders {
         }
         this.headerMap = Collections.unmodifiableMap(map);
         this.linkMap = null; // parsed lazily
+        this.parsedCookies = null; // parsed lazily
         this.populated = true;
     }
 
@@ -334,6 +337,89 @@ public class ResponseHeaders {
             }
         }
         return map;
+    }
+
+    /**
+     * Returns all cookies parsed from {@code Set-Cookie} and {@code Set-Cookie2} response headers (ADR-0032).
+     *
+     * @return unmodifiable list of parsed {@link HttpCookie} objects, empty if none present
+     */
+    public List<HttpCookie> cookies() {
+        List<HttpCookie> list = parsedCookies;
+        if (list == null) {
+            synchronized (this) {
+                list = parsedCookies;
+                if (list == null) {
+                    list = parseCookies();
+                    parsedCookies = list;
+                }
+            }
+        }
+        return list;
+    }
+
+    private List<HttpCookie> parseCookies() {
+        List<String> setCookieHeaders = allValues("Set-Cookie");
+        List<String> setCookie2Headers = allValues("Set-Cookie2");
+        if (setCookieHeaders.isEmpty() && setCookie2Headers.isEmpty()) {
+            return List.of();
+        }
+        List<HttpCookie> result = new ArrayList<>();
+        for (String header : setCookieHeaders) {
+            if (header != null && !header.isBlank()) {
+                try {
+                    result.addAll(HttpCookie.parse(header));
+                } catch (IllegalArgumentException ignored) {
+                }
+            }
+        }
+        for (String header : setCookie2Headers) {
+            if (header != null && !header.isBlank()) {
+                try {
+                    result.addAll(HttpCookie.parse(header));
+                } catch (IllegalArgumentException ignored) {
+                }
+            }
+        }
+        return Collections.unmodifiableList(result);
+    }
+
+    /**
+     * Looks up a response cookie by its name (case-insensitive lookup, ADR-0032).
+     *
+     * @param name the cookie name, not {@code null}
+     * @return the {@link HttpCookie}, or empty if not found
+     */
+    public Optional<HttpCookie> cookie(String name) {
+        Objects.requireNonNull(name, "cookie name must not be null");
+        return cookies().stream()
+                .filter(c -> c.getName() != null && c.getName().equalsIgnoreCase(name))
+                .findFirst();
+    }
+
+    /**
+     * Returns the value of the response cookie with the given name (case-insensitive lookup, ADR-0032).
+     *
+     * @param name the cookie name, not {@code null}
+     * @return the cookie value, or empty if not found
+     */
+    public Optional<String> cookieValue(String name) {
+        return cookie(name).map(HttpCookie::getValue);
+    }
+
+    /**
+     * Returns an unmodifiable map of response cookie names to their string values (case-insensitive keys, ADR-0032).
+     *
+     * @return unmodifiable map of cookie names to values
+     */
+    public Map<String, String> cookieMap() {
+        Map<String, String> map = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+        for (HttpCookie c : cookies()) {
+            if (c.getName() != null) {
+                map.put(c.getName(), c.getValue() != null ? c.getValue() : "");
+            }
+        }
+        return Collections.unmodifiableMap(map);
     }
 
     /**

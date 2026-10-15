@@ -4,6 +4,7 @@ import ru.jrestly.AuthProvider;
 import ru.jrestly.ModuleInfo;
 import ru.jrestly.annotation.Accept;
 import ru.jrestly.annotation.ContentType;
+import ru.jrestly.annotation.Cookie;
 import ru.jrestly.annotation.Delete;
 import ru.jrestly.annotation.ExpectStatus;
 import ru.jrestly.annotation.FollowRedirects;
@@ -33,6 +34,7 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Parameter;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
+import java.net.HttpCookie;
 import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.nio.charset.Charset;
@@ -424,6 +426,22 @@ public class HttpTemplateBuilder {
             }
         }
 
+        String cookieHeader = resolveCookies();
+        if (cookieHeader != null) {
+            boolean hasCookieHeader = false;
+            for (int i = 0; i < result.size(); i++) {
+                Header h = result.get(i);
+                if ("Cookie".equalsIgnoreCase(h.name())) {
+                    hasCookieHeader = true;
+                    result.set(i, new Header("Cookie", h.value() + "; " + cookieHeader));
+                    break;
+                }
+            }
+            if (!hasCookieHeader) {
+                result.add(new Header("Cookie", cookieHeader));
+            }
+        }
+
         if (moduleInfo != null && moduleInfo.isDecompressionEnabled()) {
             boolean hasAcceptEncoding = result.stream()
                     .anyMatch(h -> h.name() != null && h.name().equalsIgnoreCase("Accept-Encoding"));
@@ -433,6 +451,74 @@ public class HttpTemplateBuilder {
         }
 
         return result;
+    }
+
+    private String resolveCookies() {
+        Map<String, String> cookies = new java.util.LinkedHashMap<>();
+
+        List<Class<?>> hierarchy = collectInterfaceHierarchy(controller);
+        for (Class<?> iface : hierarchy) {
+            Cookie[] ifaceCookies = iface.getAnnotationsByType(Cookie.class);
+            for (Cookie c : ifaceCookies) {
+                if (!c.name().isBlank()) {
+                    cookies.put(c.name(), c.value());
+                }
+            }
+        }
+
+        if (method != null) {
+            Cookie[] methodCookies = method.getAnnotationsByType(Cookie.class);
+            for (Cookie c : methodCookies) {
+                if (!c.name().isBlank()) {
+                    cookies.put(c.name(), c.value());
+                }
+            }
+
+            Parameter[] parameters = method.getParameters();
+            for (int i = 0; i < parameters.length; i++) {
+                if (parameters[i].isAnnotationPresent(Cookie.class)) {
+                    Cookie cookieAnnotation = parameters[i].getAnnotation(Cookie.class);
+                    Object arg = args[i];
+                    if (arg == null) {
+                        String name = cookieAnnotation.name().isEmpty() ? parameters[i].getName() : cookieAnnotation.name();
+                        cookies.remove(name);
+                        continue;
+                    }
+
+                    if (arg instanceof Map<?, ?> map) {
+                        for (Map.Entry<?, ?> entry : map.entrySet()) {
+                            if (entry.getKey() != null) {
+                                String key = String.valueOf(entry.getKey());
+                                if (entry.getValue() != null) {
+                                    cookies.put(key, String.valueOf(entry.getValue()));
+                                } else {
+                                    cookies.remove(key);
+                                }
+                            }
+                        }
+                        continue;
+                    }
+
+                    if (arg instanceof HttpCookie httpCookie) {
+                        cookies.put(httpCookie.getName(), httpCookie.getValue());
+                        continue;
+                    }
+
+                    String name = cookieAnnotation.name().isEmpty()
+                            ? parameters[i].getName()
+                            : cookieAnnotation.name();
+                    cookies.put(name, String.valueOf(arg));
+                }
+            }
+        }
+
+        if (cookies.isEmpty()) {
+            return null;
+        }
+
+        return cookies.entrySet().stream()
+                .map(e -> e.getKey() + "=" + e.getValue())
+                .collect(Collectors.joining("; "));
     }
 
     private static List<Class<?>> collectInterfaceHierarchy(Class<?> clazz) {
