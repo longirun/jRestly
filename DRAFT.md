@@ -11,16 +11,29 @@
 
 ## Активная зона (кандидаты на следующий эпик)
 
-- **Кандидат №1 — test-javadoc** (ADR-0013 Non-goals):
-  Test-source javadoc вынесен за скобки аудита; наведение лоска в тестовых классах.
-- **Кандидат №2 — Interceptor Chain Short-Circuit SPI (ADR-0045)**:
+> Инвентаризация публичного API завершена (сессия #123). Отчёт: `api-audit-2026-10-15.md`.
+> Ключевые находки добавлены как Кандидаты №1 и №2.
+
+- **Кандидат №1 — Малая зачистка API (без ADR)**:
+  `OnErrorParser`, `ControllerValidator`, `RequestMeta` → package-private.
+  Все три — internal helpers, публичны без задокументированной причины.
+  Тесты на `OnErrorParser` переехать в `src/test/java/ru/jrestly/http/` (пакетный доступ).
+  Объём: малый, одна сессия.
+
+- **Кандидат №2 — HttpTemplate инкапсуляция (новый ADR)**:
+  `HttpTemplate` — 57 публичных setter-ов, leaked internal. Перевод в package-private.
+  Требует: переписать 5-6 тестов (`DecompressionConfigTest`, `PutMethodTest`, `TimeoutConfigTest` и др.),
+  которые инстанцируют `new HttpTemplate()` напрямую. Крупная работа, высокая ценность.
+
+- **Кандидат №3 — Interceptor Chain Short-Circuit SPI (ADR-0045)**:
   Интерцептор может вернуть синтетический ответ (мок/кэш) без сетевого вызова:
   `RequestInterceptor` расширяется до возврата `Optional<WireResponse>` или через
   специальный `ShortCircuitInterceptor` интерфейс. Полезно для мок-тестирования,
   кэш-слоя, circuit-from-cache.
-- **Кандидат №3 — Инвентаризация публичного API / SPI (исследование)**:
-  Пройтись по всем публичным классам, сравнить с ADR-based задумкой, найти расхождения
-  и «неожиданные» публичные методы, написать мини-отчёт для поиска мест зачистки.
+
+- **Кандидат №4 — test-javadoc** (ADR-0013 Non-goals):
+  Test-source javadoc вынесен за скобки аудита; наведение лоска в тестовых классах.
+
 
 ---
 

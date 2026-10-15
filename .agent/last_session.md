@@ -1,37 +1,45 @@
-# Last Session: #122 (2026-10-15)
+# Last Session: #123 (2026-10-15)
 
 ## Что сделано
 
-Реализован эпик **Interceptor `@Order` Priority (ADR-0044)**:
+**Инвентаризация публичного API** — исследовательская сессия без изменений в коде.
 
-- **`ru.jrestly.annotation.Order`**: новая аннотация `@Target(TYPE)` `@Retention(RUNTIME)` с `int value() default 0`.
-- **`ru.jrestly.http.HttpTemplateBuilder`**:
-  - `sortedByOrder(Class<?>[] classes)` — стабильная сортировка входного массива по `@Order` value (clone + `Arrays.sort`).
-  - `orderOf(Class<?> clazz)` — читает `@Order` или возвращает `Order.DEFAULT`.
-  - `resolveInterceptors()` — применяет `sortedByOrder(ann.value())` для каждой `@WithInterceptor` аннотации на интерфейсах и методах.
-- **`ru.jrestly.annotation.WithInterceptor`**: Javadoc обновлён — упоминает `@Order` и `@see Order`.
-- **3 unit-теста** в `InterceptorAnnotationTest`:
-  1. `orderAnnotationSortsInterceptorsAscending` — три интерцептора `{Low(+10), High(-10), Neutral(0)}` → разрешение `[High, Neutral, Low]`.
-  2. `orderAnnotationStableSortOnTie` — стабильность при равных значениях.
-  3. `noOrderAnnotationUsesDefault` — без `@Order` всё работает как раньше.
-- **`docs/0.10.0/ADR-0044-interceptor-order-priority.md`** — статус **Accepted**.
-- **`ROADMAP.md`** — секция ADR-0044 COMPLETE, следующий свободный ADR **0045**.
-- **`DRAFT.md`** — обновлён.
+- 114 main-source файлов, **109 публичных типов** по 10 пакетам.
+- Артефакт: `api-audit-2026-10-15.md` (artifact directory) — полный отчёт.
+
+### Ключевые находки
+
+**🔴 HIGH:** `HttpTemplate` — 57 публичных setter-ов, `handleDecompression`, `createUri` публичны. Это leaked internal. Тесты `DecompressionConfigTest`, `PutMethodTest`, `TimeoutConfigTest` инстанцируют `new HttpTemplate()` напрямую — нужно учитывать при инкапсуляции.
+
+**🟡 MEDIUM:**
+- `OnErrorParser` (`ru.jrestly.http`) — internal helper, публичен без причины.
+- `ControllerValidator` (`ru.jrestly`) — internal utility, используется только в `AbstractHttpClient.createController()`.
+
+**🟢 LOW:**
+- `RequestMeta` — internal record (`ru.jrestly.http`), публичен без ADR-причины.
+- `SimpleRequestContext`/`SimpleResponseContext` — публичность оправдана для тест-изоляции interceptor-ов, но Javadoc нужно пометить «implementation».
+- `Environment` — законный SPI (часть `ModuleInfo.getEnvironment()`), всё ок.
+
+### Здоровые паттерны (без проблем)
+- `MultipartBodyPublisher`, `ServerSentEventParser`, `ProgressBodyPublisher`, `ProgressBodyHandler`, `CompositeClientMetricsListener`, `FileContent` subtypes — package-private, всё корректно.
+- SPI-пакеты (`json`, `metrics`, `compression`, `tracing`, `resilience`) структурированы верно.
+- 35 аннотаций — полный декларативный API, без аномалий.
 
 ## Гейты
 
-- `./gradlew test`: **927/927** (112 классов, +3 теста к 924) — зелёные.
-- `compileJava`, `compileTestJava`, `javadoc`: 0 warnings под `-Xlint:all -Werror` и `-Xdoclint:all -Werror`.
-- Zero-dep core сохранён: 0 `<dependency>` в Maven POM.
+- Код не менялся — тесты в норме (**927/927**, 112 классов).
+- Состояние из последней кодовой сессии (#122) сохранено.
 
-## Контекст для следующей сессии (#123)
+## Контекст для следующей сессии (#124)
 
-### Активная зона DRAFT.md (выбор следующего эпика)
-- **Кандидат №1 — test-javadoc** (ADR-0013 Non-goals): наведение лоска в тестовых классах.
-- **Кандидат №2 — Interceptor Chain Short-Circuit SPI (ADR-0045)**: интерцептор возвращает
-  синтетический ответ (мок/кэш) без сетевого вызова — полезно для тестирования и кэш-слоя.
-- **Кандидат №3 — Инвентаризация публичного API**: пройтись по всем публичным классам,
-  найти расхождения с ADR-задумками, написать мини-отчёт.
+### Активная зона DRAFT (обновить DRAFT.md в следующей сессии)
+
+Три кандидата (из DRAFT.md), плюс добавить выводы аудита:
+
+- **Кандидат №1 (NEW, малый):** Малая зачистка API — `OnErrorParser` + `ControllerValidator` + `RequestMeta` → package-private. Без ADR, просто рефакторинг. Тесты на `OnErrorParser` перенести в `ru.jrestly.http` пакет теста.
+- **Кандидат №2 (NEW, крупный):** `HttpTemplate` → package-private (инкапсуляция internal), потребует переписать 5-6 тестов. Оформить как ADR.
+- **Кандидат №3:** Interceptor Chain Short-Circuit SPI (ADR-0045) — интерцептор возвращает синтетический ответ без сетевого вызова.
+- **Кандидат №4 (test-javadoc):** Наведение лоска в тестовых классах.
 
 ### Грабли (актуальный набор)
 - **`GRADLE_USER_HOME=/tmp/opencode/gradle-home`**: всегда указывать при запуске `./gradlew`.
