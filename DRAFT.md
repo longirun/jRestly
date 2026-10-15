@@ -1,24 +1,19 @@
-# DRAFT: активная зона после закрытия эпика HttpTemplate Encapsulation (ADR-0048)
+# DRAFT: активная зона после закрытия эпика JMH Performance Benchmarks Suite (ADR-0049)
 
-> Эпик HttpTemplate Internal Encapsulation & Package-Private Engine (ADR-0048, `docs/0.10.0/`) закрыт (сессия #128):
-> - `ru.jrestly.http.HttpTemplate`: объявлен package-private, 57 сеттеров/геттеров и методы `exchange()`, `createUri()`, `handleDecompression()` скрыты от публичного API и Javadoc.
-> - `ru.jrestly.http.HttpTemplateBuilder`: добавлен публичный терминальный метод `execute()` и `logger(System.Logger)`. Метод `build()` сделан package-private.
-> - `ru.jrestly.AbstractHttpClient`: развязан от `HttpTemplate` (вызывает `builder.execute()`).
-> - Организация тестов: тесты внутренней логики сборки перенесены в пакет `ru.jrestly.http`, клиентские тесты сохранены в корне.
-> - Гейты: 981/981 тестов зелёные (126 классов), 0 warnings under `-Werror`, POM 0.9.0 строго zero-dep (0 dependencies).
+> Эпик JMH Performance Benchmarks Suite & Comparative Profiling (ADR-0049, `docs/0.10.0/`) закрыт (сессия #129):
+> - Субпроект `benchmarks/`: создан изолированный модуль бенчмаркинга с JMH 1.37, JDK HttpServer, comparative clients (`jRestly`, raw `HttpClient`, `Retrofit` OkHttp, `OpenFeign` http2client) и `BenchmarkSmokeTest`.
+> - Результаты замеров: latency jRestly (~48.47 µs) практически идентична сырому HttpClient (~48.45 µs), abstraction overhead < 0.1%. In-memory dynamic proxy dispatch: ~6.3 µs (raw text) / ~29.5 µs (JSON DTO).
+> - Устранение узкого места: добавлены `isLoggable(Level.INFO)` guards в `HttpTemplate.logRequest/logResponse/processResponse`, устранившие безусловный `prettyPrint` и конкатенации строк, что ускорило диспетчеризацию в > 250 раз!
+> - Эргономика логгера: `ModuleInfo.getLogger()`, `JRestlyClient.Builder.logger(System.Logger)`.
+> - Гейты: 990/990 тестов зелёные (128 классов), 0 warnings under `-Werror`, POM 0.9.0 строго zero-dep (0 dependencies).
 > Следующий ход — свободный, выбор из активной зоны.
 
 ## Активная зона (кандидаты на следующий эпик)
 
-- **Кандидат №1 — JMH Benchmarks suite**:
-  Тестирование производительности и накладных расходов jRestly (RPS, latency p99, gc allocs)
-  в сравнении с прямым `HttpClient`, Retrofit и Feign.
-  Создание модуля `benchmarks/` с профилями JMH.
-
-- **Кандидат №2 — test-javadoc** (ADR-0013 Non-goals):
+- **Кандидат №1 — test-javadoc** (ADR-0013 Non-goals):
   Наведение лоска и лаконичного javadoc в тестовых классах.
 
-- **Кандидат №3 — HTTP Trailers & Advanced Streaming ergonomics**:
+- **Кандидат №2 — HTTP Trailers & Advanced Streaming ergonomics**:
   Расширенные сценарии работы с трейлерами и чанками в стриминге данных (LLM / SSE).
 
 

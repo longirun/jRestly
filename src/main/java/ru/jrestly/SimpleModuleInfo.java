@@ -84,6 +84,7 @@ public class SimpleModuleInfo implements ModuleInfo {
     private final ru.jrestly.resilience.RateLimiterRegistry rateLimiterRegistry;
     private final ru.jrestly.auth.TokenManager tokenManager;
     private final boolean retryOnUnauthorized;
+    private final System.Logger logger;
 
     private SimpleModuleInfo(Builder builder) {
         this.name = builder.name;
@@ -91,6 +92,7 @@ public class SimpleModuleInfo implements ModuleInfo {
         this.authProvider = builder.authHeaderName != null
                 ? new AuthHeaderProvider(builder.authHeaderName, builder.authHeaderValue)
                 : new AuthHeaderProvider();
+        this.logger = builder.logger;
         this.jsonCodec = builder.jsonCodec;
         this.connectTimeout = builder.connectTimeout;
         this.socketTimeout = builder.socketTimeout;
@@ -292,6 +294,11 @@ public class SimpleModuleInfo implements ModuleInfo {
         return retryOnUnauthorized;
     }
 
+    @Override
+    public System.Logger getLogger() {
+        return logger;
+    }
+
     /**
      * A builder for {@link SimpleModuleInfo}, pre-set to the defaults:
      * name {@code "default"}, 5 s connect timeout, 30 s socket timeout,
@@ -332,6 +339,18 @@ public class SimpleModuleInfo implements ModuleInfo {
         private ru.jrestly.resilience.RateLimiterRegistry rateLimiterRegistry;
         private ru.jrestly.auth.TokenManager tokenManager;
         private boolean retryOnUnauthorized = false;
+        private System.Logger logger;
+
+        /**
+         * Sets the custom logger for request and response logging (ADR-0049).
+         *
+         * @param logger the custom logger, or {@code null}
+         * @return this builder, for chaining
+         */
+        public Builder logger(System.Logger logger) {
+            this.logger = logger;
+            return this;
+        }
 
         /**
          * A builder pre-set to the defaults; {@code baseUrl} must still

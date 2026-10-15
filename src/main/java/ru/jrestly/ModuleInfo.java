@@ -365,5 +365,15 @@ public interface ModuleInfo {
     default boolean isRetryOnUnauthorized() {
         return false;
     }
+
+    /**
+     * The custom logger for request and response logging (ADR-0049).
+     * When {@code null} (the default), the logger is derived from the controller interface.
+     *
+     * @return the logger, or {@code null}
+     */
+    default System.Logger getLogger() {
+        return null;
+    }
 }
 

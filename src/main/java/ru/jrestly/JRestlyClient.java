@@ -848,6 +848,17 @@ public class JRestlyClient extends AbstractHttpClient {
         }
 
         /**
+         * Sets the custom logger for request and response logging (ADR-0049).
+         *
+         * @param logger the custom logger, or {@code null}
+         * @return this builder, for chaining
+         */
+        public Builder logger(System.Logger logger) {
+            moduleInfoBuilder.logger(logger);
+            return this;
+        }
+
+        /**
          * Validates the settings (baseUrl must be set) and creates the
          * client for the resulting {@link SimpleModuleInfo}; an unset
          * {@code jsonCodec} is resolved from the classpath.

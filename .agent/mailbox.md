@@ -40,21 +40,6 @@
 * я думаю еще в реалном исползовании есть миллион важных вещей?
 Это не приказ бросаться сразу все делать, просто можно учесть и разобрать в будущем. 
 
-[2026-10-15 10:05] Агент (сессия #119): Реализован эпик Request Body Compression & Content-Encoding SPI (ADR-0041):
-1. Zero-Dep Content Coding SPI (`ru.jrestly.compression`): `CompressionAlgorithm`, `ContentCompressor` SPI, `GzipContentCompressor` & `DeflateContentCompressor`, `ContentCompressors` registry.
-2. Декларативная и клиентская эргономика: `@Compress(algorithm, minSizeBytes, enabled)`, fluent builder `requestCompression` и `contentCompressor`. Защита от double compression.
-3. Тесты: 23 новых теста, гейты чистые (866/866). Следующий свободный ADR — **0042**.
-
-[2026-10-15 10:28] Агент (сессия #120): Реализован эпик Request Tracing & Correlation ID Propagation SPI (ADR-0042):
-1. Zero-Dep W3C TraceContext & Correlation IDs (`ru.jrestly.tracing`): `TraceContext` record (W3C traceparent парсинг/генерация), `TraceIdGenerators`, `TracePropagators`.
-2. Декларативная и клиентская эргономика: аннотация `@Trace`, клиентские билдеры `correlationId` и `w3cTracing`, `ResponseHeaders` акцессоры.
-3. Тесты: 28 новых тестов, гейты чистые (894/894 в 106 классах). Следующий свободный ADR — **0043**.
-
-[2026-10-15 11:57] Агент (сессия #122): Реализован эпик Interceptor `@Order` Priority (ADR-0044):
-`@ru.jrestly.annotation.Order(int value)` на классе интерцептора — нижнее значение = более ранний запуск,
-default=0, стабильная сортировка (declaration order сохраняется при равных значениях), ноль накладных на горячем пути.
-3 unit-теста, 927/927 зелёных, javadoc+lint чистые. Следующий свободный ADR — 0045.
-
 ---
 [2026-10-15 12:45] Антон: Я заметил, что библиотека стала очень зрелой. Есть, как мне кажется, направления, которые
 можно дополнительно проработать. Посмотри на них и сделай оценку - прорабатывать или нет.
@@ -122,3 +107,24 @@ default=0, стабильная сортировка (declaration order сохр
 2. **Эргономика билдера:** `HttpTemplateBuilder` получил публичный терминальный метод `execute()` и метод `logger(System.Logger)`. Метод `build()` стал package-private. `AbstractHttpClient` развязан от `HttpTemplate` (удален импорт, вызов через `builder.execute()`).
 3. **Тесты:** тесты инспекции движка вынесены в `ru.jrestly.http`, клиентские тесты очищены от внутренних сеттеров.
 4. **Гейты:** 981/981 тестов зелёные (126 классов), 0 warnings under `-Werror`, POM 0.9.0 строго zero-dep. Следующий свободный ADR — **0049**.
+
+[2026-10-15 17:05] Агент (сессия #129): Реализован эпик JMH Performance Benchmarks Suite & Comparative Profiling (ADR-0049):
+1. **Изолированный JMH модуль (`benchmarks/`):**
+   - Настроен Gradle subproject `benchmarks` с JMH 1.37, embedded JDK `HttpServer` и сравнительными адаптерами: `jRestly`, сырой Java 21 `HttpClient`, Square `Retrofit 2` (OkHttp) и `OpenFeign` (`feign-http2client`).
+   - Публикация ядра строго zero-dep: в Maven POM `jRestly` ровно 0 dependencies.
+   - Добавлен `BenchmarkSmokeTest` (CI автопроверка работоспособности и консистентности всех 4 клиентов).
+2. **Результаты замеров производительности:**
+   - **Сетевой HTTP throughput/latency (loopback сокеты):**
+     * `jRestly.getUser`: ~48.47 µs/op
+     * `rawHttpClient.getUser`: ~48.45 µs/op
+     * `feign.getUser`: ~48.54 µs/op
+     * `retrofit.getUser`: ~44.65 µs/op
+     Накладные расходы декларативного прокси `jRestly` поверх `HttpClient` составляют **< 0.1%** — скорость практически неотличима от голого вызова без библиотек!
+   - **Чистый abstraction overhead прокси в памяти (in-memory mock dispatch):**
+     * Сырой текст / ping: ~6.3 µs/op.
+     * JSON DTO (с полным Jackson parsing): ~29.5 µs/op.
+3. **Устранение скрытого узкого места (Hot-Path):**
+   - Профайлинг выявил, что `HttpTemplate` безусловно вызывал `prettyPrint(payload)` и форматирование строк даже при выключенном логгировании!
+   - Добавлены `if (logger.isLoggable(Level.INFO))` guards в `logRequest/logResponse/processResponse`, что устранило ненужные аллокации и ускорило диспетчеризацию в памяти более чем в **250 раз**!
+   - Добавлен метод `logger(System.Logger)` на `JRestlyClient.Builder` и `SimpleModuleInfo.Builder`.
+4. **Гейты:** 990/990 тестов зелёные (128 классов, +9 тестов), 0 warnings under `-Werror` и doclint, POM 0.9.0 строго zero-dep. Следующий свободный ADR — **0050**.

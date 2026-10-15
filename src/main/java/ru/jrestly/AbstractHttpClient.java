@@ -195,6 +195,9 @@ public abstract class AbstractHttpClient {
                     if (executor != null) {
                         builder.executor(executor);
                     }
+                    if (moduleInfo.getLogger() != null) {
+                        builder.logger(moduleInfo.getLogger());
+                    }
                     builder.interceptorCache(interceptorInstances);
 
                     return builder.execute();

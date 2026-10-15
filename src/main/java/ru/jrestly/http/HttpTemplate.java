@@ -694,7 +694,9 @@ class HttpTemplate {
             // ADR-0016 Aspect 1 & 5: Stream<String> returns line stream;
             // Stream<ServerSentEvent> returns parsed event stream
             if (isStreamType(returnType, String.class)) {
-                logger.log(System.Logger.Level.INFO, streamingPayloadLine("streaming lines", responseHeaders));
+                if (logger.isLoggable(System.Logger.Level.INFO)) {
+                    logger.log(System.Logger.Level.INFO, streamingPayloadLine("streaming lines", responseHeaders));
+                }
                 Charset charset = resolveCharset(responseHeaders);
                 Stream<String> lineStream = new BufferedReader(new InputStreamReader(stream, charset))
                         .lines()
@@ -702,7 +704,9 @@ class HttpTemplate {
                 return (T) lineStream;
             }
             if (isStreamType(returnType, ServerSentEvent.class)) {
-                logger.log(System.Logger.Level.INFO, streamingPayloadLine("streaming events", responseHeaders));
+                if (logger.isLoggable(System.Logger.Level.INFO)) {
+                    logger.log(System.Logger.Level.INFO, streamingPayloadLine("streaming events", responseHeaders));
+                }
                 Charset charset = resolveCharset(responseHeaders);
                 Stream<String> lineStream = new BufferedReader(new InputStreamReader(stream, charset))
                         .lines()
@@ -712,7 +716,9 @@ class HttpTemplate {
             }
             // ADR-0015 Aspect 5: the payload line is skipped for stream
             // responses — logging must not consume the body
-            logger.log(System.Logger.Level.INFO, streamingPayloadLine("streaming", responseHeaders));
+            if (logger.isLoggable(System.Logger.Level.INFO)) {
+                logger.log(System.Logger.Level.INFO, streamingPayloadLine("streaming", responseHeaders));
+            }
             if (optional) {
                 if (statusCode == 404 || statusCode == 304 || statusCode == 204) {
                     closeQuietly(stream);
@@ -738,41 +744,57 @@ class HttpTemplate {
 
         if (optional) {
             if (statusCode == 404 || statusCode == 304 || statusCode == 204 || bytes == null || bytes.length == 0) {
-                logger.log(System.Logger.Level.INFO, "No response or empty/status for Optional return.");
+                if (logger.isLoggable(System.Logger.Level.INFO)) {
+                    logger.log(System.Logger.Level.INFO, "No response or empty/status for Optional return.");
+                }
                 return (T) Optional.empty();
             }
             if (byte[].class.equals(returnType)) {
-                logger.log(System.Logger.Level.INFO, "Response size: " + bytes.length + " bytes");
+                if (logger.isLoggable(System.Logger.Level.INFO)) {
+                    logger.log(System.Logger.Level.INFO, "Response size: " + bytes.length + " bytes");
+                }
                 return (T) Optional.of(bytes);
             }
             if (String.class.equals(returnType)) {
-                logger.log(System.Logger.Level.INFO, "Response size: " + payload.length() + " bytes\n" + payload);
+                if (logger.isLoggable(System.Logger.Level.INFO)) {
+                    logger.log(System.Logger.Level.INFO, "Response size: " + payload.length() + " bytes\n" + payload);
+                }
                 return (T) Optional.of(payload);
             }
             if (Void.class.equals(returnType) || void.class.equals(returnType)) {
                 return (T) Optional.empty();
             }
-            logger.log(System.Logger.Level.INFO, "Response size: " + payload.length() + " bytes\n" + jsonCodec.prettyPrint(payload));
+            if (logger.isLoggable(System.Logger.Level.INFO)) {
+                logger.log(System.Logger.Level.INFO, "Response size: " + payload.length() + " bytes\n" + jsonCodec.prettyPrint(payload));
+            }
             Object deserialized = jsonCodec.deserialize(payload, returnType);
             return (T) Optional.ofNullable(deserialized);
         }
 
         if (bytes == null || bytes.length == 0) {
-            logger.log(System.Logger.Level.INFO, "No response.");
+            if (logger.isLoggable(System.Logger.Level.INFO)) {
+                logger.log(System.Logger.Level.INFO, "No response.");
+            }
             return null;
         }
 
         if (byte[].class.equals(returnType)) {
-            logger.log(System.Logger.Level.INFO, "Response size: " + bytes.length + " bytes");
+            if (logger.isLoggable(System.Logger.Level.INFO)) {
+                logger.log(System.Logger.Level.INFO, "Response size: " + bytes.length + " bytes");
+            }
             return (T) bytes;
         }
 
         if (String.class.equals(returnType)) {
-            logger.log(System.Logger.Level.INFO, "Response size: " + payload.length() + " bytes\n" + payload);
+            if (logger.isLoggable(System.Logger.Level.INFO)) {
+                logger.log(System.Logger.Level.INFO, "Response size: " + payload.length() + " bytes\n" + payload);
+            }
             return (T) payload;
         }
 
-        logger.log(System.Logger.Level.INFO, "Response size: " + payload.length() + " bytes\n" + jsonCodec.prettyPrint(payload));
+        if (logger.isLoggable(System.Logger.Level.INFO)) {
+            logger.log(System.Logger.Level.INFO, "Response size: " + payload.length() + " bytes\n" + jsonCodec.prettyPrint(payload));
+        }
         // ADR-0009 candidate 2: the primitive and the boxed form are one
         // contract — a void/Void method never decodes the body
         if (Void.class.equals(returnType) || void.class.equals(returnType)) {
@@ -1677,6 +1699,9 @@ class HttpTemplate {
      * @param request the wire request about to be sent
      */
     protected void logRequest(WireRequest request) {
+        if (!logger.isLoggable(System.Logger.Level.INFO)) {
+            return;
+        }
         StringBuilder sb = new StringBuilder();
         sb.append(request.method()).append(" ").append(request.uri());
         sb.append("\n");
@@ -1721,6 +1746,9 @@ class HttpTemplate {
     }
 
     private void logResponse(WireResponse response, long elapsedMs) {
+        if (!logger.isLoggable(System.Logger.Level.INFO)) {
+            return;
+        }
         String headers = response.headers().stream()
                 .map(Object::toString)
                 .collect(Collectors.joining("\n"));

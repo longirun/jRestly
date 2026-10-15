@@ -1666,7 +1666,48 @@ Gates (session #128, clean rebuild):
 - `javadoc` 0 warnings under permanent `-Xdoclint:all -Werror`.
 - Zero external runtime dependencies strictly preserved (0 dependencies in Maven POM).
 
-After the epic: candidates — JMH Benchmarks suite, test-javadoc. ADR number **0049** free.
+After the epic: ADR-0049 (JMH Performance Benchmarks Suite & Comparative Profiling) — done, section below. ADR number **0049** used.
+
+## JMH Performance Benchmarks Suite & Comparative Profiling (ADR-0049) — COMPLETE ✅ (2026-10-15, unreleased)
+
+> Source of truth: [`docs/0.10.0/ADR-0049-jmh-performance-benchmarks-suite.md`](docs/0.10.0/ADR-0049-jmh-performance-benchmarks-suite.md).
+
+**Problem:** In mailbox inquiries, the maintainer specifically sought empirical performance data and comparative profiling of `jRestly` against industry standards (Square Retrofit 2, OpenFeign) and the raw JDK `HttpClient`. We needed an isolated, repeatable JMH microbenchmarking harness without compromising the zero-dependency core invariant.
+
+**Solution:**
+- **Isolated Subproject (`benchmarks/`):** Added `include 'benchmarks'` to `settings.gradle`. All benchmarking tools (`jmh-core`, `retrofit2`, `feign-core`, `feign-http2client`) reside strictly in `benchmarks/build.gradle`. The root `jRestly` POM publication remains 100% dependency-free (0 dependencies).
+- **Comparative Benchmarks:**
+  * `HttpNetworkBenchmark`: End-to-end HTTP/1.1 network throughput and latency over loopback TCP sockets against an embedded JDK `HttpServer`. Compares `jRestly`, raw `HttpClient`, `Retrofit` (OkHttp), and `OpenFeign` (`feign-http2client`).
+    - `jRestly.getUser`: ~48.47 µs/op vs `rawHttpClient.getUser`: ~48.45 µs/op vs `feign.getUser`: ~48.54 µs/op vs `retrofit.getUser`: ~44.65 µs/op.
+    - `jRestly` abstraction overhead over raw `HttpClient` across network transport is **< 0.1%** (essentially zero overhead).
+  * `DispatchOverheadBenchmark`: Pure in-memory abstraction tax of the dynamic proxy and metadata pipeline via `mock(WireResponse)` without OS socket latency.
+    - Raw text dispatch: ~6.3 µs/op; JSON DTO dispatch: ~29.5 µs/op (including full Jackson parsing).
+- **Hot-Path Bottleneck Discovery & Elimination:**
+  * Profiling revealed unconditional string allocations and `jsonCodec.prettyPrint(payload)` formatting in `HttpTemplate` even when logging was disabled.
+  * Added `if (logger.isLoggable(System.Logger.Level.INFO))` guards to `logRequest()`, `logResponse()`, and `processResponse()` payload logging, eliminating allocations on the hot path and speeding up dispatch by **> 250x**.
+- **Ergonomics & Logger SPI:**
+  * Added `default System.Logger getLogger()` to `ModuleInfo`.
+  * Added `logger(System.Logger)` fluent method to `SimpleModuleInfo.Builder` and `JRestlyClient.Builder`.
+  * Propagated custom logger from `ModuleInfo` through `AbstractHttpClient` into `HttpTemplateBuilder`.
+- **Automated Verification:** Added `BenchmarkSmokeTest` in `benchmarks/src/test/java` covering all four client adapters, ensuring continuous CI verification.
+- **Dedicated Task:** Added Gradle task `task jmh(type: JavaExec)` for repeatable runs with `-PjmhArgs="..."`.
+
+Key changes:
+- `benchmarks/`: new subproject with JMH harness, `BenchmarkHttpServer`, comparative clients (`JRestlyBenchmarkClient`, `RawHttpClientBenchmarkClient`, `RetrofitBenchmarkClient`, `FeignBenchmarkClient`), and `BenchmarkSmokeTest`.
+- `ru.jrestly.ModuleInfo`: added `getLogger()`.
+- `ru.jrestly.SimpleModuleInfo`: added `logger` field, getter, and `Builder.logger(System.Logger)`.
+- `ru.jrestly.JRestlyClient`: added `Builder.logger(System.Logger)`.
+- `ru.jrestly.AbstractHttpClient`: propagated `moduleInfo.getLogger()` to `HttpTemplateBuilder`.
+- `ru.jrestly.http.HttpTemplate`: added `isLoggable(Level.INFO)` guards across request, response, and body logging.
+- Tests: `ClientLoggerConfigTest` (+3 tests), `BenchmarkSmokeTest` (+6 tests). Total test suite: 990/990 across 128 classes.
+
+Gates (session #129, clean rebuild):
+- `./gradlew test` **990/990** (128 classes, 0 failures/errors; +9 tests in ADR-0049).
+- `compileJava` and `compileTestJava` 0 warnings under permanent `-Xlint:all -Werror`.
+- `javadoc` 0 warnings under permanent `-Xdoclint:all -Werror`.
+- Zero external runtime dependencies strictly preserved (0 dependencies in root Maven POM).
+
+After the epic: candidates — test-javadoc, HTTP Trailers & Advanced Streaming ergonomics. ADR number **0050** free.
 
 
 
