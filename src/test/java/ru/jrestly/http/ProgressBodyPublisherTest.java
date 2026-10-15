@@ -144,6 +144,24 @@ class ProgressBodyPublisherTest {
         assertEquals(List.of(3L, 3L), sentValues);
     }
 
+    @Test
+    @DisplayName("Handles empty body with totalBytes = 0 and invokes onProgress(0, 0)")
+    void handlesEmptyBodyWithTotalZero() {
+        HttpRequest.BodyPublisher raw = HttpRequest.BodyPublishers.noBody();
+        List<Long> sentList = new ArrayList<>();
+        List<Long> totalList = new ArrayList<>();
+
+        ProgressBodyPublisher publisher = new ProgressBodyPublisher(raw, (sent, total) -> {
+            sentList.add(sent);
+            totalList.add(total);
+        });
+
+        publisher.subscribe(new SimpleSubscriber());
+
+        assertEquals(List.of(0L), sentList);
+        assertEquals(List.of(0L), totalList);
+    }
+
     private static class SimpleSubscriber implements Flow.Subscriber<ByteBuffer> {
         @Override
         public void onSubscribe(Flow.Subscription subscription) {

@@ -3,6 +3,8 @@ package ru.jrestly.compression;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.util.Objects;
 import java.util.zip.GZIPInputStream;
 import java.util.zip.GZIPOutputStream;
 
@@ -47,5 +49,11 @@ public final class GzipContentCompressor implements ContentCompressor {
         try (GZIPInputStream gis = new GZIPInputStream(new ByteArrayInputStream(compressed))) {
             return gis.readAllBytes();
         }
+    }
+
+    @Override
+    public InputStream decompress(InputStream stream) throws IOException {
+        Objects.requireNonNull(stream, "stream must not be null");
+        return new GZIPInputStream(stream);
     }
 }

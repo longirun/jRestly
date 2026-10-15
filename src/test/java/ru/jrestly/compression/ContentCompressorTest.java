@@ -40,8 +40,9 @@ class ContentCompressorTest {
 
         assertArrayEquals(new byte[0], compressor.compress(null));
         assertArrayEquals(new byte[0], compressor.compress(new byte[0]));
-        assertArrayEquals(new byte[0], compressor.decompress(null));
+        assertArrayEquals(new byte[0], compressor.decompress((byte[]) null));
         assertArrayEquals(new byte[0], compressor.decompress(new byte[0]));
+        assertThrows(NullPointerException.class, () -> compressor.decompress((java.io.InputStream) null));
     }
 
     @Test
@@ -67,8 +68,9 @@ class ContentCompressorTest {
 
         assertArrayEquals(new byte[0], compressor.compress(null));
         assertArrayEquals(new byte[0], compressor.compress(new byte[0]));
-        assertArrayEquals(new byte[0], compressor.decompress(null));
+        assertArrayEquals(new byte[0], compressor.decompress((byte[]) null));
         assertArrayEquals(new byte[0], compressor.decompress(new byte[0]));
+        assertThrows(NullPointerException.class, () -> compressor.decompress((java.io.InputStream) null));
     }
 
     @Test
@@ -110,5 +112,24 @@ class ContentCompressorTest {
 
         assertEquals("custom", compressor.encoding());
         assertThrows(UnsupportedOperationException.class, () -> compressor.decompress(new byte[]{1, 2, 3}));
+        assertThrows(UnsupportedOperationException.class, () -> compressor.decompress(new java.io.ByteArrayInputStream(new byte[]{1, 2, 3})));
+    }
+
+    @Test
+    @DisplayName("GzipContentCompressor and DeflateContentCompressor decompress streaming InputStream correctly")
+    void testStreamingDecompression() throws IOException {
+        byte[] original = "Streaming compression payload roundtrip verification text.".repeat(10).getBytes(StandardCharsets.UTF_8);
+
+        // GZIP stream
+        byte[] gzipCompressed = GzipContentCompressor.INSTANCE.compress(original);
+        try (java.io.InputStream stream = GzipContentCompressor.INSTANCE.decompress(new java.io.ByteArrayInputStream(gzipCompressed))) {
+            assertArrayEquals(original, stream.readAllBytes());
+        }
+
+        // DEFLATE stream
+        byte[] deflateCompressed = DeflateContentCompressor.INSTANCE.compress(original);
+        try (java.io.InputStream stream = DeflateContentCompressor.INSTANCE.decompress(new java.io.ByteArrayInputStream(deflateCompressed))) {
+            assertArrayEquals(original, stream.readAllBytes());
+        }
     }
 }

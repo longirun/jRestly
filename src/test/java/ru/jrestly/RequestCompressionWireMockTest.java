@@ -15,9 +15,11 @@ import ru.jrestly.compression.GzipContentCompressor;
 import ru.jrestly.fixtures.TestDto;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.stream.Stream;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
 import static com.github.tomakehurst.wiremock.client.WireMock.equalTo;
@@ -77,6 +79,12 @@ class RequestCompressionWireMockTest extends BaseWireMockTest {
     public interface CustomSpiApi {
         @Post(path = "/api/custom-spi")
         String echoCustom(@RequestBody String payload);
+
+        @Post(path = "/api/custom-spi/stream")
+        InputStream echoCustomStream(@RequestBody String payload);
+
+        @Post(path = "/api/custom-spi/lines")
+        Stream<String> echoCustomLines(@RequestBody String payload);
     }
 
     @Test
@@ -298,6 +306,112 @@ class RequestCompressionWireMockTest extends BaseWireMockTest {
             CustomSpiApi api = customClient.get(CustomSpiApi.class);
             String response = api.echoCustom("ping");
             assertEquals("Hello Inverted World!", response, "Custom compressor must transparently decompress response");
+        } finally {
+            customClient.close();
+        }
+    }
+
+    @Test
+    @DisplayName("Custom ContentCompressor SPI transparently decompresses streaming response (InputStream)")
+    void testCustomContentCompressorStreamingResponse() throws Exception {
+        ContentCompressor inverter = new ContentCompressor() {
+            @Override
+            public String encoding() {
+                return "inverted";
+            }
+
+            @Override
+            public byte[] compress(byte[] uncompressed) {
+                byte[] res = new byte[uncompressed.length];
+                for (int i = 0; i < uncompressed.length; i++) {
+                    res[i] = (byte) (~uncompressed[i]);
+                }
+                return res;
+            }
+
+            @Override
+            public byte[] decompress(byte[] compressed) {
+                byte[] res = new byte[compressed.length];
+                for (int i = 0; i < compressed.length; i++) {
+                    res[i] = (byte) (~compressed[i]);
+                }
+                return res;
+            }
+        };
+
+        byte[] plainBytes = "Streaming Inverted Content Line 1\nStreaming Inverted Content Line 2".getBytes(StandardCharsets.UTF_8);
+        byte[] invertedResponse = inverter.compress(plainBytes);
+
+        stubFor(post(urlEqualTo("/api/custom-spi/stream"))
+                .willReturn(aResponse()
+                        .withStatus(200)
+                        .withHeader("Content-Type", "text/plain")
+                        .withHeader("Content-Encoding", "inverted")
+                        .withBody(invertedResponse)));
+
+        JRestlyClient customClient = JRestlyClient.builder()
+                .baseUrl(baseUrl())
+                .contentCompressor(inverter)
+                .build();
+        try {
+            CustomSpiApi api = customClient.get(CustomSpiApi.class);
+            try (InputStream stream = api.echoCustomStream("ping")) {
+                byte[] actual = stream.readAllBytes();
+                assertEquals("Streaming Inverted Content Line 1\nStreaming Inverted Content Line 2", new String(actual, StandardCharsets.UTF_8));
+            }
+        } finally {
+            customClient.close();
+        }
+    }
+
+    @Test
+    @DisplayName("Custom ContentCompressor SPI transparently decompresses line stream (Stream<String>)")
+    void testCustomContentCompressorLinesResponse() throws Exception {
+        ContentCompressor inverter = new ContentCompressor() {
+            @Override
+            public String encoding() {
+                return "inverted";
+            }
+
+            @Override
+            public byte[] compress(byte[] uncompressed) {
+                byte[] res = new byte[uncompressed.length];
+                for (int i = 0; i < uncompressed.length; i++) {
+                    res[i] = (byte) (~uncompressed[i]);
+                }
+                return res;
+            }
+
+            @Override
+            public byte[] decompress(byte[] compressed) {
+                byte[] res = new byte[compressed.length];
+                for (int i = 0; i < compressed.length; i++) {
+                    res[i] = (byte) (~compressed[i]);
+                }
+                return res;
+            }
+        };
+
+        byte[] plainBytes = "Alpha\nBeta\nGamma".getBytes(StandardCharsets.UTF_8);
+        byte[] invertedResponse = inverter.compress(plainBytes);
+
+        stubFor(post(urlEqualTo("/api/custom-spi/lines"))
+                .willReturn(aResponse()
+                        .withStatus(200)
+                        .withHeader("Content-Type", "text/plain")
+                        .withHeader("Content-Encoding", "inverted")
+                        .withBody(invertedResponse)));
+
+        JRestlyClient customClient = JRestlyClient.builder()
+                .baseUrl(baseUrl())
+                .contentCompressor(inverter)
+                .build();
+        try {
+            CustomSpiApi api = customClient.get(CustomSpiApi.class);
+            try (Stream<String> lines = api.echoCustomLines("ping")) {
+                List<String> list = lines.toList();
+                assertEquals(List.of("Alpha", "Beta", "Gamma"), list);
+            }
         } finally {
             customClient.close();
         }

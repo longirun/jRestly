@@ -3,6 +3,8 @@ package ru.jrestly.compression;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.util.Objects;
 import java.util.zip.DeflaterOutputStream;
 import java.util.zip.Inflater;
 import java.util.zip.InflaterInputStream;
@@ -59,5 +61,11 @@ public final class DeflateContentCompressor implements ContentCompressor {
                 rawInflater.end();
             }
         }
+    }
+
+    @Override
+    public InputStream decompress(InputStream stream) throws IOException {
+        Objects.requireNonNull(stream, "stream must not be null");
+        return new InflaterInputStream(stream);
     }
 }

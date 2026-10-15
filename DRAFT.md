@@ -39,8 +39,22 @@
 >   на ответ, все текстовые материализации — через него; fallback UTF-8 без падений.
 >   Оформлен `docs/0.10.0/ADR-0056-response-charset-resolution-for-string-payloads.md`.
 >   +6 E2E-тестов (`ResponseCharsetWireMockTest`), **1042/1042**, 0 warnings.
-> - Остаток аудита по списку #139 (ProgressBodyHandler, edge cases `HttpTemplate`,
->   гонки lazy-init, `WireRequest`/`WireResponse`) — в следующих сессиях.
+> **Сессия #141 (аудит, стриминг декомпрессии и upload progress):**
+> - Найден и исправлен **баг стриминговой декомпрессии в `HttpTemplate.handleDecompression`**:
+>   при наличии кастомного `ContentCompressor` (SPI ADR-0041) и стримингового ответа (`InputStream`,
+>   `Stream<String>`, `Stream<ServerSentEvent>`) `HttpTemplate` безусловно оборачивал стрим в
+>   `new InflaterInputStream`, полностью игнорируя кастомный компрессор и приводя к `ZipException`.
+>   Фикс: добавлен `default InputStream decompress(InputStream stream)` в `ContentCompressor`,
+>   реализован в `GzipContentCompressor` и `DeflateContentCompressor`, поддержан в `HttpTemplate`.
+> - Найдена и исправлена **асимметрия прогресса загрузки пустых тел в `ProgressBodyPublisher`**:
+>   JDK `HttpClient` оптимизирует запросы нулевой длины (`Content-Length: 0`) и не создает подписку на
+>   Flow Publisher. Теперь `ProgressBodyPublisher` и `JdkHttpEngine` гарантируют отправку `(0, 0)`
+>   события прогресса ровно один раз через thread-safe CAS guard.
+> - Оформлен `docs/0.10.0/ADR-0057-streaming-decompression-spi-and-zero-length-upload-progress.md`.
+> - +5 тестов (`RequestCompressionWireMockTest`, `ContentCompressorTest`, `ProgressBodyPublisherTest`,
+>   `UploadProgressWireMockTest`), всего **1047/1047 тестов**, 0 warnings под `-Werror`, zero-dep core.
+> 
+> Следующий свободный ADR — **0058**.
 
 ## Активная зона (кандидаты на следующий эпик)
 
@@ -50,7 +64,7 @@
 - **Кандидат №2 — HTTP Trailers & Advanced Streaming ergonomics**:
   Расширенные сценарии работы с трейлерами и чанками в стриминге данных (LLM / SSE).
 
-- **Кандидат №3 — OkHttpEngine / ApacheHttpEngine external modules** (ADR-0057):
+- **Кандидат №3 — OkHttpEngine / ApacheHttpEngine external modules** (ADR-0058):
   Вынос внешних коннекторов в отдельные субмодули для максимальной скорости под нагрузкой.
   *(Развилка Антона, 2026-10-15: добить бенчмаркинг с OkHttp/Apache, убедиться что jRestly
   на вершине возможной производительности, сравнить с другими библиотеками и оформить

@@ -1939,7 +1939,36 @@ Gates (session #140):
 - `javadoc` 0 warnings under permanent `-Xdoclint:all -Werror`.
 - Zero external runtime dependencies strictly preserved (0 dependencies in root Maven POM).
 
-After the audit fix: candidate №1 — test-javadoc, candidate №2 — HTTP Trailers & Advanced Streaming ergonomics, candidate №3 — OkHttpEngine / ApacheHttpEngine external modules (ADR-0057). ADR number **0057** free.
+After the audit fix: candidate №1 — test-javadoc, candidate №2 — HTTP Trailers & Advanced Streaming ergonomics, candidate №3 — OkHttpEngine / ApacheHttpEngine external modules.
+---
+
+## Streaming Decompression SPI & Zero-Length Upload Progress (ADR-0057) — COMPLETE ✅
+
+> Source of truth: [`docs/0.10.0/ADR-0057-streaming-decompression-spi-and-zero-length-upload-progress.md`](docs/0.10.0/ADR-0057-streaming-decompression-spi-and-zero-length-upload-progress.md).
+> Audit finding (maintainer's question #2, 2026-10-15): custom content compressors broke streaming responses with `ZipException`, and `UploadProgressListener` missed notifications on empty bodies due to transport subscription bypass.
+
+- **Streaming Decompression SPI (`ContentCompressor.decompress(InputStream)`):**
+  * `ContentCompressor` now provides `default InputStream decompress(InputStream stream) throws IOException`, delegating by default to byte decompression or allowing zero-buffering native streaming decoders (Brotli, Zstd).
+  * Built-in `GzipContentCompressor` and `DeflateContentCompressor` implement streaming decompression via `GZIPInputStream` and `InflaterInputStream`.
+  * `HttpTemplate.handleDecompression()` delegates directly to `customCompressor.decompress(response.stream())`, resolving the defect where custom compressors were unconditionally routed to `InflaterInputStream`.
+- **Symmetric Zero-Length Upload Progress Notification:**
+  * `ProgressBodyPublisher` features thread-safe CAS guard (`AtomicBoolean notifiedZero`) and `notifyZeroLengthIfPending()`.
+  * `JdkHttpEngine` proactively triggers zero-length progress notification for transport layers that bypass Flow subscriptions on zero-length requests (`Content-Length: 0`).
+  * `UploadProgressListener` receives `onProgress(0, 0)` on empty uploads, mirroring download behavior.
+- **Automated Verification (+5 tests):**
+  * `RequestCompressionWireMockTest` (+2 E2E streaming tests with custom SPI).
+  * `ContentCompressorTest` (+2 unit tests for streaming decompression).
+  * `ProgressBodyPublisherTest` (+1 unit test for zero-length subscription).
+  * `UploadProgressWireMockTest` (+1 E2E test for zero-length upload payload).
+  * Total suite: **1047/1047 tests** across 135 classes, 0 failures, 0 errors.
+
+Gates (session #141):
+- `./gradlew test` **1047/1047** (135 classes, 0 failures/errors; +5 tests in ADR-0057).
+- `compileJava` and `compileTestJava` 0 warnings under permanent `-Xlint:all -Werror`.
+- `javadoc` 0 warnings under permanent `-Xdoclint:all -Werror`.
+- Zero external runtime dependencies strictly preserved (0 dependencies in root Maven POM).
+
+After the audit fix: candidate №1 — test-javadoc, candidate №2 — HTTP Trailers & Advanced Streaming ergonomics, candidate №3 — OkHttpEngine / ApacheHttpEngine external modules (ADR-0058). ADR number **0058** free.
 
 
 

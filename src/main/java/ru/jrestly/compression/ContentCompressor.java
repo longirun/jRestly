@@ -1,6 +1,9 @@
 package ru.jrestly.compression;
 
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.util.Objects;
 
 /**
  * Service Provider Interface (SPI) for HTTP content compression and decompression (ADR-0041).
@@ -34,5 +37,20 @@ public interface ContentCompressor {
      */
     default byte[] decompress(byte[] compressed) throws IOException {
         throw new UnsupportedOperationException("Decompression not supported by " + getClass().getName());
+    }
+
+    /**
+     * Decompresses the given compressed input stream (ADR-0041).
+     * <p>The default implementation buffers all bytes and delegates to {@link #decompress(byte[])}.
+     * Implementations may override this method to provide streaming decompression.
+     *
+     * @param stream compressed input stream, must not be {@code null}
+     * @return decompressed input stream
+     * @throws IOException on decompression failure
+     */
+    default InputStream decompress(InputStream stream) throws IOException {
+        Objects.requireNonNull(stream, "stream must not be null");
+        byte[] bytes = stream.readAllBytes();
+        return new ByteArrayInputStream(decompress(bytes));
     }
 }

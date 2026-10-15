@@ -353,4 +353,20 @@ class UploadProgressWireMockTest {
         assertEquals(last.totalBytes(), last.bytesSent());
         assertTrue(last.totalBytes() >= 131072);
     }
+
+    @Test
+    @DisplayName("Empty upload body invokes UploadProgressListener exactly once with (0, 0)")
+    void emptyUploadBodyInvokesProgressListenerWithZero() {
+        wireMock.stubFor(post(urlEqualTo("/raw/bytes"))
+                .willReturn(ok("empty-ok")));
+
+        List<ProgressEvent> events = new CopyOnWriteArrayList<>();
+        UploadApi api = httpClient.get(UploadApi.class);
+
+        String result = api.uploadRaw(new byte[0], (sent, total) -> events.add(new ProgressEvent(sent, total)));
+
+        assertEquals("empty-ok", result);
+        assertEquals(1, events.size(), "Should invoke progress listener once for empty upload");
+        assertEquals(new ProgressEvent(0, 0), events.getFirst());
+    }
 }

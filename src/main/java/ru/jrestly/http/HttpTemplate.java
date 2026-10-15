@@ -1469,9 +1469,14 @@ class HttpTemplate {
                 .toList();
 
         if (response.stream() != null) {
-            InputStream decompressedStream = isGzip
-                    ? new GZIPInputStream(response.stream())
-                    : new InflaterInputStream(response.stream());
+            InputStream decompressedStream;
+            if (customCompressor != null) {
+                decompressedStream = customCompressor.decompress(response.stream());
+            } else if (isGzip) {
+                decompressedStream = new GZIPInputStream(response.stream());
+            } else {
+                decompressedStream = new InflaterInputStream(response.stream());
+            }
             return new WireResponse(response.statusCode(), strippedHeaders, null, decompressedStream, response.version(), response.trailers());
         }
 

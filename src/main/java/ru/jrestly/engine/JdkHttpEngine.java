@@ -119,6 +119,7 @@ public class JdkHttpEngine implements HttpEngine {
     @Override
     public WireResponse send(WireRequest request, HttpEngineOptions options) throws IOException, InterruptedException {
         HttpRequest httpRequest = toHttpRequest(request, options);
+        notifyZeroUploadIfPending(httpRequest, options);
         if (options != null && options.streamResponse()) {
             HttpResponse.BodyHandler<InputStream> bodyHandler = HttpResponse.BodyHandlers.ofInputStream();
             if (options.downloadProgressListener() != null) {
@@ -139,6 +140,7 @@ public class JdkHttpEngine implements HttpEngine {
     @Override
     public CompletableFuture<WireResponse> sendAsync(WireRequest request, HttpEngineOptions options) {
         HttpRequest httpRequest = toHttpRequest(request, options);
+        notifyZeroUploadIfPending(httpRequest, options);
         if (options != null && options.streamResponse()) {
             HttpResponse.BodyHandler<InputStream> bodyHandler = HttpResponse.BodyHandlers.ofInputStream();
             if (options.downloadProgressListener() != null) {
@@ -243,5 +245,15 @@ public class JdkHttpEngine implements HttpEngine {
             }
         }
         return List.copyOf(list);
+    }
+
+    private static void notifyZeroUploadIfPending(HttpRequest httpRequest, HttpEngineOptions options) {
+        if (options != null && options.uploadProgressListener() != null && httpRequest != null) {
+            httpRequest.bodyPublisher().ifPresent(bp -> {
+                if (bp instanceof ProgressBodyPublisher pbp) {
+                    pbp.notifyZeroLengthIfPending();
+                }
+            });
+        }
     }
 }

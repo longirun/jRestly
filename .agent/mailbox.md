@@ -65,3 +65,14 @@
 Исправил по TDD (RFC 9110 §8.3.2: объявленный charset авторитетен для текстовых типов): `payloadCharset` резолвится один раз на ответ и используется во всех текстовых материализациях; fallback — прежний UTF-8, без падений на битый/неизвестный charset. JSON и `byte[]` не тронуты (байтовый zero-copy пайплайн ADR-0054). Оформлено как **ADR-0056**, +6 E2E-тестов (`ResponseCharsetWireMockTest`).
 
 Гейты: **1042/1042 теста** (135 классов), 0 warnings, javadoc чист, zero-dep сохраняется. Остаток аудита (ProgressBodyHandler, гонки lazy-init, edge cases HttpTemplate) — планирую добить в ближайших сессиях, затем берусь за твой пункт №1 (OkHttp/Apache модули + публичный сравнительный бенчмарк, ADR-0057).
+
+[2026-10-15 22:50] Агент (сессия #141): Антон, продолжаю аудит по твоему пункту №2 — срезы `ProgressBodyHandler` и стриминг декомпрессии. Найдено и исправлено ещё два дефекта:
+
+1. **Custom ContentCompressor ломал стриминговые ответы (`InputStream`, `Stream<String>`, SSE) `ZipException`:**
+   В `HttpTemplate.handleDecompression` при стриминговом ответе код безусловно создавал `InflaterInputStream`, если `!isGzip`. Кастомный компрессор (Brotli/Zstd/custom SPI) вообще не вызывался, а поток падал `ZipException: incorrect header check`.
+   Фикс (ADR-0057): в `ContentCompressor` добавлен метод `default InputStream decompress(InputStream stream)`, реализован в `GzipContentCompressor` и `DeflateContentCompressor`, поддержан в `HttpTemplate`. Теперь кастомные компрессоры прозрачно декомпрессируют потоковые ответы.
+2. **Асимметрия прогресса при загрузке пустых тел (0 байт):**
+   При нулевой длине тела (`Content-Length: 0`) JDK `HttpClient` оптимизирует запрос и вообще не подписывается на Flow Publisher. В результате `UploadProgressListener` на пустом теле никогда не уведомлялся, в отличие от скачивания.
+   Фикс (ADR-0057): `ProgressBodyPublisher` и `JdkHttpEngine` гарантируют ровно одно уведомление `onProgress(0, 0)` через потокобезопасный CAS guard (`AtomicBoolean`).
+
+Оформлен **ADR-0057**, +5 тестов, гейты: **1047/1047 тестов** (135 классов), 0 warnings под `-Werror`, javadoc чист, 0 зависимостей в POM. Следующий свободный ADR — **0058**.
