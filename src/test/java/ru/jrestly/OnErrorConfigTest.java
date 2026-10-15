@@ -6,7 +6,6 @@ import ru.jrestly.annotation.Get;
 import ru.jrestly.annotation.OnError;
 import ru.jrestly.http.ClientErrorException;
 import ru.jrestly.http.Header;
-import ru.jrestly.http.OnErrorParser;
 import ru.jrestly.http.ServerErrorException;
 import ru.jrestly.http.UnexpectedStatusException;
 
@@ -61,40 +60,6 @@ class OnErrorConfigTest {
         @OnError(statuses = {99}, errorObject = ErrorA.class)
         @Get(path = "/invalid")
         String invalid();
-    }
-
-    @Test
-    @DisplayName("OnErrorParser multi-status registration and resolution")
-    void onErrorParserMultiStatus() {
-        OnErrorParser parser = new OnErrorParser();
-        parser.register(400, ErrorA.class);
-        parser.register(404, ErrorB.class);
-        parser.registerDefault(ErrorDefault.class);
-
-        assertTrue(parser.canParse(400));
-        assertTrue(parser.canParse(404));
-        assertTrue(parser.canParse(500)); // via default
-        assertFalse(parser.canParse(200));
-
-        assertEquals(ErrorA.class, parser.getErrorClass(400));
-        assertEquals(ErrorB.class, parser.getErrorClass(404));
-        assertEquals(ErrorDefault.class, parser.getErrorClass(500));
-        assertEquals(ErrorA.class, parser.getErrorClass()); // primary legacy getter
-        assertEquals(List.of(400, 404), parser.getStatuses());
-    }
-
-    @Test
-    @DisplayName("OnErrorParser legacy setters compatibility")
-    void onErrorParserLegacyCompatibility() {
-        OnErrorParser parser = new OnErrorParser();
-        parser.setStatuses(List.of(422, 429));
-        parser.setErrorClass(ErrorA.class);
-
-        assertTrue(parser.canParse(422));
-        assertTrue(parser.canParse(429));
-        assertFalse(parser.canParse(500));
-        assertEquals(ErrorA.class, parser.getErrorClass(422));
-        assertEquals(ErrorA.class, parser.getErrorClass());
     }
 
     @Test

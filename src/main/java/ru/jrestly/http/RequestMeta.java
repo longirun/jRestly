@@ -20,7 +20,7 @@ import ru.jrestly.annotation.RequestDefaultParam;
  * @param requestType the request content type
  * @param defaultParams the annotation's static default parameters, empty when none are declared
  */
-public record RequestMeta(
+record RequestMeta(
         HttpMethod httpMethod,
         String path,
         RequestType requestType,

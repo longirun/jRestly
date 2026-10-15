@@ -1978,7 +1978,7 @@ public class HttpTemplate {
      *
      * @param onErrorParser the parser, or {@code null}
      */
-    public void setOnErrorParser(OnErrorParser onErrorParser) {
+    void setOnErrorParser(OnErrorParser onErrorParser) {
         this.onErrorParser = onErrorParser;
     }
 
@@ -1987,7 +1987,7 @@ public class HttpTemplate {
      *
      * @return the parser
      */
-    public OnErrorParser getOnErrorParser() {
+    OnErrorParser getOnErrorParser() {
         return onErrorParser;
     }
 

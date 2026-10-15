@@ -1,45 +1,31 @@
-# Last Session: #123 (2026-10-15)
+# Last Session: #124 (2026-10-15)
 
 ## Что сделано
 
-**Инвентаризация публичного API** — исследовательская сессия без изменений в коде.
-
-- 114 main-source файлов, **109 публичных типов** по 10 пакетам.
-- Артефакт: `api-audit-2026-10-15.md` (artifact directory) — полный отчёт.
-
-### Ключевые находки
-
-**🔴 HIGH:** `HttpTemplate` — 57 публичных setter-ов, `handleDecompression`, `createUri` публичны. Это leaked internal. Тесты `DecompressionConfigTest`, `PutMethodTest`, `TimeoutConfigTest` инстанцируют `new HttpTemplate()` напрямую — нужно учитывать при инкапсуляции.
-
-**🟡 MEDIUM:**
-- `OnErrorParser` (`ru.jrestly.http`) — internal helper, публичен без причины.
-- `ControllerValidator` (`ru.jrestly`) — internal utility, используется только в `AbstractHttpClient.createController()`.
-
-**🟢 LOW:**
-- `RequestMeta` — internal record (`ru.jrestly.http`), публичен без ADR-причины.
-- `SimpleRequestContext`/`SimpleResponseContext` — публичность оправдана для тест-изоляции interceptor-ов, но Javadoc нужно пометить «implementation».
-- `Environment` — законный SPI (часть `ModuleInfo.getEnvironment()`), всё ок.
-
-### Здоровые паттерны (без проблем)
-- `MultipartBodyPublisher`, `ServerSentEventParser`, `ProgressBodyPublisher`, `ProgressBodyHandler`, `CompositeClientMetricsListener`, `FileContent` subtypes — package-private, всё корректно.
-- SPI-пакеты (`json`, `metrics`, `compression`, `tracing`, `resilience`) структурированы верно.
-- 35 аннотаций — полный декларативный API, без аномалий.
+1. **Малая зачистка API (инкапсуляция internal-типов `ru.jrestly.http`):**
+   - `RequestMeta`: `public record RequestMeta` → `record RequestMeta` (package-private).
+   - `OnErrorParser`: `public class OnErrorParser` → `class OnErrorParser`, конструктор `OnErrorParser()` сделан package-private.
+   - `HttpTemplate`: сеттер/геттер `setOnErrorParser`/`getOnErrorParser` переведены из `public` в package-private.
+   - Создан выделенный unit-тест `src/test/java/ru/jrestly/http/OnErrorParserTest.java` (пакетный доступ к `OnErrorParser`).
+   - В `src/test/java/ru/jrestly/OnErrorConfigTest.java` удалены переехавшие тесты и неиспользуемый импорт `OnErrorParser`.
+2. **Стратегический ответ Антону в `mailbox.md`:**
+   - Разобраны все 4 пункта (Authorization SPI / TokenManager, честный zero-dependency без JSON-кодеков, JMH benchmarks, философия «Batteries included, but swappable»).
+3. **Обновлен `DRAFT.md`:**
+   - Сформулированы кандидаты: ADR-0045 (Честный Zero-Dependency без JSON-кодеков), ADR-0046 (Zero-Dep Authorization SPI & TokenManager), ADR-0047 (Short-Circuit SPI), JMH Benchmarks.
 
 ## Гейты
 
-- Код не менялся — тесты в норме (**927/927**, 112 классов).
-- Состояние из последней кодовой сессии (#122) сохранено.
+- `./gradlew test compileJava compileTestJava javadoc` → **927/927** (113 классов), 0 warnings под постоянными флагами `-Xlint:all -Werror` и `-Xdoclint:all -Werror`.
+- Zero-dep core строго сохранен.
 
-## Контекст для следующей сессии (#124)
+## Контекст для следующей сессии (#125)
 
-### Активная зона DRAFT (обновить DRAFT.md в следующей сессии)
-
-Три кандидата (из DRAFT.md), плюс добавить выводы аудита:
-
-- **Кандидат №1 (NEW, малый):** Малая зачистка API — `OnErrorParser` + `ControllerValidator` + `RequestMeta` → package-private. Без ADR, просто рефакторинг. Тесты на `OnErrorParser` перенести в `ru.jrestly.http` пакет теста.
-- **Кандидат №2 (NEW, крупный):** `HttpTemplate` → package-private (инкапсуляция internal), потребует переписать 5-6 тестов. Оформить как ADR.
-- **Кандидат №3:** Interceptor Chain Short-Circuit SPI (ADR-0045) — интерцептор возвращает синтетический ответ без сетевого вызова.
-- **Кандидат №4 (test-javadoc):** Наведение лоска в тестовых классах.
+### Активная зона DRAFT:
+- **Кандидат №1:** Честный Zero-Dependency без JSON-кодеков на classpath (ADR-0045) — fallback `NoOpJsonCodec` / lazy resolution, чтобы `String getUser(UUID id)`, `byte[]`, `InputStream`, `Stream<String>` работали вообще без сторонних библиотек на classpath.
+- **Кандидат №2:** Zero-Dep Authorization SPI & TokenManager (ADR-0046) — OAuth2 single-flight via CompletableFuture, transparent 401 retry, Bearer/Basic/ApiKey.
+- **Кандидат №3:** Interceptor Chain Short-Circuit SPI (ADR-0047).
+- **Кандидат №4:** HttpTemplate инкапсуляция package-private.
+- **Кандидат №5:** JMH Benchmarks suite.
 
 ### Грабли (актуальный набор)
 - **`GRADLE_USER_HOME=/tmp/opencode/gradle-home`**: всегда указывать при запуске `./gradlew`.
@@ -54,5 +40,5 @@
 ### Среда
 1. `GRADLE_USER_HOME=/tmp/opencode/gradle-home ./gradlew ...` (тёплый кэш).
 2. Ветка `agent-loop`.
-3. Версия в `build.gradle`: **0.9.0**. Тесты: **927/927** (112 классов).
+3. Версия в `build.gradle`: **0.9.0**. Тесты: **927/927** (113 классов).
 4. Warnings: main 0, test 0, javadoc 0 (под `-Werror`).

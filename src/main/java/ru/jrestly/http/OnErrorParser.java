@@ -15,7 +15,7 @@ import java.util.Map;
  * {@code HttpTemplate.processResponse}. Supports multi-status mappings (ADR-0028)
  * via repeatable declarations.</p>
  */
-public class OnErrorParser {
+class OnErrorParser {
 
     private final Map<Integer, Class<?>> statusMappings = new LinkedHashMap<>();
     private List<Integer> legacyStatuses;
@@ -25,7 +25,7 @@ public class OnErrorParser {
     /**
      * Creates an empty parser.
      */
-    public OnErrorParser() {
+    OnErrorParser() {
     }
 
     /**

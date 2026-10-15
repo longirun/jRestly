@@ -55,16 +55,6 @@
 default=0, стабильная сортировка (declaration order сохраняется при равных значениях), ноль накладных на горячем пути.
 3 unit-теста, 927/927 зелёных, javadoc+lint чистые. Следующий свободный ADR — 0045.
 
-1. **Zero-Dep Fault Tolerance & Rate Limiting (`ru.jrestly.resilience`):**
-   - `CircuitBreaker` (FSM `CLOSED`, `OPEN`, `HALF_OPEN`), `CircuitBreakerConfig` (пороги сбоев, sliding window, таймаут восстановления, умный предикат классификации: 5xx/IO сбои vs 4xx здоровая норма), `CircuitBreakerMetrics`, `CircuitBreakers` factory, `CircuitBreakerRegistry`, `CircuitBreakerOpenException`.
-   - `RateLimiter` (высокоточный Token Bucket на системных наносекундах `System.nanoTime()`), `RateLimiterConfig`, `RateLimiterMetrics`, `RateLimiters` factory, `RateLimiterRegistry`, `RateLimitExceededException`.
-2. **Декларативная и программная эргономика:**
-   - Аннотации `@CircuitBreaker` и `@RateLimiter` на интерфейсах и методах с точечным opt-out (`enabled = false`).
-   - Изолированные per-module реестры по умолчанию в `SimpleModuleInfo` и `JRestlyClient` (исключают утечки состояния между тестами/клиентами, поддерживают явный cross-client шаринг).
-   - Интеграция в `HttpTemplate`: быстрый отказ (fail-fast) до сетевого взаимодействия в синхронном `exchange()` и асинхронном `exchangeAsync()` без лишней нагрузки на сокеты и внешние сервисы.
-3. **Тестирование (+30 новых тестов, итого 924/924 в 111 классах):**
-   - `CircuitBreakerTest` (8 unit тестов), `RateLimiterTest` (4 unit теста), `ResilienceConfigTest` (6 unit тестов), `CircuitBreakerWireMockTest` (6 WireMock тестов), `RateLimiterWireMockTest` (5 WireMock тестов). Все гейты чистые (0 warnings под постоянными флагами `-Xlint:all -Werror` и `-Xdoclint:all -Werror`), zero-dep core строго сохранен. Следующий свободный ADR — **0044**.
-
 ---
 [2026-10-15 12:45] Антон: Я заметил, что библиотека стала очень зрелой. Есть, как мне кажется, направления, которые
 можно дополнительно проработать. Посмотри на них и сделай оценку - прорабатывать или нет.
@@ -83,3 +73,28 @@ default=0, стабильная сортировка (declaration order сохр
 Которое будет как "удобство библиотеки из коробки" - что-то что покрывает прямой сценарий работы. 
 А если пользователю понадобятся "взрослые", полноценные монстры под свою инфру - пусть их подключает
 через наши точки расширения и настраивает бесконечно сложные политики.
+
+[2026-10-15 13:10] Агент (сессия #124): Привет, Антон! Замечательные и очень своевременные вопросы. Вот детальный разбор и оценка каждого направления:
+
+1. **Авторизация (MUST HAVE для продакшна):**
+   - Сейчас есть только низкоуровневые интерцепторы и статический `@RequestHeader("Authorization: ...")`. В реальном проде 95% вызовов — это Bearer / OAuth2, Basic или ApiKey.
+   - Предложение: сделать zero-dep модуль/пакет `ru.jrestly.auth`:
+     * `TokenManager` (кэширование токена с учетом времени жизни `expiresAt`).
+     * Single-flight защита через `CompletableFuture`: при параллельных запросах ровно один поток идет за новым токеном, остальные ждут тот же future, полностью исключая thundering herd / stampede на auth-сервер.
+     * Прозрачный 401 retry: при истечении/отзыве токена ловим 401, сбрасываем кэш, получаем свежий токен и прозрачно повторяем запрос (1 раз).
+     * Готовые zero-dep хелперы: `BearerTokenProvider`, `BasicAuth` (RFC 7617, base64 из `java.util.Base64`), `ApiKeyAuth` (header/query).
+   - Оценка: **Однозначно прорабатывать** — сделает jRestly готовым для продакшн-микросервисов из коробки.
+
+2. **Работа без сторонних библиотек (`String getUser(UUID id)`):**
+   - Ты попал в самое яблочко! Я проверил `JsonCodecResolver`: сейчас при `builder.build()` клиент eager-проверяет наличие Jackson/Gson/Moshi, и если их нет — падает с `IllegalStateException`, **даже если метод возвращает `String` или `byte[]`**!
+   - Параметры типа `UUID`, `Long`, `String` и так форматируются через `.toString()` / percent-encoding и не требуют кодека.
+   - Решение: сделать lazy/fallback `NoOpJsonCodec`: если на classpath нет JSON-библиотек, клиент стартует нормально и безупречно работает для `String`, `byte[]`, `InputStream`, `Stream<String>`, `Void` (100% честный zero-dependency!). А `IllegalStateException` бросать только если метод реально требует сериализации сложного DTO без подключенного кодека.
+   - Оценка: **Однозначно прорабатывать**. Это снимет последнюю неявную зависимость.
+
+3. **Бенчмарки производительности (JMH suite):**
+   - Оценка: **Очень полезно**. Сделать модуль `benchmarks/` с JMH. Сравнить накладные расходы прокси jRestly против прямого `java.net.http.HttpClient`, Retrofit и Feign (аллокации памяти per-request, RPS, latency p99). jRestly парсит интерфейс один раз при старте, поэтому оверхед на горячем пути должен быть околонулевым.
+
+4. **Философия "Batteries included, but swappable" (Zero-dep defaults + SPI для монстров):**
+   - Полностью согласен с твоим выводом! Это классический паттерн великих библиотек:
+     * **Из коробки:** ультралегкие, zero-dependency механизмы (`RetryPolicy`, `CircuitBreaker`, `RateLimiter`, W3C `TraceContext`). Они покрывают 90% сценариев, не тянут транзитивных зависимостей, не конфликтуют в classpath и идеально подходят для тестов и микросервисов.
+     * **Точки расширения (SPI):** через интерцепторы, `ClientMetricsListener`, `TracePropagator` и будущий `ShortCircuitInterceptor` enterprise-пользователь подключает Resilience4j, Micrometer или OpenTelemetry в 3 строки кода, не перегружая ядро библиотеки.
