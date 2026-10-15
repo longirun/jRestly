@@ -1801,7 +1801,32 @@ Gates (session #132, clean rebuild):
 - `javadoc` 0 warnings under permanent `-Xdoclint:all -Werror`.
 - Zero external runtime dependencies strictly preserved (0 dependencies in root Maven POM).
 
-After the epic: candidate №1 — test-javadoc, candidate №2 — HTTP Trailers & Advanced Streaming ergonomics, candidate №3 — OkHttpEngine / ApacheHttpEngine external modules. ADR number **0053** free.
+## Lifecycle Resource Safety & Zero-Reflection Parameter Descriptors — COMPLETE ✅ (2026-10-15, unreleased)
+
+> Source of truth: [`docs/0.10.0/ADR-0053-lifecycle-resource-safety-and-zero-reflection-parameter-descriptors.md`](docs/0.10.0/ADR-0053-lifecycle-resource-safety-and-zero-reflection-parameter-descriptors.md).  
+> Session #133 (agent-loop). Prompted by maintainer audit inquiry into resource safety, redundant allocations, and benchmark profiling.
+
+**Problem:**
+1. In ADR-0052, default `JdkHttpEngine` was created with `ownsClient = false`, and `AbstractHttpClient.close()` skipped `httpClient.close()` when `httpEngine instanceof JdkHttpEngine`, leaving JDK HttpClient selector threads and connection pools unclosed on `client.close()`.
+2. On every proxy invocation, `HttpTemplateBuilder.build()` called `collectInterfaceHierarchy()` 3 times, scanned annotations via reflection, and cloned parameter arrays via `Method.getParameters()` multiple times, generating ~4.1 KB/op heap garbage.
+
+**Solution:**
+- **Lifecycle Resource Safety:** `AbstractHttpClient` now sets `ownsClient = true` on managed engines and unconditionally closes `this.httpClient.close()` upon `client.close()`. Added `AbstractHttpClientLifecycleTest` (+2 tests).
+- **Precomputed Wire State:** `MethodMetadata` now precomputes and caches `staticHeaders`, `staticCookies`, `staticDefaultParams`, `hasAuthAnnotation`, and `effectiveTrace`.
+- **Zero-Reflection `ParameterDescriptor`:** Pre-indexes all method parameters (`PathVariable`, `RequestHeader`, `Cookie`, `RequestParam`, `RequestBody`, `MultipartFormFile`, `ResponseHeaders`, progress listeners) into a flat array.
+- **Dispatch Hot-Path Optimization:** `HttpTemplateBuilder` runs completely reflection-free in $O(1)$ time without parameter cloning or stream allocations.
+- **Benchmark Results:**
+  - `DispatchOverheadBenchmark.jrestly_inMemoryMockDispatch`: improved from **27.4 µs/op to 6.99 µs/op** (peak 5.86 µs/op).
+  - `DispatchOverheadBenchmark.jrestly_inMemoryMockPing`: dropped to **2.33 µs/op** (peak 2.26 µs/op).
+  - Heap allocations reduced from **4098 B/op to 3234 B/op** (-21% garbage reduction).
+
+Gates (session #133, clean rebuild):
+- `./gradlew test` **1022/1022** (133 classes, 0 failures/errors; +2 tests in ADR-0053).
+- `compileJava` and `compileTestJava` 0 warnings under permanent `-Xlint:all -Werror`.
+- `javadoc` 0 warnings under permanent `-Xdoclint:all -Werror`.
+- Zero external runtime dependencies strictly preserved (0 dependencies in root Maven POM).
+
+After the epic: candidate №1 — test-javadoc, candidate №2 — HTTP Trailers & Advanced Streaming ergonomics, candidate №3 — OkHttpEngine / ApacheHttpEngine external modules. ADR number **0054** free.
 
 
 

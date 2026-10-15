@@ -68,7 +68,7 @@ public abstract class AbstractHttpClient {
 
         createConnection();
         if (this.httpEngine == null && this.httpClient != null) {
-            this.httpEngine = ru.jrestly.engine.JdkHttpEngine.from(this.httpClient);
+            this.httpEngine = new ru.jrestly.engine.JdkHttpEngine(this.httpClient, true);
         }
     }
 
@@ -149,7 +149,7 @@ public abstract class AbstractHttpClient {
         }
 
         this.httpClient = builder.build();
-        this.httpEngine = ru.jrestly.engine.JdkHttpEngine.from(this.httpClient);
+        this.httpEngine = new ru.jrestly.engine.JdkHttpEngine(this.httpClient, true);
     }
 
     /**
@@ -164,7 +164,7 @@ public abstract class AbstractHttpClient {
         if (httpEngine != null) {
             httpEngine.close();
         }
-        if (httpClient != null && !(httpEngine instanceof ru.jrestly.engine.JdkHttpEngine)) {
+        if (httpClient != null) {
             httpClient.close();
         }
         if (managedExecutorService != null) {

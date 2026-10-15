@@ -1,20 +1,28 @@
 package ru.jrestly.http;
 
 import ru.jrestly.annotation.Accept;
+import ru.jrestly.annotation.Authorization;
 import ru.jrestly.annotation.CollectionFormat;
 import ru.jrestly.annotation.Compress;
 import ru.jrestly.annotation.ContentType;
+import ru.jrestly.annotation.Cookie;
 import ru.jrestly.annotation.Delete;
 import ru.jrestly.annotation.ExpectStatus;
 import ru.jrestly.annotation.FollowRedirects;
 import ru.jrestly.annotation.Get;
 import ru.jrestly.annotation.HttpVersion;
+import ru.jrestly.annotation.MultipartFormFile;
 import ru.jrestly.annotation.OnError;
 import ru.jrestly.annotation.Order;
 import ru.jrestly.annotation.Patch;
+import ru.jrestly.annotation.PathVariable;
 import ru.jrestly.annotation.Post;
 import ru.jrestly.annotation.Put;
 import ru.jrestly.annotation.QueryCollectionFormat;
+import ru.jrestly.annotation.RequestBody;
+import ru.jrestly.annotation.RequestDefaultParam;
+import ru.jrestly.annotation.RequestHeader;
+import ru.jrestly.annotation.RequestParam;
 import ru.jrestly.annotation.Retry;
 import ru.jrestly.annotation.SetAuthDetails;
 import ru.jrestly.annotation.Timeout;
@@ -37,6 +45,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -59,6 +68,7 @@ final class MethodMetadata {
     private final String methodAccept;
     private final String interfaceAccept;
     private final Trace interfaceTrace;
+    private final Trace effectiveTrace;
     private final CollectionFormat defaultCollectionFormat;
     private final OnErrorParser onErrorParser;
     private final List<Integer> expectStatuses;
@@ -78,11 +88,47 @@ final class MethodMetadata {
     private final int downloadProgressParamIndex;
     private final String authDetailsHeaderName;
 
+    // Zero-Reflection Hot-Path Additions
+    private final List<Header> staticHeaders;
+    private final Map<String, String> staticCookies;
+    private final List<Param> staticDefaultParams;
+    private final boolean hasAuthAnnotation;
+    private final ParameterDescriptor[] parameterDescriptors;
+    private final boolean hasPathVariables;
+    private final boolean hasRequestHeaders;
+    private final boolean hasCookieParams;
+    private final boolean hasRequestParams;
+    private final boolean hasMultipartParams;
+    private final int requestBodyIndex;
+
     record MethodKey(Method method, Class<?> controllerClass) {}
 
     record ReturnTypeInfo(Type effectiveReturnType, boolean async, boolean optional, boolean streamBody) {}
 
     record EffectiveCompression(boolean explicit, boolean enabled, CompressionAlgorithm algorithm, int minSizeBytes) {}
+
+    record ParameterDescriptor(
+            int index,
+            boolean isPathVariable,
+            String pathVariableName,
+            boolean pathVariableEncoded,
+            boolean isRequestHeader,
+            String requestHeaderName,
+            boolean isCookie,
+            String cookieName,
+            boolean isRequestParam,
+            String requestParamName,
+            String rawRequestParamName,
+            String requestParamContentType,
+            CollectionFormat requestParamFormat,
+            boolean isRequestBody,
+            boolean isMultipartFile,
+            String multipartPartName,
+            String multipartExplicitContentType,
+            boolean isResponseHeaders,
+            boolean isUploadProgressListener,
+            boolean isDownloadProgressListener
+    ) {}
 
     private MethodMetadata(
             RequestMeta requestMeta,
@@ -91,6 +137,7 @@ final class MethodMetadata {
             String methodAccept,
             String interfaceAccept,
             Trace interfaceTrace,
+            Trace effectiveTrace,
             CollectionFormat defaultCollectionFormat,
             OnErrorParser onErrorParser,
             List<Integer> expectStatuses,
@@ -108,7 +155,18 @@ final class MethodMetadata {
             int responseHeadersParamIndex,
             int uploadProgressParamIndex,
             int downloadProgressParamIndex,
-            String authDetailsHeaderName
+            String authDetailsHeaderName,
+            List<Header> staticHeaders,
+            Map<String, String> staticCookies,
+            List<Param> staticDefaultParams,
+            boolean hasAuthAnnotation,
+            ParameterDescriptor[] parameterDescriptors,
+            boolean hasPathVariables,
+            boolean hasRequestHeaders,
+            boolean hasCookieParams,
+            boolean hasRequestParams,
+            boolean hasMultipartParams,
+            int requestBodyIndex
     ) {
         this.requestMeta = requestMeta;
         this.methodContentType = methodContentType;
@@ -116,6 +174,7 @@ final class MethodMetadata {
         this.methodAccept = methodAccept;
         this.interfaceAccept = interfaceAccept;
         this.interfaceTrace = interfaceTrace;
+        this.effectiveTrace = effectiveTrace;
         this.defaultCollectionFormat = defaultCollectionFormat;
         this.onErrorParser = onErrorParser;
         this.expectStatuses = expectStatuses;
@@ -134,6 +193,17 @@ final class MethodMetadata {
         this.uploadProgressParamIndex = uploadProgressParamIndex;
         this.downloadProgressParamIndex = downloadProgressParamIndex;
         this.authDetailsHeaderName = authDetailsHeaderName;
+        this.staticHeaders = staticHeaders;
+        this.staticCookies = staticCookies;
+        this.staticDefaultParams = staticDefaultParams;
+        this.hasAuthAnnotation = hasAuthAnnotation;
+        this.parameterDescriptors = parameterDescriptors;
+        this.hasPathVariables = hasPathVariables;
+        this.hasRequestHeaders = hasRequestHeaders;
+        this.hasCookieParams = hasCookieParams;
+        this.hasRequestParams = hasRequestParams;
+        this.hasMultipartParams = hasMultipartParams;
+        this.requestBodyIndex = requestBodyIndex;
     }
 
     /**
@@ -161,6 +231,9 @@ final class MethodMetadata {
         String methodAccept = parseMethodAccept(method);
         String interfaceAccept = parseInterfaceAccept(hierarchy);
         Trace interfaceTrace = parseInterfaceTrace(hierarchy);
+        Trace methodTrace = method != null ? method.getAnnotation(Trace.class) : null;
+        Trace effectiveTrace = methodTrace != null ? methodTrace : interfaceTrace;
+
         CollectionFormat defaultCollectionFormat = parseDefaultCollectionFormat(method, hierarchy);
         OnErrorParser onErrorParser = parseOnErrorParser(method, hierarchy);
         List<Integer> expectStatuses = parseExpectStatuses(method);
@@ -179,24 +252,126 @@ final class MethodMetadata {
         int respHeadersIdx = -1;
         int uploadProgressIdx = -1;
         int downloadProgressIdx = -1;
-        if (method != null) {
-            Parameter[] params = method.getParameters();
-            for (int i = 0; i < params.length; i++) {
-                Class<?> type = params[i].getType();
-                if (respHeadersIdx < 0 && ResponseHeaders.class.equals(type)) {
-                    respHeadersIdx = i;
-                } else if (uploadProgressIdx < 0 && UploadProgressListener.class.equals(type)) {
-                    uploadProgressIdx = i;
-                } else if (downloadProgressIdx < 0 && DownloadProgressListener.class.equals(type)) {
-                    downloadProgressIdx = i;
-                }
+        int reqBodyIdx = -1;
+        boolean hasPathVars = false;
+        boolean hasReqHeaders = false;
+        boolean hasCookies = false;
+        boolean hasReqParams = false;
+        boolean hasMultipart = false;
+
+        Parameter[] params = method != null ? method.getParameters() : new Parameter[0];
+        ParameterDescriptor[] descriptors = new ParameterDescriptor[params.length];
+
+        for (int i = 0; i < params.length; i++) {
+            Parameter p = params[i];
+            Class<?> type = p.getType();
+
+            boolean isPathVar = p.isAnnotationPresent(PathVariable.class);
+            String pathVarName = null;
+            boolean pathVarEncoded = false;
+            if (isPathVar) {
+                hasPathVars = true;
+                PathVariable pv = p.getAnnotation(PathVariable.class);
+                pathVarName = pv.name().isEmpty() ? p.getName() : pv.name();
+                pathVarEncoded = pv.encoded();
             }
+
+            boolean isReqHeader = p.isAnnotationPresent(RequestHeader.class);
+            String reqHeaderName = null;
+            if (isReqHeader) {
+                hasReqHeaders = true;
+                RequestHeader rh = p.getAnnotation(RequestHeader.class);
+                reqHeaderName = rh.name().isEmpty() ? p.getName() : rh.name();
+            }
+
+            boolean isCookie = p.isAnnotationPresent(Cookie.class);
+            String cookieName = null;
+            if (isCookie) {
+                hasCookies = true;
+                Cookie c = p.getAnnotation(Cookie.class);
+                cookieName = c.name().isEmpty() ? p.getName() : c.name();
+            }
+
+            boolean isReqParam = p.isAnnotationPresent(RequestParam.class);
+            String reqParamName = null;
+            String rawReqParamName = "";
+            String reqParamContentType = null;
+            CollectionFormat reqParamFormat = defaultCollectionFormat;
+            if (isReqParam) {
+                hasReqParams = true;
+                RequestParam rp = p.getAnnotation(RequestParam.class);
+                rawReqParamName = rp.name();
+                reqParamName = rp.name().isEmpty() ? p.getName() : rp.name();
+                reqParamContentType = rp.contentType().isEmpty() ? null : rp.contentType();
+                reqParamFormat = (rp.format() != null && rp.format() != CollectionFormat.DEFAULT)
+                        ? rp.format()
+                        : defaultCollectionFormat;
+            }
+
+            boolean isReqBody = p.isAnnotationPresent(RequestBody.class);
+            if (isReqBody && reqBodyIdx < 0) {
+                reqBodyIdx = i;
+            }
+
+            boolean isMultiFile = p.isAnnotationPresent(MultipartFormFile.class);
+            String multiName = null;
+            String multiContentType = null;
+            if (isMultiFile) {
+                hasMultipart = true;
+                MultipartFormFile mff = p.getAnnotation(MultipartFormFile.class);
+                multiName = mff.partName();
+                multiContentType = mff.contentType().isEmpty() ? null : mff.contentType();
+            }
+
+            boolean isRespHeaders = ResponseHeaders.class.equals(type);
+            if (isRespHeaders && respHeadersIdx < 0) {
+                respHeadersIdx = i;
+            }
+
+            boolean isUploadListener = UploadProgressListener.class.equals(type);
+            if (isUploadListener && uploadProgressIdx < 0) {
+                uploadProgressIdx = i;
+            }
+
+            boolean isDownloadListener = DownloadProgressListener.class.equals(type);
+            if (isDownloadListener && downloadProgressIdx < 0) {
+                downloadProgressIdx = i;
+            }
+
+            descriptors[i] = new ParameterDescriptor(
+                    i,
+                    isPathVar,
+                    pathVarName,
+                    pathVarEncoded,
+                    isReqHeader,
+                    reqHeaderName,
+                    isCookie,
+                    cookieName,
+                    isReqParam,
+                    reqParamName,
+                    rawReqParamName,
+                    reqParamContentType,
+                    reqParamFormat,
+                    isReqBody,
+                    isMultiFile,
+                    multiName,
+                    multiContentType,
+                    isRespHeaders,
+                    isUploadListener,
+                    isDownloadListener
+            );
         }
 
         String authDetailsHeader = null;
         if (method != null && method.isAnnotationPresent(SetAuthDetails.class)) {
             authDetailsHeader = method.getAnnotation(SetAuthDetails.class).headerName();
         }
+
+        boolean hasAuth = method != null && method.isAnnotationPresent(Authorization.class);
+
+        List<Header> staticHeaders = parseStaticHeaders(method, hierarchy, interfaceAccept, methodAccept);
+        Map<String, String> staticCookies = parseStaticCookies(method, hierarchy);
+        List<Param> staticDefaultParams = parseStaticDefaultParams(method, hierarchy, requestMeta);
 
         return new MethodMetadata(
                 requestMeta,
@@ -205,6 +380,7 @@ final class MethodMetadata {
                 methodAccept,
                 interfaceAccept,
                 interfaceTrace,
+                effectiveTrace,
                 defaultCollectionFormat,
                 onErrorParser,
                 expectStatuses,
@@ -222,8 +398,92 @@ final class MethodMetadata {
                 respHeadersIdx,
                 uploadProgressIdx,
                 downloadProgressIdx,
-                authDetailsHeader
+                authDetailsHeader,
+                staticHeaders,
+                staticCookies,
+                staticDefaultParams,
+                hasAuth,
+                descriptors,
+                hasPathVars,
+                hasReqHeaders,
+                hasCookies,
+                hasReqParams,
+                hasMultipart,
+                reqBodyIdx
         );
+    }
+
+    private static List<Header> parseStaticHeaders(Method method, List<Class<?>> hierarchy, String interfaceAccept, String methodAccept) {
+        Map<String, Header> map = new LinkedHashMap<>();
+        for (Class<?> iface : hierarchy) {
+            RequestHeader[] classHeaders = iface.getAnnotationsByType(RequestHeader.class);
+            for (RequestHeader h : classHeaders) {
+                removeCaseInsensitive(map, h.name());
+                map.put(h.name(), new Header(h.name(), h.value()));
+            }
+        }
+        if (interfaceAccept != null) {
+            removeCaseInsensitive(map, "Accept");
+            map.put("Accept", new Header("Accept", interfaceAccept));
+        }
+        if (method != null) {
+            RequestHeader[] methodHeaders = method.getAnnotationsByType(RequestHeader.class);
+            for (RequestHeader h : methodHeaders) {
+                removeCaseInsensitive(map, h.name());
+                map.put(h.name(), new Header(h.name(), h.value()));
+            }
+        }
+        if (methodAccept != null) {
+            removeCaseInsensitive(map, "Accept");
+            map.put("Accept", new Header("Accept", methodAccept));
+        }
+        return List.copyOf(map.values());
+    }
+
+    private static void removeCaseInsensitive(Map<String, ?> map, String name) {
+        if (name == null) return;
+        map.keySet().removeIf(k -> k.equalsIgnoreCase(name));
+    }
+
+    private static Map<String, String> parseStaticCookies(Method method, List<Class<?>> hierarchy) {
+        Map<String, String> cookies = new LinkedHashMap<>();
+        for (Class<?> iface : hierarchy) {
+            for (Cookie c : iface.getAnnotationsByType(Cookie.class)) {
+                if (!c.name().isBlank()) {
+                    cookies.put(c.name(), c.value());
+                }
+            }
+        }
+        if (method != null) {
+            for (Cookie c : method.getAnnotationsByType(Cookie.class)) {
+                if (!c.name().isBlank()) {
+                    cookies.put(c.name(), c.value());
+                }
+            }
+        }
+        return Map.copyOf(cookies);
+    }
+
+    private static List<Param> parseStaticDefaultParams(Method method, List<Class<?>> hierarchy, RequestMeta requestMeta) {
+        Map<String, Param> map = new LinkedHashMap<>();
+        for (Class<?> iface : hierarchy) {
+            RequestDefaultParam[] classParams = iface.getAnnotationsByType(RequestDefaultParam.class);
+            for (RequestDefaultParam p : classParams) {
+                map.put(p.name(), new Param(p.name(), p.value()));
+            }
+        }
+        if (method != null) {
+            if (requestMeta != null && requestMeta.defaultParams() != null) {
+                for (RequestDefaultParam p : requestMeta.defaultParams()) {
+                    map.put(p.name(), new Param(p.name(), p.value()));
+                }
+            }
+            RequestDefaultParam[] methodDirectParams = method.getAnnotationsByType(RequestDefaultParam.class);
+            for (RequestDefaultParam p : methodDirectParams) {
+                map.put(p.name(), new Param(p.name(), p.value()));
+            }
+        }
+        return List.copyOf(map.values());
     }
 
     private static RequestMeta parseRequestMeta(Method method) {
@@ -651,6 +911,10 @@ final class MethodMetadata {
         return interfaceTrace;
     }
 
+    Trace effectiveTrace() {
+        return effectiveTrace;
+    }
+
     CollectionFormat defaultCollectionFormat() {
         return defaultCollectionFormat;
     }
@@ -721,5 +985,49 @@ final class MethodMetadata {
 
     String authDetailsHeaderName() {
         return authDetailsHeaderName;
+    }
+
+    List<Header> staticHeaders() {
+        return staticHeaders;
+    }
+
+    Map<String, String> staticCookies() {
+        return staticCookies;
+    }
+
+    List<Param> staticDefaultParams() {
+        return staticDefaultParams;
+    }
+
+    boolean hasAuthAnnotation() {
+        return hasAuthAnnotation;
+    }
+
+    ParameterDescriptor[] parameterDescriptors() {
+        return parameterDescriptors;
+    }
+
+    boolean hasPathVariables() {
+        return hasPathVariables;
+    }
+
+    boolean hasRequestHeaders() {
+        return hasRequestHeaders;
+    }
+
+    boolean hasCookieParams() {
+        return hasCookieParams;
+    }
+
+    boolean hasRequestParams() {
+        return hasRequestParams;
+    }
+
+    boolean hasMultipartParams() {
+        return hasMultipartParams;
+    }
+
+    int requestBodyIndex() {
+        return requestBodyIndex;
     }
 }

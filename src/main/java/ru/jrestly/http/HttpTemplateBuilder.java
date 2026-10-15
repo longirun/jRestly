@@ -344,10 +344,7 @@ public class HttpTemplateBuilder {
         result.setCircuitBreaker(resolveCircuitBreaker());
         result.setRateLimiter(resolveRateLimiter());
         result.setTokenManager(moduleInfo.getTokenManager());
-        boolean retryAuth = moduleInfo.isRetryOnUnauthorized();
-        if (method != null && method.isAnnotationPresent(ru.jrestly.annotation.Authorization.class)) {
-            retryAuth = false;
-        }
+        boolean retryAuth = moduleInfo.isRetryOnUnauthorized() && !methodMetadata.hasAuthAnnotation();
         result.setRetryOnUnauthorized(retryAuth);
         result.setControllerClass(controller);
         result.setMethod(method);
@@ -405,27 +402,20 @@ public class HttpTemplateBuilder {
 
     private String createUrl() {
         String path = requestMeta.path();
-
-        Parameter[] parameters = method.getParameters();
-        for (int i = 0; i < parameters.length; i++) {
-            if (parameters[i].isAnnotationPresent(PathVariable.class)) {
-                PathVariable pathAnnotation = parameters[i].getAnnotation(PathVariable.class);
-
-                String name = pathAnnotation.name().isEmpty()
-                        ? parameters[i].getName()
-                        : pathAnnotation.name();
-
-                if (args[i] == null) {
-                    throw new IllegalArgumentException("Path variable '" + name + "' value cannot be null");
+        if (methodMetadata.hasPathVariables() && args != null) {
+            for (MethodMetadata.ParameterDescriptor p : methodMetadata.parameterDescriptors()) {
+                if (p.isPathVariable() && p.index() < args.length) {
+                    Object arg = args[p.index()];
+                    if (arg == null) {
+                        throw new IllegalArgumentException("Path variable '" + p.pathVariableName() + "' value cannot be null");
+                    }
+                    String substitutedValue = p.pathVariableEncoded()
+                            ? arg.toString()
+                            : URLEncoder.encode(arg.toString(), StandardCharsets.UTF_8).replace("+", "%20");
+                    path = path.replace("${" + p.pathVariableName() + "}", substitutedValue);
                 }
-
-                String substitutedValue = pathAnnotation.encoded()
-                        ? args[i].toString()
-                        : URLEncoder.encode(args[i].toString(), StandardCharsets.UTF_8).replace("+", "%20");
-                path = path.replace("${" + name + "}", substitutedValue);
             }
         }
-
         return !path.startsWith("http")
                 ? moduleInfo.getEnvironment().getUrl() + path
                 : path;
@@ -434,51 +424,20 @@ public class HttpTemplateBuilder {
     private List<Header> createHeaders() {
         List<Header> result = new ArrayList<>(moduleInfo.getAuthProvider().getAuthHeaders());
 
-        String ifaceAccept = resolveInterfaceAccept();
-        if (ifaceAccept != null) {
-            result.removeIf(h -> "Accept".equalsIgnoreCase(h.name()));
-            result.add(new Header("Accept", ifaceAccept));
-        }
-
-        // Class-level headers (hierarchy order: parent interfaces first, sub-interface wins)
-        List<Class<?>> hierarchy = collectInterfaceHierarchy(controller);
-        for (Class<?> iface : hierarchy) {
-            RequestHeader[] classHeaders = iface.getAnnotationsByType(RequestHeader.class);
-            if (classHeaders.length > 0) {
-                Set<String> declaredNames = Arrays.stream(classHeaders)
-                        .map(h -> h.name().toLowerCase())
-                        .collect(Collectors.toSet());
-                result.removeIf(h -> declaredNames.contains(h.name().toLowerCase()));
-                for (RequestHeader h : classHeaders) {
-                    result.add(new Header(h.name(), h.value()));
-                }
+        List<Header> staticHeaders = methodMetadata.staticHeaders();
+        if (!staticHeaders.isEmpty()) {
+            Set<String> staticNames = new HashSet<>();
+            for (Header h : staticHeaders) {
+                staticNames.add(h.name().toLowerCase(Locale.ROOT));
             }
+            result.removeIf(h -> staticNames.contains(h.name().toLowerCase(Locale.ROOT)));
+            result.addAll(staticHeaders);
         }
 
-        String methodAccept = resolveMethodAccept();
-        if (methodAccept != null) {
-            result.removeIf(h -> "Accept".equalsIgnoreCase(h.name()));
-            result.add(new Header("Accept", methodAccept));
-        }
-
-        // Method-level static headers
-        if (method != null) {
-            RequestHeader[] methodHeaders = method.getAnnotationsByType(RequestHeader.class);
-            if (methodHeaders.length > 0) {
-                Set<String> declaredNames = Arrays.stream(methodHeaders)
-                        .map(h -> h.name().toLowerCase())
-                        .collect(Collectors.toSet());
-                result.removeIf(h -> declaredNames.contains(h.name().toLowerCase()));
-                for (RequestHeader h : methodHeaders) {
-                    result.add(new Header(h.name(), h.value()));
-                }
-            }
-
-            // Parameter-level headers
-            Parameter[] parameters = method.getParameters();
-            for (int i = 0; i < parameters.length; i++) {
-                if (parameters[i].isAnnotationPresent(RequestHeader.class)) {
-                    Object arg = args[i];
+        if (methodMetadata.hasRequestHeaders() && args != null) {
+            for (MethodMetadata.ParameterDescriptor p : methodMetadata.parameterDescriptors()) {
+                if (p.isRequestHeader() && p.index() < args.length) {
+                    Object arg = args[p.index()];
                     if (arg == null) {
                         continue;
                     }
@@ -495,11 +454,7 @@ public class HttpTemplateBuilder {
                         continue;
                     }
 
-                    RequestHeader headerAnnotation = parameters[i].getAnnotation(RequestHeader.class);
-                    String name = headerAnnotation.name().isEmpty()
-                            ? parameters[i].getName()
-                            : headerAnnotation.name();
-
+                    String name = p.requestHeaderName();
                     result.removeIf(h -> h.name().equalsIgnoreCase(name));
                     appendHeaderValues(result, name, arg);
                 }
@@ -536,10 +491,7 @@ public class HttpTemplateBuilder {
     }
 
     private void applyTracingHeaders(List<Header> result) {
-        Trace methodTrace = method != null ? method.getAnnotation(Trace.class) : null;
-        Trace ifaceTrace = resolveInterfaceTrace();
-
-        Trace effectiveTrace = methodTrace != null ? methodTrace : ifaceTrace;
+        Trace effectiveTrace = methodMetadata.effectiveTrace();
         if (effectiveTrace != null) {
             if (!effectiveTrace.enabled()) {
                 return;
@@ -594,39 +546,17 @@ public class HttpTemplateBuilder {
         }
     }
 
-    private Trace resolveInterfaceTrace() {
-        return methodMetadata != null ? methodMetadata.interfaceTrace() : null;
-    }
-
     private String resolveCookies() {
-        Map<String, String> cookies = new java.util.LinkedHashMap<>();
+        Map<String, String> cookies = methodMetadata.staticCookies().isEmpty()
+                ? new java.util.LinkedHashMap<>()
+                : new java.util.LinkedHashMap<>(methodMetadata.staticCookies());
 
-        List<Class<?>> hierarchy = collectInterfaceHierarchy(controller);
-        for (Class<?> iface : hierarchy) {
-            Cookie[] ifaceCookies = iface.getAnnotationsByType(Cookie.class);
-            for (Cookie c : ifaceCookies) {
-                if (!c.name().isBlank()) {
-                    cookies.put(c.name(), c.value());
-                }
-            }
-        }
-
-        if (method != null) {
-            Cookie[] methodCookies = method.getAnnotationsByType(Cookie.class);
-            for (Cookie c : methodCookies) {
-                if (!c.name().isBlank()) {
-                    cookies.put(c.name(), c.value());
-                }
-            }
-
-            Parameter[] parameters = method.getParameters();
-            for (int i = 0; i < parameters.length; i++) {
-                if (parameters[i].isAnnotationPresent(Cookie.class)) {
-                    Cookie cookieAnnotation = parameters[i].getAnnotation(Cookie.class);
-                    Object arg = args[i];
+        if (methodMetadata.hasCookieParams() && args != null) {
+            for (MethodMetadata.ParameterDescriptor p : methodMetadata.parameterDescriptors()) {
+                if (p.isCookie() && p.index() < args.length) {
+                    Object arg = args[p.index()];
                     if (arg == null) {
-                        String name = cookieAnnotation.name().isEmpty() ? parameters[i].getName() : cookieAnnotation.name();
-                        cookies.remove(name);
+                        cookies.remove(p.cookieName());
                         continue;
                     }
 
@@ -649,10 +579,7 @@ public class HttpTemplateBuilder {
                         continue;
                     }
 
-                    String name = cookieAnnotation.name().isEmpty()
-                            ? parameters[i].getName()
-                            : cookieAnnotation.name();
-                    cookies.put(name, String.valueOf(arg));
+                    cookies.put(p.cookieName(), String.valueOf(arg));
                 }
             }
         }
@@ -666,25 +593,6 @@ public class HttpTemplateBuilder {
                 .collect(Collectors.joining("; "));
     }
 
-    private static List<Class<?>> collectInterfaceHierarchy(Class<?> clazz) {
-        List<Class<?>> result = new ArrayList<>();
-        collectInterfaces(clazz, result);
-        return result;
-    }
-
-    private static void collectInterfaces(Class<?> current, List<Class<?>> result) {
-        if (current == null || !current.isInterface()) {
-            return;
-        }
-        for (Class<?> parent : current.getInterfaces()) {
-            collectInterfaces(parent, result);
-        }
-        if (!result.contains(current)) {
-            result.add(current);
-        }
-    }
-
-
     private Consumer<List<Header>> getAuthDetailsConsumer() {
         if (methodMetadata != null && methodMetadata.authDetailsHeaderName() != null) {
             String headerName = methodMetadata.authDetailsHeaderName();
@@ -697,62 +605,23 @@ public class HttpTemplateBuilder {
     }
 
     private List<Param> createRequestParams() {
-        List<Param> defaultParams = new ArrayList<>();
-
-        // Class-level default params (hierarchy order: parent interfaces first, sub-interface wins)
-        List<Class<?>> hierarchy = collectInterfaceHierarchy(controller);
-        for (Class<?> iface : hierarchy) {
-            RequestDefaultParam[] classParams = iface.getAnnotationsByType(RequestDefaultParam.class);
-            if (classParams.length > 0) {
-                Set<String> declaredNames = Arrays.stream(classParams)
-                        .map(RequestDefaultParam::name)
-                        .collect(Collectors.toSet());
-                defaultParams.removeIf(p -> declaredNames.contains(p.name()));
-                for (RequestDefaultParam p : classParams) {
-                    defaultParams.add(new Param(p.name(), p.value()));
-                }
-            }
-        }
-
-        // Method-level default params (verb annotation params + method-level @RequestDefaultParam)
-        if (method != null) {
-            List<RequestDefaultParam> methodDefaults = new ArrayList<>(Arrays.asList(requestMeta.defaultParams()));
-            RequestDefaultParam[] methodDirectParams = method.getAnnotationsByType(RequestDefaultParam.class);
-            for (RequestDefaultParam p : methodDirectParams) {
-                methodDefaults.removeIf(existing -> existing.name().equals(p.name()));
-                methodDefaults.add(p);
-            }
-
-            if (!methodDefaults.isEmpty()) {
-                Set<String> declaredNames = methodDefaults.stream()
-                        .map(RequestDefaultParam::name)
-                        .collect(Collectors.toSet());
-                defaultParams.removeIf(p -> declaredNames.contains(p.name()));
-                for (RequestDefaultParam p : methodDefaults) {
-                    defaultParams.add(new Param(p.name(), p.value()));
-                }
-            }
-        }
-
-        List<Param> result = new ArrayList<>(defaultParams);
+        List<Param> result = new ArrayList<>(methodMetadata.staticDefaultParams());
         CollectionFormat defaultCollectionFormat = resolveDefaultCollectionFormat();
 
-        if (method != null) {
-            Parameter[] parameters = method.getParameters();
-            for (int i = 0; i < parameters.length; i++) {
-                if (parameters[i].isAnnotationPresent(RequestParam.class)) {
-                    if (args[i] == null) {
+        if (methodMetadata.hasRequestParams() && args != null) {
+            for (MethodMetadata.ParameterDescriptor p : methodMetadata.parameterDescriptors()) {
+                if (p.isRequestParam() && p.index() < args.length) {
+                    Object arg = args[p.index()];
+                    if (arg == null) {
                         continue;
                     }
 
-                    Parameter parameter = parameters[i];
-                    RequestParam annotation = parameter.getAnnotation(RequestParam.class);
-                    CollectionFormat effectiveFormat = (annotation.format() != null && annotation.format() != CollectionFormat.DEFAULT)
-                            ? annotation.format()
+                    CollectionFormat effectiveFormat = p.requestParamFormat() != null
+                            ? p.requestParamFormat()
                             : defaultCollectionFormat;
 
-                    if (args[i] instanceof Map<?, ?> map) {
-                        String prefix = annotation.name();
+                    if (arg instanceof Map<?, ?> map) {
+                        String prefix = p.rawRequestParamName();
                         for (Map.Entry<?, ?> entry : map.entrySet()) {
                             if (entry.getKey() == null || entry.getValue() == null) {
                                 continue;
@@ -760,18 +629,15 @@ public class HttpTemplateBuilder {
                             String paramName = prefix.isEmpty()
                                     ? String.valueOf(entry.getKey())
                                     : prefix + "[" + entry.getKey() + "]";
-                            result.removeIf(p -> p.name().equals(paramName));
+                            result.removeIf(existing -> existing.name().equals(paramName));
                             appendParamValues(result, paramName, entry.getValue(), effectiveFormat);
                         }
                         continue;
                     }
 
-                    String name = annotation.name().isEmpty()
-                            ? parameter.getName()
-                            : annotation.name();
-
-                    result.removeIf(p -> p.name().equals(name));
-                    appendParamValues(result, name, args[i], effectiveFormat);
+                    String name = p.requestParamName();
+                    result.removeIf(existing -> existing.name().equals(name));
+                    appendParamValues(result, name, arg, effectiveFormat);
                 }
             }
         }
@@ -924,19 +790,12 @@ public class HttpTemplateBuilder {
         });
     }
 
-    private Object createBody(Method method, Object[] args){
-        if (requestMeta.httpMethod() == HttpMethod.GET) {
+    private Object createBody(Method method, Object[] args) {
+        if (requestMeta.httpMethod() == HttpMethod.GET || methodMetadata.requestBodyIndex() < 0 || args == null) {
             return null;
         }
-
-        Parameter[] parameters = method.getParameters();
-        for (int i = 0; i < parameters.length; i ++) {
-            if (parameters[i].isAnnotationPresent(RequestBody.class)) {
-                return args[i];
-            }
-        }
-
-        return null;
+        int idx = methodMetadata.requestBodyIndex();
+        return idx < args.length ? args[idx] : null;
     }
 
     private List<MultipartPart> createMultipartParts() {
@@ -945,35 +804,33 @@ public class HttpTemplateBuilder {
         }
 
         List<MultipartPart> parts = new ArrayList<>();
+        if (args == null) {
+            return parts;
+        }
 
-        Parameter[] parameters = method.getParameters();
-        for (int i = 0; i < parameters.length; i++) {
-            if (parameters[i].isAnnotationPresent(MultipartFormFile.class)) {
-                MultipartFormFile multipartAnnotation = parameters[i].getAnnotation(MultipartFormFile.class);
-                String partName = multipartAnnotation.partName();
-                String explicitContentType = multipartAnnotation.contentType().isEmpty()
-                        ? null
-                        : multipartAnnotation.contentType();
+        CollectionFormat defaultCollectionFormat = resolveDefaultCollectionFormat();
 
-                for (Object value : multipartFileValues(args[i])) {
-                    parts.add(createFilePart(partName, value, explicitContentType));
+        for (MethodMetadata.ParameterDescriptor p : methodMetadata.parameterDescriptors()) {
+            if (p.index() >= args.length) {
+                continue;
+            }
+            Object arg = args[p.index()];
+
+            if (p.isMultipartFile()) {
+                for (Object value : multipartFileValues(arg)) {
+                    parts.add(createFilePart(p.multipartPartName(), value, p.multipartExplicitContentType()));
                 }
-            } else if (parameters[i].isAnnotationPresent(RequestParam.class)) {
-                if (args[i] == null) {
+            } else if (p.isRequestParam()) {
+                if (arg == null) {
                     continue;
                 }
+                String explicitContentType = p.requestParamContentType();
+                CollectionFormat effectiveFormat = p.requestParamFormat() != null
+                        ? p.requestParamFormat()
+                        : defaultCollectionFormat;
 
-                Parameter parameter = parameters[i];
-                RequestParam annotation = parameter.getAnnotation(RequestParam.class);
-                String explicitContentType = annotation.contentType().isEmpty()
-                        ? null
-                        : annotation.contentType();
-                CollectionFormat effectiveFormat = (annotation.format() != null && annotation.format() != CollectionFormat.DEFAULT)
-                        ? annotation.format()
-                        : resolveDefaultCollectionFormat();
-
-                if (args[i] instanceof Map<?, ?> map) {
-                    String prefix = annotation.name();
+                if (arg instanceof Map<?, ?> map) {
+                    String prefix = p.rawRequestParamName();
                     for (Map.Entry<?, ?> entry : map.entrySet()) {
                         if (entry.getKey() == null || entry.getValue() == null) {
                             continue;
@@ -995,18 +852,15 @@ public class HttpTemplateBuilder {
                     continue;
                 }
 
-                String name = annotation.name().isEmpty()
-                        ? parameter.getName()
-                        : annotation.name();
-
-                if (args[i] instanceof Collection<?> collection) {
+                String name = p.requestParamName();
+                if (arg instanceof Collection<?> collection) {
                     List<?> nonNull = collection.stream().filter(Objects::nonNull).toList();
                     appendMultipartCollectionParts(parts, name, nonNull, explicitContentType, effectiveFormat);
-                } else if (args[i] instanceof Object[] array) {
+                } else if (arg instanceof Object[] array) {
                     List<?> nonNull = Arrays.stream(array).filter(Objects::nonNull).toList();
                     appendMultipartCollectionParts(parts, name, nonNull, explicitContentType, effectiveFormat);
                 } else {
-                    parts.add(createPartFromValue(name, args[i], explicitContentType));
+                    parts.add(createPartFromValue(name, arg, explicitContentType));
                 }
             }
         }

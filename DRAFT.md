@@ -1,12 +1,12 @@
-# DRAFT: активная зона после закрытия эпика Pluggable HttpEngine SPI & JdkHttpEngine (ADR-0052)
+# DRAFT: активная зона после закрытия Lifecycle Resource Safety & Zero-Reflection Parameter Descriptors (ADR-0053)
 
-> Эпик Pluggable HttpEngine SPI and JdkHttpEngine Architecture (ADR-0052, `docs/0.10.0/`) закрыт (сессия #132):
-> - Выделен открытый интерфейс сетевого транспорта `HttpEngine` (`ru.jrestly.engine`) с методами `send(WireRequest, HttpEngineOptions)` и `sendAsync(WireRequest, HttpEngineOptions)`.
-> - Создан неизменяемый record `HttpEngineOptions` (инкапсулирует `timeout`, `version`, `streamResponse`, `uploadProgressListener`, `downloadProgressListener`).
-> - Реализован дефолтный `JdkHttpEngine` на базе Java 21 `HttpClient` (100% zero-dependency) с фабриками `from(HttpClient)` и `create(ModuleInfo)`.
-> - Реализован SPI механизм обнаружения `HttpEngineProvider` через `java.util.ServiceLoader` и `HttpEngineResolver`.
-> - `AbstractHttpClient`, `HttpTemplateBuilder` и `HttpTemplate` переведены на работу через `HttpEngine` при сохранении 100% обратной совместимости.
-> - Написаны `JdkHttpEngineTest`, `HttpEngineResolverTest`, `CustomHttpEngineIntegrationTest` (+20 тестов, достигнута отметка **1020/1020 тестов** в 132 классах, 0 warnings под `-Werror`, POM строго zero-dep).
+> Эпик Lifecycle Resource Safety and Zero-Reflection Parameter Descriptors (ADR-0053, `docs/0.10.0/`) закрыт (сессия #133):
+> - Устранена утечка ресурсов жизненного цикла: `AbstractHttpClient` теперь устанавливает `ownsClient = true` на управляемых движках и гарантированно вызывает `this.httpClient.close()` при `client.close()`. Добавлен `AbstractHttpClientLifecycleTest` (+2 теста).
+> - В `MethodMetadata` вынесены и предвычислены `staticHeaders`, `staticCookies`, `staticDefaultParams`, `hasAuthAnnotation`, `effectiveTrace`.
+> - Создана модель `ParameterDescriptor`, исключившая многократные вызовы `Method.getParameters()`, `Class.getInterfaces()` и рефлексивный поиск аннотаций параметров на горячем пути диспетчеризации.
+> - `HttpTemplateBuilder` переведен на работу в $O(1)$ без рефлексии и промежуточных стрим-аллокаций.
+> - Бенчмарки JMH: диспетчеризация ускорилась до **6.99 µs/op** (пик 5.86 µs/op), ping до **2.33 µs/op**, аллокации кучи сократились на 21% (до 3234 B/op).
+> - Достигнута отметка **1022/1022 тестов** в 133 классах, 0 warnings под `-Werror`, POM строго zero-dep.
 > Следующий ход — свободный, выбор из активной зоны.
 
 ## Активная зона (кандидаты на следующий эпик)
