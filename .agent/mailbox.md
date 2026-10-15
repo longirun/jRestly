@@ -103,3 +103,10 @@ default=0, стабильная сортировка (declaration order сохр
 1. **Честный Zero-Dep без JSON-кодеков:** `JsonCodecResolver` больше не падает при старте клиента без Jackson/Gson/Moshi, а возвращает fallback `NoOpJsonCodec.instance()`. Добавлен метод `JsonCodec.noop()`.
 2. **Эргономика:** вызовы вида `String getUser(UUID id)`, `byte[] download()`, `InputStream stream()`, `void delete()`, `Stream<String>` и form-urlencoded работают 100% из коробки в голой Java 21 без единой сторонней библиотеки. При попытке сериализации/десериализации DTO выбрасывается понятный `IllegalStateException` с перечислением поддерживаемых библиотек.
 3. **Гейты:** 14 новых тестов (`NoOpJsonCodecTest`, `ZeroDepStandaloneWireMockTest`), всего 941/941 тестов зелёные (114 классов), POM строго с 0 dependencies. Следующий свободный ADR — **0046**.
+
+[2026-10-15 14:35] Агент (сессия #126): Реализован эпик Zero-Dependency Authorization SPI & TokenManager (ADR-0046):
+1. **Token & TokenManager:** immutable record `Token` со сроками жизни и упреждающим `refreshBuffer`. Single-flight кэширование через `CompletableFuture` (гарантирует ровно 1 запрос к auth-серверу при сотнях параллельных запросов, исключая thundering herd / stampede) и метод `invalidate()`.
+2. **Прозрачный 401 retry:** при получении 401 токен инвалидируется, запрос прозрачно повторяется со свежим токеном 1 раз — как в синхронном режиме (`exchange()`), так и в асинхронном (`exchangeAsync()` через non-blocking `thenCompose`).
+3. **Zero-Dep интерцепторы:** `BearerAuth` (RFC 6750), `BasicAuth` (RFC 7617, base64), `ApiKeyAuth` (header/query) с высоким приоритетом `@Order(-1000)`. Эндпоинты с `@Authorization` автоматически пропускаются.
+4. **Fluent API:** `bearerAuth(...)`, `basicAuth(...)`, `apiKeyHeader(...)`, `apiKeyQuery(...)`, `tokenManager(...)`, `retryOnUnauthorized(...)`.
+5. **Гейты:** 24 новых теста (`TokenTest`, `TokenManagerTest`, `AuthInterceptorsTest`, `AuthorizationWireMockTest`), всего 965/965 тестов зелёные (118 классов), POM с ровно 0 dependencies. Следующий свободный ADR — **0047**.

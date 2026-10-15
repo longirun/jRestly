@@ -1,37 +1,31 @@
-# DRAFT: активная зона после закрытия эпика Zero-Dependency Standalone Mode (ADR-0045)
+# DRAFT: активная зона после закрытия эпика Zero-Dependency Authorization SPI & TokenManager (ADR-0046)
 
-> Эпик Zero-Dependency Standalone Mode & Fallback NoOpJsonCodec (ADR-0045, `docs/0.10.0/`) закрыт (сессия #125):
-> - `ru.jrestly.json.NoOpJsonCodec`: fallback singleton `NoOpJsonCodec.instance()`.
-> - `JsonCodec.noop()`: публичный фабричный метод.
-> - `JsonCodecResolver`: при отсутствии Jackson, Gson, Moshi возвращает `NoOpJsonCodec.instance()` вместо eager падения.
-> - `HttpTemplate.probePayloadDecode`: поддержка raw `byte[].class`.
-> - Тесты: 14 новых тестов (941/941 в 114 классах), zero-dep POM подтвержден.
+> Эпик Zero-Dependency Authorization SPI, TokenManager & Transparent 401 Retry (ADR-0046, `docs/0.10.0/`) закрыт (сессия #126):
+> - `ru.jrestly.auth.Token`: immutable record со сроками жизни и `refreshBuffer`.
+> - `ru.jrestly.auth.TokenManager` & `SingleFlightTokenManager`: single-flight защита от stampede/thundering herd.
+> - `ru.jrestly.auth.BearerAuth`, `BasicAuth`, `ApiKeyAuth`: zero-dep интерцепторы с `@Order(-1000)`.
+> - Прозрачный 401 retry: при получении 401 токен сбрасывается, запрос повторяется со свежим токеном (в `exchange` и `exchangeAsync`).
+> - Fluent builder ergonomics: `bearerAuth`, `basicAuth`, `apiKeyHeader`, `apiKeyQuery`, `tokenManager`, `retryOnUnauthorized`.
+> - Тесты: 24 новых теста (965/965 в 118 классах), zero-dep POM подтвержден.
 > Следующий ход — свободный, выбор из активной зоны.
 
 ## Активная зона (кандидаты на следующий эпик)
 
-- **Кандидат №1 — Zero-Dep Authorization SPI & TokenManager (ADR-0046)**:
-  Полноценная современная авторизация в `ru.jrestly.auth`:
-  - `TokenManager` (expire-aware кэширование).
-  - Single-flight защита через `CompletableFuture` (предотвращение stampede / thundering herd на auth-сервер).
-  - Прозрачный 401 retry с инвалидацией кэша и повтором запроса.
-  - Готовые zero-dep хелперы: `BearerTokenProvider`, `BasicAuth` (RFC 7617), `ApiKeyAuth`.
-
-- **Кандидат №3 — Interceptor Chain Short-Circuit SPI (ADR-0047)**:
+- **Кандидат №1 — Interceptor Chain Short-Circuit SPI (ADR-0047)**:
   Интерцептор может вернуть синтетический ответ (мок/кэш) без сетевого вызова:
   специальный `ShortCircuitInterceptor` интерфейс или возврат `Optional<WireResponse>`. Полезно для мок-тестирования,
   кэш-слоя, circuit-from-cache, интеграции с внешними моками.
 
-- **Кандидат №4 — HttpTemplate инкапсуляция (новый ADR)**:
+- **Кандидат №2 — HttpTemplate инкапсуляция (новый ADR)**:
   `HttpTemplate` — 57 публичных setter-ов, leaked internal. Перевод в package-private.
   Требует: переписать 5-6 тестов (`DecompressionConfigTest`, `PutMethodTest`, `TimeoutConfigTest` и др.),
   которые инстанцируют `new HttpTemplate()` напрямую. Крупная работа, высокая ценность.
 
-- **Кандидат №5 — JMH Benchmarks suite**:
+- **Кандидат №3 — JMH Benchmarks suite**:
   Тестирование производительности и накладных расходов jRestly (RPS, latency p99, gc allocs)
   в сравнении с `HttpClient`, Retrofit и Feign.
 
-- **Кандидат №6 — test-javadoc** (ADR-0013 Non-goals):
+- **Кандидат №4 — test-javadoc** (ADR-0013 Non-goals):
   Наведение лоска в тестовых классах.
 
 

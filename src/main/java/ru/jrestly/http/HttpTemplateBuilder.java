@@ -294,6 +294,12 @@ public class HttpTemplateBuilder {
         result.setTimeout(resolveTimeout());
         result.setCircuitBreaker(resolveCircuitBreaker());
         result.setRateLimiter(resolveRateLimiter());
+        result.setTokenManager(moduleInfo.getTokenManager());
+        boolean retryAuth = moduleInfo.isRetryOnUnauthorized();
+        if (method != null && method.isAnnotationPresent(ru.jrestly.annotation.Authorization.class)) {
+            retryAuth = false;
+        }
+        result.setRetryOnUnauthorized(retryAuth);
         result.setControllerClass(controller);
         result.setMethod(method);
         result.setArgs(args);
@@ -1493,6 +1499,9 @@ public class HttpTemplateBuilder {
                 }
             }
         }
+
+        reqs.sort(java.util.Comparator.comparingInt(i -> orderOf(i.getClass())));
+        resps.sort(java.util.Comparator.comparingInt(i -> orderOf(i.getClass())));
 
         return new ResolvedInterceptors(
                 Collections.unmodifiableList(reqs),

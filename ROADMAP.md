@@ -1577,7 +1577,38 @@ Gates (session #125, clean rebuild):
 - `javadoc` 0 warnings under permanent `-Xdoclint:all -Werror`.
 - Zero external runtime dependencies strictly preserved (0 dependencies in Maven POM).
 
-After the epic: candidates — ADR-0046 (Zero-Dep Authorization SPI & TokenManager), ADR-0047 (Short-Circuit SPI), JMH Benchmarks. ADR number **0046** free.
+After the epic: ADR-0046 (Zero-Dependency Authorization SPI, TokenManager & Transparent 401 Retry) — done, section below. ADR number **0047** free.
+
+## Zero-Dependency Authorization SPI, TokenManager & Transparent 401 Retry (ADR-0046) — COMPLETE ✅ (2026-10-15, unreleased)
+
+> Source of truth: [`docs/0.10.0/ADR-0046-zero-dependency-authorization-spi-and-token-manager.md`](docs/0.10.0/ADR-0046-zero-dependency-authorization-spi-and-token-manager.md).
+
+**Problem:** Previously jRestly lacked production-grade authorization lifecycle management: concurrent requests after token expiration caused cache stampede / thundering herd on auth servers, tokens had no expiration awareness or refresh buffer, transparent 401 retry with token invalidation was missing, and standard RFC 7617 Basic Auth or query API keys required manual interceptor boilerplate.
+
+**Solution:**
+- Zero-dep authorization package `ru.jrestly.auth`.
+- `Token` record with absolute instant and relative TTL expiration, plus proactive `isExpired(refreshBuffer)` evaluation.
+- `TokenManager` with lock-free single-flight concurrency via `AtomicReference<CompletableFuture<Token>>` (preventing thundering herd across concurrent threads) and explicit `invalidate()` support.
+- Built-in zero-dep interceptors with `@Order(-1000)`: `BearerAuth` (RFC 6750), `BasicAuth` (RFC 7617 using standard Base64), `ApiKeyAuth` (header & query). Requests originating from methods annotated with `@Authorization` bypass auth injection.
+- Transparent 401 Unauthorized retry: when enabled with a `TokenManager`, receiving 401 automatically invalidates the token, reapplies interceptors with fresh credentials, and repeats the request once. Fully supported in both synchronous (`exchange()`) and non-blocking asynchronous (`exchangeAsync()`) execution flows.
+- Fluent builder ergonomics on `JRestlyClient.Builder` and `SimpleModuleInfo.Builder`: `bearerAuth`, `basicAuth`, `apiKeyHeader`, `apiKeyQuery`, `tokenManager`, `retryOnUnauthorized`.
+
+Key changes:
+- `ru.jrestly.auth.Token`: immutable record with expiration metadata.
+- `ru.jrestly.auth.TokenManager` & `SingleFlightTokenManager`: single-flight lifecycle manager.
+- `ru.jrestly.auth.BearerAuth`, `BasicAuth`, `ApiKeyAuth`: zero-dep interceptors.
+- `ru.jrestly.ModuleInfo`: default `getTokenManager()` and `isRetryOnUnauthorized()`.
+- `ru.jrestly.SimpleModuleInfo` & `JRestlyClient`: fluent configuration methods.
+- `ru.jrestly.http.HttpTemplate` & `HttpTemplateBuilder`: transparent 401 retry and order-aware interceptor sorting.
+- Tests: `TokenTest` (5 tests), `TokenManagerTest` (5 tests), `AuthInterceptorsTest` (6 tests), `AuthorizationWireMockTest` (8 tests) (+24 tests, total 965/965 across 118 classes).
+
+Gates (session #126, clean rebuild):
+- `./gradlew test` **965/965** (118 classes, 0 failures/errors; +24 tests in ADR-0046).
+- `compileJava` and `compileTestJava` 0 warnings under permanent `-Xlint:all -Werror`.
+- `javadoc` 0 warnings under permanent `-Xdoclint:all -Werror`.
+- Zero external runtime dependencies strictly preserved (0 dependencies in Maven POM).
+
+After the epic: candidates — ADR-0047 (Short-Circuit Interceptor SPI), HttpTemplate package-private encapsulation, JMH Benchmarks. ADR number **0047** free.
 
 
 ## Post-0.5.0 shortlist (not scheduled — see ADR-0003)

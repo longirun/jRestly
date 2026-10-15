@@ -82,6 +82,8 @@ public class SimpleModuleInfo implements ModuleInfo {
     private final ru.jrestly.resilience.CircuitBreakerRegistry circuitBreakerRegistry;
     private final ru.jrestly.resilience.RateLimiter rateLimiter;
     private final ru.jrestly.resilience.RateLimiterRegistry rateLimiterRegistry;
+    private final ru.jrestly.auth.TokenManager tokenManager;
+    private final boolean retryOnUnauthorized;
 
     private SimpleModuleInfo(Builder builder) {
         this.name = builder.name;
@@ -118,6 +120,8 @@ public class SimpleModuleInfo implements ModuleInfo {
         this.rateLimiterRegistry = builder.rateLimiterRegistry != null
                 ? builder.rateLimiterRegistry
                 : ru.jrestly.resilience.RateLimiterRegistry.ofDefaults();
+        this.tokenManager = builder.tokenManager;
+        this.retryOnUnauthorized = builder.retryOnUnauthorized;
     }
 
     /**
@@ -278,6 +282,16 @@ public class SimpleModuleInfo implements ModuleInfo {
         return rateLimiterRegistry;
     }
 
+    @Override
+    public ru.jrestly.auth.TokenManager getTokenManager() {
+        return tokenManager;
+    }
+
+    @Override
+    public boolean isRetryOnUnauthorized() {
+        return retryOnUnauthorized;
+    }
+
     /**
      * A builder for {@link SimpleModuleInfo}, pre-set to the defaults:
      * name {@code "default"}, 5 s connect timeout, 30 s socket timeout,
@@ -316,6 +330,8 @@ public class SimpleModuleInfo implements ModuleInfo {
         private ru.jrestly.resilience.CircuitBreakerRegistry circuitBreakerRegistry;
         private ru.jrestly.resilience.RateLimiter rateLimiter;
         private ru.jrestly.resilience.RateLimiterRegistry rateLimiterRegistry;
+        private ru.jrestly.auth.TokenManager tokenManager;
+        private boolean retryOnUnauthorized = false;
 
         /**
          * A builder pre-set to the defaults; {@code baseUrl} must still
@@ -948,6 +964,147 @@ public class SimpleModuleInfo implements ModuleInfo {
          */
         public Builder rateLimiterRegistry(ru.jrestly.resilience.RateLimiterRegistry registry) {
             this.rateLimiterRegistry = registry;
+            return this;
+        }
+
+        /**
+         * Sets the token manager for token caching and transparent refresh (ADR-0046).
+         *
+         * @param tokenManager the token manager, or {@code null}
+         * @return this builder, for chaining
+         */
+        public Builder tokenManager(ru.jrestly.auth.TokenManager tokenManager) {
+            this.tokenManager = tokenManager;
+            return this;
+        }
+
+        /**
+         * Enables or disables transparent 401 Unauthorized retry with token cache invalidation (ADR-0046).
+         *
+         * @param retryOnUnauthorized {@code true} to enable 401 retry
+         * @return this builder, for chaining
+         */
+        public Builder retryOnUnauthorized(boolean retryOnUnauthorized) {
+            this.retryOnUnauthorized = retryOnUnauthorized;
+            return this;
+        }
+
+        /**
+         * Configures Bearer authentication using a fixed static token (ADR-0046).
+         *
+         * @param token the static token string, must not be {@code null}
+         * @return this builder, for chaining
+         * @throws NullPointerException if {@code token} is {@code null}
+         */
+        public Builder bearerAuth(String token) {
+            this.requestInterceptors.add(ru.jrestly.auth.BearerAuth.of(token));
+            return this;
+        }
+
+        /**
+         * Configures Bearer authentication using a dynamic token supplier (ADR-0046).
+         *
+         * @param tokenSupplier the token supplier, must not be {@code null}
+         * @return this builder, for chaining
+         * @throws NullPointerException if {@code tokenSupplier} is {@code null}
+         */
+        public Builder bearerAuth(java.util.function.Supplier<String> tokenSupplier) {
+            this.requestInterceptors.add(ru.jrestly.auth.BearerAuth.of(tokenSupplier));
+            return this;
+        }
+
+        /**
+         * Configures Bearer authentication using a {@link ru.jrestly.auth.TokenManager} (ADR-0046).
+         * Also automatically sets {@link #tokenManager(ru.jrestly.auth.TokenManager)} and enables
+         * {@link #retryOnUnauthorized(boolean)}.
+         *
+         * @param tokenManager the token manager, must not be {@code null}
+         * @return this builder, for chaining
+         * @throws NullPointerException if {@code tokenManager} is {@code null}
+         */
+        public Builder bearerAuth(ru.jrestly.auth.TokenManager tokenManager) {
+            java.util.Objects.requireNonNull(tokenManager, "tokenManager");
+            this.tokenManager = tokenManager;
+            this.retryOnUnauthorized = true;
+            this.requestInterceptors.add(ru.jrestly.auth.BearerAuth.of(tokenManager));
+            return this;
+        }
+
+        /**
+         * Configures RFC 7617 Basic authentication with fixed credentials (ADR-0046).
+         *
+         * @param username the username, must not be {@code null}
+         * @param password the password, must not be {@code null}
+         * @return this builder, for chaining
+         * @throws NullPointerException if {@code username} or {@code password} is {@code null}
+         */
+        public Builder basicAuth(String username, String password) {
+            this.requestInterceptors.add(ru.jrestly.auth.BasicAuth.of(username, password));
+            return this;
+        }
+
+        /**
+         * Configures RFC 7617 Basic authentication with dynamic credential suppliers (ADR-0046).
+         *
+         * @param usernameSupplier the username supplier, must not be {@code null}
+         * @param passwordSupplier the password supplier, must not be {@code null}
+         * @return this builder, for chaining
+         * @throws NullPointerException if {@code usernameSupplier} or {@code passwordSupplier} is {@code null}
+         */
+        public Builder basicAuth(java.util.function.Supplier<String> usernameSupplier, java.util.function.Supplier<String> passwordSupplier) {
+            this.requestInterceptors.add(ru.jrestly.auth.BasicAuth.of(usernameSupplier, passwordSupplier));
+            return this;
+        }
+
+        /**
+         * Configures API Key authentication passed via an HTTP header (ADR-0046).
+         *
+         * @param headerName the HTTP header name, must not be {@code null}
+         * @param apiKey the API key value, must not be {@code null}
+         * @return this builder, for chaining
+         * @throws NullPointerException if {@code headerName} or {@code apiKey} is {@code null}
+         */
+        public Builder apiKeyHeader(String headerName, String apiKey) {
+            this.requestInterceptors.add(ru.jrestly.auth.ApiKeyAuth.header(headerName, apiKey));
+            return this;
+        }
+
+        /**
+         * Configures API Key authentication passed via an HTTP header using a dynamic supplier (ADR-0046).
+         *
+         * @param headerName the HTTP header name, must not be {@code null}
+         * @param apiKeySupplier the API key supplier, must not be {@code null}
+         * @return this builder, for chaining
+         * @throws NullPointerException if {@code headerName} or {@code apiKeySupplier} is {@code null}
+         */
+        public Builder apiKeyHeader(String headerName, java.util.function.Supplier<String> apiKeySupplier) {
+            this.requestInterceptors.add(ru.jrestly.auth.ApiKeyAuth.header(headerName, apiKeySupplier));
+            return this;
+        }
+
+        /**
+         * Configures API Key authentication passed via a URL query parameter (ADR-0046).
+         *
+         * @param paramName the query parameter name, must not be {@code null}
+         * @param apiKey the API key value, must not be {@code null}
+         * @return this builder, for chaining
+         * @throws NullPointerException if {@code paramName} or {@code apiKey} is {@code null}
+         */
+        public Builder apiKeyQuery(String paramName, String apiKey) {
+            this.requestInterceptors.add(ru.jrestly.auth.ApiKeyAuth.query(paramName, apiKey));
+            return this;
+        }
+
+        /**
+         * Configures API Key authentication passed via a URL query parameter using a dynamic supplier (ADR-0046).
+         *
+         * @param paramName the query parameter name, must not be {@code null}
+         * @param apiKeySupplier the API key supplier, must not be {@code null}
+         * @return this builder, for chaining
+         * @throws NullPointerException if {@code paramName} or {@code apiKeySupplier} is {@code null}
+         */
+        public Builder apiKeyQuery(String paramName, java.util.function.Supplier<String> apiKeySupplier) {
+            this.requestInterceptors.add(ru.jrestly.auth.ApiKeyAuth.query(paramName, apiKeySupplier));
             return this;
         }
 

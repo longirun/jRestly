@@ -347,5 +347,23 @@ public interface ModuleInfo {
     default ru.jrestly.resilience.RateLimiterRegistry getRateLimiterRegistry() {
         return null;
     }
+
+    /**
+     * The token manager associated with this client module, or {@code null} if none is configured (ADR-0046).
+     *
+     * @return the token manager, or {@code null}
+     */
+    default ru.jrestly.auth.TokenManager getTokenManager() {
+        return null;
+    }
+
+    /**
+     * Whether transparent 401 Unauthorized retry with token invalidation is enabled (ADR-0046).
+     *
+     * @return {@code true} if 401 retry is enabled
+     */
+    default boolean isRetryOnUnauthorized() {
+        return false;
+    }
 }
 

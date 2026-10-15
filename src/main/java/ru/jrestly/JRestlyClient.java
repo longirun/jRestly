@@ -657,6 +657,143 @@ public class JRestlyClient extends AbstractHttpClient {
         }
 
         /**
+         * Sets the token manager for token caching and transparent refresh (ADR-0046).
+         *
+         * @param tokenManager the token manager, or {@code null}
+         * @return this builder, for chaining
+         */
+        public Builder tokenManager(ru.jrestly.auth.TokenManager tokenManager) {
+            moduleInfoBuilder.tokenManager(tokenManager);
+            return this;
+        }
+
+        /**
+         * Enables or disables transparent 401 Unauthorized retry with token cache invalidation (ADR-0046).
+         *
+         * @param retryOnUnauthorized {@code true} to enable 401 retry
+         * @return this builder, for chaining
+         */
+        public Builder retryOnUnauthorized(boolean retryOnUnauthorized) {
+            moduleInfoBuilder.retryOnUnauthorized(retryOnUnauthorized);
+            return this;
+        }
+
+        /**
+         * Configures Bearer authentication using a fixed static token (ADR-0046).
+         *
+         * @param token the static token string, must not be {@code null}
+         * @return this builder, for chaining
+         * @throws NullPointerException if {@code token} is {@code null}
+         */
+        public Builder bearerAuth(String token) {
+            moduleInfoBuilder.bearerAuth(token);
+            return this;
+        }
+
+        /**
+         * Configures Bearer authentication using a dynamic token supplier (ADR-0046).
+         *
+         * @param tokenSupplier the token supplier, must not be {@code null}
+         * @return this builder, for chaining
+         * @throws NullPointerException if {@code tokenSupplier} is {@code null}
+         */
+        public Builder bearerAuth(java.util.function.Supplier<String> tokenSupplier) {
+            moduleInfoBuilder.bearerAuth(tokenSupplier);
+            return this;
+        }
+
+        /**
+         * Configures Bearer authentication using a {@link ru.jrestly.auth.TokenManager} (ADR-0046).
+         * Also automatically sets the token manager and enables transparent 401 retry.
+         *
+         * @param tokenManager the token manager, must not be {@code null}
+         * @return this builder, for chaining
+         * @throws NullPointerException if {@code tokenManager} is {@code null}
+         */
+        public Builder bearerAuth(ru.jrestly.auth.TokenManager tokenManager) {
+            moduleInfoBuilder.bearerAuth(tokenManager);
+            return this;
+        }
+
+        /**
+         * Configures RFC 7617 Basic authentication with fixed credentials (ADR-0046).
+         *
+         * @param username the username, must not be {@code null}
+         * @param password the password, must not be {@code null}
+         * @return this builder, for chaining
+         * @throws NullPointerException if {@code username} or {@code password} is {@code null}
+         */
+        public Builder basicAuth(String username, String password) {
+            moduleInfoBuilder.basicAuth(username, password);
+            return this;
+        }
+
+        /**
+         * Configures RFC 7617 Basic authentication with dynamic credential suppliers (ADR-0046).
+         *
+         * @param usernameSupplier the username supplier, must not be {@code null}
+         * @param passwordSupplier the password supplier, must not be {@code null}
+         * @return this builder, for chaining
+         * @throws NullPointerException if {@code usernameSupplier} or {@code passwordSupplier} is {@code null}
+         */
+        public Builder basicAuth(java.util.function.Supplier<String> usernameSupplier, java.util.function.Supplier<String> passwordSupplier) {
+            moduleInfoBuilder.basicAuth(usernameSupplier, passwordSupplier);
+            return this;
+        }
+
+        /**
+         * Configures API Key authentication passed via an HTTP header (ADR-0046).
+         *
+         * @param headerName the HTTP header name, must not be {@code null}
+         * @param apiKey the API key value, must not be {@code null}
+         * @return this builder, for chaining
+         * @throws NullPointerException if {@code headerName} or {@code apiKey} is {@code null}
+         */
+        public Builder apiKeyHeader(String headerName, String apiKey) {
+            moduleInfoBuilder.apiKeyHeader(headerName, apiKey);
+            return this;
+        }
+
+        /**
+         * Configures API Key authentication passed via an HTTP header using a dynamic supplier (ADR-0046).
+         *
+         * @param headerName the HTTP header name, must not be {@code null}
+         * @param apiKeySupplier the API key supplier, must not be {@code null}
+         * @return this builder, for chaining
+         * @throws NullPointerException if {@code headerName} or {@code apiKeySupplier} is {@code null}
+         */
+        public Builder apiKeyHeader(String headerName, java.util.function.Supplier<String> apiKeySupplier) {
+            moduleInfoBuilder.apiKeyHeader(headerName, apiKeySupplier);
+            return this;
+        }
+
+        /**
+         * Configures API Key authentication passed via a URL query parameter (ADR-0046).
+         *
+         * @param paramName the query parameter name, must not be {@code null}
+         * @param apiKey the API key value, must not be {@code null}
+         * @return this builder, for chaining
+         * @throws NullPointerException if {@code paramName} or {@code apiKey} is {@code null}
+         */
+        public Builder apiKeyQuery(String paramName, String apiKey) {
+            moduleInfoBuilder.apiKeyQuery(paramName, apiKey);
+            return this;
+        }
+
+        /**
+         * Configures API Key authentication passed via a URL query parameter using a dynamic supplier (ADR-0046).
+         *
+         * @param paramName the query parameter name, must not be {@code null}
+         * @param apiKeySupplier the API key supplier, must not be {@code null}
+         * @return this builder, for chaining
+         * @throws NullPointerException if {@code paramName} or {@code apiKeySupplier} is {@code null}
+         */
+        public Builder apiKeyQuery(String paramName, java.util.function.Supplier<String> apiKeySupplier) {
+            moduleInfoBuilder.apiKeyQuery(paramName, apiKeySupplier);
+            return this;
+        }
+
+        /**
          * Validates the settings (baseUrl must be set) and creates the
          * client for the resulting {@link SimpleModuleInfo}; an unset
          * {@code jsonCodec} is resolved from the classpath.

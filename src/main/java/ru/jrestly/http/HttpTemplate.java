@@ -149,6 +149,8 @@ public class HttpTemplate {
     private ClientMetricsListener metricsListener;
     private CircuitBreaker circuitBreaker;
     private RateLimiter rateLimiter;
+    private ru.jrestly.auth.TokenManager tokenManager;
+    private boolean retryOnUnauthorized;
 
     /**
      * Creates an empty template. Not intended for direct use: instances
@@ -161,7 +163,7 @@ public class HttpTemplate {
     /**
      * Executes the call and returns the decoded result. For
      * {@code CompletableFuture<T>} return types the returned value is the
-     * future itself; see {@link #exchangeAsync(WireRequest, long, RequestContext)}.
+     * future itself; see {@link #exchangeAsync(WireRequest, WireRequest, long, RequestContext)}.
      *
      * @param <T> the type the controller method declares as its return type
      * @return the payload decoded to {@code T} by the JSON codec, the raw
@@ -184,13 +186,7 @@ public class HttpTemplate {
 
         if (hasInterceptors) {
             try {
-                for (RequestInterceptor interceptor : requestInterceptors) {
-                    WireRequest next = interceptor.intercept(effectiveRequest, requestContext);
-                    if (next == null) {
-                        throw new NullPointerException("RequestInterceptor returned null WireRequest");
-                    }
-                    effectiveRequest = next;
-                }
+                effectiveRequest = applyRequestInterceptors(request, requestContext);
             } catch (Throwable t) {
                 invokeResponseInterceptors(requestContext, effectiveRequest, null, t, start);
                 if (hasMetrics) {
@@ -215,7 +211,7 @@ public class HttpTemplate {
         notifyCallStart(requestContext, effectiveRequest);
 
         if (async) {
-            return (T) exchangeAsync(effectiveRequest, start, requestContext);
+            return (T) exchangeAsync(request, effectiveRequest, start, requestContext);
         }
 
         WireResponse response = null;
@@ -229,6 +225,12 @@ public class HttpTemplate {
                 circuitBreaker.acquirePermission();
             }
             response = executeWithRetries(effectiveRequest, requestContext, attemptsHolder);
+            if (response.statusCode() == 401 && retryOnUnauthorized && tokenManager != null) {
+                closeIntermediateStream(response);
+                tokenManager.invalidate();
+                effectiveRequest = applyRequestInterceptors(request, requestContext);
+                response = executeWithRetries(effectiveRequest, requestContext, attemptsHolder);
+            }
             T result = processResponse(effectiveRequest, response, start);
             if (circuitBreaker != null) {
                 circuitBreaker.recordSuccess(System.nanoTime() - start);
@@ -262,17 +264,31 @@ public class HttpTemplate {
         }
     }
 
+    private WireRequest applyRequestInterceptors(WireRequest baseRequest, RequestContext requestContext) {
+        WireRequest current = baseRequest;
+        for (RequestInterceptor interceptor : requestInterceptors) {
+            WireRequest next = interceptor.intercept(current, requestContext);
+            if (next == null) {
+                throw new NullPointerException("RequestInterceptor returned null WireRequest");
+            }
+            current = next;
+        }
+        return current;
+    }
+
     // Async twin of exchange(): the same tail via processResponse, with
     // @OnError / status-check exceptions kept as-is and transport failures
     // mapped to the exceptions a synchronous call would throw (both become
     // the cause of the future's exceptional completion), and response
     // interceptors triggered non-blockingly upon completion.
     private CompletableFuture<Object> exchangeAsync(
+            WireRequest initialRequest,
             WireRequest request,
             long startNanos,
             RequestContext requestContext
     ) {
         AtomicReference<WireResponse> responseRef = new AtomicReference<>();
+        AtomicReference<WireRequest> activeRequestRef = new AtomicReference<>(request);
         AtomicInteger attemptsRef = new AtomicInteger(1);
         boolean hasResponseInterceptors = !responseInterceptors.isEmpty() && requestContext != null;
         boolean hasMetrics = metricsListener != null && requestContext != null;
@@ -306,12 +322,32 @@ public class HttpTemplate {
             }
         }
 
+        CompletableFuture<WireResponse> retriesFuture = executeAsyncWithRetries(request, requestContext, attemptsRef);
+        CompletableFuture<WireResponse> authGuardedFuture = (retryOnUnauthorized && tokenManager != null)
+                ? retriesFuture.thenCompose(response -> {
+                    if (response.statusCode() == 401) {
+                        closeIntermediateStream(response);
+                        tokenManager.invalidate();
+                        try {
+                            WireRequest refreshed = applyRequestInterceptors(initialRequest, requestContext);
+                            activeRequestRef.set(refreshed);
+                            return executeAsyncWithRetries(refreshed, requestContext, attemptsRef);
+                        } catch (Throwable t) {
+                            CompletableFuture<WireResponse> failed = new CompletableFuture<>();
+                            failed.completeExceptionally(t);
+                            return failed;
+                        }
+                    }
+                    return CompletableFuture.completedFuture(response);
+                })
+                : retriesFuture;
+
         java.util.function.Function<WireResponse, Object> processor = response -> {
             if (hasResponseInterceptors || hasMetrics) {
                 responseRef.set(response);
             }
             try {
-                return processResponse(request, response, startNanos);
+                return processResponse(activeRequestRef.get(), response, startNanos);
             } catch (IOException e) {
                 // ADR-0015 Aspect 3: a stream-consumption failure on the
                 // error path is a transport-class failure — thenApply
@@ -322,10 +358,9 @@ public class HttpTemplate {
             }
         };
 
-        CompletableFuture<WireResponse> retriesFuture = executeAsyncWithRetries(request, requestContext, attemptsRef);
         CompletableFuture<Object> stage = executor != null
-                ? retriesFuture.thenApplyAsync(processor, executor)
-                : retriesFuture.thenApply(processor);
+                ? authGuardedFuture.thenApplyAsync(processor, executor)
+                : authGuardedFuture.thenApply(processor);
 
         CompletableFuture<Object> future = stage.exceptionally(ex -> {
             Throwable cause = unwrapCause(ex);
@@ -341,7 +376,7 @@ public class HttpTemplate {
                 throw err;
             }
             logger.log(System.Logger.Level.ERROR,
-                    "Request failed: " + request.method() + " " + request.uri(), cause);
+                    "Request failed: " + activeRequestRef.get().method() + " " + activeRequestRef.get().uri(), cause);
             if (cause instanceof InterruptedException) {
                 Thread.currentThread().interrupt();
             }
@@ -354,7 +389,7 @@ public class HttpTemplate {
                 if (hasResponseInterceptors) {
                     invokeResponseInterceptors(
                             requestContext,
-                            request,
+                            activeRequestRef.get(),
                             responseRef.get(),
                             failure,
                             startNanos
@@ -363,7 +398,7 @@ public class HttpTemplate {
                 if (hasMetrics) {
                     notifyCallComplete(
                             requestContext,
-                            request,
+                            activeRequestRef.get(),
                             responseRef.get(),
                             failure,
                             startNanos,
@@ -2247,6 +2282,42 @@ public class HttpTemplate {
      */
     public RateLimiter getRateLimiter() {
         return rateLimiter;
+    }
+
+    /**
+     * Sets the token manager for token caching and refresh (ADR-0046).
+     *
+     * @param tokenManager the token manager, or {@code null}
+     */
+    public void setTokenManager(ru.jrestly.auth.TokenManager tokenManager) {
+        this.tokenManager = tokenManager;
+    }
+
+    /**
+     * Returns the configured {@link ru.jrestly.auth.TokenManager}.
+     *
+     * @return the token manager, or {@code null}
+     */
+    public ru.jrestly.auth.TokenManager getTokenManager() {
+        return tokenManager;
+    }
+
+    /**
+     * Enables or disables transparent 401 Unauthorized retry with token cache invalidation (ADR-0046).
+     *
+     * @param retryOnUnauthorized {@code true} to enable 401 retry
+     */
+    public void setRetryOnUnauthorized(boolean retryOnUnauthorized) {
+        this.retryOnUnauthorized = retryOnUnauthorized;
+    }
+
+    /**
+     * Whether transparent 401 Unauthorized retry is enabled.
+     *
+     * @return {@code true} if 401 retry is enabled
+     */
+    public boolean isRetryOnUnauthorized() {
+        return retryOnUnauthorized;
     }
 
     private void handleOnError(int statusCode, String payload, List<Header> responseHeaders) {
