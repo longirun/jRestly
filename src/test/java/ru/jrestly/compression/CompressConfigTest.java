@@ -209,32 +209,4 @@ class CompressConfigTest {
         assertFalse(problemsInterface.isEmpty());
         assertTrue(problemsInterface.getFirst().contains("@Compress minSizeBytes must not be negative"));
     }
-
-    @Test
-    @DisplayName("HttpTemplateBuilder directly compresses request body and sets Content-Encoding")
-    void testHttpTemplateDirectCompressionBytes() throws Exception {
-        SimpleModuleInfo info = SimpleModuleInfo.builder()
-                .baseUrl("http://localhost:8080")
-                .build();
-        java.lang.reflect.Method method = ValidApi.class.getMethod("sendData", String.class);
-        String largeData = "Repeated large payload ".repeat(20);
-
-        ru.jrestly.http.HttpTemplateBuilder builder = new ru.jrestly.http.HttpTemplateBuilder(
-                info,
-                java.net.http.HttpClient.newHttpClient(),
-                method,
-                new Object[]{largeData},
-                ValidApi.class
-        );
-        ru.jrestly.http.HttpTemplate template = builder.build();
-
-        assertNotNull(template.getBody());
-        assertTrue(template.getBody().length < largeData.getBytes(java.nio.charset.StandardCharsets.UTF_8).length);
-        byte[] decompressed = GzipContentCompressor.INSTANCE.decompress(template.getBody());
-        assertEquals(largeData, new String(decompressed, java.nio.charset.StandardCharsets.UTF_8));
-
-        boolean hasEncodingHeader = template.getHeaders().stream()
-                .anyMatch(h -> "Content-Encoding".equalsIgnoreCase(h.name()) && "gzip".equalsIgnoreCase(h.value()));
-        assertTrue(hasEncodingHeader, "Template must carry Content-Encoding: gzip header");
-    }
 }

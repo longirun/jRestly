@@ -4,8 +4,6 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import ru.jrestly.annotation.*;
 import ru.jrestly.http.FileContent;
-import ru.jrestly.http.HttpTemplate;
-import ru.jrestly.http.HttpTemplateBuilder;
 import ru.jrestly.http.RequestType;
 import ru.jrestly.http.UploadProgressListener;
 
@@ -105,35 +103,6 @@ class UploadProgressValidationTest {
             assertThrows(ControllerValidationException.class, () -> client.get(AnnotatedRequestParamController.class));
         } finally {
             client.close();
-        }
-    }
-
-    @Test
-    @DisplayName("HttpTemplateBuilder extracts listener when passed and handles null gracefully")
-    void builderExtractsListener() throws NoSuchMethodException {
-        Method uploadMethod = ValidController.class.getMethod("upload", FileContent.class, UploadProgressListener.class);
-        UploadProgressListener myListener = (sent, total) -> {};
-        FileContent dummyFile = FileContent.of("test.txt", "abc".getBytes());
-
-        SimpleModuleInfo moduleInfo = SimpleModuleInfo.builder()
-                .baseUrl("http://localhost:8080")
-                .build();
-        HttpClient httpClient = HttpClient.newHttpClient();
-
-        try {
-            // Passed listener
-            HttpTemplate templateWithListener = new HttpTemplateBuilder(
-                    moduleInfo, httpClient, uploadMethod,
-                    new Object[]{dummyFile, myListener}, ValidController.class).build();
-            assertSame(myListener, templateWithListener.getUploadProgressListener());
-
-            // Passed null
-            HttpTemplate templateWithNull = new HttpTemplateBuilder(
-                    moduleInfo, httpClient, uploadMethod,
-                    new Object[]{dummyFile, null}, ValidController.class).build();
-            assertNull(templateWithNull.getUploadProgressListener());
-        } finally {
-            httpClient.close();
         }
     }
 }

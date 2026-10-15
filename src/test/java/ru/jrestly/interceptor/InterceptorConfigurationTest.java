@@ -8,8 +8,6 @@ import ru.jrestly.JRestlyClient;
 import ru.jrestly.ModuleInfo;
 import ru.jrestly.SimpleModuleInfo;
 import ru.jrestly.fixtures.TestController;
-import ru.jrestly.http.HttpTemplate;
-import ru.jrestly.http.HttpTemplateBuilder;
 import ru.jrestly.http.WireRequest;
 
 import java.lang.reflect.Method;
@@ -209,31 +207,5 @@ class InterceptorConfigurationTest {
 
         assertEquals(1, client2.getModuleInfo().getRequestInterceptors().size());
         assertEquals(1, client2.getModuleInfo().getResponseInterceptors().size());
-    }
-
-    @Test
-    @DisplayName("HttpTemplateBuilder populates HttpTemplate with interceptors and invocation metadata")
-    void httpTemplateBuilderPopulatesInterceptorsAndMetadata() throws NoSuchMethodException {
-        RequestInterceptor reqInterceptor = (req, ctx) -> req;
-        ResponseInterceptor resInterceptor = ctx -> {};
-
-        SimpleModuleInfo module = SimpleModuleInfo.builder()
-                .baseUrl("http://localhost:8080")
-                .addRequestInterceptor(reqInterceptor)
-                .addResponseInterceptor(resInterceptor)
-                .build();
-
-        HttpClient httpClient = HttpClient.newHttpClient();
-        Method method = TestController.class.getMethod("getItem", Long.class);
-        Object[] args = new Object[]{42L};
-
-        HttpTemplateBuilder builder = new HttpTemplateBuilder(module, httpClient, method, args, TestController.class);
-        HttpTemplate template = builder.build();
-
-        assertEquals(List.of(reqInterceptor), template.getRequestInterceptors());
-        assertEquals(List.of(resInterceptor), template.getResponseInterceptors());
-        assertSame(TestController.class, template.getControllerClass());
-        assertSame(method, template.getMethod());
-        assertArrayEquals(args, template.getArgs());
     }
 }

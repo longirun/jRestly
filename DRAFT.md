@@ -1,28 +1,25 @@
-# DRAFT: активная зона после закрытия эпика Interceptor Chain Short-Circuit SPI (ADR-0047)
+# DRAFT: активная зона после закрытия эпика HttpTemplate Encapsulation (ADR-0048)
 
-> Эпик Interceptor Chain Short-Circuit SPI (ADR-0047, `docs/0.10.0/`) закрыт (сессия #127):
-> - `ru.jrestly.interceptor.RequestContext`: методы `shortCircuit(WireResponse)`, `shortCircuitResponse()`, `isShortCircuited()`.
-> - `ru.jrestly.interceptor.ShortCircuitInterceptor`: функциональный SPI с `shortCircuit(req, ctx)` и фабриками `of(...)`, `matching(...)`.
-> - `ru.jrestly.http.HttpTemplate`: немедленный break цикла интерцепторов, обход сети, rate limiter и circuit breaker, маршрутизация в `processResponse` (синхронно и асинхронно в `CompletableFuture`).
-> - `ru.jrestly.http.WireResponse`: фабрики `of(...)`, builder `WireResponse.Builder`, `header(name)`, `hasBody()`.
-> - `ru.jrestly.http.WireRequest`: 5-аргументный конструктор.
-> - Fluent ergonomics: `shortCircuit(...)`, `mock(...)` в `JRestlyClient.Builder` и `SimpleModuleInfo.Builder`.
-> - Тесты: 16 новых тестов (981/981 в 120 классах), zero-dep POM подтвержден.
+> Эпик HttpTemplate Internal Encapsulation & Package-Private Engine (ADR-0048, `docs/0.10.0/`) закрыт (сессия #128):
+> - `ru.jrestly.http.HttpTemplate`: объявлен package-private, 57 сеттеров/геттеров и методы `exchange()`, `createUri()`, `handleDecompression()` скрыты от публичного API и Javadoc.
+> - `ru.jrestly.http.HttpTemplateBuilder`: добавлен публичный терминальный метод `execute()` и `logger(System.Logger)`. Метод `build()` сделан package-private.
+> - `ru.jrestly.AbstractHttpClient`: развязан от `HttpTemplate` (вызывает `builder.execute()`).
+> - Организация тестов: тесты внутренней логики сборки перенесены в пакет `ru.jrestly.http`, клиентские тесты сохранены в корне.
+> - Гейты: 981/981 тестов зелёные (126 классов), 0 warnings under `-Werror`, POM 0.9.0 строго zero-dep (0 dependencies).
 > Следующий ход — свободный, выбор из активной зоны.
 
 ## Активная зона (кандидаты на следующий эпик)
 
-- **Кандидат №1 — HttpTemplate инкапсуляция (ADR-0048)**:
-  `HttpTemplate` — 57 публичных setter-ов, leaked internal. Перевод в package-private.
-  Требует: переписать 5-6 тестов (`DecompressionConfigTest`, `PutMethodTest`, `TimeoutConfigTest` и др.),
-  которые инстанцируют `new HttpTemplate()` напрямую. Крупная работа, высокая архитектурная ценность.
-
-- **Кандидат №2 — JMH Benchmarks suite**:
+- **Кандидат №1 — JMH Benchmarks suite**:
   Тестирование производительности и накладных расходов jRestly (RPS, latency p99, gc allocs)
   в сравнении с прямым `HttpClient`, Retrofit и Feign.
+  Создание модуля `benchmarks/` с профилями JMH.
 
-- **Кандидат №3 — test-javadoc** (ADR-0013 Non-goals):
-  Наведение лоска в тестовых классах.
+- **Кандидат №2 — test-javadoc** (ADR-0013 Non-goals):
+  Наведение лоска и лаконичного javadoc в тестовых классах.
+
+- **Кандидат №3 — HTTP Trailers & Advanced Streaming ergonomics**:
+  Расширенные сценарии работы с трейлерами и чанками в стриминге данных (LLM / SSE).
 
 
 ---

@@ -1639,7 +1639,34 @@ Gates (session #127, clean rebuild):
 - `javadoc` 0 warnings under permanent `-Xdoclint:all -Werror`.
 - Zero external runtime dependencies strictly preserved (0 dependencies in Maven POM).
 
-After the epic: candidates — HttpTemplate package-private encapsulation (ADR-0048), JMH Benchmarks suite, test-javadoc. ADR number **0048** free.
+After the epic: ADR-0048 (HttpTemplate Internal Encapsulation & Package-Private Engine) — done, section below. ADR number **0048** used.
+
+## HttpTemplate Internal Encapsulation & Package-Private Engine (ADR-0048) — COMPLETE ✅ (2026-10-15, unreleased)
+
+> Source of truth: [`docs/0.10.0/ADR-0048-httptemplate-internal-encapsulation.md`](docs/0.10.0/ADR-0048-httptemplate-internal-encapsulation.md).
+
+**Problem:** Historically, `ru.jrestly.http.HttpTemplate` was a public class with 57 public mutable setters/getters and public methods `exchange()`, `handleDecompression()`, `createUri()`. Although `HttpTemplate` is purely an internal execution state container of the `ru.jrestly.http` package, its public visibility leaked internal pipeline details into the public API and Javadoc, creating accidental coupling and maintenance hazards.
+
+**Solution:**
+- Full package-private encapsulation of `HttpTemplate`: `class HttpTemplate` with package-private constructor, setters, getters, and internal methods (`exchange()`, `createUri()`, `handleDecompression()`). Completely removed from the public API surface and Javadoc.
+- Public terminal method on `HttpTemplateBuilder`: `public <T> T execute()`, encapsulating invocation and logging. Added fluent `public HttpTemplateBuilder logger(System.Logger)`. Package-private `build()`.
+- Decoupled `AbstractHttpClient`: uses `builder.execute()` directly; all imports and references to `HttpTemplate` removed.
+- Reorganized engine internals tests into `ru.jrestly.http` (`CollectionFormatUriResolutionTest`, `ExecutorResolutionTest`, `HttpTemplateCompressionTest`, `HttpTemplateTimeoutPrecedenceTest`, `InterceptorResolutionTest`, `ProgressListenerResolutionTest`, `DecompressionConfigTest`, `HttpTemplateVersionResolveTest`, `HttpVersionHierarchyTest`), keeping public contract and validation tests in `ru.jrestly`.
+
+Key changes:
+- `ru.jrestly.http.HttpTemplate`: package-private visibility, all setters/getters package-private.
+- `ru.jrestly.http.HttpTemplateBuilder`: `execute()`, `logger(System.Logger)`, package-private `build()`.
+- `ru.jrestly.AbstractHttpClient`: dispatches via `builder.execute()`, imports removed.
+- `ru.jrestly.PutMethodTest`: updated to `builder.logger(logger).execute()`.
+- Tests: restructured and separated engine tests into package `ru.jrestly.http` (981/981 tests across 126 classes).
+
+Gates (session #128, clean rebuild):
+- `./gradlew test` **981/981** (126 classes, 0 failures/errors).
+- `compileJava` and `compileTestJava` 0 warnings under permanent `-Xlint:all -Werror`.
+- `javadoc` 0 warnings under permanent `-Xdoclint:all -Werror`.
+- Zero external runtime dependencies strictly preserved (0 dependencies in Maven POM).
+
+After the epic: candidates — JMH Benchmarks suite, test-javadoc. ADR number **0049** free.
 
 
 

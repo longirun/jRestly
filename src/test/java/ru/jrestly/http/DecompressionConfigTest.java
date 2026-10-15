@@ -1,14 +1,13 @@
-package ru.jrestly;
+package ru.jrestly.http;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import ru.jrestly.JRestlyClient;
+import ru.jrestly.ModuleInfo;
+import ru.jrestly.SimpleModuleInfo;
 import ru.jrestly.annotation.Get;
 import ru.jrestly.annotation.RequestHeader;
 import ru.jrestly.fixtures.TestModuleInfo;
-import ru.jrestly.http.Header;
-import ru.jrestly.http.HttpTemplate;
-import ru.jrestly.http.HttpTemplateBuilder;
-import ru.jrestly.http.WireResponse;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;

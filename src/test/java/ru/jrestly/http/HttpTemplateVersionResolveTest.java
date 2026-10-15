@@ -1,11 +1,10 @@
-package ru.jrestly;
+package ru.jrestly.http;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import ru.jrestly.ModuleInfo;
 import ru.jrestly.fixtures.HttpVersionController;
 import ru.jrestly.fixtures.TestModuleInfo;
-import ru.jrestly.http.HttpTemplate;
-import ru.jrestly.http.HttpTemplateBuilder;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;

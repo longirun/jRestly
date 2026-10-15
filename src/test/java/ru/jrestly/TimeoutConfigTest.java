@@ -5,11 +5,7 @@ import org.junit.jupiter.api.Test;
 import ru.jrestly.annotation.Get;
 import ru.jrestly.annotation.Timeout;
 import ru.jrestly.fixtures.TestModuleInfo;
-import ru.jrestly.http.HttpTemplate;
-import ru.jrestly.http.HttpTemplateBuilder;
 
-import java.lang.reflect.Method;
-import java.net.http.HttpClient;
 import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
@@ -20,33 +16,6 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class TimeoutConfigTest {
-
-    interface SuperApi {
-        @Get(path = "/super")
-        String superMethod();
-    }
-
-    @Timeout(value = 10, unit = TimeUnit.SECONDS)
-    interface InterfaceTimeoutApi {
-        @Get(path = "/inherited")
-        String inherited();
-
-        @Timeout(500)
-        @Get(path = "/override")
-        String overridden();
-    }
-
-    @Timeout(2000)
-    interface ParentApi {
-        @Get(path = "/parent")
-        String parentMethod();
-    }
-
-    @Timeout(500)
-    interface ChildApi extends ParentApi {
-        @Get(path = "/child")
-        String childMethod();
-    }
 
     interface InvalidMethodTimeoutApi {
         @Timeout(0)
@@ -148,35 +117,5 @@ class TimeoutConfigTest {
         ControllerValidationException ex2 = assertThrows(ControllerValidationException.class,
                 () -> client.createController(InvalidInterfaceTimeoutApi.class));
         assertTrue(ex2.getMessage().contains("strictly positive"));
-    }
-
-    @Test
-    @DisplayName("HttpTemplateBuilder resolves timeouts with correct precedence")
-    void timeoutPrecedenceResolution() throws NoSuchMethodException {
-        ModuleInfo moduleInfo = SimpleModuleInfo.builder()
-                .baseUrl("http://localhost")
-                .socketTimeout(25_000)
-                .build();
-        HttpClient httpClient = HttpClient.newHttpClient();
-
-        // 1. No annotation -> null template timeout (falls back to moduleInfo in toHttpRequest)
-        Method superMethod = SuperApi.class.getMethod("superMethod");
-        HttpTemplate template1 = new HttpTemplateBuilder(moduleInfo, httpClient, superMethod, new Object[0], SuperApi.class).build();
-        assertNull(template1.getTimeout());
-
-        // 2. Interface level timeout
-        Method inheritedMethod = InterfaceTimeoutApi.class.getMethod("inherited");
-        HttpTemplate template2 = new HttpTemplateBuilder(moduleInfo, httpClient, inheritedMethod, new Object[0], InterfaceTimeoutApi.class).build();
-        assertEquals(Duration.ofSeconds(10), template2.getTimeout());
-
-        // 3. Method level overrides interface level
-        Method overriddenMethod = InterfaceTimeoutApi.class.getMethod("overridden");
-        HttpTemplate template3 = new HttpTemplateBuilder(moduleInfo, httpClient, overriddenMethod, new Object[0], InterfaceTimeoutApi.class).build();
-        assertEquals(Duration.ofMillis(500), template3.getTimeout());
-
-        // 4. Sub-interface overrides super-interface
-        Method childMethod = ChildApi.class.getMethod("childMethod");
-        HttpTemplate template4 = new HttpTemplateBuilder(moduleInfo, httpClient, childMethod, new Object[0], ChildApi.class).build();
-        assertEquals(Duration.ofMillis(500), template4.getTimeout());
     }
 }

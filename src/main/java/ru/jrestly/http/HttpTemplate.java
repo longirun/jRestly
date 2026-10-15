@@ -79,7 +79,7 @@ import java.util.stream.Stream;
  * bypasses the JSON codec on success (ADR-0015, ADR-0016). On error statuses the
  * stream is consumed to produce the typed exception.
  */
-public class HttpTemplate {
+class HttpTemplate {
 
     // ADR-0009 candidate 1: the request-log body section covers POST, PATCH,
     // DELETE and PUT (PUT was missing — 0.5.0 carry-over). GET/HEAD stay out
@@ -157,7 +157,7 @@ public class HttpTemplate {
      * are assembled by {@link HttpTemplateBuilder} and populated through
      * the {@code set*} setters before {@link #exchange()} runs.
      */
-    public HttpTemplate() {
+    HttpTemplate() {
     }
 
     /**
@@ -175,7 +175,7 @@ public class HttpTemplate {
      *         future itself when the method returns {@code CompletableFuture<T>}
      */
     @SuppressWarnings("unchecked")
-    public <T> T exchange() {
+    <T> T exchange() {
         WireRequest request = new WireRequest(httpMethod, createUri(), headers, contentType, body, multipartFormParts, multipartBoundary, bodyPublisherSupplier);
 
         long start = System.nanoTime();
@@ -1407,7 +1407,7 @@ public class HttpTemplate {
      * @return the decompressed wire response with stripped encoding headers
      * @throws IOException on I/O or decompression failure
      */
-    public WireResponse handleDecompression(WireResponse response) throws IOException {
+    WireResponse handleDecompression(WireResponse response) throws IOException {
         if (moduleInfo == null || !moduleInfo.isDecompressionEnabled() || response == null) {
             return response;
         }
@@ -1624,7 +1624,7 @@ public class HttpTemplate {
      *
      * @return the resolved URI
      */
-    public URI createUri() {
+    URI createUri() {
         if (requestParams == null || requestParams.isEmpty()) {
             return URI.create(url);
         }
@@ -1752,7 +1752,7 @@ public class HttpTemplate {
      *
      * @param logger the logger (always set by the builder)
      */
-    public void setLogger(System.Logger logger) {
+    void setLogger(System.Logger logger) {
         this.logger = logger;
     }
 
@@ -1762,7 +1762,7 @@ public class HttpTemplate {
      *
      * @param httpClient the client (always set by the builder)
      */
-    public void setHttpClient(HttpClient httpClient) {
+    void setHttpClient(HttpClient httpClient) {
         this.httpClient = httpClient;
     }
 
@@ -1771,7 +1771,7 @@ public class HttpTemplate {
      *
      * @param executor the executor, or {@code null} for default
      */
-    public void setExecutor(Executor executor) {
+    void setExecutor(Executor executor) {
         this.executor = executor;
     }
 
@@ -1780,7 +1780,7 @@ public class HttpTemplate {
      *
      * @return the executor, or {@code null}
      */
-    public Executor getExecutor() {
+    Executor getExecutor() {
         return executor;
     }
 
@@ -1789,7 +1789,7 @@ public class HttpTemplate {
      *
      * @param timeout the timeout, or {@code null} to use client default
      */
-    public void setTimeout(Duration timeout) {
+    void setTimeout(Duration timeout) {
         this.timeout = timeout;
     }
 
@@ -1798,7 +1798,7 @@ public class HttpTemplate {
      *
      * @return the timeout, or {@code null}
      */
-    public Duration getTimeout() {
+    Duration getTimeout() {
         return timeout;
     }
 
@@ -1809,7 +1809,7 @@ public class HttpTemplate {
      *
      * @param url the resolved URL
      */
-    public void setUrl(String url) {
+    void setUrl(String url) {
         this.url = url;
     }
 
@@ -1818,7 +1818,7 @@ public class HttpTemplate {
      *
      * @return the target URL string
      */
-    public String getUrl() {
+    String getUrl() {
         return url;
     }
 
@@ -1827,7 +1827,7 @@ public class HttpTemplate {
      *
      * @param httpMethod the method
      */
-    public void setHttpMethod(HttpMethod httpMethod) {
+    void setHttpMethod(HttpMethod httpMethod) {
         this.httpMethod = httpMethod;
     }
 
@@ -1838,7 +1838,7 @@ public class HttpTemplate {
      *
      * @param contentType the type, or {@code null}
      */
-    public void setContentType(String contentType) {
+    void setContentType(String contentType) {
         this.contentType = contentType;
     }
 
@@ -1848,7 +1848,7 @@ public class HttpTemplate {
      *
      * @param headers the headers
      */
-    public void setHeaders(List<Header> headers) {
+    void setHeaders(List<Header> headers) {
         this.headers = headers;
     }
 
@@ -1857,7 +1857,7 @@ public class HttpTemplate {
      *
      * @return the headers, or {@code null}
      */
-    public List<Header> getHeaders() {
+    List<Header> getHeaders() {
         return headers;
     }
 
@@ -1868,7 +1868,7 @@ public class HttpTemplate {
      *
      * @param authHeaderNames the header names (may be empty)
      */
-    public void setAuthHeaderNames(List<String> authHeaderNames) {
+    void setAuthHeaderNames(List<String> authHeaderNames) {
         this.authHeaderNames = authHeaderNames;
     }
 
@@ -1879,7 +1879,7 @@ public class HttpTemplate {
      *
      * @param authDetailsConsumer the callback, or {@code null}
      */
-    public void setAuthDetailsConsumer(Consumer<List<Header>> authDetailsConsumer) {
+    void setAuthDetailsConsumer(Consumer<List<Header>> authDetailsConsumer) {
         this.authDetailsConsumer = authDetailsConsumer;
     }
 
@@ -1890,7 +1890,7 @@ public class HttpTemplate {
      *
      * @param requestParams the parameters, or {@code null}
      */
-    public void setRequestParams(List<Param> requestParams) {
+    void setRequestParams(List<Param> requestParams) {
         this.requestParams = requestParams;
     }
 
@@ -1899,7 +1899,7 @@ public class HttpTemplate {
      *
      * @return the parameters, or {@code null}
      */
-    public List<Param> getRequestParams() {
+    List<Param> getRequestParams() {
         return requestParams;
     }
 
@@ -1909,7 +1909,7 @@ public class HttpTemplate {
      *
      * @param multipartFormParts the parts, or {@code null}
      */
-    public void setMultipartFormParts(List<MultipartPart> multipartFormParts) {
+    void setMultipartFormParts(List<MultipartPart> multipartFormParts) {
         this.multipartFormParts = multipartFormParts;
     }
 
@@ -1919,7 +1919,7 @@ public class HttpTemplate {
      *
      * @param multipartBoundary the boundary, or {@code null}
      */
-    public void setMultipartBoundary(String multipartBoundary) {
+    void setMultipartBoundary(String multipartBoundary) {
         this.multipartBoundary = multipartBoundary;
     }
 
@@ -1929,7 +1929,7 @@ public class HttpTemplate {
      *
      * @param body the body, or {@code null}
      */
-    public void setBody(byte[] body) {
+    void setBody(byte[] body) {
         this.body = body;
     }
 
@@ -1938,7 +1938,7 @@ public class HttpTemplate {
      *
      * @return the request body bytes, or {@code null}
      */
-    public byte[] getBody() {
+    byte[] getBody() {
         return body;
     }
 
@@ -1947,7 +1947,7 @@ public class HttpTemplate {
      *
      * @return the body publisher supplier
      */
-    public Supplier<? extends HttpRequest.BodyPublisher> getBodyPublisherSupplier() {
+    Supplier<? extends HttpRequest.BodyPublisher> getBodyPublisherSupplier() {
         return bodyPublisherSupplier;
     }
 
@@ -1956,7 +1956,7 @@ public class HttpTemplate {
      *
      * @param bodyPublisherSupplier the body publisher supplier, or {@code null}
      */
-    public void setBodyPublisherSupplier(Supplier<? extends HttpRequest.BodyPublisher> bodyPublisherSupplier) {
+    void setBodyPublisherSupplier(Supplier<? extends HttpRequest.BodyPublisher> bodyPublisherSupplier) {
         this.bodyPublisherSupplier = bodyPublisherSupplier;
     }
 
@@ -1969,7 +1969,7 @@ public class HttpTemplate {
      *
      * @param returnType the declared type
      */
-    public void setReturnType(Type returnType) {
+    void setReturnType(Type returnType) {
         this.returnType = returnType;
     }
 
@@ -1982,7 +1982,7 @@ public class HttpTemplate {
      *              builder sets it only in that case (the field default is
      *              {@code false})
      */
-    public void setAsync(boolean async) {
+    void setAsync(boolean async) {
         this.async = async;
     }
 
@@ -1991,7 +1991,7 @@ public class HttpTemplate {
      *
      * @param optional true for Optional-returning methods
      */
-    public void setOptional(boolean optional) {
+    void setOptional(boolean optional) {
         this.optional = optional;
     }
 
@@ -2000,7 +2000,7 @@ public class HttpTemplate {
      *
      * @param conditional true for conditional requests
      */
-    public void setConditional(boolean conditional) {
+    void setConditional(boolean conditional) {
         this.conditional = conditional;
     }
 
@@ -2009,7 +2009,7 @@ public class HttpTemplate {
      *
      * @return true for conditional requests
      */
-    public boolean isConditional() {
+    boolean isConditional() {
         return conditional;
     }
 
@@ -2023,7 +2023,7 @@ public class HttpTemplate {
      *              builder sets it only in that case (the field default is
      *              {@code false})
      */
-    public void setStreamBody(boolean streamBody) {
+    void setStreamBody(boolean streamBody) {
         this.streamBody = streamBody;
     }
 
@@ -2059,7 +2059,7 @@ public class HttpTemplate {
      *
      * @param expectStatuses the accepted statuses, or {@code null}
      */
-    public void setExpectStatuses(List<Integer> expectStatuses) {
+    void setExpectStatuses(List<Integer> expectStatuses) {
         this.expectStatuses = expectStatuses;
     }
 
@@ -2069,7 +2069,7 @@ public class HttpTemplate {
      *
      * @param followRedirectsNumber the hop count, or {@code null}
      */
-    public void setFollowRedirectsNumber(Integer followRedirectsNumber) {
+    void setFollowRedirectsNumber(Integer followRedirectsNumber) {
         this.followRedirectsNumber = followRedirectsNumber;
     }
 
@@ -2079,7 +2079,7 @@ public class HttpTemplate {
      *
      * @param httpVersion the version, or {@code null}
      */
-    public void setHttpVersion(HttpClient.Version httpVersion) {
+    void setHttpVersion(HttpClient.Version httpVersion) {
         this.httpVersion = httpVersion;
     }
 
@@ -2089,7 +2089,7 @@ public class HttpTemplate {
      *
      * @param retryPolicy the policy
      */
-    public void setRetryPolicy(RetryPolicy retryPolicy) {
+    void setRetryPolicy(RetryPolicy retryPolicy) {
         this.retryPolicy = retryPolicy;
     }
 
@@ -2099,7 +2099,7 @@ public class HttpTemplate {
      *
      * @param moduleInfo the module info (always set by the builder)
      */
-    public void setModuleInfo(ModuleInfo moduleInfo) {
+    void setModuleInfo(ModuleInfo moduleInfo) {
         this.moduleInfo = moduleInfo;
     }
 
@@ -2109,7 +2109,7 @@ public class HttpTemplate {
      *
      * @param jsonCodec the codec (always set by the builder)
      */
-    public void setJsonCodec(JsonCodec jsonCodec) {
+    void setJsonCodec(JsonCodec jsonCodec) {
         this.jsonCodec = jsonCodec;
     }
 
@@ -2118,7 +2118,7 @@ public class HttpTemplate {
      *
      * @param requestInterceptors the request interceptors
      */
-    public void setRequestInterceptors(List<RequestInterceptor> requestInterceptors) {
+    void setRequestInterceptors(List<RequestInterceptor> requestInterceptors) {
         this.requestInterceptors = requestInterceptors != null ? List.copyOf(requestInterceptors) : List.of();
     }
 
@@ -2127,7 +2127,7 @@ public class HttpTemplate {
      *
      * @return unmodifiable list of request interceptors, never {@code null}
      */
-    public List<RequestInterceptor> getRequestInterceptors() {
+    List<RequestInterceptor> getRequestInterceptors() {
         return requestInterceptors;
     }
 
@@ -2136,7 +2136,7 @@ public class HttpTemplate {
      *
      * @param responseInterceptors the response interceptors
      */
-    public void setResponseInterceptors(List<ResponseInterceptor> responseInterceptors) {
+    void setResponseInterceptors(List<ResponseInterceptor> responseInterceptors) {
         this.responseInterceptors = responseInterceptors != null ? List.copyOf(responseInterceptors) : List.of();
     }
 
@@ -2145,7 +2145,7 @@ public class HttpTemplate {
      *
      * @return unmodifiable list of response interceptors, never {@code null}
      */
-    public List<ResponseInterceptor> getResponseInterceptors() {
+    List<ResponseInterceptor> getResponseInterceptors() {
         return responseInterceptors;
     }
 
@@ -2154,7 +2154,7 @@ public class HttpTemplate {
      *
      * @param controllerClass the controller interface class
      */
-    public void setControllerClass(Class<?> controllerClass) {
+    void setControllerClass(Class<?> controllerClass) {
         this.controllerClass = controllerClass;
     }
 
@@ -2163,7 +2163,7 @@ public class HttpTemplate {
      *
      * @return the controller class
      */
-    public Class<?> getControllerClass() {
+    Class<?> getControllerClass() {
         return controllerClass;
     }
 
@@ -2172,7 +2172,7 @@ public class HttpTemplate {
      *
      * @param method the method being invoked
      */
-    public void setMethod(Method method) {
+    void setMethod(Method method) {
         this.method = method;
     }
 
@@ -2181,7 +2181,7 @@ public class HttpTemplate {
      *
      * @return the method
      */
-    public Method getMethod() {
+    Method getMethod() {
         return method;
     }
 
@@ -2190,7 +2190,7 @@ public class HttpTemplate {
      *
      * @param args the invocation arguments
      */
-    public void setArgs(Object[] args) {
+    void setArgs(Object[] args) {
         this.args = args;
     }
 
@@ -2199,7 +2199,7 @@ public class HttpTemplate {
      *
      * @return the invocation arguments
      */
-    public Object[] getArgs() {
+    Object[] getArgs() {
         return args;
     }
 
@@ -2208,7 +2208,7 @@ public class HttpTemplate {
      *
      * @param responseHeadersHolder the holder to populate with response metadata
      */
-    public void setResponseHeadersHolder(ResponseHeaders responseHeadersHolder) {
+    void setResponseHeadersHolder(ResponseHeaders responseHeadersHolder) {
         this.responseHeadersHolder = responseHeadersHolder;
     }
 
@@ -2217,7 +2217,7 @@ public class HttpTemplate {
      *
      * @return the holder, or {@code null}
      */
-    public ResponseHeaders getResponseHeadersHolder() {
+    ResponseHeaders getResponseHeadersHolder() {
         return responseHeadersHolder;
     }
 
@@ -2226,7 +2226,7 @@ public class HttpTemplate {
      *
      * @param uploadProgressListener the listener, or {@code null}
      */
-    public void setUploadProgressListener(UploadProgressListener uploadProgressListener) {
+    void setUploadProgressListener(UploadProgressListener uploadProgressListener) {
         this.uploadProgressListener = uploadProgressListener;
     }
 
@@ -2235,7 +2235,7 @@ public class HttpTemplate {
      *
      * @return the listener, or {@code null}
      */
-    public UploadProgressListener getUploadProgressListener() {
+    UploadProgressListener getUploadProgressListener() {
         return uploadProgressListener;
     }
 
@@ -2244,7 +2244,7 @@ public class HttpTemplate {
      *
      * @param downloadProgressListener the listener, or {@code null}
      */
-    public void setDownloadProgressListener(DownloadProgressListener downloadProgressListener) {
+    void setDownloadProgressListener(DownloadProgressListener downloadProgressListener) {
         this.downloadProgressListener = downloadProgressListener;
     }
 
@@ -2253,7 +2253,7 @@ public class HttpTemplate {
      *
      * @return the listener, or {@code null}
      */
-    public DownloadProgressListener getDownloadProgressListener() {
+    DownloadProgressListener getDownloadProgressListener() {
         return downloadProgressListener;
     }
 
@@ -2262,7 +2262,7 @@ public class HttpTemplate {
      *
      * @param metricsListener the listener, or {@code null}
      */
-    public void setMetricsListener(ClientMetricsListener metricsListener) {
+    void setMetricsListener(ClientMetricsListener metricsListener) {
         this.metricsListener = metricsListener;
     }
 
@@ -2271,7 +2271,7 @@ public class HttpTemplate {
      *
      * @return the listener, or {@code null}
      */
-    public ClientMetricsListener getMetricsListener() {
+    ClientMetricsListener getMetricsListener() {
         return metricsListener;
     }
 
@@ -2280,7 +2280,7 @@ public class HttpTemplate {
      *
      * @param circuitBreaker the circuit breaker, or {@code null}
      */
-    public void setCircuitBreaker(CircuitBreaker circuitBreaker) {
+    void setCircuitBreaker(CircuitBreaker circuitBreaker) {
         this.circuitBreaker = circuitBreaker;
     }
 
@@ -2289,7 +2289,7 @@ public class HttpTemplate {
      *
      * @return the circuit breaker, or {@code null}
      */
-    public CircuitBreaker getCircuitBreaker() {
+    CircuitBreaker getCircuitBreaker() {
         return circuitBreaker;
     }
 
@@ -2298,7 +2298,7 @@ public class HttpTemplate {
      *
      * @param rateLimiter the rate limiter, or {@code null}
      */
-    public void setRateLimiter(RateLimiter rateLimiter) {
+    void setRateLimiter(RateLimiter rateLimiter) {
         this.rateLimiter = rateLimiter;
     }
 
@@ -2307,7 +2307,7 @@ public class HttpTemplate {
      *
      * @return the rate limiter, or {@code null}
      */
-    public RateLimiter getRateLimiter() {
+    RateLimiter getRateLimiter() {
         return rateLimiter;
     }
 
@@ -2316,7 +2316,7 @@ public class HttpTemplate {
      *
      * @param tokenManager the token manager, or {@code null}
      */
-    public void setTokenManager(ru.jrestly.auth.TokenManager tokenManager) {
+    void setTokenManager(ru.jrestly.auth.TokenManager tokenManager) {
         this.tokenManager = tokenManager;
     }
 
@@ -2325,7 +2325,7 @@ public class HttpTemplate {
      *
      * @return the token manager, or {@code null}
      */
-    public ru.jrestly.auth.TokenManager getTokenManager() {
+    ru.jrestly.auth.TokenManager getTokenManager() {
         return tokenManager;
     }
 
@@ -2334,7 +2334,7 @@ public class HttpTemplate {
      *
      * @param retryOnUnauthorized {@code true} to enable 401 retry
      */
-    public void setRetryOnUnauthorized(boolean retryOnUnauthorized) {
+    void setRetryOnUnauthorized(boolean retryOnUnauthorized) {
         this.retryOnUnauthorized = retryOnUnauthorized;
     }
 
@@ -2343,7 +2343,7 @@ public class HttpTemplate {
      *
      * @return {@code true} if 401 retry is enabled
      */
-    public boolean isRetryOnUnauthorized() {
+    boolean isRetryOnUnauthorized() {
         return retryOnUnauthorized;
     }
 

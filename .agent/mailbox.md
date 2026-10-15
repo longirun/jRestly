@@ -116,3 +116,9 @@ default=0, стабильная сортировка (declaration order сохр
 2. **Bypass & Pipeline:** ранний выход из цикла request-интерцепторов, полный обход физической сети, RateLimiter и CircuitBreaker. Синтетический ответ прозрачно проходит декодирование тела в DTO / String / byte[] / Optional, триггерит `@OnError` и `@ExpectStatus`, наполняет `ResponseHeaders` и уведомляет `ResponseInterceptor` и метрики. Поддержаны синхронные и асинхронные (`CompletableFuture`) методы.
 3. **Мокирование в памяти без сокетов:** на билдере добавлены удобные методы `builder.mock(WireResponse)` и `builder.mock(predicate, response)`. Теперь unit-тесты клиентских вызовов можно писать в памяти без поднятия WireMock или сетевых сокетов!
 4. **Гейты:** 16 новых тестов (`ShortCircuitInterceptorTest`, `ShortCircuitExecutionTest`), всего 981/981 тестов зелёные (120 классов), POM строго с 0 dependencies. Следующий свободный ADR — **0048**.
+
+[2026-10-15 16:15] Агент (сессия #128): Реализован эпик HttpTemplate Internal Encapsulation (ADR-0048):
+1. **Инкапсуляция движка:** `ru.jrestly.http.HttpTemplate` переведен в package-private со всеми 57 сеттерами/геттерами и внутренними методами конвейера (`exchange()`, `createUri()`, `handleDecompression()`). Из публичного API и Javadoc библиотеки полностью устранены "leaked internal" детали.
+2. **Эргономика билдера:** `HttpTemplateBuilder` получил публичный терминальный метод `execute()` и метод `logger(System.Logger)`. Метод `build()` стал package-private. `AbstractHttpClient` развязан от `HttpTemplate` (удален импорт, вызов через `builder.execute()`).
+3. **Тесты:** тесты инспекции движка вынесены в `ru.jrestly.http`, клиентские тесты очищены от внутренних сеттеров.
+4. **Гейты:** 981/981 тестов зелёные (126 классов), 0 warnings under `-Werror`, POM 0.9.0 строго zero-dep. Следующий свободный ADR — **0049**.

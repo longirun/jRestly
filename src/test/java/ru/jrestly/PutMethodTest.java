@@ -4,7 +4,6 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import ru.jrestly.fixtures.TestController;
 import ru.jrestly.fixtures.TestDto;
-import ru.jrestly.http.HttpTemplate;
 import ru.jrestly.http.HttpTemplateBuilder;
 
 import java.lang.reflect.Proxy;
@@ -85,10 +84,9 @@ class PutMethodTest extends BaseWireMockTest {
                         if (isLoginInBackgroundNeeded(method)) {
                             login();
                         }
-                        HttpTemplateBuilder builder = new HttpTemplateBuilder(moduleInfo, httpClient, method, args, classInterface);
-                        HttpTemplate template = builder.build();
-                        template.setLogger(logger);
-                        return template.exchange();
+                        return new HttpTemplateBuilder(moduleInfo, httpClient, method, args, classInterface)
+                                .logger(logger)
+                                .execute();
                     }
             );
         }

@@ -2,7 +2,6 @@ package ru.jrestly;
 
 import ru.jrestly.annotation.Anonymous;
 import ru.jrestly.annotation.Authorization;
-import ru.jrestly.http.HttpTemplate;
 import ru.jrestly.http.HttpTemplateBuilder;
 
 import javax.net.ssl.SSLContext;
@@ -176,8 +175,7 @@ public abstract class AbstractHttpClient {
      *
      * <p>Protected hook: the proxy dispatches each invocation through the
      * HTTP client — an optional {@link #login()}, then the request
-     * template built by {@link HttpTemplateBuilder} and dispatched via
-     * {@link HttpTemplate#exchange()}.
+     * pipeline built and dispatched via {@link HttpTemplateBuilder#execute()}.
      *
      * @param classInterface the controller interface to proxy
      * @return the dynamic proxy for the interface
@@ -198,9 +196,8 @@ public abstract class AbstractHttpClient {
                         builder.executor(executor);
                     }
                     builder.interceptorCache(interceptorInstances);
-                    HttpTemplate httpTemplate = builder.build();
 
-                    return httpTemplate.exchange();
+                    return builder.execute();
                 }
         );
     }

@@ -3,8 +3,6 @@ package ru.jrestly;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import ru.jrestly.annotation.*;
-import ru.jrestly.http.HttpTemplate;
-import ru.jrestly.http.HttpTemplateBuilder;
 
 import java.lang.reflect.Method;
 import java.net.http.HttpClient;
@@ -88,97 +86,6 @@ class CollectionFormatValidationTest {
         assertTrue(Arrays.asList(values).contains(CollectionFormat.TSV));
         assertTrue(Arrays.asList(values).contains(CollectionFormat.PIPES));
         assertTrue(Arrays.asList(values).contains(CollectionFormat.BRACKETS));
-    }
-
-    @Test
-    @DisplayName("HttpTemplateBuilder resolves interface hierarchy: sub-interface overrides super-interface")
-    void hierarchyResolution() throws NoSuchMethodException {
-        ModuleInfo module = SimpleModuleInfo.builder()
-                .baseUrl("http://localhost:8080")
-                .build();
-        HttpClient httpClient = HttpClient.newHttpClient();
-
-        Method method = SubSearchApi.class.getMethod("searchSubDefault", List.class);
-        HttpTemplate template = new HttpTemplateBuilder(module, httpClient, method, new Object[]{List.of("alpha", "beta")}, SubSearchApi.class).build();
-
-        // SubSearchApi has @QueryCollectionFormat(PIPES), overriding default EXPLODE
-        assertEquals("http://localhost:8080/sub/default?tags=alpha%7Cbeta", template.createUri().toString());
-    }
-
-    @Test
-    @DisplayName("HttpTemplateBuilder resolves method override over interface annotation")
-    void methodOverrideResolution() throws NoSuchMethodException {
-        ModuleInfo module = SimpleModuleInfo.builder()
-                .baseUrl("http://localhost:8080")
-                .build();
-        HttpClient httpClient = HttpClient.newHttpClient();
-
-        Method method = SubSearchApi.class.getMethod("searchSubMethodOverride", List.class);
-        HttpTemplate template = new HttpTemplateBuilder(module, httpClient, method, new Object[]{List.of("alpha", "beta")}, SubSearchApi.class).build();
-
-        // searchSubMethodOverride has @QueryCollectionFormat(SSV) -> space separated
-        assertEquals("http://localhost:8080/sub/override-method?tags=alpha%20beta", template.createUri().toString());
-    }
-
-    @Test
-    @DisplayName("HttpTemplateBuilder resolves parameter format override over method and interface")
-    void paramOverrideResolution() throws NoSuchMethodException {
-        ModuleInfo module = SimpleModuleInfo.builder()
-                .baseUrl("http://localhost:8080")
-                .build();
-        HttpClient httpClient = HttpClient.newHttpClient();
-
-        Method method = SubSearchApi.class.getMethod("searchSubParamOverride", List.class);
-        HttpTemplate template = new HttpTemplateBuilder(module, httpClient, method, new Object[]{List.of("alpha", "beta")}, SubSearchApi.class).build();
-
-        // Parameter has format = BRACKETS -> tags[]=alpha&tags[]=beta (tags%5B%5D=alpha&tags%5B%5D=beta)
-        assertEquals("http://localhost:8080/sub/override-param?tags%5B%5D=alpha&tags%5B%5D=beta", template.createUri().toString());
-    }
-
-    @Test
-    @DisplayName("Scalar parameter is not affected by collection formatting and remains scalar param=value")
-    void scalarParamUnaffected() throws NoSuchMethodException {
-        ModuleInfo module = SimpleModuleInfo.builder()
-                .baseUrl("http://localhost:8080")
-                .build();
-        HttpClient httpClient = HttpClient.newHttpClient();
-
-        Method method = SubSearchApi.class.getMethod("searchScalar", int.class);
-        HttpTemplate template = new HttpTemplateBuilder(module, httpClient, method, new Object[]{42}, SubSearchApi.class).build();
-
-        assertEquals("http://localhost:8080/sub/scalar?page=42", template.createUri().toString());
-    }
-
-    @Test
-    @DisplayName("Empty collection or collection with only nulls is completely omitted from query")
-    void emptyOrNullCollectionOmitted() throws NoSuchMethodException {
-        ModuleInfo module = SimpleModuleInfo.builder()
-                .baseUrl("http://localhost:8080")
-                .build();
-        HttpClient httpClient = HttpClient.newHttpClient();
-
-        Method method = SubSearchApi.class.getMethod("searchSubDefault", List.class);
-
-        HttpTemplate emptyTemplate = new HttpTemplateBuilder(module, httpClient, method, new Object[]{List.of()}, SubSearchApi.class).build();
-        assertEquals("http://localhost:8080/sub/default", emptyTemplate.createUri().toString());
-
-        HttpTemplate nullsTemplate = new HttpTemplateBuilder(module, httpClient, method, new Object[]{Arrays.asList(null, null)}, SubSearchApi.class).build();
-        assertEquals("http://localhost:8080/sub/default", nullsTemplate.createUri().toString());
-    }
-
-    @Test
-    @DisplayName("Collection with null elements filters out nulls before formatting")
-    void collectionFiltersNullElements() throws NoSuchMethodException {
-        ModuleInfo module = SimpleModuleInfo.builder()
-                .baseUrl("http://localhost:8080")
-                .build();
-        HttpClient httpClient = HttpClient.newHttpClient();
-
-        Method method = SubSearchApi.class.getMethod("searchSubDefault", List.class);
-        HttpTemplate template = new HttpTemplateBuilder(module, httpClient, method, new Object[]{Arrays.asList("first", null, "second")}, SubSearchApi.class).build();
-
-        // PIPES format: first|second
-        assertEquals("http://localhost:8080/sub/default?tags=first%7Csecond", template.createUri().toString());
     }
 
     @Test

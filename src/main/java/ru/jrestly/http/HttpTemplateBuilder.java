@@ -85,14 +85,14 @@ import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 /**
- * Builds the {@link HttpTemplate} for a single controller-method
+ * Builds and executes the HTTP request pipeline for a single controller-method
  * invocation.
  *
  * <p>Instantiated on every proxy dispatch (see
  * {@link ru.jrestly.AbstractHttpClient#createController}) from the
  * module's configuration, the client's {@link HttpClient}, the invoked
  * method, its arguments, and the controller interface; discarded after
- * {@link #build()} — the stateful engine lives in the produced template.
+ * {@link #execute()} — the stateful engine lives in the produced template.
  */
 public class HttpTemplateBuilder {
 
@@ -108,6 +108,7 @@ public class HttpTemplateBuilder {
     private RequestMeta requestMeta;
     private Executor executor;
     private Map<Class<?>, Object> interceptorCache;
+    private System.Logger customLogger;
 
     /**
      * Creates a builder for the given invocation.
@@ -149,6 +150,27 @@ public class HttpTemplateBuilder {
     }
 
     /**
+     * Sets the custom logger for request and response logging.
+     *
+     * @param logger the custom logger
+     * @return this builder, for chaining
+     */
+    public HttpTemplateBuilder logger(System.Logger logger) {
+        this.customLogger = logger;
+        return this;
+    }
+
+    /**
+     * Builds and executes the declarative HTTP request.
+     *
+     * @param <T> the expected response payload type
+     * @return the decoded response payload or future
+     */
+    public <T> T execute() {
+        return build().exchange();
+    }
+
+    /**
      * Assembles the template for the invocation this builder was created
      * for.
      *
@@ -176,15 +198,15 @@ public class HttpTemplateBuilder {
      * through when present; a per-method {@code @Retry} replaces the
      * client's retry policy entirely (ADR-0008).
      *
-     * @return the assembled template, ready for {@link HttpTemplate#exchange()}
+     * @return the assembled template, ready for execution
      */
-    public HttpTemplate build() {
+    HttpTemplate build() {
         requestMeta = resolveRequestMeta(method);
 
         HttpTemplate result = new HttpTemplate();
         RequestType requestType = requestMeta.requestType();
 
-        result.setLogger(System.getLogger(controller.getName()));
+        result.setLogger(customLogger != null ? customLogger : System.getLogger(controller.getName()));
         result.setModuleInfo(moduleInfo);
         result.setJsonCodec(moduleInfo.getJsonCodec());
 
