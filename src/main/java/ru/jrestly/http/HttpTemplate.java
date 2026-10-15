@@ -261,8 +261,14 @@ public class HttpTemplate {
             Throwable cause = unwrapCause(ex);
             // the future completes exceptionally with this exception as the
             // CompletionException cause of join() / ExecutionException cause of get()
-            if (cause instanceof HandledException) {
-                throw (RuntimeException) cause; // UnexpectedStatusException included
+            if (cause instanceof RuntimeException re && !(cause instanceof CompletionException)) {
+                if (cause instanceof InterruptedException) {
+                    Thread.currentThread().interrupt();
+                }
+                throw re; // HandledException, ClientErrorException, ServerErrorException, custom typed exceptions
+            }
+            if (cause instanceof Error err) {
+                throw err;
             }
             logger.log(System.Logger.Level.ERROR,
                     "Request failed: " + request.method() + " " + request.uri(), cause);
@@ -379,14 +385,11 @@ public class HttpTemplate {
         if (stream != null) {
             if (onErrorParser != null && onErrorParser.canParse(statusCode)) {
                 String errorPayload = consumePayload(stream);
-                Object errorObject = (errorPayload != null)
-                        ? jsonCodec.deserialize(errorPayload, onErrorParser.getErrorClass())
-                        : null;
-                throw new HandledException(errorObject, statusCode, responseHeaders);
+                handleOnError(statusCode, errorPayload, responseHeaders);
             }
             if (!isExpectedStatus(statusCode)) {
                 String rawPayload = consumePayload(stream);
-                throw new UnexpectedStatusException(statusCode, rawPayload == null ? "" : rawPayload, responseHeaders);
+                throw createUnexpectedStatusException(statusCode, rawPayload == null ? "" : rawPayload, responseHeaders);
             }
             // ADR-0016 Aspect 1 & 5: Stream<String> returns line stream;
             // Stream<ServerSentEvent> returns parsed event stream
@@ -426,14 +429,11 @@ public class HttpTemplate {
         String payload = (bytes != null && bytes.length > 0) ? new String(bytes, StandardCharsets.UTF_8) : null;
 
         if (onErrorParser != null && onErrorParser.canParse(statusCode)) {
-            Object errorObject = (payload != null)
-                    ? jsonCodec.deserialize(payload, onErrorParser.getErrorClass())
-                    : null;
-            throw new HandledException(errorObject, statusCode, responseHeaders);
+            handleOnError(statusCode, payload, responseHeaders);
         }
 
         if (!isExpectedStatus(statusCode)) {
-            throw new UnexpectedStatusException(statusCode, payload == null ? "" : payload, responseHeaders);
+            throw createUnexpectedStatusException(statusCode, payload == null ? "" : payload, responseHeaders);
         }
 
         if (optional) {
@@ -1570,6 +1570,15 @@ public class HttpTemplate {
     }
 
     /**
+     * The {@code @OnError} parser, or {@code null} when none is configured.
+     *
+     * @return the parser
+     */
+    public OnErrorParser getOnErrorParser() {
+        return onErrorParser;
+    }
+
+    /**
      * The status codes the call accepts, or {@code null} for the default
      * (any 2xx).
      *
@@ -1735,5 +1744,68 @@ public class HttpTemplate {
      */
     public ResponseHeaders getResponseHeadersHolder() {
         return responseHeadersHolder;
+    }
+
+    private void handleOnError(int statusCode, String payload, List<Header> responseHeaders) {
+        Class<?> targetErrorClass = onErrorParser.getErrorClass(statusCode);
+        Object errorObject = (payload != null && !payload.isEmpty() && targetErrorClass != Void.class)
+                ? jsonCodec.deserialize(payload, targetErrorClass)
+                : null;
+
+        if (Throwable.class.isAssignableFrom(targetErrorClass)) {
+            if (errorObject instanceof RuntimeException re) {
+                throw re;
+            } else if (errorObject instanceof Error err) {
+                throw err;
+            } else if (errorObject instanceof Throwable t) {
+                throw new RuntimeException(t);
+            } else {
+                Throwable instance = instantiateThrowable(targetErrorClass, statusCode, responseHeaders);
+                if (instance instanceof RuntimeException re) {
+                    throw re;
+                } else if (instance instanceof Error err) {
+                    throw err;
+                } else {
+                    throw new RuntimeException(instance);
+                }
+            }
+        }
+
+        throw new HandledException(errorObject, statusCode, responseHeaders);
+    }
+
+    private static Throwable instantiateThrowable(Class<?> clazz, int statusCode, List<Header> responseHeaders) {
+        try {
+            var ctor = clazz.getConstructor(Object.class, int.class, List.class);
+            return (Throwable) ctor.newInstance(null, statusCode, responseHeaders);
+        } catch (ReflectiveOperationException ignored) {
+        }
+        try {
+            var ctor = clazz.getConstructor(String.class, int.class);
+            return (Throwable) ctor.newInstance("HTTP " + statusCode, statusCode);
+        } catch (ReflectiveOperationException ignored) {
+        }
+        try {
+            var ctor = clazz.getConstructor(String.class);
+            return (Throwable) ctor.newInstance("HTTP " + statusCode);
+        } catch (ReflectiveOperationException ignored) {
+        }
+        try {
+            var ctor = clazz.getConstructor();
+            return (Throwable) ctor.newInstance();
+        } catch (ReflectiveOperationException ignored) {
+        }
+        return new HandledException(null, statusCode, responseHeaders);
+    }
+
+    private static UnexpectedStatusException createUnexpectedStatusException(
+            int statusCode, String rawBody, List<Header> responseHeaders) {
+        if (statusCode >= 400 && statusCode < 500) {
+            return new ClientErrorException(statusCode, rawBody, responseHeaders);
+        }
+        if (statusCode >= 500 && statusCode < 600) {
+            return new ServerErrorException(statusCode, rawBody, responseHeaders);
+        }
+        return new UnexpectedStatusException(statusCode, rawBody, responseHeaders);
     }
 }

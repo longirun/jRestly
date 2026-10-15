@@ -1,64 +1,70 @@
-# Handover Note: Сессия 105 (Завершение эпика Per-Method & Interface Timeout Controls ADR-0027; тесты выросли до 562/562 в 68 классах; следующий ход — кандидат №1 test-javadoc или кандидат №2 custom error decoders)
+# Handover Note: Сессия 106 (Завершение эпика Repeatable @OnError & Typed Error Hierarchy ADR-0028; тесты выросли до 579/579 в 70 классах; следующий ход — кандидат №1 test-javadoc или кандидат №2 declarative interceptors @WithInterceptor)
 
-## Что сделано в этой сессии (#105)
-- **Ход:** полное проектирование (ADR-0027), реализация и верификация декларативного управления таймаутами per-method и per-interface (`@Timeout`), `Duration` перегрузок в билдерах, валидации и сквозного транспорта.
-- **Архитектура и реализация (ADR-0027):**
-  - **`@Timeout`:** аннотация `ru.jrestly.annotation.Timeout` с таргетом `ElementType.METHOD` и `ElementType.TYPE`, атрибутами `long value()` и `TimeUnit unit() default TimeUnit.MILLISECONDS`.
-  - **Приоритеты:** `Method @Timeout` > `Sub-interface @Timeout` > `Super-interface @Timeout` > `Client socketTimeout`. Дефолты `moduleInfo.getSocketTimeout()` (30 000 ms) строго сохранены.
-  - **`SimpleModuleInfo.Builder` & `JRestlyClient.Builder`:** fluent-методы `connectTimeout(Duration)` и `socketTimeout(Duration)` с проверками `Objects.requireNonNull` и запретом отрицательных значений (`duration.isNegative()`).
-  - **`ControllerValidator`:** проверка `@Timeout.value() > 0` на методах и интерфейсах, возвращает ошибку валидации и предотвращает создание прокси (`ControllerValidationException`).
-  - **`HttpTemplate` & `HttpTemplateBuilder`:**
-    - Поле `private Duration timeout;`, геттер и сеттер `setTimeout(Duration)`.
-    - Метод `resolveTimeout()`: сканирует аннотацию на вызываемом методе и в иерархии интерфейсов контроллера (`collectInterfaceHierarchy`).
-    - Метод `toHttpRequest(WireRequest)`: использует `effectiveTimeout = timeout != null ? timeout : Duration.ofMillis(moduleInfo.getSocketTimeout())` в `HttpRequest.Builder.timeout(effectiveTimeout)`.
-    - Зеркальное поведение: синхронный `exchange()` бросает `RuntimeException` с `HttpTimeoutException` в cause, асинхронный `exchangeAsync()` завершается исключительно с `RuntimeException(HttpTimeoutException)`, а `@Retry` transport retry автоматически производит повторную попытку при таймауте.
-- **Тесты (+13 тестов, итого 562/562 тестов в 68 классах):**
-  - `TimeoutConfigTest` (6 unit тестов):
-    1. Дефолты socket timeout 30s в `ModuleInfo` и `SimpleModuleInfo`.
-    2. Duration перегрузки в `SimpleModuleInfo.Builder`.
-    3. Fail-fast NPE и отрицательные значения в `SimpleModuleInfo.Builder`.
-    4. Duration перегрузки и валидация в `JRestlyClient.Builder`.
-    5. Проверка `ControllerValidator` на неположительные таймауты и `ControllerValidationException`.
-    6. Разрешение приоритетов в `HttpTemplateBuilder` (default fallback, interface-level, method-level override, sub-interface override).
-  - `TimeoutWireMockTest` (7 интеграционных тестов с WireMock):
-    1. Метод с `@Timeout(100)` против сервера с задержкой 500ms выбрасывает `RuntimeException(HttpTimeoutException)`.
-    2. Метод с `@Timeout(2s)` успевает выполниться при задержке 100ms (переопределяя короткий глобальный таймаут клиента 100ms).
-    3. Интерфейсный `@Timeout(100)` применяется ко всем неаннотированным методам интерфейса.
-    4. Метод с `@Timeout(2s)` переопределяет интерфейсный `@Timeout(100)` и завершается успехом.
-    5. Асинхронный вызов с `@Timeout(100)` завершает `CompletableFuture` исключительно с `HttpTimeoutException`.
-    6. Политика `@Retry` восстанавливается после таймаута первой попытки и завершается успехом на второй попытке.
-    7. Потоковый ответ `InputStream` с `@Timeout(1500)` успешно считывает весь поток данных.
+## Что сделано в этой сессии (#106)
+- **Ход:** полное проектирование (ADR-0028), реализация и верификация эпика повторяемого `@OnError`, интерфейсных обработчиков, прямого выброса кастомных исключений и уточненной иерархии исключений (`ClientErrorException`, `ServerErrorException`).
+- **Архитектура и реализация (ADR-0028):**
+  - **`@OnError`:** аннотация `ru.jrestly.annotation.OnError` получила таргетинг `ElementType.METHOD` и `ElementType.TYPE`, `@Repeatable(OnError.List.class)` и контейнер `OnError.List`.
+  - **`OnErrorParser`:** расширен для хранения маппингов статус -> класс ошибки (`register(int, Class<?>)`, `registerDefault(Class<?>)`, `canParse(int)`, `getErrorClass(int)`). Сохранены легаси методы для 100% обратной совместимости.
+  - **`ControllerValidator`:** проверка валидности кодов статусов (100..599) и детекция конфликтующих дубликатов на одном уровне объявления (`ControllerValidationException`).
+  - **`HttpTemplateBuilder`:** сбор `@OnError` с метода и иерархии интерфейсов (`collectInterfaceHierarchy`), где метод выигрывает у суб-интерфейса, а суб-интерфейс у super-interface.
+  - **`ClientErrorException` & `ServerErrorException`:** специализированные классы для HTTP 4xx и HTTP 5xx, расширяющие `UnexpectedStatusException`.
+  - **`HttpTemplate`:**
+    - Прямой выброс кастомных `RuntimeException` / `Throwable` (если `errorObject` наследует `Throwable`).
+    - Reflection-создание экземпляра при пустом теле ответа (`instantiateThrowable`).
+    - Автоматический выбор `ClientErrorException` (4xx) или `ServerErrorException` (5xx) вместо базового класса.
+    - Проброс исключений в асинхронном `exchangeAsync()` (`stage.exceptionally`).
+    - Добавлен геттер `getOnErrorParser()`.
+- **Тесты (+17 тестов, итого 579/579 тестов в 70 классах):**
+  - `OnErrorConfigTest` (7 unit тестов):
+    1. Регистрация множественных статусов и fallback в `OnErrorParser`.
+    2. Совместимость легаси сеттеров `OnErrorParser`.
+    3. Иерархия `ClientErrorException` и `ServerErrorException`.
+    4. Ошибка валидатора на невалидный статус (`99`).
+    5. Ошибка валидатора на конфликтующие маппинги на методе.
+    6. Ошибка валидатора на конфликтующие маппинги на интерфейсе.
+    7. Валидация иерархии при создании прокси в `JRestlyClient`.
+  - `OnErrorWireMockTest` (10 интеграционных тестов с WireMock):
+    1. Повторяемый `@OnError` на методе: 404 -> `NotFoundDto`, 422 -> `ValidationDto`.
+    2. Интерфейсный `@OnError` применяется к неаннотированным методам.
+    3. Метод переопределяет интерфейсный `@OnError` для одного статуса.
+    4. Прямой выброс кастомного `RuntimeException` (`ItemNotFoundException`), ловится напрямую через `catch (ItemNotFoundException)`.
+    5. Прямой выброс кастомного исключения при пустом теле ошибки (reflection fallback).
+    6. Прямой выброс исключения-подкласса `HandledException` (`ItemConflictException`).
+    7. Неожиданный 4xx выбрасывает `ClientErrorException`.
+    8. Неожиданный 5xx выбрасывает `ServerErrorException`.
+    9. Асинхронный вызов (`CompletableFuture`) завершается с причиной `ItemNotFoundException`.
+    10. Потоковый ответ (`InputStream`) считывает ошибку и выбрасывает `ItemNotFoundException`.
 - **Гейты:**
-  - `./gradlew test`: **562/562** тестов (68 классов, +13 тестов к 549) зелёные.
+  - `./gradlew test`: **579/579** тестов (70 классов, +17 тестов к 562) зелёные.
   - `./gradlew compileJava compileTestJava javadoc`: 0 warnings под постоянными флагами `-Xlint:all -Werror` и `-Xdoclint:all -Werror`.
   - Zero-dep инвариант в ядре строго сохранен (0 dependencies в Maven POM).
 - **Память и координация:**
-  - `docs/0.10.0/ADR-0027-per-method-and-interface-timeout-controls.md`: статус **Accepted**, зафиксированы решения и тесты.
-  - `ROADMAP.md`: секция `## Per-Method & Interface-Level Timeout Controls (@Timeout, ADR-0027) — COMPLETE ✅`, следующий свободный ADR — **0028**.
+  - `docs/0.10.0/ADR-0028-repeatable-on-error-and-typed-exceptions.md`: статус **Accepted**, зафиксированы решения и тесты.
+  - `ROADMAP.md`: секция `## Repeatable @OnError, Type-Level Error Handlers & Refined Exception Hierarchy (ADR-0028) — COMPLETE ✅`, следующий свободный ADR — **0029**.
   - `DRAFT.md`: эпик закрыт, активная зона обновлена.
-  - `mailbox.md`: Антону отправлен статус о реализации эпика ADR-0027, соблюдена гигиена сообщений.
-  - `days/2026-10-15.md`: оформлена запись сессии #105.
+  - `mailbox.md`: Антону отправлен статус о реализации эпика ADR-0028, соблюдена гигиена сообщений.
+  - `days/2026-10-15.md`: оформлена запись сессии #106.
 
-## Контекст для следующей сессии (#106)
+## Контекст для следующей сессии (#107)
 
 ### Активная зона DRAFT.md (выбор следующего эпика)
 - **Кандидат №1: test-javadoc** (ADR-0013 Non-goals):
   - Test-source javadoc вынесен за скобки аудита; наведение лоска в тестовых классах.
-- **Кандидат №2: Custom error decoders / typed error hierarchy refinement**:
-  - Декларативное сопоставление подклассов ошибок по телу или статусам, расширение типобезопасной обработки ошибок без комбайнов.
+- **Кандидат №2: Declarative Interceptors (`@WithInterceptor`) per controller/method**:
+  - Декларативное назначение специфичных интерцепторов аудита, логирования или кастомной авторизации на уровне контроллера или метода без изменения глобального пайплайна.
 
 ### Грабли (актуальный набор)
 - **`GRADLE_USER_HOME=/tmp/opencode/gradle-home`**: всегда указывать при запуске `./gradlew`.
 - **`AbstractHttpClient` намеренно не `AutoCloseable`**: в тестах регистрировать и закрывать через `.close()` в `@AfterEach` (или try/finally).
-- **Path variables в jRestly**: всегда синтаксис `${param}` (не `{param}`).
-- **Подсчёт тестов:** `grep -h -o 'tests="[0-9]*"' build/test-results/test/*.xml | awk -F'"' '{s+=$2} END{print s}'` (сейчас 562).
+- **Path variables в jRestly**: в URL синтаксис `${param}`, в аннотации `@PathVariable(name = "param")` (без `${}`).
+- **Подсчёт тестов:** `grep -h -o 'tests="[0-9]*"' build/test-results/test/*.xml | awk -F'"' '{s+=$2} END{print s}'` (сейчас 579).
 - **Mailbox-гигиена:** решённый обмен удаляем; живые нитки и последние 2–3 сообщения оставляем.
 - **Коммит-субъект: краткий, без дублирования ченджлога** (Антон); body — гейты-факты.
 - **No git tags:** теги не создавать (релизы запаузены per maintainer agreement).
-- **Next free ADR number:** ADR-0028.
+- **Next free ADR number:** ADR-0029.
 
 ### Среда
 1. `GRADLE_USER_HOME=/tmp/opencode/gradle-home ./gradlew ...` (тёплый кэш).
 2. Ветка `agent-loop`.
-3. Версия в `build.gradle`: **0.9.0**. Тесты: **562/562** (68 классов).
+3. Версия в `build.gradle`: **0.9.0**. Тесты: **579/579** (70 классов).
 4. Warnings: main 0, test 0, javadoc 0 (под `-Werror`).

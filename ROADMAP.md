@@ -888,7 +888,39 @@ Gates (session #105, clean rebuild):
 - `javadoc` 0 warnings under permanent `-Xdoclint:all -Werror`.
 - Zero external runtime dependencies preserved (0 dependencies in Maven POM).
 
-After the epic: candidate #1 — test-javadoc (ADR-0013 Non-goals); candidate #2 — custom error decoders / typed error hierarchy refinement. ADR number **0028** free.
+After the epic: candidate #1 — test-javadoc (ADR-0013 Non-goals); candidate #2 — custom error decoders / typed error hierarchy refinement — done, section below. ADR number **0028** — repeatable @OnError & typed exceptions epic, **0029** free.
+
+## Repeatable @OnError, Type-Level Error Handlers & Refined Exception Hierarchy (ADR-0028) — COMPLETE ✅ (2026-10-15, unreleased)
+
+> Source of truth (concept, architecture decisions, precedence model, test strategy, status):
+> [`docs/0.10.0/ADR-0028-repeatable-on-error-and-typed-exceptions.md`](docs/0.10.0/ADR-0028-repeatable-on-error-and-typed-exceptions.md).
+> Session #106 (agent-loop). Real-world REST API error handling maturity and developer ergonomics (candidate #2 from DRAFT.md).
+> Repeatable `@OnError` declarations on methods and interfaces (`ElementType.METHOD`, `ElementType.TYPE`),
+> multi-status mapping resolution in `OnErrorParser` and `HttpTemplateBuilder`, direct throwing of custom
+> `RuntimeException` / `Throwable` exception classes without manual unwrapping, refined `ClientErrorException` (HTTP 4xx)
+> and `ServerErrorException` (HTTP 5xx) extending `UnexpectedStatusException`, and upfront validation in `ControllerValidator`.
+> 100% zero-dependency on standard Java 21 platform classes.
+
+Key decisions (ADR-0028):
+- **Repeatable `@OnError` annotation with type-level scope:** Updated `ru.jrestly.annotation.OnError` to support `@Target({ElementType.METHOD, ElementType.TYPE})`, `@Repeatable(OnError.List.class)`, and container annotation `ru.jrestly.annotation.OnError.List`. Enables declaring distinct `@OnError` mappings for different HTTP error codes on the same method or interface.
+- **Hierarchical precedence resolution:** Method-level `@OnError` > Sub-interface `@OnError` > Super-interface `@OnError`. Method rules take precedence for declared status codes, while unoverridden status codes are inherited from interface declarations.
+- **Multi-status mapping in `OnErrorParser`:** Refactored `OnErrorParser` to maintain a status-to-errorClass mapping with `register(int, Class<?>)`, `registerDefault(Class<?>)`, `canParse(int)`, and `getErrorClass(int)`. 100% backwards compatible with legacy getters and setters.
+- **Direct exception throwing:** When an `@OnError` rule specifies an `errorObject` assignable to `Throwable`:
+  - Deserializes into the target class and throws directly if `RuntimeException` (or wraps checked `Throwable` in `RuntimeException`).
+  - Empty error payloads instantiate the target exception via reflection fallback: tries `(details, status, headers)`, `(message, status)`, `(message)`, or no-arg constructors, with fallback to `HandledException`.
+  - Non-throwable DTO classes continue to be wrapped in `HandledException(details, status, headers)`.
+  - Propagates seamlessly through `exchange()` and async `exchangeAsync()` (`CompletableFuture<T>`).
+- **Refined exception hierarchy:** Added `ClientErrorException` (HTTP 4xx) and `ServerErrorException` (HTTP 5xx) extending `UnexpectedStatusException`. Callers can catch specific error classes (`catch (ClientErrorException e)`) while existing code catching `UnexpectedStatusException` or `HandledException` functions without change.
+- **Fail-fast validation:** `ControllerValidator` validates status ranges (`100..599`) and detects conflicting mappings of the same status code to different classes at the same declaration level.
+- **Full test coverage:** 17 new tests (+17 cases, total suite 579/579 across 70 classes) spanning `OnErrorConfigTest` (7 unit tests: parser multi-status, legacy setters, exception hierarchy, validator invalid status & duplicate conflict detection, proxy creation) and `OnErrorWireMockTest` (10 WireMock integration tests: repeatable @OnError matching distinct DTOs, interface-level inheritance, method override, direct custom RuntimeException throwing, reflection fallback on empty body, HandledException subclass throwing, undeclared 4xx ClientErrorException, undeclared 5xx ServerErrorException, async CompletableFuture completion, streaming InputStream error consumption).
+
+Gates (session #106, clean rebuild):
+- `./gradlew test` **579/579** (70 classes, 0 failures/errors; +17 tests in ADR-0028).
+- `compileJava` and `compileTestJava` 0 warnings under permanent `-Xlint:all -Werror`.
+- `javadoc` 0 warnings under permanent `-Xdoclint:all -Werror`.
+- Zero external runtime dependencies preserved (0 dependencies in Maven POM).
+
+After the epic: candidate #1 — test-javadoc (ADR-0013 Non-goals); candidate #2 — declarative `@WithInterceptor` per controller/method. ADR number **0029** free.
 
 ## Post-0.5.0 shortlist (not scheduled — see ADR-0003)
 

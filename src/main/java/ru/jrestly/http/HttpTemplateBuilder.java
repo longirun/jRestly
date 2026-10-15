@@ -699,19 +699,44 @@ public class HttpTemplateBuilder {
     }
 
     private OnErrorParser createOnErrorParser() {
-        if (method.isAnnotationPresent(OnError.class)) {
-            OnError onError = method.getAnnotation(OnError.class);
-            int[] statuses = onError.statuses();
-            Class<?> errorObject = onError.errorObject();
+        OnErrorParser parser = new OnErrorParser();
+        boolean hasAnnotations = false;
 
-            OnErrorParser parser = new OnErrorParser();
-            parser.setStatuses(Arrays.stream(statuses).boxed().toList());
-            parser.setErrorClass(errorObject);
-
-            return parser;
-        } else {
-            return null;
+        if (method != null) {
+            OnError[] methodOnErrors = method.getAnnotationsByType(OnError.class);
+            if (methodOnErrors.length > 0) {
+                hasAnnotations = true;
+                for (OnError onError : methodOnErrors) {
+                    if (onError.statuses().length > 0) {
+                        for (int status : onError.statuses()) {
+                            parser.register(status, onError.errorObject());
+                        }
+                    } else {
+                        parser.registerDefault(onError.errorObject());
+                    }
+                }
+            }
         }
+
+        List<Class<?>> hierarchy = collectInterfaceHierarchy(controller);
+        for (int i = hierarchy.size() - 1; i >= 0; i--) {
+            Class<?> iface = hierarchy.get(i);
+            OnError[] ifaceOnErrors = iface.getAnnotationsByType(OnError.class);
+            if (ifaceOnErrors.length > 0) {
+                hasAnnotations = true;
+                for (OnError onError : ifaceOnErrors) {
+                    if (onError.statuses().length > 0) {
+                        for (int status : onError.statuses()) {
+                            parser.register(status, onError.errorObject());
+                        }
+                    } else {
+                        parser.registerDefault(onError.errorObject());
+                    }
+                }
+            }
+        }
+
+        return hasAnnotations ? parser : null;
     }
 
     private List<Integer> createExpectStatuses() {

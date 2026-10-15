@@ -40,15 +40,16 @@
 * я думаю еще в реалном исползовании есть миллион важных вещей?
 Это не приказ бросаться сразу все делать, просто можно учесть и разобрать в будущем. 
 
-[2026-10-15 03:04] Агент (сессия #103): Реализован эпик шаблонизации URI, контроля кодирования путей и поддержки массивов (ADR-0025): `@PathVariable(encoded = true)`, универсальные массивы (включая примитивные `int[]`) в параметрах/заголовках/формах, RFC 3986 `#fragment` и null-safe query флаги. 536/536 тестов зелёные.
-
 [2026-10-15 03:32] Агент (сессия #104): Реализован эпик поддержки Virtual Threads и кастомных Executor (ADR-0026): `useVirtualThreads()`, `executor(Executor)`, lifecycle client.close(), async CompletableFuture и retry scheduler на виртуальных потоках. 549/549 тестов зелёные.
 
-[2026-10-15 04:02] Агент (сессия #105): Реализован эпик декларативного управления таймаутами per-method и per-interface (ADR-0027):
-1. **Аннотация `@Timeout`:** `@Target({ElementType.METHOD, ElementType.TYPE})` с `long value()` и `TimeUnit unit() default TimeUnit.MILLISECONDS`. Позволяет гибко разграничивать быстрые health check вызовы (`@Timeout(500)`), стандартные методы и тяжелые отчеты/выгрузки/LLM-стримы (`@Timeout(value = 5, unit = TimeUnit.MINUTES)`).
-2. **Модель приоритетов:** `Method @Timeout` > `Sub-interface @Timeout` > `Super-interface @Timeout` > `Client socketTimeout`. Дефолты полностью сохранены (30 000 ms).
-3. **Эргономика `Duration` в билдерах:** добавлены `socketTimeout(Duration)` и `connectTimeout(Duration)` в `SimpleModuleInfo.Builder` и `JRestlyClient.Builder` с fail-fast NPE и non-negative валидацией.
-4. **Fail-fast валидация:** `ControllerValidator` проверяет строго положительные значения `@Timeout` на методах и интерфейсах на этапе создания прокси контроллера (`ControllerValidationException`).
-5. **Сквозной транспорт:** таймаут связывается с `HttpRequest.Builder.timeout(effectiveTimeout)` — работает для синхронных вызовов (`RuntimeException(HttpTimeoutException)`), асинхронных `CompletableFuture<T>`, стриминга и прозрачно интегрируется с политикой `@Retry` (транспортный ретрай при таймауте).
-Написано 13 новых тестов (6 в `TimeoutConfigTest`, 7 в `TimeoutWireMockTest`).
-Гейты: **562/562** тестов (68 классов) зелёные, 0 warnings под `-Werror`, zero-dep core сохранен.
+[2026-10-15 04:02] Агент (сессия #105): Реализован эпик декларативного управления таймаутами per-method и per-interface (ADR-0027): `@Timeout`, приоритеты method > sub-interface > super-interface > client, Duration перегрузки в билдерах, валидация. 562/562 тестов зелёные.
+
+[2026-10-15 04:28] Агент (сессия #106): Реализован эпик многостатусных ошибок, интерфейсных обработчиков и типизированных исключений (ADR-0028):
+1. **Повторяемый `@OnError` на методах и интерфейсах:** аннотация получила таргетинг `ElementType.METHOD` и `ElementType.TYPE`, `@Repeatable(OnError.List.class)` и контейнер `OnError.List`. Теперь один метод или интерфейс может маппить разные статусы на разные схемы (например 404 -> `NotFoundDto`, 422 -> `ValidationDto`).
+2. **Иерархия приоритетов:** `Method @OnError` > `Sub-interface @OnError` > `Super-interface @OnError`. Статусы метода переопределяют интерфейсные, а остальные статусы наследуются.
+3. **Прямой выброс кастомных исключений:** если `errorObject` наследует `Throwable` (например `ItemNotFoundException extends RuntimeException`), jRestly выбрасывает исключение напрямую, позволяя разработчикам писать естественные `catch (ItemNotFoundException e)` без распаковки `HandledException.getDetails()`. Предусмотрен reflection fallback при пустом теле ошибки.
+4. **Уточненная иерархия неожиданных статусов:** добавлены `ClientErrorException` (для HTTP 4xx) и `ServerErrorException` (для HTTP 5xx) как прямые наследники `UnexpectedStatusException`. Обратная совместимость 100%.
+5. **Валидация:** `ControllerValidator` проверяет диапазоны кодов (100..599) и отсутствие конфликтующих дубликатов на одном уровне.
+Написано 17 новых тестов (7 в `OnErrorConfigTest`, 10 в `OnErrorWireMockTest`).
+Гейты: **579/579** тестов (70 классов) зелёные, 0 warnings под `-Werror`, zero-dep core строго сохранен.
+

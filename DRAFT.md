@@ -1,20 +1,22 @@
-# DRAFT: активная зона после закрытия эпика Per-Method & Interface Timeout Controls (ADR-0027)
+# DRAFT: активная зона после закрытия эпика Repeatable @OnError & Typed Error Hierarchy (ADR-0028)
 
-> Эпик Per-Method & Interface-Level Timeout Controls (ADR-0027, `docs/0.10.0/`) закрыт 5/5 (сессия #105):
-> концепт и ADR-0027 → `@Timeout` аннотация (`ElementType.METHOD`, `ElementType.TYPE`) с `long value()` и `TimeUnit unit()` +
-> fluent `connectTimeout(Duration)` и `socketTimeout(Duration)` в `SimpleModuleInfo.Builder` и `JRestlyClient.Builder` +
-> валидация положительных таймаутов в `ControllerValidator` (`ControllerValidationException`) и backstop в `HttpTemplateBuilder` +
-> wiring таймаута в `HttpTemplate.toHttpRequest(WireRequest)` с поддержкой переопределений method > sub-interface > super-interface > client +
-> unit тесты (`TimeoutConfigTest`, 6 тестов) и WireMock интеграционные тесты (`TimeoutWireMockTest`, 7 тестов, итого +13 тестов) →
-> дистилляция в ROADMAP («Per-Method & Interface-Level Timeout Controls (@Timeout, ADR-0027) — COMPLETE ✅») + гейты 562/562 тестов (68 классов).
+> Эпик Repeatable @OnError, Type-Level Error Handlers & Refined Exception Hierarchy (ADR-0028, `docs/0.10.0/`) закрыт 6/6 (сессия #106):
+> концепт и ADR-0028 → `@OnError` аннотация (`ElementType.METHOD`, `ElementType.TYPE`, `@Repeatable(OnError.List.class)`) +
+> многостатусный `OnErrorParser` с поддержкой маппингов статус -> класс и fallback-правил +
+> валидация диапазонов статусов и конфликтующих дубликатов в `ControllerValidator` (`ControllerValidationException`) +
+> иерархическое разрешение приоритетов в `HttpTemplateBuilder` (method > sub-interface > super-interface) +
+> прямой выброс кастомных `RuntimeException` / `Throwable` классов без ручного разворачивания +
+> `ClientErrorException` (HTTP 4xx) и `ServerErrorException` (HTTP 5xx) в `HttpTemplate` (наследники `UnexpectedStatusException`) +
+> unit тесты (`OnErrorConfigTest`, 7 тестов) и WireMock интеграционные тесты (`OnErrorWireMockTest`, 10 тестов, итого +17 тестов) →
+> дистилляция в ROADMAP («Repeatable @OnError, Type-Level Error Handlers & Refined Exception Hierarchy (ADR-0028) — COMPLETE ✅») + гейты 579/579 тестов (70 классов).
 > Следующий ход — свободный, выбор из активной зоны.
 
 ## Активная зона (кандидаты на следующий эпик)
 
 - **Кандидат №1 — test-javadoc** (ADR-0013 Non-goals):
   Test-source javadoc вынесен за скобки аудита; наведение лоска в тестовых классах.
-- **Кандидат №2 — Custom error decoders / typed error hierarchy refinement**:
-  Декларативное сопоставление подклассов ошибок по телу или статусам, расширение типобезопасной обработки ошибок без комбайнов.
+- **Кандидат №2 — Declarative Interceptors (`@WithInterceptor`) per controller/method**:
+  Возможность декларативно навешивать специфичные интерцепторы логирования, аудита или трассировки на отдельные контроллеры или методы без изменения глобального пайплайна.
 
 ---
 

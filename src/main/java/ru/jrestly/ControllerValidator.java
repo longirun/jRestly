@@ -2,6 +2,7 @@ package ru.jrestly;
 
 import ru.jrestly.annotation.Delete;
 import ru.jrestly.annotation.Get;
+import ru.jrestly.annotation.OnError;
 import ru.jrestly.annotation.Patch;
 import ru.jrestly.annotation.Post;
 import ru.jrestly.annotation.Put;
@@ -85,6 +86,20 @@ public final class ControllerValidator {
                 problems.add(current.getSimpleName() + ": @Timeout value must be strictly positive, was " + timeout.value());
             }
         }
+        Map<Integer, Class<?>> classSeenStatuses = new LinkedHashMap<>();
+        for (OnError onError : current.getAnnotationsByType(OnError.class)) {
+            for (int status : onError.statuses()) {
+                if (status < 100 || status > 599) {
+                    problems.add(current.getSimpleName() + ": @OnError status must be a valid HTTP status (100..599), was " + status);
+                } else {
+                    Class<?> prev = classSeenStatuses.put(status, onError.errorObject());
+                    if (prev != null && !prev.equals(onError.errorObject())) {
+                        problems.add(current.getSimpleName() + ": @OnError duplicate status " + status
+                                + " mapped to conflicting classes: " + prev.getSimpleName() + " and " + onError.errorObject().getSimpleName());
+                    }
+                }
+            }
+        }
         for (Class<?> parent : current.getInterfaces()) {
             collectClassProblems(parent, problems, visited);
         }
@@ -161,6 +176,21 @@ public final class ControllerValidator {
             Timeout timeout = method.getAnnotation(Timeout.class);
             if (timeout.value() <= 0) {
                 problems.add(method.getName() + "(): @Timeout value must be strictly positive, was " + timeout.value());
+            }
+        }
+
+        Map<Integer, Class<?>> methodSeenStatuses = new LinkedHashMap<>();
+        for (OnError onError : method.getAnnotationsByType(OnError.class)) {
+            for (int status : onError.statuses()) {
+                if (status < 100 || status > 599) {
+                    problems.add(method.getName() + "(): @OnError status must be a valid HTTP status (100..599), was " + status);
+                } else {
+                    Class<?> prev = methodSeenStatuses.put(status, onError.errorObject());
+                    if (prev != null && !prev.equals(onError.errorObject())) {
+                        problems.add(method.getName() + "(): @OnError duplicate status " + status
+                                + " mapped to conflicting classes: " + prev.getSimpleName() + " and " + onError.errorObject().getSimpleName());
+                    }
+                }
             }
         }
 
