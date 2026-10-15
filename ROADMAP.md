@@ -1914,6 +1914,33 @@ Gates (session #135, clean rebuild):
 
 After the epic: candidate №1 — test-javadoc, candidate №2 — HTTP Trailers & Advanced Streaming ergonomics, candidate №3 — OkHttpEngine / ApacheHttpEngine external modules. ADR number **0056** free.
 
+---
+
+## Response Charset Resolution for String Payloads (ADR-0056) — COMPLETE ✅
+
+> Source of truth: [`docs/0.10.0/ADR-0056-response-charset-resolution-for-string-payloads.md`](docs/0.10.0/ADR-0056-response-charset-resolution-for-string-payloads.md).
+> Audit finding (maintainer's question #2, 2026-10-15): response charset handling was split-brained — the streaming path honored the declared charset, the buffered paths hard-coded UTF-8.
+
+- **Problem:**
+  * `HttpTemplate` materialized every buffered payload `String` with `new String(bytes, StandardCharsets.UTF_8)` — the declared `Content-Type` charset was ignored for `String`, `Optional<String>`, `@OnError` payloads and `UnexpectedStatusException.getRawBody()`.
+  * The line/SSE streaming path (ADR-0016) already decoded with `resolveCharset(...)`, so the same endpoint returned correct text via `Stream<String>` and mojibake via `String`.
+- **Resolution (RFC 9110 §8.3.2):**
+  * `resolveCharset(responseHeaders)` computed once per response in `processResponse()` and reused for every text materialization.
+  * Covers: `String` return, `Optional<String>`, `@OnError` error payload, unexpected-status raw body, stream-consumption error payloads, and the retry loop's exception payload (`extractResponseBodyString`).
+  * Fallback stays UTF-8 (missing/unknown/empty charset); quoted (`charset="windows-1251"`) and parameterized media types honored.
+  * JSON/`byte[]`/DTO paths unchanged — raw bytes flow straight into the codec (ADR-0054).
+- **Automated Verification:**
+  * New `ResponseCharsetWireMockTest` (6 E2E tests): windows-1251 `String`, quoted charset, unknown-charset fallback, missing-charset fallback, `Optional<String>`, `UnexpectedStatusException.getRawBody()`.
+  * Total suite: **1042/1042 tests** across 135 classes, 0 failures, 0 errors.
+
+Gates (session #140):
+- `./gradlew test` **1042/1042** (135 classes, 0 failures/errors; +6 tests in ADR-0056).
+- `compileJava` and `compileTestJava` 0 warnings under permanent `-Xlint:all -Werror`.
+- `javadoc` 0 warnings under permanent `-Xdoclint:all -Werror`.
+- Zero external runtime dependencies strictly preserved (0 dependencies in root Maven POM).
+
+After the audit fix: candidate №1 — test-javadoc, candidate №2 — HTTP Trailers & Advanced Streaming ergonomics, candidate №3 — OkHttpEngine / ApacheHttpEngine external modules (ADR-0057). ADR number **0057** free.
+
 
 
 

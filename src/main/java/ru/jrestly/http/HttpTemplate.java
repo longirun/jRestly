@@ -653,7 +653,7 @@ class HttpTemplate {
         if (response == null || response.body() == null) {
             return "";
         }
-        return new String(response.body(), StandardCharsets.UTF_8);
+        return new String(response.body(), resolveCharset(response.headers()));
     }
 
     // Shared tail of both exchange paths: auth-details capture, response
@@ -665,6 +665,10 @@ class HttpTemplate {
 
         List<Header> responseHeaders = response.headers();
         int statusCode = response.statusCode();
+        // RFC 9110 §8.3.2: the declared Content-Type charset is authoritative
+        // for text payloads — every String materialization honors it and
+        // falls back to UTF-8, matching the line/SSE streaming path (ADR-0016)
+        Charset payloadCharset = resolveCharset(responseHeaders);
 
         // ADR-0022 & ADR-0038: Populate response headers holder and thread-local captor (lazy duration allocation)
         Consumer<ResponseHeaders> captor = ResponseHeaders.CURRENT_CAPTOR.get();
@@ -691,11 +695,11 @@ class HttpTemplate {
         InputStream stream = response.stream();
         if (stream != null) {
             if (onErrorParser != null && onErrorParser.canParse(statusCode)) {
-                String errorPayload = consumePayload(stream);
+                String errorPayload = consumePayload(stream, payloadCharset);
                 handleOnError(statusCode, errorPayload, responseHeaders);
             }
             if (!isExpectedStatus(statusCode)) {
-                String rawPayload = consumePayload(stream);
+                String rawPayload = consumePayload(stream, payloadCharset);
                 throw createUnexpectedStatusException(statusCode, rawPayload == null ? "" : rawPayload, responseHeaders);
             }
             // ADR-0016 Aspect 1 & 5: Stream<String> returns line stream;
@@ -704,8 +708,7 @@ class HttpTemplate {
                 if (logger.isLoggable(System.Logger.Level.INFO)) {
                     logger.log(System.Logger.Level.INFO, streamingPayloadLine("streaming lines", responseHeaders));
                 }
-                Charset charset = resolveCharset(responseHeaders);
-                Stream<String> lineStream = new BufferedReader(new InputStreamReader(stream, charset))
+                Stream<String> lineStream = new BufferedReader(new InputStreamReader(stream, payloadCharset))
                         .lines()
                         .onClose(() -> closeQuietly(stream));
                 return (T) lineStream;
@@ -714,8 +717,7 @@ class HttpTemplate {
                 if (logger.isLoggable(System.Logger.Level.INFO)) {
                     logger.log(System.Logger.Level.INFO, streamingPayloadLine("streaming events", responseHeaders));
                 }
-                Charset charset = resolveCharset(responseHeaders);
-                Stream<String> lineStream = new BufferedReader(new InputStreamReader(stream, charset))
+                Stream<String> lineStream = new BufferedReader(new InputStreamReader(stream, payloadCharset))
                         .lines()
                         .onClose(() -> closeQuietly(stream));
                 Stream<ServerSentEvent> eventStream = ServerSentEvent.parse(lineStream);
@@ -741,12 +743,12 @@ class HttpTemplate {
         byte[] bytes = response.body();
 
         if (onErrorParser != null && onErrorParser.canParse(statusCode)) {
-            String errorPayload = (bytes != null && bytes.length > 0) ? new String(bytes, StandardCharsets.UTF_8) : null;
+            String errorPayload = (bytes != null && bytes.length > 0) ? new String(bytes, payloadCharset) : null;
             handleOnError(statusCode, errorPayload, responseHeaders);
         }
 
         if (!isExpectedStatus(statusCode)) {
-            String errorPayload = (bytes != null && bytes.length > 0) ? new String(bytes, StandardCharsets.UTF_8) : "";
+            String errorPayload = (bytes != null && bytes.length > 0) ? new String(bytes, payloadCharset) : "";
             throw createUnexpectedStatusException(statusCode, errorPayload, responseHeaders);
         }
 
@@ -764,7 +766,7 @@ class HttpTemplate {
                 return (T) Optional.of(bytes);
             }
             if (String.class.equals(returnType)) {
-                String payload = new String(bytes, StandardCharsets.UTF_8);
+                String payload = new String(bytes, payloadCharset);
                 if (logger.isLoggable(System.Logger.Level.INFO)) {
                     logger.log(System.Logger.Level.INFO, "Response size: " + payload.length() + " bytes\n" + payload);
                 }
@@ -796,7 +798,7 @@ class HttpTemplate {
         }
 
         if (String.class.equals(returnType)) {
-            String payload = new String(bytes, StandardCharsets.UTF_8);
+            String payload = new String(bytes, payloadCharset);
             if (logger.isLoggable(System.Logger.Level.INFO)) {
                 logger.log(System.Logger.Level.INFO, "Response size: " + payload.length() + " bytes\n" + payload);
             }
@@ -819,10 +821,10 @@ class HttpTemplate {
     // readAllBytes is the byte[] path's payload in stream form: an empty
     // stream is a null payload, as an empty body is. The close follows the
     // JDK contract (read to EOF, then close)
-    private static String consumePayload(InputStream stream) throws IOException {
+    private static String consumePayload(InputStream stream, Charset charset) throws IOException {
         try (stream) {
             byte[] bytes = stream.readAllBytes();
-            return bytes.length > 0 ? new String(bytes, StandardCharsets.UTF_8) : null;
+            return bytes.length > 0 ? new String(bytes, charset) : null;
         }
     }
 

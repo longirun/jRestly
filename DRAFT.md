@@ -28,6 +28,20 @@
 > Остальной срез аудита (утечки потоков, ThreadLocal, проглоченные исключения, reactive publishers,
 > retry-переполнения) — чисто.
 
+> **Сессия #140 (аудит, срез «charset-обработка ответов»):**
+> - Найден и исправлен **разлад charset-обработки между стриминговым и буферным путями**:
+>   стриминг (`Stream<String>`, SSE) давно уважал `charset` из `Content-Type`, а буферные
+>   пути (`String`, `Optional<String>`, `@OnError`, `UnexpectedStatusException.getRawBody()`,
+>   `consumePayload`, `extractResponseBodyString`) жёстко декодировали UTF-8 →
+>   один и тот же эндпоинт давал корректный текст в стриме и модзибейк в `String`
+>   (реальные API с `windows-1251`/`ISO-8859-1`).
+>   Фикс по TDD (RFC 9110 §8.3.2): `payloadCharset = resolveCharset(responseHeaders)` один раз
+>   на ответ, все текстовые материализации — через него; fallback UTF-8 без падений.
+>   Оформлен `docs/0.10.0/ADR-0056-response-charset-resolution-for-string-payloads.md`.
+>   +6 E2E-тестов (`ResponseCharsetWireMockTest`), **1042/1042**, 0 warnings.
+> - Остаток аудита по списку #139 (ProgressBodyHandler, edge cases `HttpTemplate`,
+>   гонки lazy-init, `WireRequest`/`WireResponse`) — в следующих сессиях.
+
 ## Активная зона (кандидаты на следующий эпик)
 
 - **Кандидат №1 — test-javadoc** (ADR-0013 Non-goals):
@@ -36,7 +50,7 @@
 - **Кандидат №2 — HTTP Trailers & Advanced Streaming ergonomics**:
   Расширенные сценарии работы с трейлерами и чанками в стриминге данных (LLM / SSE).
 
-- **Кандидат №3 — OkHttpEngine / ApacheHttpEngine external modules**:
+- **Кандидат №3 — OkHttpEngine / ApacheHttpEngine external modules** (ADR-0057):
   Вынос внешних коннекторов в отдельные субмодули для максимальной скорости под нагрузкой.
   *(Развилка Антона, 2026-10-15: добить бенчмаркинг с OkHttp/Apache, убедиться что jRestly
   на вершине возможной производительности, сравнить с другими библиотеками и оформить
