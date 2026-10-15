@@ -29,8 +29,12 @@ import ru.jrestly.annotation.RequestParam;
 import ru.jrestly.annotation.Retry;
 import ru.jrestly.annotation.SetAuthDetails;
 import ru.jrestly.annotation.Timeout;
+import ru.jrestly.annotation.Trace;
 import ru.jrestly.annotation.WithInterceptor;
 import ru.jrestly.annotation.WithMetrics;
+import ru.jrestly.tracing.TraceContext;
+import ru.jrestly.tracing.TracePropagator;
+import ru.jrestly.tracing.TraceRequestContext;
 import ru.jrestly.interceptor.RequestInterceptor;
 import ru.jrestly.interceptor.ResponseInterceptor;
 import ru.jrestly.metrics.ClientMetricsListener;
@@ -509,7 +513,79 @@ public class HttpTemplateBuilder {
             }
         }
 
+        applyTracingHeaders(result);
+
         return result;
+    }
+
+    private void applyTracingHeaders(List<Header> result) {
+        Trace methodTrace = method != null ? method.getAnnotation(Trace.class) : null;
+        Trace ifaceTrace = resolveInterfaceTrace();
+
+        Trace effectiveTrace = methodTrace != null ? methodTrace : ifaceTrace;
+        if (effectiveTrace != null) {
+            if (!effectiveTrace.enabled()) {
+                return;
+            }
+            if (effectiveTrace.w3c()) {
+                boolean hasTraceparent = result.stream()
+                        .anyMatch(h -> h.name() != null && h.name().equalsIgnoreCase("traceparent"));
+                if (!hasTraceparent || effectiveTrace.forceNew()) {
+                    if (effectiveTrace.forceNew()) {
+                        result.removeIf(h -> h.name() != null && h.name().equalsIgnoreCase("traceparent"));
+                    }
+                    TraceContext tc = TraceContext.random();
+                    result.add(new Header("traceparent", tc.toTraceparent()));
+                }
+            } else {
+                String headerName = effectiveTrace.header().trim();
+                boolean hasHeader = result.stream()
+                        .anyMatch(h -> h.name() != null && h.name().equalsIgnoreCase(headerName));
+                if (!hasHeader || effectiveTrace.forceNew()) {
+                    if (effectiveTrace.forceNew()) {
+                        result.removeIf(h -> h.name() != null && h.name().equalsIgnoreCase(headerName));
+                    }
+                    String id = UUID.randomUUID().toString();
+                    result.add(new Header(headerName, id));
+                }
+            }
+            return;
+        }
+
+        if (moduleInfo != null && moduleInfo.getTracePropagator() != null) {
+            TraceRequestContext traceContext = new TraceRequestContext(
+                    controller,
+                    method,
+                    createUrl(),
+                    requestMeta.httpMethod(),
+                    Collections.unmodifiableList(result)
+            );
+            Map<String, String> injected = moduleInfo.getTracePropagator().inject(traceContext);
+            if (injected != null) {
+                for (Map.Entry<String, String> entry : injected.entrySet()) {
+                    String name = entry.getKey();
+                    String value = entry.getValue();
+                    if (name != null && value != null) {
+                        boolean exists = result.stream()
+                                .anyMatch(h -> h.name() != null && h.name().equalsIgnoreCase(name));
+                        if (!exists) {
+                            result.add(new Header(name, value));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private Trace resolveInterfaceTrace() {
+        List<Class<?>> hierarchy = collectInterfaceHierarchy(controller);
+        for (int i = hierarchy.size() - 1; i >= 0; i--) {
+            Trace trace = hierarchy.get(i).getAnnotation(Trace.class);
+            if (trace != null) {
+                return trace;
+            }
+        }
+        return null;
     }
 
     private String resolveCookies() {

@@ -11,6 +11,10 @@ import ru.jrestly.json.JsonCodecResolver;
 
 import ru.jrestly.compression.CompressionAlgorithm;
 import ru.jrestly.compression.ContentCompressor;
+import ru.jrestly.tracing.TraceContext;
+import ru.jrestly.tracing.TraceIdGenerator;
+import ru.jrestly.tracing.TracePropagator;
+import ru.jrestly.tracing.TracePropagators;
 
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLParameters;
@@ -73,6 +77,7 @@ public class SimpleModuleInfo implements ModuleInfo {
     private final CompressionAlgorithm requestCompressionAlgorithm;
     private final int requestCompressionThreshold;
     private final Map<String, ContentCompressor> contentCompressors;
+    private final TracePropagator tracePropagator;
 
     private SimpleModuleInfo(Builder builder) {
         this.name = builder.name;
@@ -100,6 +105,7 @@ public class SimpleModuleInfo implements ModuleInfo {
         this.requestCompressionAlgorithm = builder.requestCompressionAlgorithm;
         this.requestCompressionThreshold = builder.requestCompressionThreshold;
         this.contentCompressors = Map.copyOf(builder.contentCompressors);
+        this.tracePropagator = builder.tracePropagator;
     }
 
     /**
@@ -235,6 +241,11 @@ public class SimpleModuleInfo implements ModuleInfo {
         return contentCompressors.get(encoding.trim().toLowerCase(java.util.Locale.ROOT));
     }
 
+    @Override
+    public TracePropagator getTracePropagator() {
+        return tracePropagator;
+    }
+
     /**
      * A builder for {@link SimpleModuleInfo}, pre-set to the defaults:
      * name {@code "default"}, 5 s connect timeout, 30 s socket timeout,
@@ -268,6 +279,7 @@ public class SimpleModuleInfo implements ModuleInfo {
         private CompressionAlgorithm requestCompressionAlgorithm;
         private int requestCompressionThreshold = 0;
         private final Map<String, ContentCompressor> contentCompressors = new java.util.LinkedHashMap<>();
+        private TracePropagator tracePropagator;
 
         /**
          * A builder pre-set to the defaults; {@code baseUrl} must still
@@ -778,6 +790,83 @@ public class SimpleModuleInfo implements ModuleInfo {
                 throw new IllegalArgumentException("compressor encoding must not be blank");
             }
             this.contentCompressors.put(compressor.encoding().trim().toLowerCase(java.util.Locale.ROOT), compressor);
+            return this;
+        }
+
+        /**
+         * Sets the trace context propagator used for distributed tracing and correlation ID propagation (ADR-0042).
+         *
+         * @param tracePropagator the propagator, not {@code null}
+         * @return this builder, for chaining
+         * @throws NullPointerException if {@code tracePropagator} is null
+         */
+        public Builder tracePropagator(TracePropagator tracePropagator) {
+            this.tracePropagator = Objects.requireNonNull(tracePropagator, "tracePropagator must not be null");
+            return this;
+        }
+
+        /**
+         * Configures automatic correlation ID injection using UUID v4 into the specified header name (ADR-0042).
+         *
+         * @param headerName the correlation header name (e.g. {@code "X-Request-ID"}), not blank
+         * @return this builder, for chaining
+         */
+        public Builder correlationId(String headerName) {
+            return tracePropagator(TracePropagators.correlationId(headerName));
+        }
+
+        /**
+         * Configures automatic correlation ID injection into the specified header name using a custom generator (ADR-0042).
+         *
+         * @param headerName the correlation header name, not blank
+         * @param generator the ID generator supplier, not null
+         * @return this builder, for chaining
+         */
+        public Builder correlationId(String headerName, java.util.function.Supplier<String> generator) {
+            Objects.requireNonNull(generator, "generator must not be null");
+            return tracePropagator(TracePropagators.correlationId(headerName, generator::get));
+        }
+
+        /**
+         * Configures automatic correlation ID propagation from an active {@link ThreadLocal} into {@code "X-Request-ID"} (ADR-0042).
+         * Generates a new UUID v4 if the thread-local contains no value.
+         *
+         * @param threadLocal the thread local holding the correlation ID, not null
+         * @return this builder, for chaining
+         */
+        public Builder correlationId(ThreadLocal<String> threadLocal) {
+            return tracePropagator(TracePropagators.threadLocal("X-Request-ID", threadLocal, true));
+        }
+
+        /**
+         * Configures automatic correlation ID propagation from an active {@link ThreadLocal} into the given header name (ADR-0042).
+         *
+         * @param headerName the header name, not blank
+         * @param threadLocal the thread local holding the correlation ID, not null
+         * @param generateIfMissing whether to generate a UUID v4 if thread local is null or blank
+         * @return this builder, for chaining
+         */
+        public Builder correlationId(String headerName, ThreadLocal<String> threadLocal, boolean generateIfMissing) {
+            return tracePropagator(TracePropagators.threadLocal(headerName, threadLocal, generateIfMissing));
+        }
+
+        /**
+         * Enables standard W3C {@code traceparent} propagation (RFC 8414 / W3C TraceContext Level 1) (ADR-0042).
+         *
+         * @return this builder, for chaining
+         */
+        public Builder w3cTracing() {
+            return tracePropagator(TracePropagators.w3c());
+        }
+
+        /**
+         * Enables or disables standard W3C {@code traceparent} propagation (ADR-0042).
+         *
+         * @param enabled {@code true} to enable, {@code false} to disable
+         * @return this builder, for chaining
+         */
+        public Builder w3cTracing(boolean enabled) {
+            this.tracePropagator = enabled ? TracePropagators.w3c() : null;
             return this;
         }
 

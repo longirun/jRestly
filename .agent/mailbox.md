@@ -40,31 +40,22 @@
 * я думаю еще в реалном исползовании есть миллион важных вещей?
 Это не приказ бросаться сразу все делать, просто можно учесть и разобрать в будущем. 
 
-[2026-10-15 09:32] Агент (сессия #118): Реализован эпик Advanced Exponential Backoff, Jitter Strategies & Retry-After Bounds (ADR-0040):
-1. **Zero-Dep Jitter Algorithms (рекомендации AWS Architecture):**
-   - `ru.jrestly.http.Jitter`: перечисление `FULL` (дефолт), `EQUAL` (50% детерминированный пол + 50% джиттер), `DECORRELATED` (адаптивный шаг `[initialBackoff, prevSleep * 3]`), `NONE` (детерминированный бэкофф).
-   - Устраняет эффект thundering herd и retry storm при синхронных сбоях множества клиентов.
-2. **Гибкость и защита RetryPolicy:**
-   - `backoffMultiplier(double)` (дефолт 2.0, валидация `>= 1.0`) — плавный (1.5) или форсированный (3.0) рост.
-   - `respectRetryAfter(boolean)` (дефолт `true`) — возможность отключения учета серверного `Retry-After` при наличии недоверенных прокси.
-   - `maxRetryAfter(Duration)` — ограничение серверной задержки для предотвращения зависания потоков на дни при зловредных или некорректных серверных заголовках (например, `Retry-After: 86400`).
-3. **Декларативная эргономика в `@Retry`:**
-   - Атрибуты `jitter()`, `multiplier()`, `respectRetryAfter()`, `maxRetryAfterMs()`.
-   - Проброс `previousDelayMillis` между шагами в синхронном цикле и асинхронном пайплайне `CompletableFuture` в `HttpTemplate`.
-4. **Тестирование (15 новых тестов, итого 843/843 в 98 классах):**
-   - `RetryPolicyJitterTest` (10 unit тестов), `RetryJitterWireMockTest` (5 WireMock интеграционных тестов). 0 warnings под постоянными флагами `-Xlint:all -Werror` и `-Xdoclint:all -Werror`, zero-dep core строго сохранен. Следующий свободный ADR — **0041**.
-
 [2026-10-15 10:05] Агент (сессия #119): Реализован эпик Request Body Compression & Content-Encoding SPI (ADR-0041):
-1. **Zero-Dep Content Coding SPI (`ru.jrestly.compression`):**
-   - `CompressionAlgorithm`: enum `GZIP`, `DEFLATE`, `NONE` с регистронезависимым парсингом и алиасами.
-   - `ContentCompressor`: SPI интерфейс с методами `encoding()`, `compress(byte[])`, `decompress(byte[])`.
-   - `GzipContentCompressor` & `DeflateContentCompressor`: встроенные zero-dep реализации на `java.util.zip` (RFC 1952 gzip, RFC 1950 zlib, RFC 1951 raw deflate fallback).
-   - `ContentCompressors`: реестр стандартных кодеков.
+1. Zero-Dep Content Coding SPI (`ru.jrestly.compression`): `CompressionAlgorithm`, `ContentCompressor` SPI, `GzipContentCompressor` & `DeflateContentCompressor`, `ContentCompressors` registry.
+2. Декларативная и клиентская эргономика: `@Compress(algorithm, minSizeBytes, enabled)`, fluent builder `requestCompression` и `contentCompressor`. Защита от double compression.
+3. Тесты: 23 новых теста, гейты чистые (866/866). Следующий свободный ADR — **0042**.
+
+[2026-10-15 10:28] Агент (сессия #120): Реализован эпик Request Tracing & Correlation ID Propagation SPI (ADR-0042):
+1. **Zero-Dep W3C TraceContext & Correlation IDs (`ru.jrestly.tracing`):**
+   - `TraceContext`: неизменяемый record W3C TraceContext Level 1 (`traceId` 32-hex, `spanId` 16-hex, `traceFlags` 2-hex, `traceState`). Валидирующий парсинг `parse(traceparent)` с защитой от all-zero и невалидных форматов, генерация `random()`, порождение дочерних span'ов `child()`.
+   - `TraceIdGenerator` & `TraceIdGenerators`: `uuid()`, `hex(bytes)`, `prefixed(...)`, `threadLocal(...)`.
+   - `TracePropagator` SPI & `TracePropagators`: фабрики `correlationId(name)`, `w3c()`, `threadLocal(...)`, `composite(...)`.
 2. **Декларативная и программная эргономика:**
-   - Аннотация `@Compress` (на методах и интерфейсах) с атрибутами `algorithm`, `minSizeBytes` (порог для исключения оверхеда на мелких телах) и `enabled` (для точечного отключения).
-   - Fluent-методы в `SimpleModuleInfo.Builder` и `JRestlyClient.Builder`: `requestCompression(CompressionAlgorithm, int thresholdBytes)` и `contentCompressor(ContentCompressor)`.
-   - `ControllerValidator`: строгая проверка `minSizeBytes >= 0` с выбросом `ControllerValidationException`.
-   - Пайплайн `HttpTemplateBuilder`: прозрачное сжатие тела запроса, выставление `Content-Encoding` и защита от double compression при ручных заголовках.
-   - Симметричная декомпрессия ответов в `HttpTemplate.handleDecompression` через зарегистрированные кастомные `ContentCompressor`.
-3. **Тестирование (23 новых теста, итого 866/866 в 102 классах):**
-   - `CompressionAlgorithmTest` (2 теста), `ContentCompressorTest` (6 тестов), `CompressConfigTest` (7 тестов), `RequestCompressionWireMockTest` (8 WireMock тестов). Все гейты чистые (0 warnings под `-Werror`), zero-dep инвариант строго соблюдён. Следующий свободный ADR — **0042**.
+   - Аннотация `@Trace` (методы и интерфейсы) с атрибутами `header` (дефолт `X-Request-ID`), `w3c`, `enabled` (точечный opt-out), `forceNew`.
+   - Fluent-методы в `SimpleModuleInfo.Builder` и `JRestlyClient.Builder`: `tracePropagator(...)`, `correlationId(...)`, `w3cTracing(...)`.
+   - Валидация в `ControllerValidator`: проверка на blank header name с выбросом `ControllerValidationException`.
+   - Транспортный пайплайн в `HttpTemplateBuilder`: прозрачная инъекция tracing заголовков с гарантией сохранения явно переданных пользователем значений (`@RequestHeader("X-Request-ID")`).
+   - Метаданные в `ResponseHeaders`: прямой доступ `requestId()`, `traceparent()`, `traceContext()`.
+3. **Тестирование (28 новых тестов, итого 894/894 в 106 классах):**
+   - `TraceContextTest` (6 unit тестов), `TracePropagatorTest` (7 unit тестов), `TraceConfigTest` (4 unit теста), `RequestTracingWireMockTest` (11 WireMock интеграционных тестов). Все гейты чистые (0 warnings под постоянными флагами `-Xlint:all -Werror` и `-Xdoclint:all -Werror`), zero-dep core строго сохранен. Следующий свободный ADR — **0043**.
+

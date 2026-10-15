@@ -8,6 +8,7 @@ import ru.jrestly.http.RetryPolicy;
 
 import ru.jrestly.compression.CompressionAlgorithm;
 import ru.jrestly.compression.ContentCompressor;
+import ru.jrestly.tracing.TracePropagator;
 
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLParameters;
@@ -293,6 +294,17 @@ public interface ModuleInfo {
             return null;
         }
         return getContentCompressors().get(encoding.trim().toLowerCase(java.util.Locale.ROOT));
+    }
+
+    /**
+     * The trace context propagator used for distributed tracing and correlation ID injection (ADR-0042).
+     * When {@code null} (the default), requests do not inject tracing headers unless
+     * explicitly configured via {@link ru.jrestly.annotation.Trace}.
+     *
+     * @return the trace context propagator, or {@code null} if not configured
+     */
+    default TracePropagator getTracePropagator() {
+        return null;
     }
 }
 

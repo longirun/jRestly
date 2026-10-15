@@ -15,6 +15,7 @@ import ru.jrestly.annotation.QueryCollectionFormat;
 import ru.jrestly.annotation.RequestDefaultParam;
 import ru.jrestly.annotation.RequestHeader;
 import ru.jrestly.annotation.Timeout;
+import ru.jrestly.annotation.Trace;
 import ru.jrestly.annotation.WithInterceptor;
 import ru.jrestly.annotation.WithMetrics;
 import ru.jrestly.annotation.MultipartFormFile;
@@ -106,6 +107,11 @@ public final class ControllerValidator {
         for (Compress compress : current.getAnnotationsByType(Compress.class)) {
             if (compress.minSizeBytes() < 0) {
                 problems.add(current.getSimpleName() + ": @Compress minSizeBytes must not be negative, was " + compress.minSizeBytes());
+            }
+        }
+        for (Trace trace : current.getAnnotationsByType(Trace.class)) {
+            if (trace.header().isBlank()) {
+                problems.add(current.getSimpleName() + ": @Trace header must not be blank");
             }
         }
         for (Accept accept : current.getAnnotationsByType(Accept.class)) {
@@ -252,6 +258,13 @@ public final class ControllerValidator {
             Compress compress = method.getAnnotation(Compress.class);
             if (compress.minSizeBytes() < 0) {
                 problems.add(method.getName() + "(): @Compress minSizeBytes must not be negative, was " + compress.minSizeBytes());
+            }
+        }
+
+        if (method.isAnnotationPresent(Trace.class)) {
+            Trace trace = method.getAnnotation(Trace.class);
+            if (trace.header().isBlank()) {
+                problems.add(method.getName() + "(): @Trace header must not be blank");
             }
         }
 

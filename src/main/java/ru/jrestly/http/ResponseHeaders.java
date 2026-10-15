@@ -1,5 +1,7 @@
 package ru.jrestly.http;
 
+import ru.jrestly.tracing.TraceContext;
+
 import java.net.HttpCookie;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -453,6 +455,33 @@ public class ResponseHeaders {
                 return Optional.empty();
             }
         });
+    }
+
+    /**
+     * Returns the correlation identifier from {@code X-Request-ID} or {@code X-Correlation-ID} (ADR-0042).
+     *
+     * @return the correlation ID, or empty if neither header is present
+     */
+    public Optional<String> requestId() {
+        return firstValue("X-Request-ID").or(() -> firstValue("X-Correlation-ID"));
+    }
+
+    /**
+     * Returns the W3C {@code traceparent} header string, if present (ADR-0042).
+     *
+     * @return the traceparent header value, or empty if absent
+     */
+    public Optional<String> traceparent() {
+        return firstValue("traceparent");
+    }
+
+    /**
+     * Parses the W3C {@code traceparent} (and optional {@code tracestate}) header into a {@link TraceContext} (ADR-0042).
+     *
+     * @return an {@link Optional} containing the parsed trace context, or empty if absent or malformed
+     */
+    public Optional<TraceContext> traceContext() {
+        return traceparent().flatMap(tp -> TraceContext.parse(tp, firstValue("tracestate").orElse(null)));
     }
 
     /**

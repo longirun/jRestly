@@ -2,6 +2,7 @@ package ru.jrestly;
 
 import ru.jrestly.compression.CompressionAlgorithm;
 import ru.jrestly.compression.ContentCompressor;
+import ru.jrestly.tracing.TracePropagator;
 import ru.jrestly.http.RetryPolicy;
 import ru.jrestly.http.WireRequest;
 import ru.jrestly.interceptor.RequestInterceptor;
@@ -529,6 +530,85 @@ public class JRestlyClient extends AbstractHttpClient {
          */
         public Builder contentCompressor(ContentCompressor compressor) {
             moduleInfoBuilder.contentCompressor(compressor);
+            return this;
+        }
+
+        /**
+         * Sets the trace context propagator used for distributed tracing and correlation ID propagation (ADR-0042).
+         *
+         * @param propagator the propagator, not {@code null}
+         * @return this builder, for chaining
+         */
+        public Builder tracePropagator(TracePropagator propagator) {
+            moduleInfoBuilder.tracePropagator(propagator);
+            return this;
+        }
+
+        /**
+         * Configures automatic correlation ID injection using UUID v4 into the specified header name (ADR-0042).
+         *
+         * @param headerName the correlation header name (e.g. {@code "X-Request-ID"}), not blank
+         * @return this builder, for chaining
+         */
+        public Builder correlationId(String headerName) {
+            moduleInfoBuilder.correlationId(headerName);
+            return this;
+        }
+
+        /**
+         * Configures automatic correlation ID injection into the specified header name using a custom generator (ADR-0042).
+         *
+         * @param headerName the correlation header name, not blank
+         * @param generator the ID generator supplier, not null
+         * @return this builder, for chaining
+         */
+        public Builder correlationId(String headerName, java.util.function.Supplier<String> generator) {
+            moduleInfoBuilder.correlationId(headerName, generator);
+            return this;
+        }
+
+        /**
+         * Configures automatic correlation ID propagation from an active {@link ThreadLocal} into {@code "X-Request-ID"} (ADR-0042).
+         *
+         * @param threadLocal the thread local holding the correlation ID, not null
+         * @return this builder, for chaining
+         */
+        public Builder correlationId(ThreadLocal<String> threadLocal) {
+            moduleInfoBuilder.correlationId(threadLocal);
+            return this;
+        }
+
+        /**
+         * Configures automatic correlation ID propagation from an active {@link ThreadLocal} into the given header name (ADR-0042).
+         *
+         * @param headerName the header name, not blank
+         * @param threadLocal the thread local holding the correlation ID, not null
+         * @param generateIfMissing whether to generate a UUID v4 if thread local is null or blank
+         * @return this builder, for chaining
+         */
+        public Builder correlationId(String headerName, ThreadLocal<String> threadLocal, boolean generateIfMissing) {
+            moduleInfoBuilder.correlationId(headerName, threadLocal, generateIfMissing);
+            return this;
+        }
+
+        /**
+         * Enables standard W3C {@code traceparent} propagation (RFC 8414 / W3C TraceContext Level 1) (ADR-0042).
+         *
+         * @return this builder, for chaining
+         */
+        public Builder w3cTracing() {
+            moduleInfoBuilder.w3cTracing();
+            return this;
+        }
+
+        /**
+         * Enables or disables standard W3C {@code traceparent} propagation (ADR-0042).
+         *
+         * @param enabled {@code true} to enable, {@code false} to disable
+         * @return this builder, for chaining
+         */
+        public Builder w3cTracing(boolean enabled) {
+            moduleInfoBuilder.w3cTracing(enabled);
             return this;
         }
 

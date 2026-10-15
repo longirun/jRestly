@@ -1433,7 +1433,54 @@ Gates (session #119, clean rebuild):
 - `javadoc` 0 warnings under permanent `-Xdoclint:all -Werror`.
 - Zero external runtime dependencies preserved (0 dependencies in Maven POM).
 
-After the epic: candidate #1 — test-javadoc (ADR-0013 Non-goals); candidate #2 — Request Tracing & Correlation ID Propagation SPI (ADR-0042) / W3C TraceContext. ADR number **0042** free.
+After the epic: candidate #1 — test-javadoc (ADR-0013 Non-goals); candidate #2 — Request Tracing & Correlation ID Propagation SPI (ADR-0042) — done, section below. ADR number **0042** — request tracing epic, **0043** free.
+
+## Request Tracing & Correlation ID Propagation SPI (ADR-0042) — COMPLETE ✅ (2026-10-15, unreleased)
+
+> Source of truth (concept, architecture decisions, W3C TraceContext model, SPI design, test strategy, status):
+> [`docs/0.10.0/ADR-0042-request-tracing-and-correlation-id-propagation-spi.md`](docs/0.10.0/ADR-0042-request-tracing-and-correlation-id-propagation-spi.md).
+> Session #120 (agent-loop). Zero-dependency distributed request tracing, correlation ID propagation, and W3C TraceContext Level 1 support.
+> Introduces `ru.jrestly.tracing` package (`TraceContext` record with W3C parsing and random/child factories, `TraceIdGenerator` & `TraceIdGenerators`, `TraceRequestContext`, `TracePropagator` SPI, and `TracePropagators` factory),
+> `@Trace` declarative annotation (`ru.jrestly.annotation.Trace`) on methods and interfaces with `header`, `w3c`, `enabled`, and `forceNew` attributes,
+> client and module builder ergonomics (`tracePropagator`, `correlationId(name)`, `correlationId(name, generator)`, `correlationId(ThreadLocal)`, `w3cTracing()`),
+> validation in `ControllerValidator` (rejects blank header names in `@Trace`),
+> transparent injection pipeline in `HttpTemplateBuilder` respecting explicitly passed headers,
+> and metadata extraction accessors in `ResponseHeaders` (`requestId()`, `traceparent()`, `traceContext()`).
+> 100% backward compatible and zero-dependency (Java 21 standard library only).
+
+Key decisions (ADR-0042):
+- **W3C TraceContext Level 1 (`ru.jrestly.tracing.TraceContext`):**
+  - Immutable record `TraceContext(traceId, spanId, traceFlags, traceState)` validating 32-hex trace ID, 16-hex span ID, 2-hex flags, and non-zero invariants.
+  - Standard formatting `toTraceparent()`: `00-${traceId}-${spanId}-${traceFlags}`.
+  - Safe parsing `parse(traceparent)` with full validation against malformed or all-zero headers.
+  - `child()` factory generating fresh child span IDs while preserving trace ID and trace state.
+- **Trace ID Generators (`ru.jrestly.tracing.TraceIdGenerators`):**
+  - `uuid()`: standard UUID v4.
+  - `hex(byteLength)`: random lowercase hex strings via `java.util.HexFormat`.
+  - `prefixed(prefix, delegate)`: custom prefixes for audit logs.
+  - `threadLocal(holder, fallback)`: dynamic extraction from active thread context.
+- **Trace Context Propagation SPI (`ru.jrestly.tracing.TracePropagator`):**
+  - `inject(TraceRequestContext context)`: context-aware header injection returning `Map<String, String>`.
+  - Built-in propagators: `correlationId()`, `w3c()`, `threadLocal()`, and `composite()`.
+- **Declarative & Fluent Ergonomics:**
+  - `@Trace` annotation: interface inheritance, method overrides (`enabled = false`), custom headers, and `w3c = true`.
+  - Client/module builders: `correlationId(...)`, `tracePropagator(...)`, `w3cTracing(...)`.
+  - Header preservation: user-supplied `@RequestHeader("X-Request-ID")` is never overwritten unless explicitly requested via `forceNew = true`.
+- **Response Metadata Ergonomics (`ResponseHeaders`):**
+  - `headers.requestId()` (resolves `X-Request-ID` or `X-Correlation-ID`), `headers.traceparent()`, and `headers.traceContext()`.
+- **Full test coverage:** 28 new tests (+28 cases, total suite 894/894 across 106 classes) spanning:
+  - `TraceContextTest` (6 unit tests: valid normalization, invalid/all-zero validation, random generation, child span derivation, valid W3C parsing, malformed rejection);
+  - `TracePropagatorTest` (7 unit tests: TraceIdGenerators, TraceRequestContext header detection, correlationId propagation, w3c traceparent, w3c supplier + tracestate, threadLocal propagation, composite combining);
+  - `TraceConfigTest` (4 unit tests: ModuleInfo defaults, SimpleModuleInfo builder, JRestlyClient builder, ControllerValidator blank header checks);
+  - `RequestTracingWireMockTest` (11 WireMock integration tests: interface-level default UUID, method-level custom header, method-level W3C traceparent, method opt-out, explicit @RequestHeader preservation, forceNew overwrite, client builder correlationId, client builder ThreadLocal dynamic propagation, client builder w3cTracing, ResponseHeaders extraction, async CompletableFuture twin).
+
+Gates (session #120, clean rebuild):
+- `./gradlew test` **894/894** (106 classes, 0 failures/errors; +28 tests in ADR-0042).
+- `compileJava` and `compileTestJava` 0 warnings under permanent `-Xlint:all -Werror`.
+- `javadoc` 0 warnings under permanent `-Xdoclint:all -Werror`.
+- Zero external runtime dependencies preserved (0 dependencies in Maven POM).
+
+After the epic: candidate #1 — test-javadoc (ADR-0013 Non-goals); candidate #2 — next roadmap epic. ADR number **0043** free.
 
 ## Post-0.5.0 shortlist (not scheduled — see ADR-0003)
 

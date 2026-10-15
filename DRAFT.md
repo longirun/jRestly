@@ -1,23 +1,23 @@
-# DRAFT: активная зона после закрытия эпика Request Body Compression & Content-Encoding SPI (ADR-0041)
+# DRAFT: активная зона после закрытия эпика Request Tracing & Correlation ID Propagation SPI (ADR-0042)
 
-> Эпик Request Body Compression & Content-Encoding SPI (ADR-0041, `docs/0.10.0/`) закрыт (сессия #119):
-> концепт и ADR-0041 → zero-dep архитектура сжатия тела запроса и pluggable Content-Encoding SPI:
-> `ru.jrestly.compression`: `CompressionAlgorithm` (`GZIP`, `DEFLATE`, `NONE`), `ContentCompressor` SPI, `GzipContentCompressor`, `DeflateContentCompressor`, `ContentCompressors`,
-> `ru.jrestly.annotation.Compress`: декларативная аннотация на методах и интерфейсах с атрибутами `algorithm`, `minSizeBytes` threshold, `enabled`,
-> `SimpleModuleInfo.Builder` & `JRestlyClient.Builder`: fluent-методы `requestCompression(CompressionAlgorithm, int thresholdBytes)` и `contentCompressor(ContentCompressor)`,
-> `ControllerValidator`: валидация неотрицательных порогов `minSizeBytes >= 0`,
-> `HttpTemplateBuilder`: сборка сжатого тела, установка `Content-Encoding` и защита от double compression,
-> `HttpTemplate`: симметричная поддержка кастомных декомпрессоров ответов через `ContentCompressor.decompress`,
-> unit-тесты (`CompressionAlgorithmTest`, `ContentCompressorTest`, `CompressConfigTest`) и WireMock интеграционные тесты (`RequestCompressionWireMockTest`, итого +23 теста) →
-> дистилляция в ROADMAP («Request Body Compression & Content-Encoding SPI (ADR-0041) — COMPLETE ✅») + гейты 866/866 тестов (102 класса).
+> Эпик Request Tracing & Correlation ID Propagation SPI (ADR-0042, `docs/0.10.0/`) закрыт (сессия #120):
+> концепт и ADR-0042 → zero-dep архитектура распределенной трассировки и W3C TraceContext Level 1:
+> `ru.jrestly.tracing`: `TraceContext` record (W3C traceparent парсинг/валидация, `random()`, `child()`), `TraceIdGenerator` & `TraceIdGenerators`, `TraceRequestContext`, `TracePropagator` SPI, `TracePropagators`,
+> `ru.jrestly.annotation.Trace`: декларативная аннотация на методах и интерфейсах с атрибутами `header`, `w3c`, `enabled`, `forceNew`,
+> `SimpleModuleInfo.Builder` & `JRestlyClient.Builder`: fluent-методы `tracePropagator(...)`, `correlationId(...)`, `w3cTracing(...)`,
+> `ControllerValidator`: валидация непустых имен заголовков в `@Trace`,
+> `HttpTemplateBuilder`: прозрачная инъекция заголовков трассировки с сохранением явно переданных пользователем значений,
+> `ResponseHeaders`: прямой доступ к `requestId()`, `traceparent()`, `traceContext()`,
+> unit-тесты (`TraceContextTest`, `TracePropagatorTest`, `TraceConfigTest`) и WireMock интеграционные тесты (`RequestTracingWireMockTest`, итого +28 тестов) →
+> дистилляция в ROADMAP («Request Tracing & Correlation ID Propagation SPI (ADR-0042) — COMPLETE ✅») + гейты 894/894 тестов (106 классов).
 > Следующий ход — свободный, выбор из активной зоны.
 
 ## Активная зона (кандидаты на следующий эпик)
 
 - **Кандидат №1 — test-javadoc** (ADR-0013 Non-goals):
   Test-source javadoc вынесен за скобки аудита; наведение лоска в тестовых классах.
-- **Кандидат №2 — Request Tracing & Correlation ID Propagation SPI (ADR-0042)**:
-  Zero-dep генерация и проброс сквозных correlation ID (`X-Request-ID`, `X-Correlation-ID`) и W3C TraceContext (`traceparent`, `tracestate`) для распределенной трассировки микросервисов.
+- **Кандидат №2 — Circuit Breaker & Client Rate Limiter SPI (ADR-0043)**:
+  Zero-dep отказоустойчивость: защита от каскадных сбоев, sliding-window circuit breaker (`CLOSED`, `OPEN`, `HALF_OPEN`), client-side rate limiting (token bucket / leaky bucket) для предотвращения 429 Too Many Requests при вызовах сторонних API / LLM.
 
 ---
 
@@ -53,6 +53,7 @@
   SPI метрик и телеметрии (ADR-0036), настройка прокси и аутентификатора (ADR-0037),
   согласование протокола HTTP/2 и трейлеры (ADR-0038), персистентность cookie store (ADR-0039),
   продвинутые стратегии джиттера и ограничения Retry-After (ADR-0040),
-  сжатие тела запроса и Content-Encoding SPI (ADR-0041).
+  сжатие тела запроса и Content-Encoding SPI (ADR-0041),
+  трассировка запросов и проброс Correlation ID / W3C TraceContext (ADR-0042).
 - **Коммиты — краткие, не дублируют ченджлог** (Антон).
 - **Объём одной сессии в 2–3 раза меньше** — один маленький шаг.
