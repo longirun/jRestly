@@ -1309,8 +1309,52 @@ Gates (session #116, clean rebuild):
 - `javadoc` 0 warnings under permanent `-Xdoclint:all -Werror`.
 - Zero external runtime dependencies preserved (0 dependencies in Maven POM).
 
-After the epic: candidate #1 — test-javadoc (ADR-0013 Non-goals); candidate #2 — Cookie Store Persistence SPI (CookieHandler state persistence). ADR number **0039** free.
+After the epic: candidate #1 — test-javadoc (ADR-0013 Non-goals); candidate #2 — Cookie Store Persistence SPI (CookieHandler state persistence) — done, section below. ADR number **0039** — cookie persistence epic, **0040** free.
 
+## Cookie Store Persistence & Management SPI (ADR-0039) — COMPLETE ✅ (2026-10-15, unreleased)
+
+> Source of truth (concept, architecture decisions, persistence SPI, file store, test strategy, status):
+> [`docs/0.10.0/ADR-0039-cookie-store-persistence-spi.md`](docs/0.10.0/ADR-0039-cookie-store-persistence-spi.md).
+> Session #117 (agent-loop). Pluggable zero-dependency cookie persistence SPI, file-backed storage, and client builder ergonomics.
+> Introduces `CookiePersister` SPI (`loadAll`, `saveAll`, `clear`),
+> `FileCookiePersister` for atomic RFC 6265 file persistence,
+> `CookieCodec` for RFC 6265 streaming serialization/parsing,
+> `PersistentCookieStore` implementing `java.net.CookieStore` with `AUTO` and `MANUAL` persistence modes,
+> and fluent builder methods `cookieStore(CookieStore)`, `cookieStore(CookieStore, CookiePolicy)`, and `persistentCookieStore(Path)` in `SimpleModuleInfo.Builder` and `JRestlyClient.Builder`.
+> 100% backward compatible and zero-dependency (Java 21 standard library only).
+
+Key decisions (ADR-0039):
+- **Cookie Persistence SPI (`ru.jrestly.cookie.CookiePersister`):**
+  - Pluggable interface providing `loadAll()`, `saveAll(Collection<HttpCookie>)`, and `clear()`.
+  - Enables custom storage backends (files, Redis, databases, SharedPreferences, vaults) without external dependencies.
+- **Atomic File-Backed Persister (`ru.jrestly.cookie.FileCookiePersister`):**
+  - Reads and writes RFC 6265 formatted cookie entries with comments and timestamp headers.
+  - Automatically filters expired cookies (`!cookie.hasExpired()`).
+  - Uses atomic file replacement (`StandardCopyOption.ATOMIC_MOVE` with fallback) and UTF-8 encoding to prevent data corruption during unexpected process termination.
+- **Serialization & Codec Utility (`ru.jrestly.cookie.CookieCodec`):**
+  - Serializes `HttpCookie` instances to compliant RFC 6265 lines (`name=value; Domain=...; Path=...; Max-Age=...; Secure; HttpOnly`).
+  - Streams cookies to/from any `Reader` / `Writer`.
+- **Thread-Safe Persistent Cookie Store (`ru.jrestly.cookie.PersistentCookieStore`):**
+  - Implements standard `java.net.CookieStore`.
+  - Wraps an underlying delegate `CookieStore` (defaults to standard JDK store).
+  - Pre-loads cookies upon creation via `persister.loadAll()`.
+  - Maps domain and host aliases (including bare host mapping for `.local` / localhost domains).
+  - Supports `PersistenceMode.AUTO` (immediate mutation sync) and `PersistenceMode.MANUAL` (explicit `sync()` / `persist()`).
+- **Builder Ergonomics (`SimpleModuleInfo.Builder` & `JRestlyClient.Builder`):**
+  - `cookieStore(CookieStore store)`: configures `CookieManager` with the store and default `CookiePolicy.ACCEPT_ORIGINAL_SERVER`.
+  - `cookieStore(CookieStore store, CookiePolicy policy)`: configures `CookieManager` with the store and given policy.
+  - `persistentCookieStore(Path path)`: one-line shortcut configuring a file-backed persistent store.
+- **Full test coverage:** 18 new tests (+18 cases, total suite 828/828 across 96 classes) spanning:
+  - `CookiePersistenceUnitTest` (13 unit tests: CookieCodec full attributes formatting, round-trip serialization/deserialization, parse filtering comments/blank/expired, write/read null safety, FileCookiePersister atomic save/load/clear, persister validations, PersistentCookieStore AUTO mode, MANUAL mode with deferred sync, preloading & reloading, builder configuration & validations, concurrent thread-safety under multi-threaded mutations, SimpleModuleInfo & JRestlyClient builders, builder null validations);
+  - `PersistentCookieWireMockTest` (5 WireMock integration tests: process restart simulation across separate client instances, logout cookie expiration & storage cleanup, multiple cookies combined with declarative @Cookie annotations, async CompletableFuture twin, MANUAL mode deferred file write until explicit sync).
+
+Gates (session #117, clean rebuild):
+- `./gradlew test` **828/828** (96 classes, 0 failures/errors; +18 tests in ADR-0039).
+- `compileJava` and `compileTestJava` 0 warnings under permanent `-Xlint:all -Werror`.
+- `javadoc` 0 warnings under permanent `-Xdoclint:all -Werror`.
+- Zero external runtime dependencies preserved (0 dependencies in Maven POM).
+
+After the epic: candidate #1 — test-javadoc (ADR-0013 Non-goals); candidate #2 — Retry-After exponential backoff & jitter policy (ADR-0040). ADR number **0040** free.
 
 ## Post-0.5.0 shortlist (not scheduled — see ADR-0003)
 

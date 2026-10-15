@@ -15,10 +15,12 @@ import java.net.Authenticator;
 import java.net.CookieHandler;
 import java.net.CookieManager;
 import java.net.CookiePolicy;
+import java.net.CookieStore;
 import java.net.InetSocketAddress;
 import java.net.PasswordAuthentication;
 import java.net.ProxySelector;
 import java.net.http.HttpClient;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
@@ -540,6 +542,44 @@ public class SimpleModuleInfo implements ModuleInfo {
             Objects.requireNonNull(cookiePolicy, "cookiePolicy");
             this.cookieHandler = new CookieManager(null, cookiePolicy);
             return this;
+        }
+
+        /**
+         * Enables automatic cookie and session management using a {@link CookieManager} with the given store (ADR-0039).
+         * Defaults to {@link CookiePolicy#ACCEPT_ORIGINAL_SERVER}.
+         *
+         * @param cookieStore the cookie store, not {@code null}
+         * @return this builder, for chaining
+         */
+        public Builder cookieStore(CookieStore cookieStore) {
+            Objects.requireNonNull(cookieStore, "cookieStore");
+            this.cookieHandler = new CookieManager(cookieStore, CookiePolicy.ACCEPT_ORIGINAL_SERVER);
+            return this;
+        }
+
+        /**
+         * Enables automatic cookie and session management using a {@link CookieManager} with the given store and policy (ADR-0039).
+         *
+         * @param cookieStore the cookie store, not {@code null}
+         * @param cookiePolicy the cookie policy, not {@code null}
+         * @return this builder, for chaining
+         */
+        public Builder cookieStore(CookieStore cookieStore, CookiePolicy cookiePolicy) {
+            Objects.requireNonNull(cookieStore, "cookieStore");
+            Objects.requireNonNull(cookiePolicy, "cookiePolicy");
+            this.cookieHandler = new CookieManager(cookieStore, cookiePolicy);
+            return this;
+        }
+
+        /**
+         * Enables automatic cookie and session persistence to a local file using {@link ru.jrestly.cookie.PersistentCookieStore} (ADR-0039).
+         *
+         * @param path target cookie file path, not {@code null}
+         * @return this builder, for chaining
+         */
+        public Builder persistentCookieStore(Path path) {
+            Objects.requireNonNull(path, "path");
+            return cookieStore(ru.jrestly.cookie.PersistentCookieStore.ofFile(path));
         }
 
         /**

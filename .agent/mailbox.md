@@ -40,17 +40,6 @@
 * я думаю еще в реалном исползовании есть миллион важных вещей?
 Это не приказ бросаться сразу все делать, просто можно учесть и разобрать в будущем. 
 
-[2026-10-15 08:22] Агент (сессия #115): Реализован эпик HTTP Proxy & Transport Authenticator Configuration (ADR-0037):
-1. **Zero-Dep Proxy & Authenticator Configuration:**
-   - `ModuleInfo`: default методы `getProxySelector()` и `getAuthenticator()`.
-   - `SimpleModuleInfo` & `SimpleModuleInfo.Builder`: fluent-методы `proxy(ProxySelector)`, `proxy(String host, int port)`, `noProxy()` (`HttpClient.Builder.NO_PROXY`), `authenticator(Authenticator)`, `proxyCredentials(username, password)` (для `RequestorType.PROXY`), `credentials(username, password)` (универсальный аутентификатор).
-   - `JRestlyClient.Builder`: прямое проксирование всех настроек прокси и аутентификатора.
-   - `AbstractHttpClient`: проброс `proxySelector` и `authenticator` в `HttpClient.Builder`, публичные геттеры `getProxySelector()` и `getAuthenticator()`.
-2. **Безопасность и fail-fast валидация:**
-   - Проверка `null` selector, `null`/blank host, валидация диапазона портов 1..65535, `null` authenticator, `null` username/password.
-3. **Тестирование (22 новых теста, итого 789/789 в 91 классе):**
-   - `ProxyConfigTest` (16 unit тестов), `ProxyIntegrationWireMockTest` (6 WireMock интеграционных тестов). 0 warnings под `-Werror`, zero-dep core сохранен.
-
 [2026-10-15 08:47] Агент (сессия #116): Реализован эпик HTTP/2 Protocol Negotiation & Response Inspection (ADR-0038):
 1. **Zero-Dep Protocol Version & Trailers Propagation:**
    - `WireResponse`: расширен полями `HttpClient.Version version` и `List<Header> trailers` с сохранением полной обратной совместимости 3-, 4- и 5-аргументных конструкторов.
@@ -67,4 +56,16 @@
    - Default-метод `version()` в интерфейсе `CallMetrics` (возвращает `HTTP_2` или `HTTP_1_1` fallback).
 4. **Тестирование (21 новый тест, итого 810/810 в 94 классах):**
    - `HttpVersionHierarchyTest` (6 unit тестов), `ResponseHeadersHttp2Test` (8 unit тестов), `Http2NegotiationWireMockTest` (7 WireMock интеграционных тестов).
-0 warnings под постоянными флагами `-Xlint:all -Werror` и `-Xdoclint:all -Werror`, zero-dep core строго сохранен. Следующий свободный ADR — **0039**.
+0 warnings под постоянными флагами `-Xlint:all -Werror` и `-Xdoclint:all -Werror`, zero-dep core строго сохранен.
+
+[2026-10-15 09:11] Агент (сессия #117): Реализован эпик Cookie Store Persistence & Management SPI (ADR-0039):
+1. **Zero-Dep Cookie Persistence SPI & Storage:**
+   - `CookiePersister`: SPI интерфейс (`loadAll()`, `saveAll(Collection<HttpCookie>)`, `clear()`).
+   - `FileCookiePersister`: атомарное сохранение кук в файлы (RFC 6265, UTF-8, временный файл + atomic rename).
+   - `CookieCodec`: утилита потоковой сериализации/десериализации кук в `Reader`/`Writer` и парсинга строк RFC 6265 с автоматической фильтрацией истекших кук.
+   - `PersistentCookieStore`: потокобезопасная реализация `java.net.CookieStore` с поддержкой режимов `AUTO` (мгновенное сохранение изменений) и `MANUAL` (явный `sync()` / `persist()`), предзагрузкой при старте и алиасингом хостов/доменов (включая локальные хосты без точек).
+2. **Эргономика клиентских билдеров:**
+   - `SimpleModuleInfo.Builder` & `JRestlyClient.Builder`: fluent-методы `cookieStore(CookieStore)`, `cookieStore(CookieStore, CookiePolicy)` и `persistentCookieStore(Path)` для сохранения сессий между перезапусками приложения в одну строчку.
+3. **Тестирование (18 новых тестов, итого 828/828 в 96 классах):**
+   - `CookiePersistenceUnitTest` (13 unit тестов), `PersistentCookieWireMockTest` (5 WireMock интеграционных тестов). 0 warnings под постоянными флагами `-Xlint:all -Werror` и `-Xdoclint:all -Werror`, zero-dep core строго сохранен. Следующий свободный ADR — **0040**.
+

@@ -1,24 +1,22 @@
-# DRAFT: активная зона после закрытия эпика HTTP/2 Protocol Negotiation & Response Inspection (ADR-0038)
+# DRAFT: активная зона после закрытия эпика Cookie Store Persistence SPI (ADR-0039)
 
-> Эпик HTTP/2 Protocol Negotiation & Response Inspection (ADR-0038, `docs/0.10.0/`) закрыт (сессия #116):
-> концепт и ADR-0038 → zero-dep сквозная передача согласованной версии протокола HTTP/2 и трейлеров:
-> `WireResponse`: расширен полями `HttpClient.Version version` и `List<Header> trailers` с полной обратной совместимостью конструкторов,
-> `HttpTemplate.toWireResponse`: фиксация реальной согласованной версии `response.version()`,
-> `HttpTemplate.handleDecompression`: сохранение `version` и `trailers` при декомпрессии GZIP/Deflate,
-> `HttpTemplate.logResponse`: логирование согласованного протокола (`HTTP/2` или `HTTP/1.1`),
-> `HttpTemplateBuilder.getHttpVersion`: иерархический обход интерфейсов контроллера (Method > Sub-interface > Super-interface > Client default),
-> `ResponseHeaders`: методы `version()`, `isHttp2()`, `isHttp1()`, `trailers()`, `firstTrailer()`, `trailerValues()`, `declaredTrailers()` (RFC 7230 / RFC 9110),
-> `CallMetrics`: default-метод `version()` для телеметрии и мониторинга,
-> unit-тесты (`HttpVersionHierarchyTest`, 6 тестов; `ResponseHeadersHttp2Test`, 8 тестов) и интеграционные WireMock тесты (`Http2NegotiationWireMockTest`, 7 тестов, итого +21 тест) →
-> дистилляция в ROADMAP («HTTP/2 Protocol Negotiation & Response Inspection (ADR-0038) — COMPLETE ✅») + гейты 810/810 тестов (94 класса).
+> Эпик Cookie Store Persistence & Management SPI (ADR-0039, `docs/0.10.0/`) закрыт (сессия #117):
+> концепт и ADR-0039 → zero-dep архитектура персистентности cookies и удобство настройки клиентов:
+> `CookiePersister`: SPI интерфейс с `loadAll()`, `saveAll(Collection<HttpCookie>)`, `clear()`,
+> `FileCookiePersister`: атомарное сохранение в файлы (RFC 6265, UTF-8, временный файл + atomic rename),
+> `CookieCodec`: утилита потоковой сериализации/парсинга RFC 6265 Set-Cookie строк с фильтрацией expired cookies,
+> `PersistentCookieStore`: потокобезопасная реализация `java.net.CookieStore` с режимами `AUTO` и `MANUAL`, предзагрузкой и алиасингом хостов/доменов (включая `.local`),
+> `SimpleModuleInfo.Builder` и `JRestlyClient.Builder`: fluent-методы `cookieStore(CookieStore)`, `cookieStore(CookieStore, CookiePolicy)`, `persistentCookieStore(Path)`,
+> unit-тесты (`CookiePersistenceUnitTest`, 13 тестов) и интеграционные WireMock тесты (`PersistentCookieWireMockTest`, 5 тестов, итого +18 тестов) →
+> дистилляция в ROADMAP («Cookie Store Persistence & Management SPI (ADR-0039) — COMPLETE ✅») + гейты 828/828 тестов (96 классов).
 > Следующий ход — свободный, выбор из активной зоны.
 
 ## Активная зона (кандидаты на следующий эпик)
 
 - **Кандидат №1 — test-javadoc** (ADR-0013 Non-goals):
   Test-source javadoc вынесен за скобки аудита; наведение лоска в тестовых классах.
-- **Кандидат №2 — Cookie Store Persistence SPI**:
-  Zero-dependency интерфейс для сохранения и загрузки cookies между перезапусками процесса (CLI-инструменты, долгоживущие боты, сохранение сессий в файл или БД).
+- **Кандидат №2 — Retry-After & Jitter Backoff Policy (ADR-0040)**:
+  Расширение `RetryPolicy` автоматическим парсингом `Retry-After` заголовка (дельта-секунды / RFC 1123 date) и алгоритмами экспоненциального бэкоффа с рандомизацией (full jitter / equal jitter per AWS Architecture recommendations) для защиты от thundering herd / retry storms в распределенных системах.
 
 ---
 
@@ -51,6 +49,7 @@
   отслеживание прогресса загрузки (ADR-0030), куки и управление сессиями (ADR-0032),
   отслеживание прогресса скачивания и прямой возврат byte[] (ADR-0033),
   форматирование query коллекций (ADR-0034), стриминг тела запроса (ADR-0035),
-  SPI метрик и телеметрии (ADR-0036), настройка прокси и аутентификатора (ADR-0037).
+  SPI метрик и телеметрии (ADR-0036), настройка прокси и аутентификатора (ADR-0037),
+  согласование протокола HTTP/2 и трейлеры (ADR-0038), персистентность cookie store (ADR-0039).
 - **Коммиты — краткие, не дублируют ченджлог** (Антон).
 - **Объём одной сессии в 2–3 раза меньше** — один маленький шаг.

@@ -1,59 +1,49 @@
-# Handover Note: Сессия 116 (Завершение эпика HTTP/2 Protocol Negotiation & Response Inspection ADR-0038; тесты выросли до 810/810 в 94 классах; следующий ход — кандидат №1 test-javadoc, кандидат №2 Cookie Store Persistence SPI)
+# Handover Note: Сессия 117 (Завершение эпика Cookie Store Persistence & Management SPI ADR-0039; тесты выросли до 828/828 в 96 классах; следующий ход — кандидат №1 test-javadoc, кандидат №2 Retry-After exponential backoff & jitter policy ADR-0040)
 
-## Что сделано в этой сессии (#116)
-- **Ход:** полное проектирование (ADR-0038), реализация и верификация эпика HTTP/2 Protocol Negotiation & Response Inspection.
-- **Архитектура и реализация (ADR-0038):**
-  - **Zero-Dep Protocol Version & Trailers Propagation:**
-    - Использование только стандартных классов Java 21 из `java.base`: `HttpClient.Version`, `List<Header>`.
-    - `WireResponse`: канонический record расширен полями `HttpClient.Version version` и `List<Header> trailers` с сохранением полной обратной совместимости 3-, 4- и 5-аргументных конструкторов. Нормализация `null` версии к `HttpClient.Version.HTTP_1_1`, `null` трейлеров к `List.of()`.
-    - `HttpTemplate.toWireResponse`: фиксация реально согласованной версии ответа `response.version()` (поддержка h2c / ALPN).
-    - `HttpTemplate.handleDecompression`: перенос `response.version()` и `response.trailers()` при декомпрессии GZIP/Deflate.
-    - `HttpTemplate.logResponse`: логирование согласованного протокола (`Response: HTTP/2 200 in 15 ms` vs `HTTP/1.1`).
-    - `HttpTemplateBuilder.getHttpVersion`: сканирование иерархии интерфейсов контроллера снизу вверх (`collectInterfaceHierarchy(controller)`): Method > Sub-interface > Super-interface > Client default.
-  - **Эргономика метаданных ответа (`ResponseHeaders`):**
-    - Методы `version()`, `isHttp2()`, `isHttp1()`.
-    - Поддержка трейлеров `trailers()`, `firstTrailer(name)`, `trailerValues(name)` (регистронезависимо).
-    - Парсер объявленных трейлеров RFC 7230 / RFC 9110: `declaredTrailers()` извлекает и триммит имена полей из заголовка `Trailer`.
-    - Перенос `version` и `trailers` в `ResponseHeaders.capture(...)` и `captureCallable(...)`.
-  - **Наблюдаемость и телеметрия (`CallMetrics`):**
-    - Default-метод `HttpClient.Version version()` в интерфейсе `CallMetrics` (возвращает `HTTP_2` или `HTTP_1_1` fallback).
-  - **Фиксация JDK 21 особенностей:**
-    - Задокументировано в ADR-0038: JDK 21 `HttpResponse` не экспонирует публичный API для trailing headers (оставаясь внутренней деталью `Stream.trailerReceived`), поэтому ядро предоставляет модель трейлеров для mock/тестов и парсер `declaredTrailers()` для заголовка `Trailer`.
-- **Тесты (+21 новый тест, итого 810/810 тестов в 94 классах):**
-  - `HttpVersionHierarchyTest` (6 unit тестов): unannotated fallback, direct interface inheritance, method override of direct interface, sub-interface inheritance, sub-interface override of super-interface, method override of sub-interface.
-  - `ResponseHeadersHttp2Test` (8 unit тестов): unpopulated defaults, HTTP/2 populated flags, case-insensitive trailer lookups, declaredTrailers parsing of single/multiple/empty Trailer headers, capture pattern forwarding, WireResponse constructors and immutability, CallMetrics version inspection and fallback.
-  - `Http2NegotiationWireMockTest` (7 WireMock интеграционных тестов): method parameter receiving negotiated HTTP/2 and pinned HTTP/1.1 from live server, server response with Trailer header parsing declared trailers, capture pattern receiving HTTP/2, ClientMetricsListener receiving negotiated HTTP/2, GZIP decompression preserving negotiated HTTP/2, async CompletableFuture pipeline preserving version, failed 500 response preserving version in exception metadata.
+## Что сделано в этой сессии (#117)
+- **Ход:** полное проектирование (ADR-0039), реализация и верификация эпика Cookie Store Persistence & Management SPI.
+- **Архитектура и реализация (ADR-0039):**
+  - **Zero-Dep Cookie Persistence SPI & Storage (`ru.jrestly.cookie`):**
+    - `CookiePersister`: SPI интерфейс с контрактом `List<HttpCookie> loadAll()`, `void saveAll(Collection<HttpCookie> cookies)`, `void clear()`.
+    - `FileCookiePersister`: файловая реализация с атомарной записью через временный файл и `StandardCopyOption.ATOMIC_MOVE` (с fallback на стандартную замену). Поддерживает `Path`, `File` и явный `Charset`.
+    - `CookieCodec`: утилита потоковой сериализации/парсинга по стандарту RFC 6265 с автоматической фильтрацией истекших кук (`!cookie.hasExpired()`).
+    - `PersistentCookieStore`: потокобезопасная реализация `java.net.CookieStore`, оборачивающая in-memory delegate store. Поддерживает режимы `AUTO` (сохранение при любых мутациях) и `MANUAL` (сохранение по вызову `persist()` / `sync()`). Поддерживает разрешение хостов для неквалифицированных доменов (`localhost` vs `localhost.local`).
+  - **Эргономика клиентских билдеров:**
+    - `SimpleModuleInfo.Builder` & `JRestlyClient.Builder`: fluent-методы `cookieStore(CookieStore)`, `cookieStore(CookieStore, CookiePolicy)`, `persistentCookieStore(Path)` для сохранения сессий в одну строчку.
+- **Тесты (+18 новых тестов, итого 828/828 тестов в 96 классах):**
+  - `CookiePersistenceUnitTest` (13 unit тестов): CookieCodec formatting, round-trip, filtering comments/expired, null safety, FileCookiePersister atomic save/load/clear, persister validations, PersistentCookieStore AUTO mode, MANUAL mode with deferred sync, preloading & reloading, builder configuration & validations, concurrent thread-safety under multi-threaded mutations, SimpleModuleInfo & JRestlyClient builders, builder null validations.
+  - `PersistentCookieWireMockTest` (5 WireMock интеграционных тестов): process restart simulation across separate client instances, logout cookie expiration & storage cleanup, multiple cookies combined with declarative @Cookie annotations, async CompletableFuture twin, MANUAL mode deferred file write until explicit sync.
 - **Гейты:**
-  - `./gradlew test`: **810/810** тестов (94 класса, +21 тест к 789) зелёные.
+  - `./gradlew test`: **828/828** тестов (96 классов, +18 тестов к 810) зелёные.
   - `./gradlew compileJava compileTestJava javadoc`: 0 warnings под постоянными флагами `-Xlint:all -Werror` и `-Xdoclint:all -Werror`.
   - Zero-dep инвариант в ядре строго сохранен (0 dependencies в Maven POM).
 - **Память и координация:**
-  - `docs/0.10.0/ADR-0038-http2-protocol-negotiation-and-response-inspection.md`: статус **Accepted**, зафиксированы решения и тесты.
-  - `ROADMAP.md`: добавлена секция `## HTTP/2 Protocol Negotiation & Response Inspection (ADR-0038) — COMPLETE ✅`, следующий свободный ADR — **0039**.
+  - `docs/0.10.0/ADR-0039-cookie-store-persistence-spi.md`: статус **Accepted**, зафиксированы решения и тесты.
+  - `ROADMAP.md`: добавлена секция `## Cookie Store Persistence & Management SPI (ADR-0039) — COMPLETE ✅`, следующий свободный ADR — **0040**.
   - `DRAFT.md`: эпик закрыт, активная зона обновлена.
-  - `mailbox.md`: Антону отправлен статус о реализации эпика ADR-0038, соблюдена гигиена сообщений.
-  - `days/2026-10-15.md`: оформлена запись сессии #116.
+  - `mailbox.md`: Антону отправлен статус о реализации эпика ADR-0039, соблюдена гигиена сообщений.
+  - `days/2026-10-15.md`: оформлена запись сессии #117.
 
-## Контекст для следующей сессии (#117)
+## Контекст для следующей сессии (#118)
 
 ### Активная зона DRAFT.md (выбор следующего эпика)
 - **Кандидат №1: test-javadoc** (ADR-0013 Non-goals):
   - Test-source javadoc вынесен за скобки аудита; наведение лоска в тестовых классах.
-- **Кандидат №2: Cookie Store Persistence SPI**:
-  - Zero-dependency интерфейс для сохранения и загрузки cookies между перезапусками процесса (CLI-инструменты, долгоживущие боты, сохранение сессий в файл или БД).
+- **Кандидат №2: Retry-After exponential backoff & jitter policy (ADR-0040)**:
+  - Расширение `RetryPolicy` автоматическим парсингом `Retry-After` заголовка (дельта-секунды / RFC 1123 date) и алгоритмами экспоненциального бэкоффа с рандомизацией (full jitter / equal jitter per AWS Architecture recommendations) для защиты от thundering herd / retry storms в распределенных системах.
 
 ### Грабли (актуальный набор)
 - **`GRADLE_USER_HOME=/tmp/opencode/gradle-home`**: всегда указывать при запуске `./gradlew`.
 - **`AbstractHttpClient` намеренно не `AutoCloseable`**: в тестах регистрировать и закрывать через `.close()` в `@AfterEach` (или try/finally).
 - **Path variables в jRestly**: в URL синтаксис `${param}`, в аннотации `@PathVariable(name = "param")` (без `${}`).
-- **Подсчёт тестов:** `grep -h -o 'tests="[0-9]*"' build/test-results/test/*.xml | awk -F'"' '{s+=$2} END{print s}'` (сейчас 810).
+- **Подсчёт тестов:** `grep -h -o 'tests="[0-9]*"' build/test-results/test/*.xml | awk -F'"' '{s+=$2} END{print s}'` (сейчас 828).
 - **Mailbox-гигиена:** решённый обмен удаляем; живые нитки и последние 2–3 сообщения оставляем.
 - **Коммит-субъект: краткий, без дублирования ченджлога** (Антон); body — гейты-факты.
 - **No git tags:** теги не создавать (релизы запаузены per maintainer agreement).
-- **Next free ADR number:** ADR-0039.
+- **Next free ADR number:** ADR-0040.
 
 ### Среда
 1. `GRADLE_USER_HOME=/tmp/opencode/gradle-home ./gradlew ...` (тёплый кэш).
 2. Ветка `agent-loop`.
-3. Версия в `build.gradle`: **0.9.0**. Тесты: **810/810** (94 класса).
+3. Версия в `build.gradle`: **0.9.0**. Тесты: **828/828** (96 классов).
 4. Warnings: main 0, test 0, javadoc 0 (под `-Werror`).

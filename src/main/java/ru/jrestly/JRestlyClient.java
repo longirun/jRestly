@@ -12,8 +12,10 @@ import java.net.Authenticator;
 import java.net.CookieHandler;
 import java.net.CookieManager;
 import java.net.CookiePolicy;
+import java.net.CookieStore;
 import java.net.ProxySelector;
 import java.net.http.HttpClient;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.Executor;
@@ -367,6 +369,41 @@ public class JRestlyClient extends AbstractHttpClient {
          */
         public Builder cookiePolicy(CookiePolicy cookiePolicy) {
             moduleInfoBuilder.cookiePolicy(cookiePolicy);
+            return this;
+        }
+
+        /**
+         * Enables automatic cookie and session management using a {@link CookieManager} with the given store (ADR-0039).
+         * Defaults to {@link CookiePolicy#ACCEPT_ORIGINAL_SERVER}.
+         *
+         * @param cookieStore the cookie store, not {@code null}
+         * @return this builder, for chaining
+         */
+        public Builder cookieStore(CookieStore cookieStore) {
+            moduleInfoBuilder.cookieStore(cookieStore);
+            return this;
+        }
+
+        /**
+         * Enables automatic cookie and session management using a {@link CookieManager} with the given store and policy (ADR-0039).
+         *
+         * @param cookieStore the cookie store, not {@code null}
+         * @param cookiePolicy the cookie policy, not {@code null}
+         * @return this builder, for chaining
+         */
+        public Builder cookieStore(CookieStore cookieStore, CookiePolicy cookiePolicy) {
+            moduleInfoBuilder.cookieStore(cookieStore, cookiePolicy);
+            return this;
+        }
+
+        /**
+         * Enables automatic cookie and session persistence to a local file using {@link ru.jrestly.cookie.PersistentCookieStore} (ADR-0039).
+         *
+         * @param path target cookie file path, not {@code null}
+         * @return this builder, for chaining
+         */
+        public Builder persistentCookieStore(Path path) {
+            moduleInfoBuilder.persistentCookieStore(path);
             return this;
         }
 
