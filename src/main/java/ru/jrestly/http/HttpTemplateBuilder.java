@@ -106,6 +106,7 @@ public class HttpTemplateBuilder {
     private final Class<?> controller;
 
     private RequestMeta requestMeta;
+    private MethodMetadata methodMetadata;
     private Executor executor;
     private Map<Class<?>, Object> interceptorCache;
     private System.Logger customLogger;
@@ -201,7 +202,8 @@ public class HttpTemplateBuilder {
      * @return the assembled template, ready for execution
      */
     HttpTemplate build() {
-        requestMeta = resolveRequestMeta(method);
+        methodMetadata = MethodMetadata.of(method, controller);
+        requestMeta = methodMetadata.requestMeta();
 
         HttpTemplate result = new HttpTemplate();
         RequestType requestType = requestMeta.requestType();
@@ -217,9 +219,9 @@ public class HttpTemplateBuilder {
         List<Header> headers = createHeaders();
 
         String effectiveContentType;
-        String declarativeContentType = resolveMethodContentType() != null
-                ? resolveMethodContentType()
-                : resolveInterfaceContentType();
+        String declarativeContentType = methodMetadata.methodContentType() != null
+                ? methodMetadata.methodContentType()
+                : methodMetadata.interfaceContentType();
 
         Header explicitContentTypeHeader = null;
         for (Header h : headers) {
@@ -299,7 +301,13 @@ public class HttpTemplateBuilder {
         result.setBody(body);
         result.setBodyPublisherSupplier(bodyPublisherSupplier);
         result.setMultipartFormParts(parts);
-        resolveReturnType(result, method.getGenericReturnType());
+
+        MethodMetadata.ReturnTypeInfo rt = methodMetadata.returnTypeInfo();
+        result.setAsync(rt.async());
+        result.setOptional(rt.optional());
+        result.setStreamBody(rt.streamBody());
+        result.setReturnType(rt.effectiveReturnType());
+
         result.setOnErrorParser(createOnErrorParser());
         result.setExpectStatuses(createExpectStatuses());
         result.setFollowRedirectsNumber(getFollowRedirectsNumber());
@@ -330,85 +338,35 @@ public class HttpTemplateBuilder {
     }
 
     private ResponseHeaders resolveResponseHeadersHolder() {
-        if (method == null) {
-            return null;
-        }
-        Parameter[] parameters = method.getParameters();
-        for (int i = 0; i < parameters.length; i++) {
-            if (ResponseHeaders.class.equals(parameters[i].getType())) {
-                if (args != null && i < args.length && args[i] instanceof ResponseHeaders holder) {
-                    return holder;
-                }
-                return null;
+        if (methodMetadata != null && methodMetadata.responseHeadersParamIndex() >= 0 && args != null
+                && methodMetadata.responseHeadersParamIndex() < args.length) {
+            if (args[methodMetadata.responseHeadersParamIndex()] instanceof ResponseHeaders holder) {
+                return holder;
             }
         }
         return null;
     }
 
     private UploadProgressListener resolveUploadProgressListener() {
-        if (method == null) {
-            return null;
-        }
-        Parameter[] parameters = method.getParameters();
-        for (int i = 0; i < parameters.length; i++) {
-            if (UploadProgressListener.class.equals(parameters[i].getType())) {
-                if (args != null && i < args.length && args[i] instanceof UploadProgressListener listener) {
-                    return listener;
-                }
-                return null;
+        if (methodMetadata != null && methodMetadata.uploadProgressParamIndex() >= 0 && args != null
+                && methodMetadata.uploadProgressParamIndex() < args.length) {
+            if (args[methodMetadata.uploadProgressParamIndex()] instanceof UploadProgressListener listener) {
+                return listener;
             }
         }
         return null;
     }
 
     private DownloadProgressListener resolveDownloadProgressListener() {
-        if (method == null) {
-            return null;
-        }
-        Parameter[] parameters = method.getParameters();
-        for (int i = 0; i < parameters.length; i++) {
-            if (DownloadProgressListener.class.equals(parameters[i].getType())) {
-                if (args != null && i < args.length && args[i] instanceof DownloadProgressListener listener) {
-                    return listener;
-                }
-                return null;
+        if (methodMetadata != null && methodMetadata.downloadProgressParamIndex() >= 0 && args != null
+                && methodMetadata.downloadProgressParamIndex() < args.length) {
+            if (args[methodMetadata.downloadProgressParamIndex()] instanceof DownloadProgressListener listener) {
+                return listener;
             }
         }
         return null;
     }
 
-    // CompletableFuture<T> methods run non-blockingly on the client executor;
-    // T itself (a class or parameterized type, including Void) is the wire
-    // contract — the effective return type. An InputStream, Stream<String>, or
-    // Stream<ServerSentEvent> effective return type declares streaming binding
-    // (ADR-0015, ADR-0016): the body arrives as a live stream via
-    // BodyHandlers.ofInputStream, codec-free
-    private static void resolveReturnType(HttpTemplate result, Type genericReturnType) {
-        Type effective;
-        if (genericReturnType instanceof ParameterizedType parameterized
-                && CompletableFuture.class.equals(parameterized.getRawType())) {
-            result.setAsync(true);
-            effective = parameterized.getActualTypeArguments()[0];
-        } else {
-            effective = genericReturnType;
-        }
-
-        if (effective instanceof ParameterizedType parameterized
-                && Optional.class.equals(parameterized.getRawType())) {
-            result.setOptional(true);
-            effective = parameterized.getActualTypeArguments()[0];
-        } else if (Optional.class.equals(effective)) {
-            result.setOptional(true);
-            effective = Object.class;
-        }
-
-        result.setReturnType(effective);
-        if (InputStream.class.equals(effective)
-                || HttpTemplate.isStreamType(effective, String.class)
-                || HttpTemplate.isStreamType(effective, ServerSentEvent.class)) {
-            result.setStreamBody(true);
-        }
-    }
 
     private static boolean isConditionalRequest(List<Header> headers) {
         if (headers == null) {
@@ -618,14 +576,7 @@ public class HttpTemplateBuilder {
     }
 
     private Trace resolveInterfaceTrace() {
-        List<Class<?>> hierarchy = collectInterfaceHierarchy(controller);
-        for (int i = hierarchy.size() - 1; i >= 0; i--) {
-            Trace trace = hierarchy.get(i).getAnnotation(Trace.class);
-            if (trace != null) {
-                return trace;
-            }
-        }
-        return null;
+        return methodMetadata != null ? methodMetadata.interfaceTrace() : null;
     }
 
     private String resolveCookies() {
@@ -714,34 +665,10 @@ public class HttpTemplateBuilder {
         }
     }
 
-    private RequestMeta resolveRequestMeta(Method method) {
-        if (method.isAnnotationPresent(Get.class)) {
-            Get annotation = method.getAnnotation(Get.class);
-            return new RequestMeta(HttpMethod.GET, annotation.path(), RequestType.APPLICATION_JSON, annotation.params());
-        }
-        if (method.isAnnotationPresent(Post.class)) {
-            Post annotation = method.getAnnotation(Post.class);
-            return new RequestMeta(HttpMethod.POST, annotation.path(), annotation.requestType(), annotation.params());
-        }
-        if (method.isAnnotationPresent(Put.class)) {
-            Put annotation = method.getAnnotation(Put.class);
-            return new RequestMeta(HttpMethod.PUT, annotation.path(), annotation.requestType(), annotation.params());
-        }
-        if (method.isAnnotationPresent(Patch.class)) {
-            Patch annotation = method.getAnnotation(Patch.class);
-            return new RequestMeta(HttpMethod.PATCH, annotation.path(), annotation.requestType(), annotation.params());
-        }
-        if (method.isAnnotationPresent(Delete.class)) {
-            Delete annotation = method.getAnnotation(Delete.class);
-            return new RequestMeta(HttpMethod.DELETE, annotation.path(), annotation.requestType(), annotation.params());
-        }
-
-        throw new UnsupportedOperationException("No HTTP method annotation found on " + method);
-    }
 
     private Consumer<List<Header>> getAuthDetailsConsumer() {
-        if (method.isAnnotationPresent(SetAuthDetails.class)) {
-            String headerName = method.getAnnotation(SetAuthDetails.class).headerName();
+        if (methodMetadata != null && methodMetadata.authDetailsHeaderName() != null) {
+            String headerName = methodMetadata.authDetailsHeaderName();
             AuthProvider authProvider = moduleInfo.getAuthProvider();
 
             return responseHeaders -> authProvider.captureAuthDetails(headerName, responseHeaders);
@@ -834,25 +761,7 @@ public class HttpTemplateBuilder {
     }
 
     private CollectionFormat resolveDefaultCollectionFormat() {
-        if (method != null && method.isAnnotationPresent(QueryCollectionFormat.class)) {
-            CollectionFormat format = method.getAnnotation(QueryCollectionFormat.class).value();
-            if (format != null && format != CollectionFormat.DEFAULT) {
-                return format;
-            }
-        }
-
-        List<Class<?>> hierarchy = collectInterfaceHierarchy(controller);
-        for (int i = hierarchy.size() - 1; i >= 0; i--) {
-            Class<?> iface = hierarchy.get(i);
-            if (iface.isAnnotationPresent(QueryCollectionFormat.class)) {
-                CollectionFormat format = iface.getAnnotation(QueryCollectionFormat.class).value();
-                if (format != null && format != CollectionFormat.DEFAULT) {
-                    return format;
-                }
-            }
-        }
-
-        return CollectionFormat.EXPLODE;
+        return methodMetadata != null ? methodMetadata.defaultCollectionFormat() : CollectionFormat.EXPLODE;
     }
 
     private record BodyPayload(
@@ -1238,170 +1147,47 @@ public class HttpTemplateBuilder {
     }
 
     private OnErrorParser createOnErrorParser() {
-        OnErrorParser parser = new OnErrorParser();
-        boolean hasAnnotations = false;
-
-        if (method != null) {
-            OnError[] methodOnErrors = method.getAnnotationsByType(OnError.class);
-            if (methodOnErrors.length > 0) {
-                hasAnnotations = true;
-                for (OnError onError : methodOnErrors) {
-                    if (onError.statuses().length > 0) {
-                        for (int status : onError.statuses()) {
-                            parser.register(status, onError.errorObject());
-                        }
-                    } else {
-                        parser.registerDefault(onError.errorObject());
-                    }
-                }
-            }
-        }
-
-        List<Class<?>> hierarchy = collectInterfaceHierarchy(controller);
-        for (int i = hierarchy.size() - 1; i >= 0; i--) {
-            Class<?> iface = hierarchy.get(i);
-            OnError[] ifaceOnErrors = iface.getAnnotationsByType(OnError.class);
-            if (ifaceOnErrors.length > 0) {
-                hasAnnotations = true;
-                for (OnError onError : ifaceOnErrors) {
-                    if (onError.statuses().length > 0) {
-                        for (int status : onError.statuses()) {
-                            parser.register(status, onError.errorObject());
-                        }
-                    } else {
-                        parser.registerDefault(onError.errorObject());
-                    }
-                }
-            }
-        }
-
-        return hasAnnotations ? parser : null;
+        return methodMetadata != null ? methodMetadata.onErrorParser() : null;
     }
 
     private List<Integer> createExpectStatuses() {
-        if (method.isAnnotationPresent(ExpectStatus.class)) {
-            int[] statuses = method.getAnnotation(ExpectStatus.class).statuses();
-            return Arrays.stream(statuses).boxed().toList();
-        }
-        return null;
+        return methodMetadata != null ? methodMetadata.expectStatuses() : null;
     }
 
     private Integer getFollowRedirectsNumber() {
-        if (method.isAnnotationPresent(FollowRedirects.class)) {
-            return method.getAnnotation(FollowRedirects.class).count();
-        }
-
-        return null;
+        return methodMetadata != null ? methodMetadata.followRedirectsNumber() : null;
     }
 
     private HttpClient.Version getHttpVersion() {
-        if (method.isAnnotationPresent(HttpVersion.class)) {
-            return method.getAnnotation(HttpVersion.class).value();
-        }
-        if (controller != null) {
-            List<Class<?>> hierarchy = collectInterfaceHierarchy(controller);
-            for (int i = hierarchy.size() - 1; i >= 0; i--) {
-                Class<?> iface = hierarchy.get(i);
-                if (iface.isAnnotationPresent(HttpVersion.class)) {
-                    return iface.getAnnotation(HttpVersion.class).value();
-                }
-            }
-        }
-        return null;
+        return methodMetadata != null ? methodMetadata.httpVersion() : null;
     }
 
-    // The per-method @Retry is a self-contained policy: its presence
-    // replaces the client-level one entirely, no field-by-field merge
-    // (ADR-0008, Aspect 2). times = 1 — the default — is the explicit
-    // off-switch on a client that has retry enabled.
     private RetryPolicy resolveRetryPolicy() {
-        if (method.isAnnotationPresent(Retry.class)) {
-            Retry retry = method.getAnnotation(Retry.class);
-            RetryPolicy.Builder builder = RetryPolicy.builder()
-                    .maxAttempts(retry.times())
-                    .initialBackoff(Duration.ofMillis(retry.initialBackoffMs()))
-                    .maxBackoff(Duration.ofMillis(retry.maxBackoffMs()))
-                    .retryableStatuses(Arrays.stream(retry.statuses()).boxed().toList())
-                    .retryTransport(retry.transport())
-                    .retryOnErrorStatuses(retry.onErrorStatuses())
-                    .retryNonIdempotent(retry.nonIdempotent())
-                    .retryDecodeFailures(retry.retryDecodeFailures())
-                    .jitter(retry.jitter())
-                    .backoffMultiplier(retry.multiplier())
-                    .respectRetryAfter(retry.respectRetryAfter());
-            if (retry.maxRetryAfterMs() >= 0) {
-                builder.maxRetryAfter(Duration.ofMillis(retry.maxRetryAfterMs()));
-            }
-            return builder.build();
+        if (methodMetadata != null && methodMetadata.retryPolicy() != null) {
+            return methodMetadata.retryPolicy();
         }
 
         return moduleInfo.getRetryPolicy();
     }
 
     private Duration resolveTimeout() {
-        if (method != null && method.isAnnotationPresent(Timeout.class)) {
-            Timeout ann = method.getAnnotation(Timeout.class);
-            if (ann.value() <= 0) {
-                throw new IllegalArgumentException(method.getName() + "(): @Timeout value must be strictly positive, was " + ann.value());
-            }
-            if (ann.unit() == null) {
-                throw new IllegalArgumentException(method.getName() + "(): @Timeout unit must not be null");
-            }
-            return Duration.of(ann.value(), ann.unit().toChronoUnit());
-        }
-
-        List<Class<?>> hierarchy = collectInterfaceHierarchy(controller);
-        for (int i = hierarchy.size() - 1; i >= 0; i--) {
-            Class<?> iface = hierarchy.get(i);
-            if (iface.isAnnotationPresent(Timeout.class)) {
-                Timeout ann = iface.getAnnotation(Timeout.class);
-                if (ann.value() <= 0) {
-                    throw new IllegalArgumentException(iface.getSimpleName() + ": @Timeout value must be strictly positive, was " + ann.value());
-                }
-                if (ann.unit() == null) {
-                    throw new IllegalArgumentException(iface.getSimpleName() + ": @Timeout unit must not be null");
-                }
-                return Duration.of(ann.value(), ann.unit().toChronoUnit());
-            }
-        }
-
-        return null;
+        return methodMetadata != null ? methodMetadata.timeout() : null;
     }
 
     private String resolveInterfaceAccept() {
-        List<Class<?>> hierarchy = collectInterfaceHierarchy(controller);
-        for (int i = hierarchy.size() - 1; i >= 0; i--) {
-            Class<?> iface = hierarchy.get(i);
-            if (iface.isAnnotationPresent(Accept.class)) {
-                return String.join(", ", iface.getAnnotation(Accept.class).value());
-            }
-        }
-        return null;
+        return methodMetadata != null ? methodMetadata.interfaceAccept() : null;
     }
 
     private String resolveMethodAccept() {
-        if (method != null && method.isAnnotationPresent(Accept.class)) {
-            return String.join(", ", method.getAnnotation(Accept.class).value());
-        }
-        return null;
+        return methodMetadata != null ? methodMetadata.methodAccept() : null;
     }
 
     private String resolveInterfaceContentType() {
-        List<Class<?>> hierarchy = collectInterfaceHierarchy(controller);
-        for (int i = hierarchy.size() - 1; i >= 0; i--) {
-            Class<?> iface = hierarchy.get(i);
-            if (iface.isAnnotationPresent(ContentType.class)) {
-                return iface.getAnnotation(ContentType.class).value();
-            }
-        }
-        return null;
+        return methodMetadata != null ? methodMetadata.interfaceContentType() : null;
     }
 
     private String resolveMethodContentType() {
-        if (method != null && method.isAnnotationPresent(ContentType.class)) {
-            return method.getAnnotation(ContentType.class).value();
-        }
-        return null;
+        return methodMetadata != null ? methodMetadata.methodContentType() : null;
     }
 
     private static void appendHeaderValues(List<Header> result, String name, Object value) {
@@ -1501,52 +1287,26 @@ public class HttpTemplateBuilder {
     private ResolvedInterceptors resolveInterceptors() {
         List<RequestInterceptor> reqs = new ArrayList<>(moduleInfo.getRequestInterceptors());
         List<ResponseInterceptor> resps = new ArrayList<>(moduleInfo.getResponseInterceptors());
-        Set<Class<?>> seen = new HashSet<>();
 
-        List<Class<?>> hierarchy = collectInterfaceHierarchy(controller);
-        for (Class<?> iface : hierarchy) {
-            WithInterceptor[] annotations = iface.getAnnotationsByType(WithInterceptor.class);
-            for (WithInterceptor ann : annotations) {
-                for (Class<?> clazz : sortedByOrder(ann.value())) {
-                    addDeclarativeInterceptor(clazz, seen, reqs, resps);
+        if (methodMetadata != null) {
+            for (Class<? extends RequestInterceptor> clazz : methodMetadata.declarativeRequestInterceptorClasses()) {
+                Object instance = getOrCreateInterceptor(clazz);
+                if (instance instanceof RequestInterceptor req) {
+                    reqs.add(req);
+                }
+            }
+            for (Class<? extends ResponseInterceptor> clazz : methodMetadata.declarativeResponseInterceptorClasses()) {
+                Object instance = getOrCreateInterceptor(clazz);
+                if (instance instanceof ResponseInterceptor resp) {
+                    resps.add(resp);
                 }
             }
         }
-
-        if (method != null) {
-            WithInterceptor[] methodAnnotations = method.getAnnotationsByType(WithInterceptor.class);
-            for (WithInterceptor ann : methodAnnotations) {
-                for (Class<?> clazz : sortedByOrder(ann.value())) {
-                    addDeclarativeInterceptor(clazz, seen, reqs, resps);
-                }
-            }
-        }
-
-        reqs.sort(java.util.Comparator.comparingInt(i -> orderOf(i.getClass())));
-        resps.sort(java.util.Comparator.comparingInt(i -> orderOf(i.getClass())));
 
         return new ResolvedInterceptors(
                 Collections.unmodifiableList(reqs),
                 Collections.unmodifiableList(resps)
         );
-    }
-
-    private void addDeclarativeInterceptor(
-            Class<?> clazz,
-            Set<Class<?>> seen,
-            List<RequestInterceptor> reqs,
-            List<ResponseInterceptor> resps
-    ) {
-        if (clazz == null || !seen.add(clazz)) {
-            return;
-        }
-        Object instance = getOrCreateInterceptor(clazz);
-        if (instance instanceof RequestInterceptor req) {
-            reqs.add(req);
-        }
-        if (instance instanceof ResponseInterceptor resp) {
-            resps.add(resp);
-        }
     }
 
     private Object getOrCreateInterceptor(Class<?> clazz) {
@@ -1567,56 +1327,16 @@ public class HttpTemplateBuilder {
         }
     }
 
-    /**
-     * Returns a new array of interceptor classes stably sorted by their {@link Order} value
-     * (ascending — lower value runs first). Classes without {@code @Order} use
-     * {@link Order#DEFAULT} ({@code 0}).
-     *
-     * @param classes the original interceptor class array from {@link WithInterceptor#value()}
-     * @return a sorted copy; never modifies the original array
-     */
-    private static Class<?>[] sortedByOrder(Class<?>[] classes) {
-        if (classes.length <= 1) {
-            return classes;
-        }
-        Class<?>[] sorted = classes.clone();
-        java.util.Arrays.sort(sorted,
-                java.util.Comparator.comparingInt(HttpTemplateBuilder::orderOf));
-        return sorted;
-    }
-
-    /**
-     * Reads the {@link Order#value()} from the class annotation, or returns {@link Order#DEFAULT}.
-     *
-     * @param clazz the interceptor class
-     * @return the order value
-     */
-    private static int orderOf(Class<?> clazz) {
-        Order ann = clazz.getAnnotation(Order.class);
-        return ann != null ? ann.value() : Order.DEFAULT;
-    }
-
-
     private ClientMetricsListener resolveMetricsListener() {
         List<ClientMetricsListener> listeners = new ArrayList<>();
         if (moduleInfo.getMetricsListener() != null) {
             listeners.add(moduleInfo.getMetricsListener());
         }
-        Set<Class<?>> seen = new HashSet<>();
-        List<Class<?>> hierarchy = collectInterfaceHierarchy(controller);
-        for (Class<?> iface : hierarchy) {
-            WithMetrics[] annotations = iface.getAnnotationsByType(WithMetrics.class);
-            for (WithMetrics ann : annotations) {
-                for (Class<?> clazz : ann.value()) {
-                    addDeclarativeMetricsListener(clazz, seen, listeners);
-                }
-            }
-        }
-        if (method != null) {
-            WithMetrics[] methodAnnotations = method.getAnnotationsByType(WithMetrics.class);
-            for (WithMetrics ann : methodAnnotations) {
-                for (Class<?> clazz : ann.value()) {
-                    addDeclarativeMetricsListener(clazz, seen, listeners);
+        if (methodMetadata != null) {
+            for (Class<? extends ClientMetricsListener> clazz : methodMetadata.declarativeMetricsListenerClasses()) {
+                Object instance = getOrCreateInterceptor(clazz);
+                if (instance instanceof ClientMetricsListener listener) {
+                    listeners.add(listener);
                 }
             }
         }
@@ -1629,40 +1349,13 @@ public class HttpTemplateBuilder {
         return ClientMetricsListener.composite(listeners.toArray(new ClientMetricsListener[0]));
     }
 
-    private void addDeclarativeMetricsListener(
-            Class<?> clazz,
-            Set<Class<?>> seen,
-            List<ClientMetricsListener> listeners
-    ) {
-        if (clazz == null || !seen.add(clazz)) {
-            return;
-        }
-        Object instance = getOrCreateInterceptor(clazz);
-        if (instance instanceof ClientMetricsListener listener) {
-            listeners.add(listener);
-        }
-    }
-
     private record EffectiveCompression(boolean enabled, CompressionAlgorithm algorithm, int minSizeBytes) {}
 
     private EffectiveCompression resolveCompression() {
-        if (method != null && method.isAnnotationPresent(Compress.class)) {
-            Compress ann = method.getAnnotation(Compress.class);
-            if (!ann.enabled()) {
-                return new EffectiveCompression(false, CompressionAlgorithm.NONE, 0);
-            }
-            return new EffectiveCompression(true, ann.algorithm(), Math.max(0, ann.minSizeBytes()));
-        }
-
-        List<Class<?>> hierarchy = collectInterfaceHierarchy(controller);
-        for (int i = hierarchy.size() - 1; i >= 0; i--) {
-            Class<?> iface = hierarchy.get(i);
-            if (iface.isAnnotationPresent(Compress.class)) {
-                Compress ann = iface.getAnnotation(Compress.class);
-                if (!ann.enabled()) {
-                    return new EffectiveCompression(false, CompressionAlgorithm.NONE, 0);
-                }
-                return new EffectiveCompression(true, ann.algorithm(), Math.max(0, ann.minSizeBytes()));
+        if (methodMetadata != null) {
+            MethodMetadata.EffectiveCompression metaComp = methodMetadata.compression();
+            if (metaComp.explicit()) {
+                return new EffectiveCompression(metaComp.enabled(), metaComp.algorithm(), metaComp.minSizeBytes());
             }
         }
 
@@ -1689,24 +1382,12 @@ public class HttpTemplateBuilder {
     }
 
     private CircuitBreaker resolveCircuitBreaker() {
-        if (method != null && method.isAnnotationPresent(ru.jrestly.annotation.CircuitBreaker.class)) {
-            ru.jrestly.annotation.CircuitBreaker ann = method.getAnnotation(ru.jrestly.annotation.CircuitBreaker.class);
+        if (methodMetadata != null && methodMetadata.circuitBreakerAnnotation() != null) {
+            ru.jrestly.annotation.CircuitBreaker ann = methodMetadata.circuitBreakerAnnotation();
             if (!ann.enabled()) {
                 return null;
             }
             return getCircuitBreakerFromAnnotation(ann);
-        }
-
-        List<Class<?>> hierarchy = collectInterfaceHierarchy(controller);
-        for (int i = hierarchy.size() - 1; i >= 0; i--) {
-            Class<?> iface = hierarchy.get(i);
-            if (iface.isAnnotationPresent(ru.jrestly.annotation.CircuitBreaker.class)) {
-                ru.jrestly.annotation.CircuitBreaker ann = iface.getAnnotation(ru.jrestly.annotation.CircuitBreaker.class);
-                if (!ann.enabled()) {
-                    return null;
-                }
-                return getCircuitBreakerFromAnnotation(ann);
-            }
         }
 
         return moduleInfo != null ? moduleInfo.getCircuitBreaker() : null;
@@ -1727,24 +1408,12 @@ public class HttpTemplateBuilder {
     }
 
     private RateLimiter resolveRateLimiter() {
-        if (method != null && method.isAnnotationPresent(ru.jrestly.annotation.RateLimiter.class)) {
-            ru.jrestly.annotation.RateLimiter ann = method.getAnnotation(ru.jrestly.annotation.RateLimiter.class);
+        if (methodMetadata != null && methodMetadata.rateLimiterAnnotation() != null) {
+            ru.jrestly.annotation.RateLimiter ann = methodMetadata.rateLimiterAnnotation();
             if (!ann.enabled()) {
                 return null;
             }
             return getRateLimiterFromAnnotation(ann);
-        }
-
-        List<Class<?>> hierarchy = collectInterfaceHierarchy(controller);
-        for (int i = hierarchy.size() - 1; i >= 0; i--) {
-            Class<?> iface = hierarchy.get(i);
-            if (iface.isAnnotationPresent(ru.jrestly.annotation.RateLimiter.class)) {
-                ru.jrestly.annotation.RateLimiter ann = iface.getAnnotation(ru.jrestly.annotation.RateLimiter.class);
-                if (!ann.enabled()) {
-                    return null;
-                }
-                return getRateLimiterFromAnnotation(ann);
-            }
         }
 
         return moduleInfo != null ? moduleInfo.getRateLimiter() : null;

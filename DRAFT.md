@@ -1,19 +1,21 @@
-# DRAFT: активная зона после закрытия эпика Multi-Client Concurrent Benchmarks & Allocation Profiling (ADR-0050)
+# DRAFT: активная зона после закрытия эпика MethodMetadata Caching & Dispatch Optimization (ADR-0051)
 
-> Эпик Multi-Client Performance Benchmarks Under Concurrent Load & Allocation Profiling (ADR-0050, `docs/0.10.0/`) закрыт (сессия #130):
-> - Сравнение с гигантами индустрии: в субпроект `benchmarks/` добавлены Apache HttpClient 5.4.1 (пул соединений) и Spring 6.2.2 (декларативный RestClient + HttpServiceProxyFactory). Ядро jRestly строго сохраняет 0 dependencies в Maven POM.
-> - Многопоточная нагрузка (16 потоков ops/s): jRestly показал **286.05 ops/s**, обогнав Spring 6 RestClient (269.57 ops/s, +6.1% в пользу jRestly) и OpenFeign (284.21 ops/s).
-> - Профайлинг аллокаций памяти (`-prof gc`): jRestly генерирует **53.1 KB/op**, что на **17.5% меньше мусора, чем Spring RestClient** (64.4 KB/op) и на **21% меньше, чем OpenFeign** (67.2 KB/op)! jRestly показал `gc.count ≈ 0` (0 ms пауз GC), тогда как Feign и raw HttpClient вызвали по 4 сборки мусора (до 38 ms пауз).
-> - Пакетная нагрузка: добавлен эндпоинт `/api/users/batch` (массив из 50 UserDto, ~6.5 КБ JSON) и метод `getUsersBatch()` во все 6 клиентов.
-> - Гейты: 993/993 теста зелёные (128 классов, +3 теста в BenchmarkSmokeTest), 0 warnings under `-Werror`, POM 0.9.0 строго zero-dep (0 dependencies).
+> Эпик MethodMetadata Caching and Proxy Dispatch Hot-Path Optimization (ADR-0051, `docs/0.10.0/`) закрыт (сессия #131):
+> - Устранено узкое место горячего пути: создан package-private класс `MethodMetadata` с потокобезопасным кэшем `ConcurrentHashMap<MethodKey, MethodMetadata>`, инкапсулирующий все иммутабельные метаданные метода и иерархии интерфейсов.
+> - Оптимизация `HttpTemplateBuilder`: метод `build()` и резолверы параметров/заголовков переведены на чтение из `MethodMetadata` без рефлексивного сканирования `Method.getAnnotation()`, `Class.getAnnotationsByType()`, `getParameters()`.
+> - Результаты JMH бенчмарков: in-memory mock dispatch ускорился с **29.5 µs/op до 7.89 µs/op** (в 3.7 раза быстрее!), а ping — с **6.3 µs/op до 2.95 µs/op** (в 2.1 раза быстрее!).
+> - Исторический рубеж тестов: добавлено 7 тестов (`MethodMetadataTest`), достигнута круглая отметка **1000/1000 тестов** (129 классов), 0 warnings under `-Werror`, POM строго zero-dep.
 > Следующий ход — свободный, выбор из активной зоны.
 
 ## Активная зона (кандидаты на следующий эпик)
 
-- **Кандидат №1 — test-javadoc** (ADR-0013 Non-goals):
+- **Кандидат №1 — HttpEngine SPI & JdkHttpEngine (ADR-0052)**:
+  Выделение сетевого транспорта за абстракцию `HttpEngine` с дефолтным zero-dependency `JdkHttpEngine` и SPI точкой подключения внешних высокоскоростных движков (OkHttp, Apache 5).
+
+- **Кандидат №2 — test-javadoc** (ADR-0013 Non-goals):
   Наведение лоска и лаконичного javadoc в тестовых классах.
 
-- **Кандидат №2 — HTTP Trailers & Advanced Streaming ergonomics**:
+- **Кандидат №3 — HTTP Trailers & Advanced Streaming ergonomics**:
   Расширенные сценарии работы с трейлерами и чанками в стриминге данных (LLM / SSE).
 
 

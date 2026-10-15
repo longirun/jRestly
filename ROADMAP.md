@@ -1747,7 +1747,33 @@ Gates (session #130, clean rebuild):
 - `javadoc` 0 warnings under permanent `-Xdoclint:all -Werror`.
 - Zero external runtime dependencies strictly preserved (0 dependencies in root Maven POM).
 
-After the epic: candidates — test-javadoc, HTTP Trailers & Advanced Streaming ergonomics. ADR number **0051** free.
+After the epic: ADR-0051 (MethodMetadata Caching & Proxy Dispatch Hot-Path Optimization) — done, section below. ADR number **0051** used.
+
+## MethodMetadata Caching & Proxy Dispatch Hot-Path Optimization (ADR-0051) — COMPLETE ✅ (2026-10-15, unreleased)
+
+> Source of truth: [`docs/0.10.0/ADR-0051-method-metadata-caching-and-proxy-dispatch-optimization.md`](docs/0.10.0/ADR-0051-method-metadata-caching-and-proxy-dispatch-optimization.md).
+
+**Problem:** Profile analysis of the dynamic proxy dispatch path revealed that on *every* method invocation, `HttpTemplateBuilder` repeatedly performed reflective introspection (`method.getAnnotation()`, `Class.getAnnotationsByType()`, recursive `collectInterfaceHierarchy()` across 10 different resolvers). This created continuous allocation churn and unnecessary CPU overhead per request.
+
+**Solution:**
+- **Package-Private `MethodMetadata` (`ru.jrestly.http`):**
+  * Extracted immutable representation of static method/interface metadata: `RequestMeta`, `methodContentType`, `interfaceContentType`, `accept`, `trace`, `defaultCollectionFormat`, `onErrorParser`, `expectStatuses`, `followRedirectsNumber`, `httpVersion`, `retryPolicy`, `timeout`, `declarativeRequestInterceptorClasses`, `declarativeResponseInterceptorClasses`, `declarativeMetricsListenerClasses`, `compression`, `circuitBreakerAnnotation`, `rateLimiterAnnotation`, `returnTypeInfo`, and parameter indexes (`responseHeadersParamIndex`, `uploadProgressParamIndex`, `downloadProgressParamIndex`, `authDetailsHeaderName`).
+  * Backed by lock-free concurrent cache: `ConcurrentHashMap<MethodKey, MethodMetadata>`.
+- **Hot-Path Optimization in `HttpTemplateBuilder`:**
+  * Replaced repeated reflection calls in `build()` with instant reads from `MethodMetadata`.
+  * Eliminated repeated interface hierarchy scans, repeated parameter scanning, and repeated reflection object allocations.
+- **JMH Dispatch Benchmark Results:**
+  * In-memory mock dispatch with Jackson decoding: accelerated from **29.5 µs/op down to 7.89 µs/op** (3.7x faster!).
+  * Raw text / ping mock dispatch: accelerated from **6.3 µs/op down to 2.95 µs/op** (2.1x faster, sub-3µs total proxy pipeline!).
+- **Automated Verification:** Added `MethodMetadataTest` verifying instance caching, resolution precedence, and type metadata (+7 tests, reaching landmark **1000/1000 tests** across 129 classes).
+
+Gates (session #131, clean rebuild):
+- `./gradlew test` **1000/1000** (129 classes, 0 failures/errors; +7 tests in ADR-0051). Milestone of 1000 tests passed!
+- `compileJava` and `compileTestJava` 0 warnings under permanent `-Xlint:all -Werror`.
+- `javadoc` 0 warnings under permanent `-Xdoclint:all -Werror`.
+- Zero external runtime dependencies strictly preserved (0 dependencies in root Maven POM).
+
+After the epic: candidate №1 — `HttpEngine SPI & JdkHttpEngine` (ADR-0052), candidate №2 — test-javadoc, candidate №3 — HTTP Trailers & Advanced Streaming. ADR number **0052** free.
 
 
 
