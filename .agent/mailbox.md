@@ -40,15 +40,15 @@
 * я думаю еще в реалном исползовании есть миллион важных вещей?
 Это не приказ бросаться сразу все делать, просто можно учесть и разобрать в будущем. 
 
-[2026-10-15 04:28] Агент (сессия #106): Реализован эпик многостатусных ошибок, интерфейсных обработчиков и типизированных исключений (ADR-0028): повторяемый `@OnError`, прямой выброс кастомных исключений, `ClientErrorException` и `ServerErrorException`, валидация. 579/579 тестов зелёные.
-
 [2026-10-15 04:54] Агент (сессия #107): Реализован эпик декларативных интерцепторов `@WithInterceptor` per controller & method (ADR-0029): `@WithInterceptor` (`ElementType.TYPE`/`METHOD`, `@Repeatable`), поддержка дуальных интерцепторов, порядок пайплайна (Global &rarr; Super-interface &rarr; Sub-interface &rarr; Method), кэширование инстансов в клиенте (zero-allocation), fail-fast валидация. 596/596 тестов зелёные.
 
-[2026-10-15 05:20] Агент (сессия #108): Реализован эпик отслеживания прогресса отправки тела запросов и multipart-файлов (ADR-0030):
-1. **Интерфейс `UploadProgressListener`:** функциональный callback `void onProgress(long bytesSent, long totalBytes)`. Отслеживает монотонно возрастающее количество переданных байт для текущей попытки и общий размер тела (или `-1` для chunked transfer).
-2. **Интринсик параметр в методах:** объявляется прямо в декларативном методе интерфейса контроллера без аннотаций (`void upload(@MultipartFormFile(...) FileContent file, UploadProgressListener progress)`), не загрязняя параметры запроса. Передача `null` безопасна и не создает оверхеда.
-3. **Реактивный перехват `ProgressBodyPublisher`:** пакетно-приватный декоратор над стандартным `HttpRequest.BodyPublisher` перехватывает сетевые чанки через `Flow.Subscriber.onNext(ByteBuffer)` без копирования буферов и лишних аллокаций.
-4. **Независимость попыток `@Retry` и редиректов:** при повторе запроса создается свежий publisher и отсчет `bytesSent` прозрачно начинается заново с 0.
-5. **Fail-fast валидация:** `ControllerValidator` запрещает вешать HTTP-аннотации (`@RequestParam` и др.) на `UploadProgressListener`.
-Написано 24 новых теста (5 в `ProgressBodyPublisherTest`, 8 в `UploadProgressValidationTest`, 11 в `UploadProgressWireMockTest`).
-Гейты: **620/620** тестов (75 классов) зелёные, 0 warnings под `-Werror`, zero-dep core строго сохранен.
+[2026-10-15 05:20] Агент (сессия #108): Реализован эпик отслеживания прогресса отправки тела запросов и multipart-файлов (ADR-0030): интерфейс `UploadProgressListener`, реактивный `ProgressBodyPublisher`, интринсик параметр в сигнатурах методов, сброс отсчета при повторных попытках `@Retry`. 620/620 тестов зелёные.
+
+[2026-10-15 05:48] Агент (сессия #109): Реализован эпик декларативных аннотаций `@Accept` и `@ContentType`, а также стандартных констант `MediaType` (ADR-0031):
+1. **Аннотации `@Accept` и `@ContentType`:** аннотации для контроллеров и методов (`ElementType.TYPE`, `ElementType.METHOD`). `@Accept` поддерживает одиночные и множественные media types (склейка через запятую по RFC 9110), `@ContentType` лаконично переопределяет тип тела без раздувания `@RequestHeader`.
+2. **Константы `MediaType`:** утилитный класс `ru.jrestly.http.MediaType` со стандартными константами (`APPLICATION_JSON`, `APPLICATION_XML`, `APPLICATION_OCTET_STREAM`, `TEXT_PLAIN`, `ALL` и др.) для устранения опечаток в строках.
+3. **Строгая иерархия и устранение дубликатов:** детерминированный приоритет `Method > Sub-interface > Super-interface > Client default`, с приоритетным runtime переопределением через аргументы `@RequestHeader`. В `HttpTemplate` заголовок `Content-Type` устанавливается через `builder.setHeader()`, исключая случайное дублирование заголовка.
+4. **Сырые байты и кодировки текста:** `byte[]` в `@RequestBody` отправляется напрямую без сериализации в JSON; `String` кодируется с учетом `charset` из `ContentType` (например, `windows-1251`).
+5. **Fail-fast валидация:** `ControllerValidator` проверяет непустые, non-blank и безопасные от CRLF-инъекций значения (`ControllerValidationException`).
+Написано 25 новых тестов (12 в `AcceptContentTypeValidationTest`, 13 в `AcceptContentTypeWireMockTest`).
+Гейты: **646/646** тестов (77 классов) зелёные, 0 warnings под `-Werror`, zero-dep core строго сохранен.

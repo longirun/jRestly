@@ -1,21 +1,25 @@
-# DRAFT: активная зона после закрытия эпика Upload Progress Listener (ADR-0030)
+# DRAFT: активная зона после закрытия эпика Declarative @Accept & @ContentType (ADR-0031)
 
-> Эпик Upload Progress Tracking (`UploadProgressListener`, ADR-0030, `docs/0.10.0/`) закрыт 6/6 (сессия #108):
-> концепт и ADR-0030 → функциональный интерфейс `ru.jrestly.http.UploadProgressListener` +
-> реактивный `ProgressBodyPublisher` поверх `HttpRequest.BodyPublisher` и `Flow.Subscriber` +
-> интринсик параметр в сигнатуре методов (ADR-0022 alignment) без загрязнения payload-параметров +
-> fail-fast валидация в `ControllerValidator` (`ControllerValidationException`) против аннотирования HTTP параметрами +
-> независимый сброс счетчика `bytesSent` для попыток `@Retry` и редиректов +
-> unit тесты (`ProgressBodyPublisherTest`, 5 тестов; `UploadProgressValidationTest`, 8 тестов) и WireMock интеграционные тесты (`UploadProgressWireMockTest`, 11 тестов, итого +24 теста) →
-> дистилляция в ROADMAP («Upload Progress Tracking (UploadProgressListener, ADR-0030) — COMPLETE ✅») + гейты 620/620 тестов (75 классов).
+> Эпик Declarative @Accept, @ContentType & MediaType Constants (ADR-0031, `docs/0.10.0/`) закрыт (сессия #109):
+> концепт и ADR-0031 → аннотации `ru.jrestly.annotation.Accept`, `ru.jrestly.annotation.ContentType` +
+> стандартный утилитный класс констант `ru.jrestly.http.MediaType` +
+> разрешение в `HttpTemplateBuilder` со склейкой нескольких media types через запятую (RFC 9110) +
+> строгая иерархия приоритетов (Method > Sub-interface > Super-interface > Client default, runtime `@RequestHeader` override) +
+> гарантированное устранение дублирования заголовка `Content-Type` в `toHttpRequest()` (`builder.setHeader("Content-Type", ...)`) +
+> прямая передача `byte[]` в `@RequestBody` без сериализации в JSON и charset-aware кодирование `String` тел запроса +
+> fail-fast валидация в `ControllerValidator` (`ControllerValidationException`) против пустых, blank и CRLF значений +
+> unit тесты (`AcceptContentTypeValidationTest`, 12 тестов) и WireMock интеграционные тесты (`AcceptContentTypeWireMockTest`, 13 тестов, итого +26 тестов) →
+> дистилляция в ROADMAP («Declarative @Accept & @ContentType and MediaType Constants (ADR-0031) — COMPLETE ✅») + гейты 646/646 тестов (77 классов).
 > Следующий ход — свободный, выбор из активной зоны.
 
 ## Активная зона (кандидаты на следующий эпик)
 
-- **Кандидат №1 — test-javadoc** (ADR-0013 Non-goals):
+- **Кандидат №1 — Cookie handling & session management (RFC 6265)**:
+  Zero-dep поддержка `java.net.CookieHandler` / `java.net.CookieManager` через `ModuleInfo` и builder клиента, сохранение сессий между запросами, специализированная аннотация `@Cookie` (или `@CookieParam`).
+- **Кандидат №2 — Response download progress tracking (`DownloadProgressListener`)**:
+  Симметричный к ADR-0030 механизм отслеживания прогресса скачивания тел ответов для больших потоковых файлов.
+- **Кандидат №3 — test-javadoc** (ADR-0013 Non-goals):
   Test-source javadoc вынесен за скобки аудита; наведение лоска в тестовых классах.
-- **Кандидат №2 — Декларативные аннотации `@Accept` и `@ContentType`**:
-  Специализированные типобезопасные аннотации на уровне методов и интерфейсов для лаконичного переопределения `Accept` и `Content-Type` без раздувания `@RequestHeader`.
 
 ---
 

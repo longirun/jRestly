@@ -1,5 +1,7 @@
 package ru.jrestly;
 
+import ru.jrestly.annotation.Accept;
+import ru.jrestly.annotation.ContentType;
 import ru.jrestly.annotation.Delete;
 import ru.jrestly.annotation.Get;
 import ru.jrestly.annotation.OnError;
@@ -91,6 +93,27 @@ public final class ControllerValidator {
         for (Timeout timeout : current.getAnnotationsByType(Timeout.class)) {
             if (timeout.value() <= 0) {
                 problems.add(current.getSimpleName() + ": @Timeout value must be strictly positive, was " + timeout.value());
+            }
+        }
+        for (Accept accept : current.getAnnotationsByType(Accept.class)) {
+            if (accept.value().length == 0) {
+                problems.add(current.getSimpleName() + ": @Accept value must not be empty");
+            }
+            for (String val : accept.value()) {
+                if (val.isBlank()) {
+                    problems.add(current.getSimpleName() + ": @Accept media type must not be blank");
+                }
+                if (val.contains("\r") || val.contains("\n")) {
+                    problems.add(current.getSimpleName() + ": @Accept media type must not contain CRLF characters");
+                }
+            }
+        }
+        for (ContentType contentType : current.getAnnotationsByType(ContentType.class)) {
+            if (contentType.value().isBlank()) {
+                problems.add(current.getSimpleName() + ": @ContentType must not be blank");
+            }
+            if (contentType.value().contains("\r") || contentType.value().contains("\n")) {
+                problems.add(current.getSimpleName() + ": @ContentType must not contain CRLF characters");
             }
         }
         Map<Integer, Class<?>> classSeenStatuses = new LinkedHashMap<>();
@@ -188,6 +211,28 @@ public final class ControllerValidator {
             Timeout timeout = method.getAnnotation(Timeout.class);
             if (timeout.value() <= 0) {
                 problems.add(method.getName() + "(): @Timeout value must be strictly positive, was " + timeout.value());
+            }
+        }
+
+        for (Accept accept : method.getAnnotationsByType(Accept.class)) {
+            if (accept.value().length == 0) {
+                problems.add(method.getName() + "(): @Accept value must not be empty");
+            }
+            for (String val : accept.value()) {
+                if (val.isBlank()) {
+                    problems.add(method.getName() + "(): @Accept media type must not be blank");
+                }
+                if (val.contains("\r") || val.contains("\n")) {
+                    problems.add(method.getName() + "(): @Accept media type must not contain CRLF characters");
+                }
+            }
+        }
+        for (ContentType contentType : method.getAnnotationsByType(ContentType.class)) {
+            if (contentType.value().isBlank()) {
+                problems.add(method.getName() + "(): @ContentType must not be blank");
+            }
+            if (contentType.value().contains("\r") || contentType.value().contains("\n")) {
+                problems.add(method.getName() + "(): @ContentType must not contain CRLF characters");
             }
         }
 

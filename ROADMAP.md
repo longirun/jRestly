@@ -980,7 +980,44 @@ Gates (session #108, clean rebuild):
 - `javadoc` 0 warnings under permanent `-Xdoclint:all -Werror`.
 - Zero external runtime dependencies preserved (0 dependencies in Maven POM).
 
-After the epic: candidate #1 — test-javadoc (ADR-0013 Non-goals); candidate #2 — declarative `@Accept` / `@ContentType` short-cuts or response body streaming progress listener. ADR number **0031** free.
+After the epic: candidate #1 — test-javadoc (ADR-0013 Non-goals); candidate #2 — declarative `@Accept` / `@ContentType` short-cuts or response body streaming progress listener — done, section below. ADR number **0031** — declarative @Accept / @ContentType epic, **0032** free.
+
+## Declarative @Accept & @ContentType and MediaType Constants (ADR-0031) — COMPLETE ✅ (2026-10-15, unreleased)
+
+> Source of truth (concept, architecture decisions, media type negotiation, validation, test strategy, status):
+> [`docs/0.10.0/ADR-0031-declarative-accept-and-content-type.md`](docs/0.10.0/ADR-0031-declarative-accept-and-content-type.md).
+> Session #109 (agent-loop). Real-world REST media type negotiation & payload ergonomics (candidate #2 from DRAFT.md).
+> Declarative `@Accept` (single and multi-value media types joined via comma per RFC 9110) and `@ContentType` annotations
+> for controller interfaces (`ElementType.TYPE`) and methods (`ElementType.METHOD`), standard `ru.jrestly.http.MediaType` constants,
+> resolution pipeline (`Method > Sub-interface > Super-interface > Client default`, with runtime `@RequestHeader` priority override),
+> zero-duplicate `Content-Type` guarantee in `toHttpRequest()` (`setHeader("Content-Type", ...)`), and direct byte array / charset-aware string body delivery.
+> 100% zero-dependency on standard Java 21 platform classes.
+
+Key decisions (ADR-0031):
+- **Declarative `@Accept` annotation:** Added `ru.jrestly.annotation.Accept` (`@Target({ElementType.TYPE, ElementType.METHOD})`) with `String[] value()`. Concatenates multiple media types into a single standard comma-separated `Accept` header.
+- **Declarative `@ContentType` annotation:** Added `ru.jrestly.annotation.ContentType` (`@Target({ElementType.TYPE, ElementType.METHOD})`) with `String value()`. Overrides the default MIME type of the verb's `requestType`.
+- **Standard `MediaType` constants:** Added `ru.jrestly.http.MediaType` with canonical constants: `APPLICATION_JSON`, `APPLICATION_XML`, `APPLICATION_OCTET_STREAM`, `APPLICATION_FORM_URLENCODED`, `MULTIPART_FORM_DATA`, `TEXT_PLAIN`, `TEXT_HTML`, `TEXT_XML`, `TEXT_EVENT_STREAM`, `APPLICATION_NDJSON`, `ALL`.
+- **Strict precedence and runtime override:**
+  - `Accept`: Method `@Accept` > Sub-interface `@Accept` > Super-interface `@Accept`. Runtime `@RequestHeader(name = "Accept")` takes ultimate precedence.
+  - `ContentType`: Method `@ContentType` > Sub-interface `@ContentType` > Super-interface `@ContentType` > `requestType.mime()`. Runtime `@RequestHeader(name = "Content-Type")` takes ultimate precedence.
+  - Multipart methods preserve boundary generation (`boundary=jrestly-...`).
+- **Zero-duplicate `Content-Type` header guarantee:** In `HttpTemplate.toHttpRequest()`, `Content-Type` is set via `builder.setHeader("Content-Type", request.contentType())` preventing duplicate headers when both headers map and content type slot are populated.
+- **Direct payload passthrough & charset awareness:**
+  - `byte[]` parameters passed to `@RequestBody` are sent directly as raw binary bytes without unwanted JSON stringification.
+  - `String` parameters are encoded into bytes using the charset declared in `ContentType` (or UTF-8 default).
+  - Arbitrary DTOs are serialized via configured `JsonCodec`.
+- **Upfront fail-fast validation:** `ControllerValidator` verifies non-empty and non-blank values, and forbids CRLF injection characters (`\r`, `\n`) on both `@Accept` and `@ContentType` (`ControllerValidationException`).
+- **Full test coverage:** 25 new tests (+25 cases, total suite 646/646 across 77 classes) spanning:
+  - `AcceptContentTypeValidationTest` (12 unit tests: interface/method empty array, blank string, CRLF injection, client proxy initialization exception, and clean validation of valid contracts);
+  - `AcceptContentTypeWireMockTest` (13 WireMock integration tests: interface-level Accept propagation, method-level Accept override, comma-separated multi-media-type Accept, runtime RequestHeader Accept override and null fallback, interface-level Content-Type propagation, method-level Content-Type override, custom charset body encoding like windows-1251, raw binary bytes passthrough, strictly one Content-Type header in request without duplicates, runtime Content-Type override, interface inheritance hierarchy resolution, async CompletableFuture twin, multipart with custom Content-Type boundary preservation).
+
+Gates (session #109, clean rebuild):
+- `./gradlew test` **646/646** (77 classes, 0 failures/errors; +26 tests across test suites).
+- `compileJava` and `compileTestJava` 0 warnings under permanent `-Xlint:all -Werror`.
+- `javadoc` 0 warnings under permanent `-Xdoclint:all -Werror`.
+- Zero external runtime dependencies preserved (0 dependencies in Maven POM).
+
+After the epic: candidate #1 — test-javadoc (ADR-0013 Non-goals); candidate #2 — Cookie handling & session management (RFC 6265, `CookieHandler` zero-dep integration). ADR number **0032** free.
 
 ## Post-0.5.0 shortlist (not scheduled — see ADR-0003)
 

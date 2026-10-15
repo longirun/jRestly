@@ -2,6 +2,8 @@ package ru.jrestly.http;
 
 import ru.jrestly.AuthProvider;
 import ru.jrestly.ModuleInfo;
+import ru.jrestly.annotation.Accept;
+import ru.jrestly.annotation.ContentType;
 import ru.jrestly.annotation.Delete;
 import ru.jrestly.annotation.ExpectStatus;
 import ru.jrestly.annotation.FollowRedirects;
@@ -158,8 +160,30 @@ public class HttpTemplateBuilder {
         result.setHttpClient(httpClient);
         result.setUrl(createUrl());
         result.setHttpMethod(requestMeta.httpMethod());
-        result.setContentType(requestType.mime());
+
         List<Header> headers = createHeaders();
+
+        String effectiveContentType;
+        String declarativeContentType = resolveMethodContentType() != null
+                ? resolveMethodContentType()
+                : resolveInterfaceContentType();
+
+        Header explicitContentTypeHeader = null;
+        for (Header h : headers) {
+            if ("Content-Type".equalsIgnoreCase(h.name())) {
+                explicitContentTypeHeader = h;
+                break;
+            }
+        }
+        if (explicitContentTypeHeader != null) {
+            effectiveContentType = explicitContentTypeHeader.value();
+            headers.remove(explicitContentTypeHeader);
+        } else if (declarativeContentType != null) {
+            effectiveContentType = declarativeContentType;
+        } else {
+            effectiveContentType = requestType.mime();
+        }
+
         result.setHeaders(headers);
         result.setConditional(isConditionalRequest(headers));
         // Header names to drop on cross-origin redirects
@@ -174,14 +198,23 @@ public class HttpTemplateBuilder {
         byte[] body = null;
         List<MultipartPart> parts = null;
         if (RequestType.APPLICATION_JSON.equals(requestType)) {
-            body = createJsonBody();
+            body = createRequestBody(effectiveContentType);
+            result.setContentType(effectiveContentType);
         } else if (RequestType.APPLICATION_FORM_URLENCODED.equals(requestType)) {
             body = createUrlEncodedBody();
+            result.setContentType(effectiveContentType);
         } else if (RequestType.MULTIPART_FORM_DATA.equals(requestType)) {
             parts = createMultipartParts();
 
             String boundary = "jrestly-" + UUID.randomUUID().toString().replace("-", "");
-            result.setContentType("multipart/form-data; boundary=" + boundary);
+            if (effectiveContentType != null && effectiveContentType.toLowerCase(Locale.ROOT).contains("multipart/")) {
+                if (!effectiveContentType.toLowerCase(Locale.ROOT).contains("boundary=")) {
+                    effectiveContentType = effectiveContentType + "; boundary=" + boundary;
+                }
+            } else {
+                effectiveContentType = "multipart/form-data; boundary=" + boundary;
+            }
+            result.setContentType(effectiveContentType);
             result.setMultipartBoundary(boundary);
         }
 
@@ -319,6 +352,12 @@ public class HttpTemplateBuilder {
     private List<Header> createHeaders() {
         List<Header> result = new ArrayList<>(moduleInfo.getAuthProvider().getAuthHeaders());
 
+        String ifaceAccept = resolveInterfaceAccept();
+        if (ifaceAccept != null) {
+            result.removeIf(h -> "Accept".equalsIgnoreCase(h.name()));
+            result.add(new Header("Accept", ifaceAccept));
+        }
+
         // Class-level headers (hierarchy order: parent interfaces first, sub-interface wins)
         List<Class<?>> hierarchy = collectInterfaceHierarchy(controller);
         for (Class<?> iface : hierarchy) {
@@ -332,6 +371,12 @@ public class HttpTemplateBuilder {
                     result.add(new Header(h.name(), h.value()));
                 }
             }
+        }
+
+        String methodAccept = resolveMethodAccept();
+        if (methodAccept != null) {
+            result.removeIf(h -> "Accept".equalsIgnoreCase(h.name()));
+            result.add(new Header("Accept", methodAccept));
         }
 
         // Method-level static headers
@@ -523,16 +568,22 @@ public class HttpTemplateBuilder {
         return result;
     }
 
-    private byte[] createJsonBody() {
+    private byte[] createRequestBody(String effectiveContentType) {
         Object body = createBody(method, args);
         if (body == null) {
             return null;
         }
 
-        String stringifiedBody = body instanceof String
-                ? (String) body
-                : moduleInfo.getJsonCodec().serialize(body);
+        if (body instanceof byte[] rawBytes) {
+            return rawBytes;
+        }
 
+        if (body instanceof String stringBody) {
+            Charset charset = parseCharset(effectiveContentType, StandardCharsets.UTF_8);
+            return stringBody.getBytes(charset);
+        }
+
+        String stringifiedBody = moduleInfo.getJsonCodec().serialize(body);
         return stringifiedBody.getBytes(StandardCharsets.UTF_8);
     }
 
@@ -848,6 +899,42 @@ public class HttpTemplateBuilder {
             }
         }
 
+        return null;
+    }
+
+    private String resolveInterfaceAccept() {
+        List<Class<?>> hierarchy = collectInterfaceHierarchy(controller);
+        for (int i = hierarchy.size() - 1; i >= 0; i--) {
+            Class<?> iface = hierarchy.get(i);
+            if (iface.isAnnotationPresent(Accept.class)) {
+                return String.join(", ", iface.getAnnotation(Accept.class).value());
+            }
+        }
+        return null;
+    }
+
+    private String resolveMethodAccept() {
+        if (method != null && method.isAnnotationPresent(Accept.class)) {
+            return String.join(", ", method.getAnnotation(Accept.class).value());
+        }
+        return null;
+    }
+
+    private String resolveInterfaceContentType() {
+        List<Class<?>> hierarchy = collectInterfaceHierarchy(controller);
+        for (int i = hierarchy.size() - 1; i >= 0; i--) {
+            Class<?> iface = hierarchy.get(i);
+            if (iface.isAnnotationPresent(ContentType.class)) {
+                return iface.getAnnotation(ContentType.class).value();
+            }
+        }
+        return null;
+    }
+
+    private String resolveMethodContentType() {
+        if (method != null && method.isAnnotationPresent(ContentType.class)) {
+            return method.getAnnotation(ContentType.class).value();
+        }
         return null;
     }
 
