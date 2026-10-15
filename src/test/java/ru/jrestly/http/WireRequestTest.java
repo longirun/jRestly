@@ -164,4 +164,43 @@ class WireRequestTest {
         assertThrows(NullPointerException.class, () -> req.withUri(null));
         assertThrows(NullPointerException.class, () -> req.withMethod(null));
     }
+
+    @Test
+    @DisplayName("withBodyPublisher and withBodyPublisherSupplier update bodyPublisherSupplier and clear body")
+    void testBodyPublisherWithers() {
+        java.net.http.HttpRequest.BodyPublisher publisher = java.net.http.HttpRequest.BodyPublishers.ofString("streaming");
+        WireRequest initial = new WireRequest(HttpMethod.POST, URI_A, null, "text/plain", new byte[]{1, 2}, null, null);
+
+        WireRequest withPub = initial.withBodyPublisher(publisher);
+        assertNull(withPub.body());
+        assertNotNull(withPub.bodyPublisherSupplier());
+        assertSame(publisher, withPub.bodyPublisherSupplier().get());
+
+        WireRequest withSup = initial.withBodyPublisherSupplier(() -> publisher);
+        assertNull(withSup.body());
+        assertNotNull(withSup.bodyPublisherSupplier());
+        assertSame(publisher, withSup.bodyPublisherSupplier().get());
+
+        WireRequest resetBody = withPub.withBody(new byte[]{3, 4});
+        assertNotNull(resetBody.body());
+        assertNull(resetBody.bodyPublisherSupplier());
+    }
+
+    @Test
+    @DisplayName("builder and toBuilder preserve bodyPublisherSupplier")
+    void testBuilderWithBodyPublisherSupplier() {
+        java.net.http.HttpRequest.BodyPublisher publisher = java.net.http.HttpRequest.BodyPublishers.ofString("data");
+        WireRequest req = WireRequest.builder()
+                .method(HttpMethod.POST)
+                .uri(URI_A)
+                .bodyPublisher(publisher)
+                .build();
+
+        assertNotNull(req.bodyPublisherSupplier());
+        assertSame(publisher, req.bodyPublisherSupplier().get());
+
+        WireRequest copy = req.toBuilder().build();
+        assertNotNull(copy.bodyPublisherSupplier());
+        assertSame(publisher, copy.bodyPublisherSupplier().get());
+    }
 }

@@ -45,6 +45,7 @@ import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.function.Function;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -114,6 +115,7 @@ public class HttpTemplate {
     private Consumer<List<Header>> authDetailsConsumer;
     private List<Param> requestParams;
     private byte[] body;
+    private Supplier<? extends HttpRequest.BodyPublisher> bodyPublisherSupplier;
     private List<MultipartPart> multipartFormParts;
     private String multipartBoundary;
     private Type returnType;
@@ -161,7 +163,7 @@ public class HttpTemplate {
      */
     @SuppressWarnings("unchecked")
     public <T> T exchange() {
-        WireRequest request = new WireRequest(httpMethod, createUri(), headers, contentType, body, multipartFormParts, multipartBoundary);
+        WireRequest request = new WireRequest(httpMethod, createUri(), headers, contentType, body, multipartFormParts, multipartBoundary, bodyPublisherSupplier);
 
         long start = System.nanoTime();
         boolean hasInterceptors = !requestInterceptors.isEmpty() || !responseInterceptors.isEmpty();
@@ -952,7 +954,8 @@ public class HttpTemplate {
                 preserveMethod ? request.contentType() : null,
                 preserveMethod ? request.body() : null,
                 preserveMethod ? request.parts() : null,
-                preserveMethod ? request.boundary() : null);
+                preserveMethod ? request.boundary() : null,
+                preserveMethod ? request.bodyPublisherSupplier() : null);
     }
 
     private void logExhaustedRedirects(WireResponse response) {
@@ -1176,6 +1179,11 @@ public class HttpTemplate {
         HttpRequest.BodyPublisher publisher;
         if (request.parts() != null) {
             publisher = MultipartBodyPublisher.of(request.boundary(), request.parts());
+        } else if (request.bodyPublisherSupplier() != null) {
+            publisher = request.bodyPublisherSupplier().get();
+            if (publisher == null) {
+                publisher = HttpRequest.BodyPublishers.noBody();
+            }
         } else if (request.body() == null) {
             publisher = HttpRequest.BodyPublishers.noBody();
         } else {
@@ -1314,6 +1322,8 @@ public class HttpTemplate {
                 sb.append("Sending size: ").append(multipartSendSize(request));
             } else if (request.body() != null) {
                 sb.append(new String(request.body(), StandardCharsets.UTF_8));
+            } else if (request.bodyPublisherSupplier() != null) {
+                sb.append("<streaming body>");
             } else {
                 sb.append("No request body");
             }
@@ -1540,6 +1550,24 @@ public class HttpTemplate {
      */
     public void setBody(byte[] body) {
         this.body = body;
+    }
+
+    /**
+     * The supplier of the streaming request {@link HttpRequest.BodyPublisher}, or {@code null}.
+     *
+     * @return the body publisher supplier
+     */
+    public Supplier<? extends HttpRequest.BodyPublisher> getBodyPublisherSupplier() {
+        return bodyPublisherSupplier;
+    }
+
+    /**
+     * Sets the supplier of the streaming request {@link HttpRequest.BodyPublisher}.
+     *
+     * @param bodyPublisherSupplier the body publisher supplier, or {@code null}
+     */
+    public void setBodyPublisherSupplier(Supplier<? extends HttpRequest.BodyPublisher> bodyPublisherSupplier) {
+        this.bodyPublisherSupplier = bodyPublisherSupplier;
     }
 
     /**

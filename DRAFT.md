@@ -1,25 +1,27 @@
-# DRAFT: активная зона после закрытия эпика Query Parameter Collection Formatting Styles (ADR-0034)
+# DRAFT: активная зона после закрытия эпика Outgoing Request Body Streaming & Validation (ADR-0035)
 
-> Эпик Query Parameter Collection Formatting Styles (ADR-0034, `docs/0.10.0/`) закрыт (сессия #112):
-> концепт и ADR-0034 → enum `CollectionFormat` (`DEFAULT`, `EXPLODE`, `CSV`, `SSV`, `TSV`, `PIPES`, `BRACKETS`) +
-> аннотация `@QueryCollectionFormat` (на интерфейсах и методах) +
-> атрибут `format` в `@RequestParam` +
-> разрешение иерархии приоритетов: Parameter > Method > Sub-interface > Super-interface > EXPLODE (default) +
-> симметрия для form-urlencoded (URL-encoded поля) и multipart/form-data (объединение в одну часть для delimiter форматов и `name[]` для BRACKETS) +
-> очистка от null элементов и безопасное опущение пустых коллекций +
-> fail-fast upfront валидация в `ControllerValidator` (`ControllerValidationException`) против null значений +
-> unit тесты (`CollectionFormatValidationTest`, 9 тестов) и WireMock интеграционные тесты (`CollectionFormatWireMockTest`, 17 тестов, итого +26 тестов) →
-> дистилляция в ROADMAP («Query Parameter Collection Formatting Styles (ADR-0034) — COMPLETE ✅») + гейты 729/729 тестов (85 классов).
+> Эпик Outgoing Request Body Streaming & Validation (ADR-0035, `docs/0.10.0/`) закрыт (сессия #113):
+> концепт и ADR-0035 → поддержка исходящего потокового тела `@RequestBody`:
+> `Flow.Publisher<ByteBuffer>`, `Flow.Publisher<String>` (авто-адаптация к UTF-8 ByteBuffer),
+> `HttpRequest.BodyPublisher`, `InputStream`, `Supplier<? extends InputStream>` (безопасен для @Retry и redirect hops),
+> `Supplier<? extends HttpRequest.BodyPublisher>`, `Path` и `File` (с известным `Content-Length`) +
+> расширение wire model: `bodyPublisherSupplier` в `WireRequest` (с сохранением 7-параметрического конструктора и builders) +
+> дефолтный `Content-Type: application/octet-stream` для потоковых тел при отсутствии явного `@ContentType` +
+> безопасное логирование `<streaming body>` без истощения потока +
+> поддержка `@HttpVersion` на уровне интерфейса контроллера (`ElementType.TYPE`) +
+> fail-fast upfront валидация в `ControllerValidator` (`@Get` без `@RequestBody`, не более 1 `@RequestBody` на метод, запрет комбинации с другими аннотациями параметров) +
+> unit тесты (`RequestBodyValidationTest`, 8 тестов), интеграционные WireMock тесты (`RequestBodyStreamingWireMockTest`, 10 тестов), `WireRequestTest` (+2 теста, итого +20 тестов) →
+> дистилляция в ROADMAP («Outgoing Request Body Streaming & Validation (ADR-0035) — COMPLETE ✅») + гейты 749/749 тестов (87 классов).
 > Следующий ход — свободный, выбор из активной зоны.
 
 ## Активная зона (кандидаты на следующий эпик)
 
-- **Кандидат №1 — Request body streaming from `Flow.Publisher<ByteBuffer>`**:
-  Симметричная поддержка реактивной передачи исходящего тела из реактивного источника данных.
-- **Кандидат №2 — test-javadoc** (ADR-0013 Non-goals):
+- **Кандидат №1 — test-javadoc** (ADR-0013 Non-goals):
   Test-source javadoc вынесен за скобки аудита; наведение лоска в тестовых классах.
-- **Кандидат №3 — Client Metrics & Observability SPI (Micrometer / OpenTelemetry readiness)**:
+- **Кандидат №2 — Client Metrics & Observability SPI (Micrometer / OpenTelemetry readiness)**:
   Исследование zero-dep SPI для экспорта метрик задержек, попыток retry и объемов переданных/полученных байт.
+- **Кандидат №3 — HTTP/2 Server Push / Custom Headers Frame Inspection**:
+  Исследование возможностей и ограничений протокола HTTP/2 на базе JDK HttpClient.
 
 ---
 

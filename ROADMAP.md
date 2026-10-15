@@ -1146,6 +1146,51 @@ Gates (session #112, clean rebuild):
 
 After the epic: candidate #1 — test-javadoc (ADR-0013 Non-goals); candidate #2 — Request body streaming from `Flow.Publisher<ByteBuffer>`. ADR number **0035** free.
 
+## Outgoing Request Body Streaming & Validation (ADR-0035) — COMPLETE ✅ (2026-10-15, unreleased)
+
+> Source of truth (concept, architecture decisions, streaming wire model, validation, test strategy, status):
+> [`docs/0.10.0/ADR-0035-request-body-streaming.md`](docs/0.10.0/ADR-0035-request-body-streaming.md).
+> Session #113 (agent-loop). Full symmetrical streaming support for outgoing `@RequestBody` (candidate #1 from DRAFT.md).
+> Enables reactive chunked streaming via `Flow.Publisher<ByteBuffer>` and `Flow.Publisher<String>`,
+> native standard Java `HttpRequest.BodyPublisher`, `InputStream`, `Supplier<? extends InputStream>` (retry/redirect safe),
+> `Supplier<? extends HttpRequest.BodyPublisher>`, `Path`, and `File` without eager in-memory buffering.
+> Enhanced with upfront fail-fast controller validation and controller-level `@HttpVersion`.
+> 100% backward compatible and zero-dependency.
+
+Key decisions (ADR-0035):
+- **Streaming `@RequestBody` Types:**
+  - `Flow.Publisher<ByteBuffer>` / `Flow.Publisher<? extends ByteBuffer>`: native reactive streaming chunks via standard `HttpRequest.BodyPublishers.fromPublisher(...)`.
+  - `Flow.Publisher<String>`: text/string streaming chunks automatically adapted to `ByteBuffer` publishers with charset encoding.
+  - `HttpRequest.BodyPublisher`: direct delegation to JDK body publisher.
+  - `InputStream`: streaming via `HttpRequest.BodyPublishers.ofInputStream(() -> stream)`.
+  - `Supplier<? extends InputStream>`: reusable stream supplier providing fresh streams across retries and redirect hops.
+  - `Supplier<? extends HttpRequest.BodyPublisher>` / `Supplier<? extends Flow.Publisher<ByteBuffer>>`: reusable publisher suppliers.
+  - `Path` and `File`: zero-copy file streaming with exact `Content-Length` via `HttpRequest.BodyPublishers.ofFile(path)`.
+- **Default Media Type (`Content-Type`) Ergonomics:**
+  - Streaming types default to `application/octet-stream` when not explicitly specified via `@ContentType` or `@Post(contentType = ...)`.
+  - Explicit Content-Type annotations/headers are strictly honored (e.g. `@ContentType("application/x-ndjson")`).
+  - Conventional POJOs, `String`, and `byte[]` maintain backward-compatible default `application/json`.
+- **Wire Model & Builder Integration (`WireRequest`):**
+  - Added `Supplier<? extends HttpRequest.BodyPublisher> bodyPublisherSupplier` to `WireRequest`.
+  - Preserved backward-compatible 7-parameter canonical constructor and added fluent builder methods (`bodyPublisher`, `bodyPublisherSupplier`).
+  - Seamlessly integrates with `UploadProgressListener` via `ProgressBodyPublisher` for chunked streams.
+  - Safe request logging (`<streaming body>`) prevents accidental stream consumption during logging.
+- **Fail-Fast Validation & Controller-Level `@HttpVersion`:**
+  - Extended `ControllerValidator` with upfront checks: at most one `@RequestBody` parameter per method, prohibition of combining `@RequestBody` with other HTTP parameter annotations, and prohibition of `@RequestBody` on `@Get` methods.
+  - Extended `@HttpVersion` to `ElementType.TYPE` so whole controller interfaces can specify protocol versions (e.g. `HTTP_1_1`).
+- **Full test coverage:** 20 new tests (+20 cases, total suite 749/749 across 87 classes) spanning:
+  - `RequestBodyValidationTest` (8 unit tests: reject @Get with @RequestBody, reject multiple @RequestBody parameters, reject combination of @RequestBody with @RequestParam/@PathVariable/@RequestHeader/@Cookie, pass valid streaming interface, client proxy creation);
+  - `RequestBodyStreamingWireMockTest` (10 WireMock integration tests: Flow.Publisher<ByteBuffer> chunked streaming, Flow.Publisher<String> automatic UTF-8 adaptation, explicit @ContentType("application/x-ndjson"), InputStream streaming, Supplier<InputStream> with 503 retry and fresh stream recreation, Path file upload with known Content-Length, direct HttpRequest.BodyPublisher upload, UploadProgressListener progress tracking across chunks, async CompletableFuture twin, null publisher handling);
+  - `WireRequestTest` (2 unit tests: withBodyPublisher/withBodyPublisherSupplier withers and builder preservation).
+
+Gates (session #113, clean rebuild):
+- `./gradlew test` **749/749** (87 classes, 0 failures/errors; +20 tests in ADR-0035).
+- `compileJava` and `compileTestJava` 0 warnings under permanent `-Xlint:all -Werror`.
+- `javadoc` 0 warnings under permanent `-Xdoclint:all -Werror`.
+- Zero external runtime dependencies preserved (0 dependencies in Maven POM).
+
+After the epic: candidate #1 — test-javadoc (ADR-0013 Non-goals); candidate #2 — Client Metrics & Observability SPI (Micrometer / OpenTelemetry readiness). ADR number **0036** free.
+
 ## Post-0.5.0 shortlist (not scheduled — see ADR-0003)
 
 - ~~Retry with backoff (integrates with `@OnError` semantics)~~ — done 2026-10-13, section above

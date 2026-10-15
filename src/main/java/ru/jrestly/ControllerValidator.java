@@ -17,6 +17,7 @@ import ru.jrestly.annotation.Timeout;
 import ru.jrestly.annotation.WithInterceptor;
 import ru.jrestly.annotation.MultipartFormFile;
 import ru.jrestly.annotation.PathVariable;
+import ru.jrestly.annotation.RequestBody;
 import ru.jrestly.annotation.RequestParam;
 import ru.jrestly.http.RequestType;
 import ru.jrestly.http.ResponseHeaders;
@@ -289,6 +290,15 @@ public final class ControllerValidator {
         }
 
         for (java.lang.reflect.Parameter param : method.getParameters()) {
+            if (param.isAnnotationPresent(RequestBody.class)) {
+                if (param.isAnnotationPresent(RequestParam.class)
+                        || param.isAnnotationPresent(PathVariable.class)
+                        || param.isAnnotationPresent(RequestHeader.class)
+                        || param.isAnnotationPresent(Cookie.class)
+                        || param.isAnnotationPresent(MultipartFormFile.class)) {
+                    problems.add(method.getName() + "(): parameter must not combine @RequestBody with other HTTP parameter annotations");
+                }
+            }
             if (param.isAnnotationPresent(RequestParam.class)) {
                 RequestParam rp = param.getAnnotation(RequestParam.class);
                 if (rp.format() == null) {
@@ -303,6 +313,7 @@ public final class ControllerValidator {
                 if (param.isAnnotationPresent(RequestParam.class)
                         || param.isAnnotationPresent(PathVariable.class)
                         || param.isAnnotationPresent(RequestHeader.class)
+                        || param.isAnnotationPresent(RequestBody.class)
                         || param.isAnnotationPresent(MultipartFormFile.class)) {
                     problems.add(method.getName() + "(): parameter must not combine @Cookie with other HTTP parameter annotations");
                 }
@@ -312,6 +323,7 @@ public final class ControllerValidator {
                         || param.isAnnotationPresent(PathVariable.class)
                         || param.isAnnotationPresent(RequestHeader.class)
                         || param.isAnnotationPresent(Cookie.class)
+                        || param.isAnnotationPresent(RequestBody.class)
                         || param.isAnnotationPresent(MultipartFormFile.class)) {
                     problems.add(method.getName() + "(): UploadProgressListener parameter must not be annotated with HTTP parameter annotations");
                 }
@@ -321,10 +333,21 @@ public final class ControllerValidator {
                         || param.isAnnotationPresent(PathVariable.class)
                         || param.isAnnotationPresent(RequestHeader.class)
                         || param.isAnnotationPresent(Cookie.class)
+                        || param.isAnnotationPresent(RequestBody.class)
                         || param.isAnnotationPresent(MultipartFormFile.class)) {
                     problems.add(method.getName() + "(): DownloadProgressListener parameter must not be annotated with HTTP parameter annotations");
                 }
             }
+        }
+
+        long requestBodyCount = Arrays.stream(method.getParameters())
+                .filter(p -> p.isAnnotationPresent(RequestBody.class))
+                .count();
+        if (requestBodyCount > 1) {
+            problems.add(method.getName() + "(): multiple parameters annotated with @RequestBody, at most one is allowed");
+        }
+        if (method.isAnnotationPresent(Get.class) && requestBodyCount > 0) {
+            problems.add(method.getName() + "(): @Get method must not declare @RequestBody parameter");
         }
 
         long payloadParamCount = Arrays.stream(method.getParameters())

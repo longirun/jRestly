@@ -30,7 +30,9 @@ import ru.jrestly.interceptor.RequestInterceptor;
 import ru.jrestly.interceptor.ResponseInterceptor;
 
 import java.io.File;
+import java.io.FileNotFoundException;
 import java.io.InputStream;
+import java.io.UncheckedIOException;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
 import java.lang.reflect.Parameter;
@@ -39,6 +41,8 @@ import java.lang.reflect.Type;
 import java.net.HttpCookie;
 import java.net.URLEncoder;
 import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.nio.ByteBuffer;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
@@ -56,8 +60,10 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
+import java.util.concurrent.Flow;
 import java.util.UUID;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 /**
@@ -179,6 +185,7 @@ public class HttpTemplateBuilder {
                 break;
             }
         }
+        boolean isContentTypeExplicit = explicitContentTypeHeader != null || declarativeContentType != null;
         if (explicitContentTypeHeader != null) {
             effectiveContentType = explicitContentTypeHeader.value();
             headers.remove(explicitContentTypeHeader);
@@ -200,9 +207,13 @@ public class HttpTemplateBuilder {
         }
 
         byte[] body = null;
+        Supplier<? extends HttpRequest.BodyPublisher> bodyPublisherSupplier = null;
         List<MultipartPart> parts = null;
         if (RequestType.APPLICATION_JSON.equals(requestType)) {
-            body = createRequestBody(effectiveContentType);
+            BodyPayload payload = createJsonBodyPayload(effectiveContentType, isContentTypeExplicit);
+            body = payload.bytes();
+            bodyPublisherSupplier = payload.publisherSupplier();
+            effectiveContentType = payload.effectiveContentType();
             result.setContentType(effectiveContentType);
         } else if (RequestType.APPLICATION_FORM_URLENCODED.equals(requestType)) {
             body = createUrlEncodedBody();
@@ -223,6 +234,7 @@ public class HttpTemplateBuilder {
         }
 
         result.setBody(body);
+        result.setBodyPublisherSupplier(bodyPublisherSupplier);
         result.setMultipartFormParts(parts);
         resolveReturnType(result, method.getGenericReturnType());
         result.setOnErrorParser(createOnErrorParser());
@@ -699,23 +711,145 @@ public class HttpTemplateBuilder {
         return CollectionFormat.EXPLODE;
     }
 
-    private byte[] createRequestBody(String effectiveContentType) {
+    private record BodyPayload(
+            byte[] bytes,
+            Supplier<? extends HttpRequest.BodyPublisher> publisherSupplier,
+            String effectiveContentType
+    ) {}
+
+    private BodyPayload createJsonBodyPayload(String effectiveContentType, boolean isContentTypeExplicit) {
         Object body = createBody(method, args);
         if (body == null) {
-            return null;
+            return new BodyPayload(null, null, effectiveContentType);
+        }
+
+        Charset charset = parseCharset(effectiveContentType, StandardCharsets.UTF_8);
+
+        if (body instanceof HttpRequest.BodyPublisher bp) {
+            String ct = isContentTypeExplicit ? effectiveContentType : "application/octet-stream";
+            return new BodyPayload(null, () -> bp, ct);
+        }
+
+        if (body instanceof Flow.Publisher<?> publisher) {
+            String ct = isContentTypeExplicit ? effectiveContentType : "application/octet-stream";
+            Flow.Publisher<ByteBuffer> adapted = adaptToByteBufferPublisher(publisher, charset);
+            return new BodyPayload(null, () -> HttpRequest.BodyPublishers.fromPublisher(adapted), ct);
+        }
+
+        if (body instanceof InputStream inputStream) {
+            String ct = isContentTypeExplicit ? effectiveContentType : "application/octet-stream";
+            return new BodyPayload(null, () -> HttpRequest.BodyPublishers.ofInputStream(() -> inputStream), ct);
+        }
+
+        if (body instanceof Path path) {
+            String ct = isContentTypeExplicit ? effectiveContentType : "application/octet-stream";
+            return new BodyPayload(null, () -> {
+                try {
+                    return HttpRequest.BodyPublishers.ofFile(path);
+                } catch (FileNotFoundException e) {
+                    throw new UncheckedIOException(e);
+                }
+            }, ct);
+        }
+
+        if (body instanceof File file) {
+            String ct = isContentTypeExplicit ? effectiveContentType : "application/octet-stream";
+            Path path = file.toPath();
+            return new BodyPayload(null, () -> {
+                try {
+                    return HttpRequest.BodyPublishers.ofFile(path);
+                } catch (FileNotFoundException e) {
+                    throw new UncheckedIOException(e);
+                }
+            }, ct);
+        }
+
+        if (body instanceof Supplier<?> supplier) {
+            String ct = isContentTypeExplicit ? effectiveContentType : "application/octet-stream";
+            Supplier<HttpRequest.BodyPublisher> publisherSupplier = () -> {
+                Object supplied = supplier.get();
+                if (supplied == null) {
+                    return HttpRequest.BodyPublishers.noBody();
+                }
+                if (supplied instanceof InputStream stream) {
+                    return HttpRequest.BodyPublishers.ofInputStream(() -> stream);
+                }
+                if (supplied instanceof HttpRequest.BodyPublisher bp) {
+                    return bp;
+                }
+                if (supplied instanceof Flow.Publisher<?> pub) {
+                    return HttpRequest.BodyPublishers.fromPublisher(adaptToByteBufferPublisher(pub, charset));
+                }
+                if (supplied instanceof Path p) {
+                    try {
+                        return HttpRequest.BodyPublishers.ofFile(p);
+                    } catch (FileNotFoundException e) {
+                        throw new UncheckedIOException(e);
+                    }
+                }
+                if (supplied instanceof File f) {
+                    try {
+                        return HttpRequest.BodyPublishers.ofFile(f.toPath());
+                    } catch (FileNotFoundException e) {
+                        throw new UncheckedIOException(e);
+                    }
+                }
+                if (supplied instanceof byte[] b) {
+                    return HttpRequest.BodyPublishers.ofByteArray(b);
+                }
+                if (supplied instanceof String s) {
+                    return HttpRequest.BodyPublishers.ofByteArray(s.getBytes(charset));
+                }
+                throw new IllegalArgumentException("Unsupported Supplier body type: " + supplied.getClass().getName());
+            };
+            return new BodyPayload(null, publisherSupplier, ct);
         }
 
         if (body instanceof byte[] rawBytes) {
-            return rawBytes;
+            return new BodyPayload(rawBytes, null, effectiveContentType);
         }
 
         if (body instanceof String stringBody) {
-            Charset charset = parseCharset(effectiveContentType, StandardCharsets.UTF_8);
-            return stringBody.getBytes(charset);
+            return new BodyPayload(stringBody.getBytes(charset), null, effectiveContentType);
         }
 
         String stringifiedBody = moduleInfo.getJsonCodec().serialize(body);
-        return stringifiedBody.getBytes(StandardCharsets.UTF_8);
+        return new BodyPayload(stringifiedBody.getBytes(StandardCharsets.UTF_8), null, effectiveContentType);
+    }
+
+    private static Flow.Publisher<ByteBuffer> adaptToByteBufferPublisher(Flow.Publisher<?> source, Charset charset) {
+        if (source == null) {
+            return null;
+        }
+        return subscriber -> source.subscribe(new Flow.Subscriber<Object>() {
+            @Override
+            public void onSubscribe(Flow.Subscription subscription) {
+                subscriber.onSubscribe(subscription);
+            }
+
+            @Override
+            public void onNext(Object item) {
+                if (item instanceof ByteBuffer bb) {
+                    subscriber.onNext(bb);
+                } else if (item instanceof byte[] b) {
+                    subscriber.onNext(ByteBuffer.wrap(b));
+                } else if (item instanceof String s) {
+                    subscriber.onNext(ByteBuffer.wrap(s.getBytes(charset)));
+                } else if (item != null) {
+                    subscriber.onNext(ByteBuffer.wrap(item.toString().getBytes(charset)));
+                }
+            }
+
+            @Override
+            public void onError(Throwable throwable) {
+                subscriber.onError(throwable);
+            }
+
+            @Override
+            public void onComplete() {
+                subscriber.onComplete();
+            }
+        });
     }
 
     private Object createBody(Method method, Object[] args){
@@ -1019,6 +1153,9 @@ public class HttpTemplateBuilder {
     private HttpClient.Version getHttpVersion() {
         if (method.isAnnotationPresent(HttpVersion.class)) {
             return method.getAnnotation(HttpVersion.class).value();
+        }
+        if (controller != null && controller.isAnnotationPresent(HttpVersion.class)) {
+            return controller.getAnnotation(HttpVersion.class).value();
         }
 
         return null;

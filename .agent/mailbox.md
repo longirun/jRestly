@@ -40,16 +40,26 @@
 * я думаю еще в реалном исползовании есть миллион важных вещей?
 Это не приказ бросаться сразу все делать, просто можно учесть и разобрать в будущем. 
 
-[2026-10-15 06:15] Агент (сессия #110): Реализован эпик Cookie Handling, Session Management & Declarative @Cookie (ADR-0032): Zero-dep управление сессиями через CookieHandler/CookieManager, инспекция client.getCookieStore(), декларативные @Cookie и @Cookies с приоритетами, инспекция cookies в ResponseHeaders. 675/675 тестов зелёные.
-
 [2026-10-15 06:43] Агент (сессия #111): Реализован эпик Response Download Progress Tracking & Direct byte[] Returns (ADR-0033): функциональный интерфейс DownloadProgressListener (void onProgress(long bytesRead, long totalBytes)), реактивные ProgressBodyHandler/ProgressBodySubscriber, прямой возврат byte[] без JSON-десериализации. 703/703 тестов зелёные.
 
-[2026-10-15 07:07] Агент (сессия #112): Реализован эпик Query Parameter Collection Formatting Styles & OpenAPI Compatibility (ADR-0034):
-1. **Enum `CollectionFormat`:** `DEFAULT`, `EXPLODE` (`tag=a&tag=b`), `CSV` (`tag=a,b`), `SSV` (`tag=a%20b`), `TSV` (`tag=a%09b`), `PIPES` (`tag=a%7Cb`), `BRACKETS` (`tag[]=a&tag[]=b`).
-2. **Декларативное конфигурирование:** аннотация `@QueryCollectionFormat` (на интерфейсах контроллеров и методах) и атрибут `@RequestParam(format = CollectionFormat)`.
-3. **Строгая иерархия приоритетов:** `Parameter format > Method @QueryCollectionFormat > Sub-interface @QueryCollectionFormat > Super-interface @QueryCollectionFormat > EXPLODE (дефолт)`.
-4. **Симметрия форматов:** полная поддержка в URL query строке, `APPLICATION_FORM_URLENCODED` телах и `MULTIPART_FORM_DATA` частях (объединение в одну часть для delimiter форматов и множественные части с `name[]` для `BRACKETS`).
-5. **Null-safety & фильтрация:** автоматическая фильтрация `null` элементов, опущение пустых коллекций, иммунитет скалярных параметров.
-6. **Fail-fast валидация:** `ControllerValidator` проверяет валидность enum и отсутствие null.
-Написано 26 новых тестов (9 в `CollectionFormatValidationTest`, 17 в `CollectionFormatWireMockTest`).
-Гейты: **729/729** тестов (85 классов) зелёные, 0 warnings под `-Werror`, zero-dep core строго сохранен. Следующий свободный ADR — **0035**.
+[2026-10-15 07:07] Агент (сессия #112): Реализован эпик Query Parameter Collection Formatting Styles & OpenAPI Compatibility (ADR-0034): `CollectionFormat`, `@QueryCollectionFormat`, `@RequestParam.format`, иерархия приоритетов, симметрия form/multipart, null-safety. 729/729 тестов (85 классов) зелёные.
+
+[2026-10-15 07:33] Агент (сессия #113): Реализован эпик Outgoing Request Body Streaming & Validation (ADR-0035):
+1. **Стриминг исходящего тела (`@RequestBody`):**
+   - `Flow.Publisher<ByteBuffer>` и `Flow.Publisher<String>` (авто-адаптация к UTF-8);
+   - Нативный `HttpRequest.BodyPublisher`;
+   - `InputStream` и переоткрываемый `Supplier<? extends InputStream>` (устойчив к `@Retry` и редиректам);
+   - `Path` и `File` (zero-copy стриминг файлов с точным `Content-Length`);
+   - `Supplier<? extends HttpRequest.BodyPublisher>` / `Supplier<? extends Flow.Publisher<ByteBuffer>>`.
+2. **Эргономика Media Type:**
+   - Для стриминговых типов default `application/octet-stream` при отсутствии явного `@ContentType`.
+   - Для POJO/String/byte[] сохранен default `application/json`.
+3. **Безопасность и прогресс:**
+   - Безопасное логирование `<streaming body>` без истощения потока;
+   - Интеграция с `UploadProgressListener` для отслеживания чанков;
+   - Расширение `@HttpVersion` на уровень интерфейса (`ElementType.TYPE`).
+4. **Fail-fast валидация (`ControllerValidator`):**
+   - Запрет `@Get` с `@RequestBody`;
+   - Запрет нескольких `@RequestBody` на методе;
+   - Запрет смешивания `@RequestBody` с `@RequestParam`, `@PathVariable`, `@RequestHeader`, `@Cookie`, `@MultipartFormFile`.
+20 новых тестов (+20 тестов, итого 749/749 в 87 классах). 0 warnings под `-Werror`, zero-dep core сохранен. Следующий свободный ADR — **0036**.
