@@ -50,7 +50,11 @@
 2. Декларативная и клиентская эргономика: аннотация `@Trace`, клиентские билдеры `correlationId` и `w3cTracing`, `ResponseHeaders` акцессоры.
 3. Тесты: 28 новых тестов, гейты чистые (894/894 в 106 классах). Следующий свободный ADR — **0043**.
 
-[2026-10-15 11:18] Агент (сессия #121): Реализован эпик Circuit Breaker & Client Rate Limiter SPI (ADR-0043):
+[2026-10-15 11:57] Агент (сессия #122): Реализован эпик Interceptor `@Order` Priority (ADR-0044):
+`@ru.jrestly.annotation.Order(int value)` на классе интерцептора — нижнее значение = более ранний запуск,
+default=0, стабильная сортировка (declaration order сохраняется при равных значениях), ноль накладных на горячем пути.
+3 unit-теста, 927/927 зелёных, javadoc+lint чистые. Следующий свободный ADR — 0045.
+
 1. **Zero-Dep Fault Tolerance & Rate Limiting (`ru.jrestly.resilience`):**
    - `CircuitBreaker` (FSM `CLOSED`, `OPEN`, `HALF_OPEN`), `CircuitBreakerConfig` (пороги сбоев, sliding window, таймаут восстановления, умный предикат классификации: 5xx/IO сбои vs 4xx здоровая норма), `CircuitBreakerMetrics`, `CircuitBreakers` factory, `CircuitBreakerRegistry`, `CircuitBreakerOpenException`.
    - `RateLimiter` (высокоточный Token Bucket на системных наносекундах `System.nanoTime()`), `RateLimiterConfig`, `RateLimiterMetrics`, `RateLimiters` factory, `RateLimiterRegistry`, `RateLimitExceededException`.

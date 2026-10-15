@@ -22,6 +22,10 @@ import java.lang.annotation.Target;
  *   <li><b>RequestInterceptors:</b> Global client interceptors &rarr; Super-interface &rarr; Sub-interface &rarr; Method.</li>
  *   <li><b>ResponseInterceptors:</b> Global client interceptors &rarr; Super-interface &rarr; Sub-interface &rarr; Method.</li>
  * </ul>
+ * Within each scope level, interceptors are sorted by their {@link Order#value()} in ascending order
+ * (lower value = runs earlier). Interceptors without {@link Order} use the implicit value {@code 0}.
+ *
+ * @see Order
  */
 @Target({ElementType.TYPE, ElementType.METHOD})
 @Retention(RetentionPolicy.RUNTIME)

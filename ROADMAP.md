@@ -1523,7 +1523,35 @@ Gates (session #121, clean rebuild):
 - `javadoc` 0 warnings under permanent `-Xdoclint:all -Werror`.
 - Zero external runtime dependencies preserved (0 dependencies in Maven POM).
 
-After the epic: candidate #1 — test-javadoc (ADR-0013 Non-goals); candidate #2 — next roadmap epic. ADR number **0044** free.
+After the epic: ADR-0044 (@Order interceptor priority) — done, section below. ADR number **0045** free.
+
+## Interceptor `@Order` Priority (ADR-0044) — COMPLETE ✅ (2026-10-15, unreleased)
+
+> [`docs/0.10.0/ADR-0044-interceptor-order-priority.md`](docs/0.10.0/ADR-0044-interceptor-order-priority.md).
+
+**Problem:** Interceptors declared within `@WithInterceptor(value={...})` ran in array-declaration
+order without any semantics-driven priority guarantee, which is fragile in composed setups.
+
+**Solution:** `@ru.jrestly.annotation.Order(int value)` placed on an interceptor class.
+Lower value = higher priority. Default = 0. Stable sort preserves declaration order on ties.
+Sorting happens once at `HttpTemplateBuilder.build()` — zero per-request overhead.
+Inter-level ordering (Global → Super-interface → Sub-interface → Method) is unchanged.
+
+Key changes (ADR-0044):
+- `ru.jrestly.annotation.Order`: new runtime annotation `@Target(TYPE)`.
+- `ru.jrestly.annotation.WithInterceptor`: Javadoc updated with `@Order` semantics.
+- `ru.jrestly.http.HttpTemplateBuilder`: `sortedByOrder()` + `orderOf()` helpers;
+  `resolveInterceptors()` applies stable sort per `@WithInterceptor` value array.
+- 3 new unit tests in `InterceptorAnnotationTest`.
+
+Gates (session #122, clean rebuild):
+- `./gradlew test` **927/927** (112 classes, 0 failures/errors; +3 tests in ADR-0044).
+- `compileJava` and `compileTestJava` 0 warnings under permanent `-Xlint:all -Werror`.
+- `javadoc` 0 warnings under permanent `-Xdoclint:all -Werror`.
+- Zero external runtime dependencies preserved (0 dependencies in Maven POM).
+
+After the epic: candidates — test-javadoc (ADR-0013 Non-goals), or next roadmap epic. ADR number **0045** free.
+
 
 ## Post-0.5.0 shortlist (not scheduled — see ADR-0003)
 

@@ -30,6 +30,7 @@ import ru.jrestly.annotation.Retry;
 import ru.jrestly.annotation.SetAuthDetails;
 import ru.jrestly.annotation.Timeout;
 import ru.jrestly.annotation.Trace;
+import ru.jrestly.annotation.Order;
 import ru.jrestly.annotation.WithInterceptor;
 import ru.jrestly.annotation.WithMetrics;
 import ru.jrestly.tracing.TraceContext;
@@ -1478,7 +1479,7 @@ public class HttpTemplateBuilder {
         for (Class<?> iface : hierarchy) {
             WithInterceptor[] annotations = iface.getAnnotationsByType(WithInterceptor.class);
             for (WithInterceptor ann : annotations) {
-                for (Class<?> clazz : ann.value()) {
+                for (Class<?> clazz : sortedByOrder(ann.value())) {
                     addDeclarativeInterceptor(clazz, seen, reqs, resps);
                 }
             }
@@ -1487,7 +1488,7 @@ public class HttpTemplateBuilder {
         if (method != null) {
             WithInterceptor[] methodAnnotations = method.getAnnotationsByType(WithInterceptor.class);
             for (WithInterceptor ann : methodAnnotations) {
-                for (Class<?> clazz : ann.value()) {
+                for (Class<?> clazz : sortedByOrder(ann.value())) {
                     addDeclarativeInterceptor(clazz, seen, reqs, resps);
                 }
             }
@@ -1534,6 +1535,36 @@ public class HttpTemplateBuilder {
                     + ". Ensure it has an accessible no-arg constructor.", e);
         }
     }
+
+    /**
+     * Returns a new array of interceptor classes stably sorted by their {@link Order} value
+     * (ascending — lower value runs first). Classes without {@code @Order} use
+     * {@link Order#DEFAULT} ({@code 0}).
+     *
+     * @param classes the original interceptor class array from {@link WithInterceptor#value()}
+     * @return a sorted copy; never modifies the original array
+     */
+    private static Class<?>[] sortedByOrder(Class<?>[] classes) {
+        if (classes.length <= 1) {
+            return classes;
+        }
+        Class<?>[] sorted = classes.clone();
+        java.util.Arrays.sort(sorted,
+                java.util.Comparator.comparingInt(HttpTemplateBuilder::orderOf));
+        return sorted;
+    }
+
+    /**
+     * Reads the {@link Order#value()} from the class annotation, or returns {@link Order#DEFAULT}.
+     *
+     * @param clazz the interceptor class
+     * @return the order value
+     */
+    private static int orderOf(Class<?> clazz) {
+        Order ann = clazz.getAnnotation(Order.class);
+        return ann != null ? ann.value() : Order.DEFAULT;
+    }
+
 
     private ClientMetricsListener resolveMetricsListener() {
         List<ClientMetricsListener> listeners = new ArrayList<>();

@@ -1,24 +1,26 @@
-# DRAFT: активная зона после закрытия эпика Circuit Breaker & Client Rate Limiter SPI (ADR-0043)
+# DRAFT: активная зона после закрытия эпика Interceptor @Order Priority (ADR-0044)
 
-> Эпик Circuit Breaker & Client Rate Limiter SPI (ADR-0043, `docs/0.10.0/`) закрыт (сессия #121):
-> концепт и ADR-0043 → zero-dep отказоустойчивость клиентской стороны:
-> `ru.jrestly.resilience`: `CircuitBreaker` (FSM `CLOSED`, `OPEN`, `HALF_OPEN`), `CircuitBreakerConfig` (порог сбоев, sliding window, таймаут восстановления, классификация исключений: 5xx/IO сбои vs 4xx норма), `CircuitBreakerMetrics`, `CircuitBreakers`, `CircuitBreakerRegistry`, `CircuitBreakerOpenException`,
-> `RateLimiter` (zero-dep Token Bucket на monotonic nanoseconds), `RateLimiterConfig`, `RateLimiterMetrics`, `RateLimiters`, `RateLimiterRegistry`, `RateLimitExceededException`,
-> `@CircuitBreaker` и `@RateLimiter` (`ru.jrestly.annotation`): декларативные аннотации на методах и интерфейсах с opt-out (`enabled = false`),
-> `SimpleModuleInfo.Builder` & `JRestlyClient.Builder`: fluent-методы `circuitBreaker(...)`, `circuitBreakerRegistry(...)`, `rateLimiter(...)`, `rateLimiterRegistry(...)`, изолированные per-module реестры по умолчанию,
-> `ControllerValidator`: валидация непустых имен, положительных порогов, допустимых окон и неотрицательных таймаутов,
-> `HttpTemplateBuilder`: прозрачное разрешение с учетом приоритетов Method > Sub-interface > Super-interface > Client,
-> `HttpTemplate`: защита и быстрый отказ (fail-fast) до сетевого вызова в `exchange()` и `exchangeAsync()` без обращения к сети, учет исходов вызовов,
-> unit-тесты (`CircuitBreakerTest`, `RateLimiterTest`, `ResilienceConfigTest`) и WireMock интеграционные тесты (`CircuitBreakerWireMockTest`, `RateLimiterWireMockTest`, итого +30 тестов) →
-> дистилляция в ROADMAP («Circuit Breaker & Client Rate Limiter SPI (ADR-0043) — COMPLETE ✅») + гейты 924/924 тестов (111 классов).
+> Эпик Interceptor `@Order` Priority (ADR-0044, `docs/0.10.0/`) закрыт (сессия #122):
+> `@ru.jrestly.annotation.Order(int value)` на классе интерцептора для детерминированной
+> сортировки внутри `@WithInterceptor(value={...})` — нижнее значение = более ранний запуск,
+> дефолт 0, стабильная сортировка сохраняет порядок объявления при равных значениях,
+> сортировка выполняется один раз в `HttpTemplateBuilder.build()` (ноль накладных расходов на горячем пути),
+> межуровневый порядок (Global → Super → Sub → Method) не затронут.
+> `HttpTemplateBuilder`: `sortedByOrder()` + `orderOf()` helpers, 3 unit-теста → гейты 927/927 (112 классов).
 > Следующий ход — свободный, выбор из активной зоны.
 
 ## Активная зона (кандидаты на следующий эпик)
 
 - **Кандидат №1 — test-javadoc** (ADR-0013 Non-goals):
   Test-source javadoc вынесен за скобки аудита; наведение лоска в тестовых классах.
-- **Кандидат №2 — Interceptor Execution Order & Priority SPI (ADR-0044)**:
-  Zero-dep строгое детерминированное упорядочивание интерцепторов (`@Order` / приоритеты, фазы аутентификации, логирования, модификации заголовков), short-circuiting ответа из интерцептора без сетевого вызова (мок/кэш).
+- **Кандидат №2 — Interceptor Chain Short-Circuit SPI (ADR-0045)**:
+  Интерцептор может вернуть синтетический ответ (мок/кэш) без сетевого вызова:
+  `RequestInterceptor` расширяется до возврата `Optional<WireResponse>` или через
+  специальный `ShortCircuitInterceptor` интерфейс. Полезно для мок-тестирования,
+  кэш-слоя, circuit-from-cache.
+- **Кандидат №3 — Инвентаризация публичного API / SPI (исследование)**:
+  Пройтись по всем публичным классам, сравнить с ADR-based задумкой, найти расхождения
+  и «неожиданные» публичные методы, написать мини-отчёт для поиска мест зачистки.
 
 ---
 
@@ -56,6 +58,7 @@
   продвинутые стратегии джиттера и ограничения Retry-After (ADR-0040),
   сжатие тела запроса и Content-Encoding SPI (ADR-0041),
   трассировка запросов и проброс Correlation ID / W3C TraceContext (ADR-0042),
-  Circuit Breaker и ограничение частоты запросов Rate Limiter SPI (ADR-0043).
+  Circuit Breaker и ограничение частоты запросов Rate Limiter SPI (ADR-0043),
+  Interceptor @Order Priority (ADR-0044).
 - **Коммиты — краткие, не дублируют ченджлог** (Антон).
 - **Объём одной сессии в 2–3 раза меньше** — один маленький шаг.

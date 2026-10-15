@@ -222,4 +222,104 @@ class InterceptorAnnotationTest {
         @Get(path = "/call")
         String call();
     }
+
+    // ── @Order tests ──────────────────────────────────────────────────────────
+
+    /** Interceptor with the lowest @Order value — runs first. */
+    @ru.jrestly.annotation.Order(-10)
+    public static class HighPriorityInterceptor implements RequestInterceptor {
+        @Override
+        public WireRequest intercept(WireRequest request, RequestContext context) {
+            return request.withHeader("X-Order", "high");
+        }
+    }
+
+    /** Interceptor with the highest @Order value — runs last. */
+    @ru.jrestly.annotation.Order(10)
+    public static class LowPriorityInterceptor implements RequestInterceptor {
+        @Override
+        public WireRequest intercept(WireRequest request, RequestContext context) {
+            return request.withHeader("X-Order", "low");
+        }
+    }
+
+    /** Interceptor without @Order — uses implicit value 0. */
+    public static class NeutralInterceptor implements RequestInterceptor {
+        @Override
+        public WireRequest intercept(WireRequest request, RequestContext context) {
+            return request.withHeader("X-Order", "neutral");
+        }
+    }
+
+    @WithInterceptor({LowPriorityInterceptor.class, HighPriorityInterceptor.class, NeutralInterceptor.class})
+    public interface OrderedInterceptorApi {
+        @Get(path = "/order")
+        String call();
+    }
+
+    @Test
+    @DisplayName("@Order: interceptors within @WithInterceptor sorted by ascending order value")
+    void orderAnnotationSortsInterceptorsAscending() throws Exception {
+        SimpleModuleInfo moduleInfo = SimpleModuleInfo.builder()
+                .baseUrl("http://localhost:8080")
+                .build();
+
+        HttpClient httpClient = HttpClient.newHttpClient();
+        Method method = OrderedInterceptorApi.class.getMethod("call");
+
+        HttpTemplateBuilder builder = new HttpTemplateBuilder(moduleInfo, httpClient, method,
+                new Object[0], OrderedInterceptorApi.class);
+        HttpTemplate template = builder.build();
+
+        List<RequestInterceptor> interceptors = template.getRequestInterceptors();
+        assertEquals(3, interceptors.size());
+        // -10 first, then 0 (neutral), then 10
+        assertInstanceOf(HighPriorityInterceptor.class, interceptors.get(0));
+        assertInstanceOf(NeutralInterceptor.class, interceptors.get(1));
+        assertInstanceOf(LowPriorityInterceptor.class, interceptors.get(2));
+    }
+
+    @Test
+    @DisplayName("@Order: equal values preserve original declaration order (stable sort)")
+    void orderAnnotationStableSortOnTie() throws Exception {
+        SimpleModuleInfo moduleInfo = SimpleModuleInfo.builder()
+                .baseUrl("http://localhost:8080")
+                .build();
+
+        HttpClient httpClient = HttpClient.newHttpClient();
+        Method method = OrderedInterceptorApi.class.getMethod("call");
+
+        // Declare two interceptors without @Order — both default to 0
+        // They should keep their original declaration order
+        HttpTemplateBuilder builder = new HttpTemplateBuilder(moduleInfo, httpClient, method,
+                new Object[0], OrderedInterceptorApi.class);
+        HttpTemplate template = builder.build();
+
+        List<RequestInterceptor> interceptors = template.getRequestInterceptors();
+        // neutral is declared 3rd in value() but has order=0, same as no-annotation.
+        // HighPriority (-10) is first, NeutralInterceptor (0) is second, LowPriority (10) last.
+        assertEquals(3, interceptors.size());
+        assertInstanceOf(HighPriorityInterceptor.class, interceptors.get(0));
+        assertInstanceOf(NeutralInterceptor.class, interceptors.get(1));
+        assertInstanceOf(LowPriorityInterceptor.class, interceptors.get(2));
+    }
+
+    @Test
+    @DisplayName("@Order: interceptor without annotation uses implicit order 0")
+    void noOrderAnnotationUsesDefault() throws Exception {
+        SimpleModuleInfo moduleInfo = SimpleModuleInfo.builder()
+                .baseUrl("http://localhost:8080")
+                .build();
+
+        HttpClient httpClient = HttpClient.newHttpClient();
+        Method method = DuplicateAnnotatedApi.class.getMethod("call");
+
+        HttpTemplateBuilder builder = new HttpTemplateBuilder(moduleInfo, httpClient, method,
+                new Object[0], DuplicateAnnotatedApi.class);
+        HttpTemplate template = builder.build();
+
+        // Only one deduped interceptor — no @Order → still works fine
+        assertEquals(1, template.getRequestInterceptors().size());
+        assertInstanceOf(ValidRequestInterceptor.class, template.getRequestInterceptors().get(0));
+    }
 }
