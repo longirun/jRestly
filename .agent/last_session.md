@@ -1,87 +1,80 @@
-# Last Session: #147 (2026-10-15)
+# Last Session: #148 (2026-10-16)
 
 ## Что сделано
 
-**Кандидат №3 (развилка Антона №1) — полный прогон матрицы + разбор диспропорции jrestly vs OkHttp.**
+**Кандидат №3 (развилка Антона №1) — ADR-0058: концепт внешних субмодулей движков.**
 
-1. **Полная честная матрица** (JMH, 1 fork, 2 wi + 3 iter, avgt, µs/op; variance высокая —
-   машина не выделена, порядок величин стабилен):
+Оформлен `docs/0.10.0/ADR-0058-external-http-engine-submodules-okhttp-apache5.md`
+(Status: **Proposed**, следующий свободный — **0059**). Ключевые решения:
 
-   | клиент | getUser | ping |
-   |---|---|---|
-   | Apache HttpClient 5 | 341 | 363 |
-   | Retrofit (OkHttp) | 362 | 312 |
-   | OkHttp raw | 428 | 254 |
-   | jRestly + OkHttp-движок | 450 | 342 |
-   | jRestly + Apache5-движок | 478 | 331 |
-   | raw JDK HttpClient | 1364 | 1191 |
-   | jRestly + JDK (HTTP/1.1 пин) | 1636 | 1221 |
-   | jRestly + JDK (default) | 1524 | 1359 |
-   | Feign (JDK) | 2223 | 1803 |
-   | Spring RestClient (JDK) | 2591 | 2144 |
+1. **Два публикуемых субмодуля**: `jrestly-engine-okhttp`
+   (пакет `ru.jrestly.engine.okhttp`, `api 'com.squareup.okhttp3:okhttp:4.12.0'`)
+   и `jrestly-engine-apache5` (пакет `ru.jrestly.engine.apache`,
+   `api 'org.apache.httpcomponents.client5:httpclient5:5.4.1'`). Ядро — 0 deps.
+   `benchmarks` → `project(':engine-*')`; прототипы из
+   `ru.jrestly.benchmark.engine` удаляются (один источник правды).
+2. **ServiceLoader**: каждый субмодуль регистрирует `HttpEngineProvider`;
+   `JdkHttpEngine` провайдером НЕ является (остаётся fallback'ом —
+   поведение ядра без субмодулей не меняется).
+3. **`default int priority()`** в `HttpEngineProvider` (бинарно-совместимо);
+   `HttpEngineResolver` — стабильная сортировка по приоритету (официальные
+   адаптеры — 50; равенство → порядок ServiceLoader, в доках).
+4. **Контракт паритета** (чек-лист в ADR): timeout (callTimeout /
+   RequestConfig.responseTimeout), streamResponse (byteStream / entity
+   content), version (best-effort), прогресс-листнеры (финал total/total +
+   нулевая 0/0), trailers, `close()` с уважением `ownsClient`;
+   исключительный контракт (IOException/InterruptedException, exceptional
+   completion) без изменений.
+5. **Маппинг ModuleInfo в createEngine**: SSL (ADR-0020), CookieHandler →
+   CookieJar/CookieStore (0032/0039), ProxySelector → per-request прокси,
+   Authenticator → challenge-интерцептор best-effort, isVirtualThreads →
+   virtual-thread executor для колбэков.
+6. **Адаптер body publisher**: выкачивание JDK `Flow.Publisher<ByteBuffer>`
+   → `InputStream` одним адаптером (стриминг ADR-0035 + multipart ADR-0024);
+   `BodyPublisher` из `java.base` — генерализация wire-типа не обязательна
+   (Non-Goal).
 
-2. **Разбор диспропорции (главный вывод):**
-   - **Транспорт — не декларативность.** Raw JDK HttpClient (0 строк jRestly) = 1364/1191 µs —
-     те же ~1.2–1.4 мс, что и jRestly на JDK-движке. Разрыв jrestly(JDK) − raw JDK =
-     всего **+160…170 µs** (конвертация JDK↔Wire-объектов + per-request аллокации).
-   - **Диспетчеризация дешёвая:** `DispatchOverheadBenchmark` in-memory = 2.4–9 µs
-     полный пайплайн + Jackson (vs 1.3 µs чистый parse). Гипотеза «кодек/диспетчер»
-     опровергнута.
-   - **h2c-upgrade не подтверждён:** пиннинг HTTP/1.1 не ускорил (в пределах шума).
-   - **Engine SPI подтверждён:** jRestly+OkHttp = 450 µs = уровень raw OkHttp (428, +5%).
-     Ответ Антону «обойдём ли?»: на JDK-транспорте позади OkHttp в 3–4× (свойство
-     JDK HttpClient), на подставленных движках — на уровне эталона. Путь к вершине —
-     ADR-0058.
-   - Feign/Spring (JDK + своя надстройка) 1.8–2.6 мс — jRestly ближе к чистому транспорту.
+## Грабли (новые, в дополнении к старому набору)
 
-3. Полный лог: `/tmp/opencode/jmh_session147.log` (30 Result-блоков, EXIT=0).
+- **Дыры прототипов (в ADR-0058, раздел Context.3)**: оба прототипа игнорируют
+  timeout/version/stream/progress, не зарегистрированы в ServiceLoader.
+  `sendAsync` OkHttp-прототипа закрывает `Response` в колбэке — стриминг в
+  async-режиме не прочитать. `sendAsync` Apache5 — supplyAsync на общем
+  ForkJoinPool (истощение под нагрузкой).
+- **Недетерминизация ServiceLoader**: «первый доступный» при нескольких
+  провайдерах = произвольный порядок итерации; лечится `priority()` +
+  стабильная сортировка (не только `Map.copyOf`-солт).
+- Старые грабли #147 в силе (raw-TCP стенд, GRADLE_USER_HOME, порядок JMH,
+  счётчик тестов, краткие коммит-субъекты, git tags нет).
 
 ## Гейты
 
-- Ядро не менялось: 1058/1058 (core 1043 + benchmarks 15), 0 warnings.
-- Изменены: `DRAFT.md` (цифры + выводы в кандидате №3), дневник, mailbox, `last_session.md`.
+- Ядро не менялось: **1058/1058** (core 1043 + benchmarks 15), 0 warnings
+  (`./gradlew test` UP-TO-DATE green).
+- Изменены: ADR-0058 (новый), DRAFT.md, дневник 2026-10-16 (первая сессия
+  дня), mailbox (+1 сообщение), last_session.md.
 
-## Контекст для следующей сессии (#148)
+## Контекст для следующей сессии (#149)
 
-### Следующий шаг:
-1. **ADR-0058 — внешние субмодули `OkHttpEngine` / `ApacheHttpEngine`:** концепт + ADR
-   в `docs/0.10.0/`. Суть (уже есть в evidence): текущие `benchmarks/.../engine/*` —
-   рабочий прототип SPI (ADR-0052); ADR-0058 оформляет вынос в публичные субмодули
-   `jrestly-engine-okhttp` / `jrestly-engine-apache5` (каждый со своей зависимостью,
-   ядро остаётся zero-dep), выбор дефолтного движка, SPI `HttpEngineProvider`
-   (ServiceLoader уже есть в ядре).
-2. **Публичная документация по бенчмаркам** (`docs/BENCHMARKS.md` или секция в README):
-   методология (raw-TCP стенд, TCP_NODELAY, loopback), таблица цифр, ограничения
-   (loopback, 1 fork, variance). **Сначала подтвердить цифры прогоном `-f 2 -i 5`**
-   (сейчас CI огромный — публичные цифры должны быть с плотным CI).
-3. Опционально (мелкий шаг): зонд, из чего складываются +160 µs декларативного
-   overhead на сетевом пути (toHttpRequest/toWireResponse — аллокации списков Header;
-   JMH-взвешивание или async-profiler).
-
-### Грабли (актуальный набор)
-- **Стенд: raw-TCP + `TCP_NODELAY` + один write** — любые «числа ~44 мс/op» = старый
-  `com.sun.net.httpserver` (Nagle+delayed-ACK).
-- **`ServerSocket.close()` vs blocked `accept()`**: после `close()` коннекты ещё могут
-  завершаться. В `stop()` прерывать accept-loop и дожидаться выхода.
-- **JMH на этой машине: 30 бенчмарков ≈ 7 минут** — вписывается в сессию, но не с
-  запасом на большие прогоны.
-- **`GRADLE_USER_HOME=/tmp/opencode/gradle-home`** — всегда при запуске `./gradlew`.
-- **JMH-аргументы:** при передаче `-PjmhArgs` ВСЕ флаги задавать самому
-  (по умолчанию `-f 1 -wi 2 -i 3 -tu us -bm avgt`); несколько regex-фильтров через
-  пробел в одной строке работают.
-- **Порядок бенчмарков JMH = declaration order, не алфавит** — ранние/поздние бенчмарки
-  одного класса могут иметь разный нагрев; разницу <10% между похожими конфигурациями
-  не интерпретировать.
-- **Подсчёт тестов:** `grep -h -o 'tests="[0-9]*"' build/test-results/test/*.xml benchmarks/build/test-results/test/*.xml | awk -F'"' '{s+=$2} END{print s}'`
-  (сейчас **1058** = core 1043 + benchmarks 15).
-- **`Map.copyOf`/`Set.of` не сохраняют порядок** (солт на JVM-запуск).
-- **Коммит-субъект: краткий** (Антон); body — гейты-факты.
-- **No git tags.** **Next free ADR number:** ADR-0058.
+### Следующий шаг (TDD по ADR-0058, двухфазный)
+1. **Фаза 1 — ядро (маленький шаг):** `priority()` в
+   `HttpEngineProvider` + стабильная сортировка в
+   `HttpEngineResolver.resolveFromSpi`. Red-first: кейс в
+   `HttpEngineResolverTest` — провайдер с меньшим приоритетом первым в
+   итерации, но с меньшим приоритетом не выбирается.
+2. **Фаза 2 — субмодули (крупный, можно на 2 сессии):** `settings.gradle`
+   + include; перенос прототипов → `engine-okhttp`/`engine-apache5`
+   (пакеты `ru.jrestly.engine.okhttp`/`ru.jrestly.engine.apache`),
+   доведение до контракта паритета, `META-INF/services` файлы,
+   WireMock-тесты паритета; benchmarks → project(':engine-*'),
+   удаление `benchmarks/.../engine/*`.
+3. **Потом**: публичная документация по бенчмаркам (методология raw-TCP +
+   TCP_NODELAY, таблица #147, ограничения variance). Опционально перед ней —
+   повторный прогон JMH `-f 2 -i 5` для публичных цифр.
 
 ### Среда
 1. `GRADLE_USER_HOME=/tmp/opencode/gradle-home ./gradlew ...` (тёплый кэш).
 2. Ветка `agent-loop`.
 3. Версия в `build.gradle`: **0.9.0**. Тесты: **1058/1058**.
-4. Warnings: main 0, test 0, javadoc 0 (`-Werror`). Бенчмарки: deprecation-нота `OkHttpEngine`.
-5. Пропуски в нумерации сессий были (144, 146 без артефактов) — сверяться по `git log`,
-   а не по счётчику.
+4. **Next free ADR: 0059.** Пропуски в нумерации сессий (144, 146) —
+   сверяться по `git log`.

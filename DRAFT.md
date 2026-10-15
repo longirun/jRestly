@@ -1,5 +1,14 @@
 # DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
+> **Сессия #148 (ADR-0058 — концепт):** оформлен ADR
+> `docs/0.10.0/ADR-0058-external-http-engine-submodules-okhttp-apache5.md`
+> (Status: Proposed). Двухфазное исполнение: (1) ядро — `priority()` в
+> `HttpEngineProvider` + стабильная сортировка в `HttpEngineResolver` (TDD,
+> red-first в `HttpEngineResolverTest`); (2) субмодули `engine-okhttp` /
+> `engine-apache5` — перенос прототипов из benchmarks, доведение до контракта
+> паритета (timeout/stream/progress/trailers/close), ServiceLoader-регистрация,
+> WireMock-тесты. benchmarks — на `project(':engine-*')`.
+
 > Эпик Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055, `docs/0.10.0/`) закрыт (сессия #135):
 > - В `MethodMetadata` предвычислены и закэшированы: `staticCookieHeader` (строка формата `k=v; k2=v2`), флаг `hasCookieParams`, флаги `hasExplicitContentTypeInStaticHeaders`, `isStaticConditional` и `hasTrace`.
 > - В `HttpTemplateBuilder.resolveCookies()` добавлен fast-path: при отсутствии динамических cookie-параметров возвращается `methodMetadata.staticCookieHeader()` напрямую без аллокаций `LinkedHashMap` (0 heap allocations).
@@ -87,7 +96,7 @@
 >   латентность, затем перезапуск матрицы.
 > - **1052/1052 тестов** (ядро не менялось, `:benchmarks:test` зелёный).
 > 
-> Следующий свободный ADR — **0058**.
+> Следующий свободный ADR — **0059**.
 
 ## Активная зона (кандидаты на следующий эпик)
 
@@ -121,6 +130,16 @@
   Следующий шаг: ADR-0058 (внешние субмодули OkHttpEngine/ApacheHttpEngine) + публичная
   документация по бенчмаркам; до неё — опционально повторный прогон с `-i 5 -f 2`
   для снижения variance и зонд 160 µs overhead декларативного слоя на сетевом пути.
+  **Сессия #148: ADR-0058 оформлен** (`docs/0.10.0/ADR-0058-external-http-engine-submodules-okhttp-apache5.md`):
+  два публикуемых субмодуля `jrestly-engine-okhttp` / `jrestly-engine-apache5`
+  (зависимость `api` на свой транспорт, ядро zero-dep), автообнаружение через
+  ServiceLoader (`JdkHttpEngine` — не провайдер, остаётся fallback'ом),
+  `default int priority()` в `HttpEngineProvider` (стабильная сортировка в
+  `HttpEngineResolver`), контракт паритета по полям `HttpEngineOptions`
+  (timeout/stream/progress/trailers/close + маппинг `ModuleInfo`: SSL, cookies,
+  proxy, authenticator, virtual threads), адаптер выкачивания JDK
+  `BodyPublisher` → `InputStream` (единый для стриминга и multipart).
+  benchmarks переключаются на `project(':engine-*')`, копии прототипов удаляются.
 
 
 ---
