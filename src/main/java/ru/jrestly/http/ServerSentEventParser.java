@@ -12,7 +12,8 @@ import java.util.stream.StreamSupport;
  * Streaming parser for WHATWG Server-Sent Events (ADR-0016).
  *
  * <p>Consumes lines on-demand from an upstream line stream and yields
- * parsed {@link ServerSentEvent} instances lazily.
+ * parsed {@link ServerSentEvent} instances lazily. A leading UTF-8 BOM
+ * on the first line is stripped per the WHATWG decode step.
  */
 final class ServerSentEventParser {
 
@@ -37,6 +38,7 @@ final class ServerSentEventParser {
             private String event = null;
             private StringBuilder dataBuffer = null;
             private Long retry = null;
+            private boolean firstLine = true;
 
             @Override
             public boolean hasNext() {
@@ -67,6 +69,12 @@ final class ServerSentEventParser {
             private ServerSentEvent advance() {
                 while (lineIterator.hasNext()) {
                     String line = lineIterator.next();
+                    if (firstLine) {
+                        firstLine = false;
+                        if (!line.isEmpty() && line.charAt(0) == '﻿') {
+                            line = line.substring(1);
+                        }
+                    }
                     if (line.isEmpty()) {
                         ServerSentEvent dispatched = buildAndReset();
                         if (dispatched != null) {

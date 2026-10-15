@@ -481,7 +481,9 @@ final class MethodMetadata {
                 }
             }
         }
-        return Map.copyOf(cookies);
+        // Map.copyOf scrambles iteration order (salted per JVM run): the Cookie header
+        // must keep declaration order, so the insertion-ordered map is wrapped instead
+        return Collections.unmodifiableMap(cookies);
     }
 
     private static List<Param> parseStaticDefaultParams(Method method, List<Class<?>> hierarchy, RequestMeta requestMeta) {

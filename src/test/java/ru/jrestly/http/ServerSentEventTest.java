@@ -268,6 +268,23 @@ class ServerSentEventTest {
     }
 
     @Test
+    @DisplayName("strip leading UTF-8 BOM from the first line per WHATWG SSE decode step")
+    void stripLeadingBom() {
+        Stream<String> lines = Stream.of("﻿data: bom payload", "");
+        List<ServerSentEvent> events = ServerSentEvent.parse(lines).toList();
+
+        assertEquals(1, events.size());
+        assertEquals("bom payload", events.getFirst().data());
+
+        Stream<String> retryLines = Stream.of("﻿retry: 3000", "data: x", "");
+        List<ServerSentEvent> retryEvents = ServerSentEvent.parse(retryLines).toList();
+
+        assertEquals(1, retryEvents.size());
+        assertEquals(3000L, retryEvents.getFirst().retry());
+        assertEquals("x", retryEvents.getFirst().data());
+    }
+
+    @Test
     @DisplayName("lifecycle: closing event stream closes underlying line stream")
     void lifecycleOnClose() {
         AtomicBoolean closed = new AtomicBoolean(false);
