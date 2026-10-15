@@ -2,6 +2,7 @@ package ru.jrestly.http;
 
 import java.net.HttpCookie;
 import java.net.URI;
+import java.net.http.HttpClient;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZonedDateTime;
@@ -58,6 +59,9 @@ public class ResponseHeaders {
     private volatile Duration duration = Duration.ZERO;
     private volatile List<Header> rawHeaders = List.of();
     private volatile Map<String, List<String>> headerMap = Collections.emptyMap();
+    private volatile HttpClient.Version version = HttpClient.Version.HTTP_1_1;
+    private volatile List<Header> trailers = List.of();
+    private volatile Map<String, List<String>> trailerMap = Collections.emptyMap();
     private volatile Map<String, String> linkMap;
     private volatile List<HttpCookie> parsedCookies;
 
@@ -76,7 +80,32 @@ public class ResponseHeaders {
      * @param duration the request duration, or {@code null} for {@link Duration#ZERO}
      */
     public ResponseHeaders(int statusCode, List<Header> headers, Duration duration) {
-        doPopulate(statusCode, headers, duration);
+        this(statusCode, headers, duration, HttpClient.Version.HTTP_1_1, List.of());
+    }
+
+    /**
+     * Creates a pre-populated response headers container with negotiated HTTP version.
+     *
+     * @param statusCode the HTTP status code
+     * @param headers the list of headers, or {@code null} for empty
+     * @param duration the request duration, or {@code null} for {@link Duration#ZERO}
+     * @param version the negotiated HTTP protocol version, or {@code null} for {@link HttpClient.Version#HTTP_1_1}
+     */
+    public ResponseHeaders(int statusCode, List<Header> headers, Duration duration, HttpClient.Version version) {
+        this(statusCode, headers, duration, version, List.of());
+    }
+
+    /**
+     * Creates a pre-populated response headers container with negotiated HTTP version and trailers.
+     *
+     * @param statusCode the HTTP status code
+     * @param headers the list of headers, or {@code null} for empty
+     * @param duration the request duration, or {@code null} for {@link Duration#ZERO}
+     * @param version the negotiated HTTP protocol version, or {@code null} for {@link HttpClient.Version#HTTP_1_1}
+     * @param trailers the trailing headers, or {@code null} for empty
+     */
+    public ResponseHeaders(int statusCode, List<Header> headers, Duration duration, HttpClient.Version version, List<Header> trailers) {
+        doPopulate(statusCode, headers, duration, version, trailers);
     }
 
     /**
@@ -87,13 +116,40 @@ public class ResponseHeaders {
      * @param duration the call round-trip duration
      */
     public synchronized void populate(int statusCode, List<Header> headers, Duration duration) {
-        doPopulate(statusCode, headers, duration);
+        doPopulate(statusCode, headers, duration, HttpClient.Version.HTTP_1_1, List.of());
     }
 
-    private void doPopulate(int statusCode, List<Header> headers, Duration duration) {
+    /**
+     * Populates this holder with response data and negotiated HTTP version.
+     *
+     * @param statusCode the HTTP status code
+     * @param headers the response headers
+     * @param duration the call round-trip duration
+     * @param version the negotiated HTTP protocol version
+     */
+    public synchronized void populate(int statusCode, List<Header> headers, Duration duration, HttpClient.Version version) {
+        doPopulate(statusCode, headers, duration, version, List.of());
+    }
+
+    /**
+     * Populates this holder with response data, negotiated HTTP version, and trailers.
+     *
+     * @param statusCode the HTTP status code
+     * @param headers the response headers
+     * @param duration the call round-trip duration
+     * @param version the negotiated HTTP protocol version
+     * @param trailers the response trailing headers
+     */
+    public synchronized void populate(int statusCode, List<Header> headers, Duration duration, HttpClient.Version version, List<Header> trailers) {
+        doPopulate(statusCode, headers, duration, version, trailers);
+    }
+
+    private void doPopulate(int statusCode, List<Header> headers, Duration duration, HttpClient.Version version, List<Header> trailers) {
         this.statusCode = statusCode;
         this.duration = duration != null ? duration : Duration.ZERO;
         this.rawHeaders = headers != null ? List.copyOf(headers) : List.of();
+        this.version = version != null ? version : HttpClient.Version.HTTP_1_1;
+        this.trailers = trailers != null ? List.copyOf(trailers) : List.of();
 
         Map<String, List<String>> map = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
         for (Header h : rawHeaders) {
@@ -107,6 +163,16 @@ public class ResponseHeaders {
             unmodifiableMap.put(entry.getKey(), Collections.unmodifiableList(entry.getValue()));
         }
         this.headerMap = Collections.unmodifiableMap(map);
+
+        Map<String, List<String>> tMap = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+        for (Header h : this.trailers) {
+            if (h != null && h.name() != null) {
+                tMap.computeIfAbsent(h.name(), k -> new ArrayList<>())
+                        .add(h.value() != null ? h.value() : "");
+            }
+        }
+        this.trailerMap = Collections.unmodifiableMap(tMap);
+
         this.linkMap = null; // parsed lazily
         this.parsedCookies = null; // parsed lazily
         this.populated = true;
@@ -182,6 +248,98 @@ public class ResponseHeaders {
      */
     public Map<String, List<String>> map() {
         return headerMap;
+    }
+
+    /**
+     * Returns the negotiated HTTP protocol version of the response.
+     *
+     * @return the negotiated HTTP version, never {@code null} (defaults to {@link HttpClient.Version#HTTP_1_1})
+     */
+    public HttpClient.Version version() {
+        return version != null ? version : HttpClient.Version.HTTP_1_1;
+    }
+
+    /**
+     * Indicates whether the response was negotiated over HTTP/2.
+     *
+     * @return {@code true} if negotiated over HTTP/2, {@code false} otherwise
+     */
+    public boolean isHttp2() {
+        return version() == HttpClient.Version.HTTP_2;
+    }
+
+    /**
+     * Indicates whether the response was negotiated over HTTP/1.1.
+     *
+     * @return {@code true} if negotiated over HTTP/1.1, {@code false} otherwise
+     */
+    public boolean isHttp1() {
+        return version() == HttpClient.Version.HTTP_1_1;
+    }
+
+    /**
+     * Returns the response trailing headers (trailers).
+     *
+     * @return unmodifiable list of trailer headers, never {@code null}
+     */
+    public List<Header> trailers() {
+        return trailers;
+    }
+
+    /**
+     * Finds the first value of the specified trailer name (case-insensitive).
+     *
+     * @param name the trailer header name
+     * @return an {@link Optional} containing the first trailer value, or empty if absent
+     */
+    public Optional<String> firstTrailer(String name) {
+        if (name == null) {
+            return Optional.empty();
+        }
+        List<String> values = trailerMap.get(name);
+        if (values == null || values.isEmpty()) {
+            return Optional.empty();
+        }
+        return Optional.ofNullable(values.get(0));
+    }
+
+    /**
+     * Returns all values of the specified trailer name (case-insensitive).
+     *
+     * @param name the trailer header name
+     * @return unmodifiable list of trailer values, never {@code null}
+     */
+    public List<String> trailerValues(String name) {
+        if (name == null) {
+            return List.of();
+        }
+        List<String> values = trailerMap.get(name);
+        return values != null ? values : List.of();
+    }
+
+    /**
+     * Returns the list of declared trailer field names from the {@code Trailer} header (RFC 7230 / RFC 9110),
+     * or an empty list if no {@code Trailer} header was provided.
+     *
+     * @return unmodifiable list of declared trailer field names, never {@code null}
+     */
+    public List<String> declaredTrailers() {
+        List<String> values = allValues("Trailer");
+        if (values.isEmpty()) {
+            return List.of();
+        }
+        List<String> result = new ArrayList<>();
+        for (String val : values) {
+            if (val != null) {
+                for (String part : val.split(",")) {
+                    String trimmed = part.trim();
+                    if (!trimmed.isEmpty()) {
+                        result.add(trimmed);
+                    }
+                }
+            }
+        }
+        return List.copyOf(result);
     }
 
     /**
@@ -460,7 +618,13 @@ public class ResponseHeaders {
         Objects.requireNonNull(call, "call must not be null");
         ResponseHeaders holder = new ResponseHeaders();
         Consumer<ResponseHeaders> previous = CURRENT_CAPTOR.get();
-        CURRENT_CAPTOR.set(captured -> holder.populate(captured.statusCode(), captured.headers(), captured.duration()));
+        CURRENT_CAPTOR.set(captured -> holder.populate(
+                captured.statusCode(),
+                captured.headers(),
+                captured.duration(),
+                captured.version(),
+                captured.trailers()
+        ));
         try {
             T result = call.get();
             return new CapturedResponse<>(result, holder);
@@ -486,7 +650,13 @@ public class ResponseHeaders {
         Objects.requireNonNull(call, "call must not be null");
         ResponseHeaders holder = new ResponseHeaders();
         Consumer<ResponseHeaders> previous = CURRENT_CAPTOR.get();
-        CURRENT_CAPTOR.set(captured -> holder.populate(captured.statusCode(), captured.headers(), captured.duration()));
+        CURRENT_CAPTOR.set(captured -> holder.populate(
+                captured.statusCode(),
+                captured.headers(),
+                captured.duration(),
+                captured.version(),
+                captured.trailers()
+        ));
         try {
             T result = call.call();
             return new CapturedResponse<>(result, holder);

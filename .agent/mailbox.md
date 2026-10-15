@@ -40,40 +40,6 @@
 * я думаю еще в реалном исползовании есть миллион важных вещей?
 Это не приказ бросаться сразу все делать, просто можно учесть и разобрать в будущем. 
 
-[2026-10-15 07:33] Агент (сессия #113): Реализован эпик Outgoing Request Body Streaming & Validation (ADR-0035):
-1. **Стриминг исходящего тела (`@RequestBody`):**
-   - `Flow.Publisher<ByteBuffer>` и `Flow.Publisher<String>` (авто-адаптация к UTF-8);
-   - Нативный `HttpRequest.BodyPublisher`;
-   - `InputStream` и переоткрываемый `Supplier<? extends InputStream>` (устойчив к `@Retry` и редиректам);
-   - `Path` и `File` (zero-copy стриминг файлов с точным `Content-Length`);
-   - `Supplier<? extends HttpRequest.BodyPublisher>` / `Supplier<? extends Flow.Publisher<ByteBuffer>>`.
-2. **Эргономика Media Type:**
-   - Для стриминговых типов default `application/octet-stream` при отсутствии явного `@ContentType`.
-   - Для POJO/String/byte[] сохранен default `application/json`.
-3. **Безопасность и прогресс:**
-   - Безопасное логирование `<streaming body>` без истощения потока;
-   - Интеграция с `UploadProgressListener` для отслеживания чанков;
-   - Расширение `@HttpVersion` на уровень интерфейса (`ElementType.TYPE`).
-4. **Fail-fast валидация (`ControllerValidator`):**
-   - Запрет `@Get` с `@RequestBody`;
-   - Запрет нескольких `@RequestBody` на методе;
-   - Запрет смешивания `@RequestBody` с `@RequestParam`, `@PathVariable`, `@RequestHeader`, `@Cookie`, `@MultipartFormFile`.
-20 новых тестов (+20 тестов, итого 749/749 в 87 классах). 0 warnings под `-Werror`, zero-dep core сохранен.
-
-[2026-10-15 08:00] Агент (сессия #114): Реализован эпик Client Metrics & Observability SPI (ADR-0036):
-1. **Zero-Dep Observability SPI (`ru.jrestly.metrics`):**
-   - `@FunctionalInterface ClientMetricsListener`: хук агрегации `onCallComplete(CallMetrics)` и дефолтные хуки жизненного цикла `onCallStart`, `onRetry`, `onAttemptComplete` (для in-flight gauges и счетчиков попыток).
-   - Неизменяемый контракт `CallMetrics` и record `SimpleCallMetrics` с фиксацией длительности (`duration`), попыток (`attempts`), байтов передачи/приема (`requestBytes`, `responseBytes`), целевого URI, HTTP-метода, статус-кода, контекста (`RequestContext`), wire моделей (`WireRequest`, `WireResponse`) и ошибок (`failure`).
-   - Композитный слушатель `CompositeClientMetricsListener` и `ClientMetricsListener.composite(...)` с автоматическим flattening и отсевом null.
-   - Изоляция сбоев: исключения в listener логируются на уровне WARNING и никогда не ломают пользовательские HTTP запросы.
-2. **Конфигурация (программная и декларативная):**
-   - Fluent-метод `metricsListener(ClientMetricsListener)` в `JRestlyClient.Builder` и геттер в `ModuleInfo`.
-   - Декларативная аннотация `@WithMetrics` для классов контроллеров и отдельных методов (с поддержкой повторяемости `@WithMetrics.List`).
-   - Автоматическое объединение клиентских и декларативных слушателей.
-3. **Fail-Fast upfront валидация (`ControllerValidator`):**
-   - Проверка наличия доступного no-arg конструктора у классов слушателей, запрет интерфейсов, абстрактных классов и несовместимых типов.
-18 новых тестов (+18 тестов, итого 767/767 в 89 классах). 0 warnings под `-Werror`, zero-dep core сохранен.
-
 [2026-10-15 08:22] Агент (сессия #115): Реализован эпик HTTP Proxy & Transport Authenticator Configuration (ADR-0037):
 1. **Zero-Dep Proxy & Authenticator Configuration:**
    - `ModuleInfo`: default методы `getProxySelector()` и `getAuthenticator()`.
@@ -83,6 +49,22 @@
 2. **Безопасность и fail-fast валидация:**
    - Проверка `null` selector, `null`/blank host, валидация диапазона портов 1..65535, `null` authenticator, `null` username/password.
 3. **Тестирование (22 новых теста, итого 789/789 в 91 классе):**
-   - `ProxyConfigTest` (16 unit тестов): дефолты, парсинг host/port, `noProxy` bypass, custom/credentials authenticators, fail-fast валидация, геттеры клиента.
-   - `ProxyIntegrationWireMockTest` (6 WireMock интеграционных тестов): маршрутизация через локальный HTTP forward proxy, обработка 407 Proxy Authentication Required challenge с заголовком `Proxy-Authorization`, fail-fast на неверных credentials, серверная 401 аутентификация через `credentials(...)`, обход прокси через `noProxy()`, асинхронный вызов `CompletableFuture`.
-22 новых теста (+22 теста, итого 789/789 в 91 классе). 0 warnings под `-Werror`, zero-dep core сохранен. Следующий свободный ADR — **0038**.
+   - `ProxyConfigTest` (16 unit тестов), `ProxyIntegrationWireMockTest` (6 WireMock интеграционных тестов). 0 warnings под `-Werror`, zero-dep core сохранен.
+
+[2026-10-15 08:47] Агент (сессия #116): Реализован эпик HTTP/2 Protocol Negotiation & Response Inspection (ADR-0038):
+1. **Zero-Dep Protocol Version & Trailers Propagation:**
+   - `WireResponse`: расширен полями `HttpClient.Version version` и `List<Header> trailers` с сохранением полной обратной совместимости 3-, 4- и 5-аргументных конструкторов.
+   - `HttpTemplate.toWireResponse`: фиксация реальной согласованной версии ответа `response.version()`.
+   - `HttpTemplate.handleDecompression`: сохранение `version` и `trailers` при прозрачной декомпрессии GZIP/Deflate.
+   - `HttpTemplate.logResponse`: логирование согласованного протокола (`Response: HTTP/2 200 in 15 ms` vs `HTTP/1.1`).
+   - `HttpTemplateBuilder.getHttpVersion`: иерархический обход интерфейсов контроллера (Method > Sub-interface > Super-interface > Client default).
+2. **Эргономика метаданных ответа (`ResponseHeaders`):**
+   - Методы `version()`, `isHttp2()`, `isHttp1()`.
+   - Поддержка трейлеров `trailers()`, `firstTrailer(name)`, `trailerValues(name)` (регистронезависимо).
+   - Парсер объявленных трейлеров RFC 7230 / RFC 9110: `declaredTrailers()` извлекает имена полей из заголовка `Trailer`.
+   - Полная интеграция с `ResponseHeaders.capture(...)` и `captureCallable(...)`.
+3. **Наблюдаемость и телеметрия (`CallMetrics`):**
+   - Default-метод `version()` в интерфейсе `CallMetrics` (возвращает `HTTP_2` или `HTTP_1_1` fallback).
+4. **Тестирование (21 новый тест, итого 810/810 в 94 классах):**
+   - `HttpVersionHierarchyTest` (6 unit тестов), `ResponseHeadersHttp2Test` (8 unit тестов), `Http2NegotiationWireMockTest` (7 WireMock интеграционных тестов).
+0 warnings под постоянными флагами `-Xlint:all -Werror` и `-Xdoclint:all -Werror`, zero-dep core строго сохранен. Следующий свободный ADR — **0039**.

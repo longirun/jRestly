@@ -1157,10 +1157,15 @@ public class HttpTemplateBuilder {
         if (method.isAnnotationPresent(HttpVersion.class)) {
             return method.getAnnotation(HttpVersion.class).value();
         }
-        if (controller != null && controller.isAnnotationPresent(HttpVersion.class)) {
-            return controller.getAnnotation(HttpVersion.class).value();
+        if (controller != null) {
+            List<Class<?>> hierarchy = collectInterfaceHierarchy(controller);
+            for (int i = hierarchy.size() - 1; i >= 0; i--) {
+                Class<?> iface = hierarchy.get(i);
+                if (iface.isAnnotationPresent(HttpVersion.class)) {
+                    return iface.getAnnotation(HttpVersion.class).value();
+                }
+            }
         }
-
         return null;
     }
 

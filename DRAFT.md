@@ -1,22 +1,24 @@
-# DRAFT: активная зона после закрытия эпика HTTP Proxy & Transport Authenticator Configuration (ADR-0037)
+# DRAFT: активная зона после закрытия эпика HTTP/2 Protocol Negotiation & Response Inspection (ADR-0038)
 
-> Эпик HTTP Proxy & Transport Authenticator Configuration (ADR-0037, `docs/0.10.0/`) закрыт (сессия #115):
-> концепт и ADR-0037 → zero-dep поддержка HTTP Proxy маршрутизации и transport-level аутентификации:
-> `ModuleInfo` default методы `getProxySelector()` и `getAuthenticator()`,
-> `SimpleModuleInfo` & `SimpleModuleInfo.Builder`: `proxy(ProxySelector)`, `proxy(String host, int port)`, `noProxy()` (`HttpClient.Builder.NO_PROXY`), `authenticator(Authenticator)`, `proxyCredentials(username, password)`, `credentials(username, password)`,
-> `JRestlyClient.Builder`: прямое проксирование fluent-методов конфигурации прокси и аутентификатора,
-> `AbstractHttpClient.createConnection()`: проброс `proxySelector` и `authenticator` в `HttpClient.Builder`, публичные геттеры `getProxySelector()` и `getAuthenticator()`,
-> полная fail-fast валидация (проверка nulls, blank hosts, TCP портов 1..65535),
-> unit тесты конфигурации (`ProxyConfigTest`, 16 тестов), интеграционные WireMock тесты (`ProxyIntegrationWireMockTest`, 6 тестов, итого +22 теста) →
-> дистилляция в ROADMAP («HTTP Proxy & Transport Authenticator Configuration (ADR-0037) — COMPLETE ✅») + гейты 789/789 тестов (91 класс).
+> Эпик HTTP/2 Protocol Negotiation & Response Inspection (ADR-0038, `docs/0.10.0/`) закрыт (сессия #116):
+> концепт и ADR-0038 → zero-dep сквозная передача согласованной версии протокола HTTP/2 и трейлеров:
+> `WireResponse`: расширен полями `HttpClient.Version version` и `List<Header> trailers` с полной обратной совместимостью конструкторов,
+> `HttpTemplate.toWireResponse`: фиксация реальной согласованной версии `response.version()`,
+> `HttpTemplate.handleDecompression`: сохранение `version` и `trailers` при декомпрессии GZIP/Deflate,
+> `HttpTemplate.logResponse`: логирование согласованного протокола (`HTTP/2` или `HTTP/1.1`),
+> `HttpTemplateBuilder.getHttpVersion`: иерархический обход интерфейсов контроллера (Method > Sub-interface > Super-interface > Client default),
+> `ResponseHeaders`: методы `version()`, `isHttp2()`, `isHttp1()`, `trailers()`, `firstTrailer()`, `trailerValues()`, `declaredTrailers()` (RFC 7230 / RFC 9110),
+> `CallMetrics`: default-метод `version()` для телеметрии и мониторинга,
+> unit-тесты (`HttpVersionHierarchyTest`, 6 тестов; `ResponseHeadersHttp2Test`, 8 тестов) и интеграционные WireMock тесты (`Http2NegotiationWireMockTest`, 7 тестов, итого +21 тест) →
+> дистилляция в ROADMAP («HTTP/2 Protocol Negotiation & Response Inspection (ADR-0038) — COMPLETE ✅») + гейты 810/810 тестов (94 класса).
 > Следующий ход — свободный, выбор из активной зоны.
 
 ## Активная зона (кандидаты на следующий эпик)
 
-- **Кандидат №1 — HTTP/2 Protocol Negotiation & Response Trailers (ADR-0038)**:
-  Инспекция реально согласованной версии протокола (`HttpResponse.version()` -> `WireResponse.version()`, `ResponseHeaders.version()`, `CallMetrics.version()`) и доступ к trailing headers (`HttpResponse.trailers()` -> `WireResponse.trailers()`, `ResponseHeaders.trailers()`).
-- **Кандидат №2 — test-javadoc** (ADR-0013 Non-goals):
+- **Кандидат №1 — test-javadoc** (ADR-0013 Non-goals):
   Test-source javadoc вынесен за скобки аудита; наведение лоска в тестовых классах.
+- **Кандидат №2 — Cookie Store Persistence SPI**:
+  Zero-dependency интерфейс для сохранения и загрузки cookies между перезапусками процесса (CLI-инструменты, долгоживущие боты, сохранение сессий в файл или БД).
 
 ---
 

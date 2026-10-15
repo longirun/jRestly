@@ -1269,7 +1269,48 @@ Gates (session #115, clean rebuild):
 - `javadoc` 0 warnings under permanent `-Xdoclint:all -Werror`.
 - Zero external runtime dependencies preserved (0 dependencies in Maven POM).
 
-After the epic: candidate #1 — test-javadoc (ADR-0013 Non-goals); candidate #2 — HTTP/2 Protocol Negotiation & Response Trailers (Trailers inspection, `response.trailers()`, `response.version()`). ADR number **0038** free.
+After the epic: candidate #1 — test-javadoc (ADR-0013 Non-goals); candidate #2 — HTTP/2 Protocol Negotiation & Response Inspection — done, section below. ADR number **0038** — HTTP/2 negotiation & response inspection epic, **0039** free.
+
+## HTTP/2 Protocol Negotiation & Response Inspection (ADR-0038) — COMPLETE ✅ (2026-10-15, unreleased)
+
+> Source of truth (concept, architecture decisions, protocol negotiation, trailers inspection, test strategy, status):
+> [`docs/0.10.0/ADR-0038-http2-protocol-negotiation-and-response-inspection.md`](docs/0.10.0/ADR-0038-http2-protocol-negotiation-and-response-inspection.md).
+> Session #116 (agent-loop). End-to-end negotiated HTTP protocol version propagation, response metadata inspection, and RFC 7230 / RFC 9110 trailer header parsing.
+> Introduces `version` and `trailers` across `WireResponse`, `ResponseHeaders`, and `CallMetrics`.
+> Refactors `HttpTemplateBuilder.getHttpVersion()` to support full interface hierarchy resolution (Method > Sub-interface > Super-interface > Client default).
+> 100% backward compatible and zero-dependency (Java 21 standard library only).
+
+Key decisions (ADR-0038):
+- **Wire Model Protocol & Trailers Propagation (`WireResponse`):**
+  - Extended canonical record: `WireResponse(int statusCode, List<Header> headers, byte[] body, InputStream stream, HttpClient.Version version, List<Header> trailers)`.
+  - Maintained full backwards compatibility with 3-arg, 4-arg, and 5-arg constructors with defensive normalization (`null` version defaults to `HttpClient.Version.HTTP_1_1`, `null` trailers default to empty list).
+- **Transport Capture, Decompression & Logging (`HttpTemplate`):**
+  - In `toWireResponse(HttpResponse<?> response)`: captures negotiated protocol version `response.version()`.
+  - In `handleDecompression(WireResponse response)`: preserves `response.version()` and `response.trailers()` across transparent GZIP/Deflate stream and byte decompression.
+  - In `logResponse(WireResponse response, long elapsedMs)`: logs negotiated protocol version (`HTTP/2` or `HTTP/1.1`) along with status code and round-trip duration.
+  - In `processResponse(...)`: forwards version and trailers to `responseHeadersHolder` and active `CURRENT_CAPTOR`.
+- **Interface Hierarchy Precedence for `@HttpVersion` (`HttpTemplateBuilder`):**
+  - Scans interface hierarchy using `collectInterfaceHierarchy(controller)` bottom-up: method annotation overrides sub-interface, sub-interface overrides super-interface, super-interface applies before falling back to client default.
+- **Call-Site Metadata Access (`ResponseHeaders`):**
+  - Added accessors: `HttpClient.Version version()`, `boolean isHttp2()`, `boolean isHttp1()`.
+  - Added trailing headers support: `List<Header> trailers()`, `Optional<String> firstTrailer(String name)`, `List<String> trailerValues(String name)`.
+  - Added RFC 7230 / RFC 9110 declared trailer parser: `List<String> declaredTrailers()` extracts trailer field names declared in the `Trailer` header.
+  - Forwarded version and trailers through `ResponseHeaders.capture(...)` and `ResponseHeaders.captureCallable(...)`.
+- **Telemetry & Observability SPI (`CallMetrics`):**
+  - Added non-breaking default method `HttpClient.Version version()` returning the negotiated protocol version (or `HTTP_1_1` fallback).
+- **Full test coverage:** 21 new tests (+21 cases, total suite 810/810 across 94 classes) spanning:
+  - `HttpVersionHierarchyTest` (6 unit tests: unannotated fallback, direct interface inheritance, method override of direct interface, sub-interface inheritance, sub-interface override of super-interface, method override of sub-interface);
+  - `ResponseHeadersHttp2Test` (8 unit tests: unpopulated defaults, HTTP/2 populated flags, case-insensitive trailer lookups, declaredTrailers parsing of single/multiple/empty Trailer headers, capture pattern forwarding, WireResponse constructors and immutability, CallMetrics version inspection and fallback);
+  - `Http2NegotiationWireMockTest` (7 WireMock integration tests: method parameter receiving negotiated HTTP/2 and pinned HTTP/1.1 from live server, server response with Trailer header parsing declared trailers, capture pattern receiving HTTP/2, ClientMetricsListener receiving negotiated HTTP/2, GZIP decompression preserving negotiated HTTP/2, async CompletableFuture pipeline preserving version, failed 500 response preserving version in exception metadata).
+
+Gates (session #116, clean rebuild):
+- `./gradlew test` **810/810** (94 classes, 0 failures/errors; +21 tests in ADR-0038).
+- `compileJava` and `compileTestJava` 0 warnings under permanent `-Xlint:all -Werror`.
+- `javadoc` 0 warnings under permanent `-Xdoclint:all -Werror`.
+- Zero external runtime dependencies preserved (0 dependencies in Maven POM).
+
+After the epic: candidate #1 — test-javadoc (ADR-0013 Non-goals); candidate #2 — Cookie Store Persistence SPI (CookieHandler state persistence). ADR number **0039** free.
+
 
 ## Post-0.5.0 shortlist (not scheduled — see ADR-0003)
 

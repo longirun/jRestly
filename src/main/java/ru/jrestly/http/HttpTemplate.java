@@ -532,13 +532,13 @@ public class HttpTemplate {
         List<Header> responseHeaders = response.headers();
         int statusCode = response.statusCode();
 
-        // ADR-0022: Populate response headers holder and thread-local captor
+        // ADR-0022 & ADR-0038: Populate response headers holder and thread-local captor
         if (responseHeadersHolder != null) {
-            responseHeadersHolder.populate(statusCode, responseHeaders, callDuration);
+            responseHeadersHolder.populate(statusCode, responseHeaders, callDuration, response.version(), response.trailers());
         }
         Consumer<ResponseHeaders> captor = ResponseHeaders.CURRENT_CAPTOR.get();
         if (captor != null) {
-            captor.accept(new ResponseHeaders(statusCode, responseHeaders, callDuration));
+            captor.accept(new ResponseHeaders(statusCode, responseHeaders, callDuration, response.version(), response.trailers()));
         }
 
         if (authDetailsConsumer != null) {
@@ -1310,16 +1310,16 @@ public class HttpTemplate {
             InputStream decompressedStream = isGzip
                     ? new GZIPInputStream(response.stream())
                     : new InflaterInputStream(response.stream());
-            return new WireResponse(response.statusCode(), strippedHeaders, null, decompressedStream);
+            return new WireResponse(response.statusCode(), strippedHeaders, null, decompressedStream, response.version(), response.trailers());
         }
 
         byte[] rawBody = response.body();
         if (rawBody == null || rawBody.length == 0) {
-            return new WireResponse(response.statusCode(), strippedHeaders, rawBody, null);
+            return new WireResponse(response.statusCode(), strippedHeaders, rawBody, null, response.version(), response.trailers());
         }
 
         byte[] decompressedBytes = isGzip ? decompressGzip(rawBody) : decompressDeflate(rawBody);
-        return new WireResponse(response.statusCode(), strippedHeaders, decompressedBytes, null);
+        return new WireResponse(response.statusCode(), strippedHeaders, decompressedBytes, null, response.version(), response.trailers());
     }
 
     private static byte[] decompressGzip(byte[] compressed) throws IOException {
@@ -1386,10 +1386,11 @@ public class HttpTemplate {
     private static WireResponse toWireResponse(HttpResponse<?> response) {
         Object body = response.body();
         List<Header> headers = toHeaders(response);
+        HttpClient.Version version = response.version();
         if (body instanceof InputStream stream) {
-            return new WireResponse(response.statusCode(), headers, null, stream);
+            return new WireResponse(response.statusCode(), headers, null, stream, version);
         }
-        return new WireResponse(response.statusCode(), headers, (byte[]) body, null);
+        return new WireResponse(response.statusCode(), headers, (byte[]) body, null, version);
     }
 
     private static List<Header> toHeaders(HttpResponse<?> response) {
@@ -1581,8 +1582,9 @@ public class HttpTemplate {
                 .map(Object::toString)
                 .collect(Collectors.joining("\n"));
 
+        String proto = response.version() == HttpClient.Version.HTTP_2 ? "HTTP/2" : "HTTP/1.1";
         logger.log(System.Logger.Level.INFO,
-                "Response: HTTP " + response.statusCode() + " in " + elapsedMs + " ms\n" + headers);
+                "Response: " + proto + " " + response.statusCode() + " in " + elapsedMs + " ms\n" + headers);
     }
 
     private boolean isExpectedStatus(int statusCode) {

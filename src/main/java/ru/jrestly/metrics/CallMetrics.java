@@ -1,6 +1,7 @@
 package ru.jrestly.metrics;
 
 import java.net.URI;
+import java.net.http.HttpClient;
 import java.time.Duration;
 import java.util.Optional;
 import ru.jrestly.http.HandledException;
@@ -134,5 +135,14 @@ public interface CallMetrics {
      */
     default boolean isRetried() {
         return attempts() > 1;
+    }
+
+    /**
+     * The negotiated HTTP protocol version of the call.
+     *
+     * @return the HTTP version, defaulting to {@link HttpClient.Version#HTTP_1_1} if unknown or failed
+     */
+    default HttpClient.Version version() {
+        return response().map(WireResponse::version).orElse(HttpClient.Version.HTTP_1_1);
     }
 }
