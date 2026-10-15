@@ -1,23 +1,24 @@
-# DRAFT: активная зона после закрытия эпика Request Tracing & Correlation ID Propagation SPI (ADR-0042)
+# DRAFT: активная зона после закрытия эпика Circuit Breaker & Client Rate Limiter SPI (ADR-0043)
 
-> Эпик Request Tracing & Correlation ID Propagation SPI (ADR-0042, `docs/0.10.0/`) закрыт (сессия #120):
-> концепт и ADR-0042 → zero-dep архитектура распределенной трассировки и W3C TraceContext Level 1:
-> `ru.jrestly.tracing`: `TraceContext` record (W3C traceparent парсинг/валидация, `random()`, `child()`), `TraceIdGenerator` & `TraceIdGenerators`, `TraceRequestContext`, `TracePropagator` SPI, `TracePropagators`,
-> `ru.jrestly.annotation.Trace`: декларативная аннотация на методах и интерфейсах с атрибутами `header`, `w3c`, `enabled`, `forceNew`,
-> `SimpleModuleInfo.Builder` & `JRestlyClient.Builder`: fluent-методы `tracePropagator(...)`, `correlationId(...)`, `w3cTracing(...)`,
-> `ControllerValidator`: валидация непустых имен заголовков в `@Trace`,
-> `HttpTemplateBuilder`: прозрачная инъекция заголовков трассировки с сохранением явно переданных пользователем значений,
-> `ResponseHeaders`: прямой доступ к `requestId()`, `traceparent()`, `traceContext()`,
-> unit-тесты (`TraceContextTest`, `TracePropagatorTest`, `TraceConfigTest`) и WireMock интеграционные тесты (`RequestTracingWireMockTest`, итого +28 тестов) →
-> дистилляция в ROADMAP («Request Tracing & Correlation ID Propagation SPI (ADR-0042) — COMPLETE ✅») + гейты 894/894 тестов (106 классов).
+> Эпик Circuit Breaker & Client Rate Limiter SPI (ADR-0043, `docs/0.10.0/`) закрыт (сессия #121):
+> концепт и ADR-0043 → zero-dep отказоустойчивость клиентской стороны:
+> `ru.jrestly.resilience`: `CircuitBreaker` (FSM `CLOSED`, `OPEN`, `HALF_OPEN`), `CircuitBreakerConfig` (порог сбоев, sliding window, таймаут восстановления, классификация исключений: 5xx/IO сбои vs 4xx норма), `CircuitBreakerMetrics`, `CircuitBreakers`, `CircuitBreakerRegistry`, `CircuitBreakerOpenException`,
+> `RateLimiter` (zero-dep Token Bucket на monotonic nanoseconds), `RateLimiterConfig`, `RateLimiterMetrics`, `RateLimiters`, `RateLimiterRegistry`, `RateLimitExceededException`,
+> `@CircuitBreaker` и `@RateLimiter` (`ru.jrestly.annotation`): декларативные аннотации на методах и интерфейсах с opt-out (`enabled = false`),
+> `SimpleModuleInfo.Builder` & `JRestlyClient.Builder`: fluent-методы `circuitBreaker(...)`, `circuitBreakerRegistry(...)`, `rateLimiter(...)`, `rateLimiterRegistry(...)`, изолированные per-module реестры по умолчанию,
+> `ControllerValidator`: валидация непустых имен, положительных порогов, допустимых окон и неотрицательных таймаутов,
+> `HttpTemplateBuilder`: прозрачное разрешение с учетом приоритетов Method > Sub-interface > Super-interface > Client,
+> `HttpTemplate`: защита и быстрый отказ (fail-fast) до сетевого вызова в `exchange()` и `exchangeAsync()` без обращения к сети, учет исходов вызовов,
+> unit-тесты (`CircuitBreakerTest`, `RateLimiterTest`, `ResilienceConfigTest`) и WireMock интеграционные тесты (`CircuitBreakerWireMockTest`, `RateLimiterWireMockTest`, итого +30 тестов) →
+> дистилляция в ROADMAP («Circuit Breaker & Client Rate Limiter SPI (ADR-0043) — COMPLETE ✅») + гейты 924/924 тестов (111 классов).
 > Следующий ход — свободный, выбор из активной зоны.
 
 ## Активная зона (кандидаты на следующий эпик)
 
 - **Кандидат №1 — test-javadoc** (ADR-0013 Non-goals):
   Test-source javadoc вынесен за скобки аудита; наведение лоска в тестовых классах.
-- **Кандидат №2 — Circuit Breaker & Client Rate Limiter SPI (ADR-0043)**:
-  Zero-dep отказоустойчивость: защита от каскадных сбоев, sliding-window circuit breaker (`CLOSED`, `OPEN`, `HALF_OPEN`), client-side rate limiting (token bucket / leaky bucket) для предотвращения 429 Too Many Requests при вызовах сторонних API / LLM.
+- **Кандидат №2 — Interceptor Execution Order & Priority SPI (ADR-0044)**:
+  Zero-dep строгое детерминированное упорядочивание интерцепторов (`@Order` / приоритеты, фазы аутентификации, логирования, модификации заголовков), short-circuiting ответа из интерцептора без сетевого вызова (мок/кэш).
 
 ---
 
@@ -54,6 +55,7 @@
   согласование протокола HTTP/2 и трейлеры (ADR-0038), персистентность cookie store (ADR-0039),
   продвинутые стратегии джиттера и ограничения Retry-After (ADR-0040),
   сжатие тела запроса и Content-Encoding SPI (ADR-0041),
-  трассировка запросов и проброс Correlation ID / W3C TraceContext (ADR-0042).
+  трассировка запросов и проброс Correlation ID / W3C TraceContext (ADR-0042),
+  Circuit Breaker и ограничение частоты запросов Rate Limiter SPI (ADR-0043).
 - **Коммиты — краткие, не дублируют ченджлог** (Антон).
 - **Объём одной сессии в 2–3 раза меньше** — один маленький шаг.

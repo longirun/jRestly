@@ -114,6 +114,12 @@ public final class ControllerValidator {
                 problems.add(current.getSimpleName() + ": @Trace header must not be blank");
             }
         }
+        for (ru.jrestly.annotation.CircuitBreaker cb : current.getAnnotationsByType(ru.jrestly.annotation.CircuitBreaker.class)) {
+            validateCircuitBreaker(current.getSimpleName(), cb, problems);
+        }
+        for (ru.jrestly.annotation.RateLimiter rl : current.getAnnotationsByType(ru.jrestly.annotation.RateLimiter.class)) {
+            validateRateLimiter(current.getSimpleName(), rl, problems);
+        }
         for (Accept accept : current.getAnnotationsByType(Accept.class)) {
             if (accept.value().length == 0) {
                 problems.add(current.getSimpleName() + ": @Accept value must not be empty");
@@ -266,6 +272,14 @@ public final class ControllerValidator {
             if (trace.header().isBlank()) {
                 problems.add(method.getName() + "(): @Trace header must not be blank");
             }
+        }
+
+        if (method.isAnnotationPresent(ru.jrestly.annotation.CircuitBreaker.class)) {
+            validateCircuitBreaker(method.getName() + "()", method.getAnnotation(ru.jrestly.annotation.CircuitBreaker.class), problems);
+        }
+
+        if (method.isAnnotationPresent(ru.jrestly.annotation.RateLimiter.class)) {
+            validateRateLimiter(method.getName() + "()", method.getAnnotation(ru.jrestly.annotation.RateLimiter.class), problems);
         }
 
         for (Accept accept : method.getAnnotationsByType(Accept.class)) {
@@ -485,5 +499,43 @@ public final class ControllerValidator {
             return method.getAnnotation(Patch.class).requestType();
         }
         return method.getAnnotation(Delete.class).requestType();
+    }
+
+    private static void validateCircuitBreaker(String prefix, ru.jrestly.annotation.CircuitBreaker cb, List<String> problems) {
+        if (cb.name().isBlank()) {
+            problems.add(prefix + ": @CircuitBreaker name must not be blank");
+        }
+        if (cb.failureRateThreshold() <= 0.0f || cb.failureRateThreshold() > 100.0f) {
+            problems.add(prefix + ": @CircuitBreaker failureRateThreshold must be in (0.0, 100.0], was " + cb.failureRateThreshold());
+        }
+        if (cb.minimumNumberOfCalls() <= 0) {
+            problems.add(prefix + ": @CircuitBreaker minimumNumberOfCalls must be strictly positive, was " + cb.minimumNumberOfCalls());
+        }
+        if (cb.slidingWindowSize() < cb.minimumNumberOfCalls()) {
+            problems.add(prefix + ": @CircuitBreaker slidingWindowSize (" + cb.slidingWindowSize()
+                    + ") must be >= minimumNumberOfCalls (" + cb.minimumNumberOfCalls() + ")");
+        }
+        if (cb.waitDurationMs() <= 0) {
+            problems.add(prefix + ": @CircuitBreaker waitDurationMs must be strictly positive, was " + cb.waitDurationMs());
+        }
+        if (cb.permittedNumberOfCallsInHalfOpenState() <= 0) {
+            problems.add(prefix + ": @CircuitBreaker permittedNumberOfCallsInHalfOpenState must be strictly positive, was "
+                    + cb.permittedNumberOfCallsInHalfOpenState());
+        }
+    }
+
+    private static void validateRateLimiter(String prefix, ru.jrestly.annotation.RateLimiter rl, List<String> problems) {
+        if (rl.name().isBlank()) {
+            problems.add(prefix + ": @RateLimiter name must not be blank");
+        }
+        if (rl.limitForPeriod() <= 0) {
+            problems.add(prefix + ": @RateLimiter limitForPeriod must be strictly positive, was " + rl.limitForPeriod());
+        }
+        if (rl.limitRefreshPeriodMs() <= 0) {
+            problems.add(prefix + ": @RateLimiter limitRefreshPeriodMs must be strictly positive, was " + rl.limitRefreshPeriodMs());
+        }
+        if (rl.timeoutDurationMs() < 0) {
+            problems.add(prefix + ": @RateLimiter timeoutDurationMs must not be negative, was " + rl.timeoutDurationMs());
+        }
     }
 }

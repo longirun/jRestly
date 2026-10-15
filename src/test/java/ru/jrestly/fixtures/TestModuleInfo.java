@@ -10,6 +10,8 @@ public class TestModuleInfo implements ModuleInfo {
     private final TestEnvironment environment;
     private final TestAuthProvider authProvider;
     private RetryPolicy retryPolicy = RetryPolicy.off();
+    private final ru.jrestly.resilience.CircuitBreakerRegistry circuitBreakerRegistry = ru.jrestly.resilience.CircuitBreakerRegistry.ofDefaults();
+    private final ru.jrestly.resilience.RateLimiterRegistry rateLimiterRegistry = ru.jrestly.resilience.RateLimiterRegistry.ofDefaults();
 
     public TestModuleInfo(String baseUrl) {
         this.environment = new TestEnvironment(baseUrl);
@@ -39,6 +41,16 @@ public class TestModuleInfo implements ModuleInfo {
 
     public void setRetryPolicy(RetryPolicy retryPolicy) {
         this.retryPolicy = retryPolicy;
+    }
+
+    @Override
+    public ru.jrestly.resilience.CircuitBreakerRegistry getCircuitBreakerRegistry() {
+        return circuitBreakerRegistry;
+    }
+
+    @Override
+    public ru.jrestly.resilience.RateLimiterRegistry getRateLimiterRegistry() {
+        return rateLimiterRegistry;
     }
 
     public TestAuthProvider getTestAuthProvider() {

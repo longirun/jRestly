@@ -306,5 +306,45 @@ public interface ModuleInfo {
     default TracePropagator getTracePropagator() {
         return null;
     }
+
+    /**
+     * The client-level {@link ru.jrestly.resilience.CircuitBreaker} (ADR-0043).
+     * When {@code null} (the default), requests do not use circuit breaker protection unless
+     * configured via {@link ru.jrestly.annotation.CircuitBreaker}.
+     *
+     * @return the circuit breaker, or {@code null} if not configured
+     */
+    default ru.jrestly.resilience.CircuitBreaker getCircuitBreaker() {
+        return null;
+    }
+
+    /**
+     * The registry of {@link ru.jrestly.resilience.CircuitBreaker} instances (ADR-0043).
+     *
+     * @return the circuit breaker registry, or {@code null} if not configured
+     */
+    default ru.jrestly.resilience.CircuitBreakerRegistry getCircuitBreakerRegistry() {
+        return null;
+    }
+
+    /**
+     * The client-level {@link ru.jrestly.resilience.RateLimiter} (ADR-0043).
+     * When {@code null} (the default), requests do not use client-side rate limiting unless
+     * configured via {@link ru.jrestly.annotation.RateLimiter}.
+     *
+     * @return the rate limiter, or {@code null} if not configured
+     */
+    default ru.jrestly.resilience.RateLimiter getRateLimiter() {
+        return null;
+    }
+
+    /**
+     * The registry of {@link ru.jrestly.resilience.RateLimiter} instances (ADR-0043).
+     *
+     * @return the rate limiter registry, or {@code null} if not configured
+     */
+    default ru.jrestly.resilience.RateLimiterRegistry getRateLimiterRegistry() {
+        return null;
+    }
 }
 

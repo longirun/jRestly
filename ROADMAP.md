@@ -1480,7 +1480,50 @@ Gates (session #120, clean rebuild):
 - `javadoc` 0 warnings under permanent `-Xdoclint:all -Werror`.
 - Zero external runtime dependencies preserved (0 dependencies in Maven POM).
 
-After the epic: candidate #1 — test-javadoc (ADR-0013 Non-goals); candidate #2 — next roadmap epic. ADR number **0043** free.
+After the epic: candidate #1 — test-javadoc (ADR-0013 Non-goals); candidate #2 — Circuit Breaker & Client Rate Limiter SPI (ADR-0043) — done, section below. ADR number **0043** — resilience epic, **0044** free.
+
+## Circuit Breaker & Client Rate Limiter SPI (ADR-0043) — COMPLETE ✅ (2026-10-15, unreleased)
+
+> Source of truth (concept, architecture decisions, resilience model, Token Bucket algorithm, SPI design, test strategy, status):
+> [`docs/0.10.0/ADR-0043-circuit-breaker-and-client-rate-limiter-spi.md`](docs/0.10.0/ADR-0043-circuit-breaker-and-client-rate-limiter-spi.md).
+> Session #121 (agent-loop). Zero-dependency client-side fault tolerance: cascading failure protection via Circuit Breaker and request throughput control via Rate Limiter.
+> Introduces `ru.jrestly.resilience` package (`CircuitBreaker` interface with `CLOSED`, `OPEN`, `HALF_OPEN` states, `CircuitBreakerConfig`, `CircuitBreakerMetrics`, `CircuitBreakers` factory, `CircuitBreakerRegistry`, `CircuitBreakerOpenException`, `RateLimiter` interface, `RateLimiterConfig`, `RateLimiterMetrics`, `RateLimiters` token-bucket factory, `RateLimiterRegistry`, `RateLimitExceededException`),
+> `@CircuitBreaker` and `@RateLimiter` declarative annotations (`ru.jrestly.annotation`) on methods and interfaces with full threshold, timeout, and opt-out controls,
+> client and module builder ergonomics (`circuitBreaker`, `circuitBreakerRegistry`, `rateLimiter`, `rateLimiterRegistry`),
+> validation in `ControllerValidator` (rejects blank names, non-positive thresholds, invalid sliding window sizes, negative wait/timeout durations),
+> transparent integration in `HttpTemplateBuilder` (prioritizing Method > Sub-interface > Super-interface > Client with per-module isolated registries by default),
+> fast-fail execution guarding in `HttpTemplate` (both synchronous `exchange()` and asynchronous `exchangeAsync()` reject calls before network dispatch when circuit is open or limit exceeded, while recording outcomes and keeping 4xx client errors healthy).
+> 100% backward compatible and zero-dependency (Java 21 standard library concurrency only).
+
+Key decisions (ADR-0043):
+- **Zero-Dep Circuit Breaker (`ru.jrestly.resilience.CircuitBreaker`):**
+  - Three-state finite state machine: `CLOSED`, `OPEN`, and `HALF_OPEN`.
+  - Configurable sliding window with `minimumNumberOfCalls`, `slidingWindowSize`, `failureRateThreshold` (0..100%), and `waitDurationInOpenState`.
+  - Half-open trial phase with `permittedNumberOfCallsInHalfOpenState`: successful trial calls reset to `CLOSED`, single failure trips immediately back to `OPEN`.
+  - Default failure classification: network errors (`IOException`, `TimeoutException`) and server errors (HTTP 5xx, `ServerErrorException`, `UnexpectedStatusException >= 500`) are failures; client errors (HTTP 4xx, `ClientErrorException`) are normal server responses and do not trip the circuit breaker.
+  - Fail-fast rejection throwing `CircuitBreakerOpenException` containing circuit name and `remainingWaitDuration`.
+- **Zero-Dep Client-Side Rate Limiter (`ru.jrestly.resilience.RateLimiter`):**
+  - Thread-safe Token Bucket algorithm running on monotonic nanosecond clock (`System.nanoTime()`).
+  - Configurable `limitForPeriod`, `limitRefreshPeriod`, and `timeoutDuration` (default `Duration.ZERO` for non-blocking fail-fast).
+  - Rejection throws `RateLimitExceededException` without network roundtrip.
+- **Declarative & Fluent Ergonomics:**
+  - `@CircuitBreaker` and `@RateLimiter` annotations on interfaces and methods with `enabled = false` method-level opt-out.
+  - Fluent builders in `SimpleModuleInfo.Builder` and `JRestlyClient.Builder`.
+  - Registries (`CircuitBreakerRegistry`, `RateLimiterRegistry`) isolated per-module/client instance by default, preventing state leakage across test cases while supporting explicit cross-client sharing.
+- **Full test coverage:** 30 new tests (+30 cases, total suite 924/924 across 111 classes) spanning:
+  - `CircuitBreakerTest` (8 unit tests: initial closed state, minimumNumberOfCalls threshold guard, sliding window failure rate trip, half-open recovery, half-open fail-fast reopening, client 4xx safety, default predicate classification, manual transitions, registry caching);
+  - `RateLimiterTest` (4 unit tests: token bucket capacity and exhaustion, time-based refill, timeout-based waiting, registry caching);
+  - `ResilienceConfigTest` (6 unit tests: ModuleInfo defaults, SimpleModuleInfo defaults, client builder wiring, ControllerValidator valid rules, blank name rejection, invalid bounds rejection);
+  - `CircuitBreakerWireMockTest` (6 WireMock integration tests: 500 server error trip & network request bypass, 404 client error tolerance, wait duration recovery to 200 OK, method-level opt-out bypass, async CompletableFuture exceptional completion, client-level circuit breaker);
+  - `RateLimiterWireMockTest` (5 WireMock integration tests: throughput enforcement & network bypass, timeout token refill wait, method opt-out, async exceptional completion, client-level rate limiter).
+
+Gates (session #121, clean rebuild):
+- `./gradlew test` **924/924** (111 classes, 0 failures/errors; +30 tests in ADR-0043).
+- `compileJava` and `compileTestJava` 0 warnings under permanent `-Xlint:all -Werror`.
+- `javadoc` 0 warnings under permanent `-Xdoclint:all -Werror`.
+- Zero external runtime dependencies preserved (0 dependencies in Maven POM).
+
+After the epic: candidate #1 — test-javadoc (ADR-0013 Non-goals); candidate #2 — next roadmap epic. ADR number **0044** free.
 
 ## Post-0.5.0 shortlist (not scheduled — see ADR-0003)
 

@@ -9,6 +9,10 @@ import ru.jrestly.interceptor.ResponseInterceptor;
 import ru.jrestly.interceptor.SimpleRequestContext;
 import ru.jrestly.interceptor.SimpleResponseContext;
 import ru.jrestly.json.JsonCodec;
+import ru.jrestly.resilience.CircuitBreaker;
+import ru.jrestly.resilience.CircuitBreakerOpenException;
+import ru.jrestly.resilience.RateLimiter;
+import ru.jrestly.resilience.RateLimitExceededException;
 
 import java.io.BufferedReader;
 import java.io.ByteArrayInputStream;
@@ -143,6 +147,8 @@ public class HttpTemplate {
     private Executor executor;
     private Duration timeout;
     private ClientMetricsListener metricsListener;
+    private CircuitBreaker circuitBreaker;
+    private RateLimiter rateLimiter;
 
     /**
      * Creates an empty template. Not intended for direct use: instances
@@ -216,8 +222,18 @@ public class HttpTemplate {
         Throwable failure = null;
         int[] attemptsHolder = new int[] {1};
         try {
+            if (rateLimiter != null) {
+                rateLimiter.acquire();
+            }
+            if (circuitBreaker != null) {
+                circuitBreaker.acquirePermission();
+            }
             response = executeWithRetries(effectiveRequest, requestContext, attemptsHolder);
-            return processResponse(effectiveRequest, response, start);
+            T result = processResponse(effectiveRequest, response, start);
+            if (circuitBreaker != null) {
+                circuitBreaker.recordSuccess(System.nanoTime() - start);
+            }
+            return result;
         } catch (IOException e) {
             failure = e;
             logger.log(System.Logger.Level.ERROR,
@@ -232,6 +248,11 @@ public class HttpTemplate {
             failure = t;
             throw t;
         } finally {
+            if (failure != null && circuitBreaker != null
+                    && !(failure instanceof CircuitBreakerOpenException)
+                    && !(failure instanceof RateLimitExceededException)) {
+                circuitBreaker.recordFailure(System.nanoTime() - start, failure);
+            }
             if (hasInterceptors) {
                 invokeResponseInterceptors(requestContext, effectiveRequest, response, failure, start);
             }
@@ -255,6 +276,35 @@ public class HttpTemplate {
         AtomicInteger attemptsRef = new AtomicInteger(1);
         boolean hasResponseInterceptors = !responseInterceptors.isEmpty() && requestContext != null;
         boolean hasMetrics = metricsListener != null && requestContext != null;
+
+        if (rateLimiter != null) {
+            if (!rateLimiter.tryAcquire(rateLimiter.config().timeoutDuration())) {
+                Throwable t = new RateLimitExceededException(rateLimiter.name());
+                if (hasResponseInterceptors) {
+                    invokeResponseInterceptors(requestContext, request, null, t, startNanos);
+                }
+                if (hasMetrics) {
+                    notifyCallComplete(requestContext, request, null, t, startNanos, 1);
+                }
+                CompletableFuture<Object> failed = new CompletableFuture<>();
+                failed.completeExceptionally(t);
+                return failed;
+            }
+        }
+        if (circuitBreaker != null) {
+            if (!circuitBreaker.tryAcquirePermission()) {
+                Throwable t = new CircuitBreakerOpenException(circuitBreaker.name(), circuitBreaker.remainingWaitDuration());
+                if (hasResponseInterceptors) {
+                    invokeResponseInterceptors(requestContext, request, null, t, startNanos);
+                }
+                if (hasMetrics) {
+                    notifyCallComplete(requestContext, request, null, t, startNanos, 1);
+                }
+                CompletableFuture<Object> failed = new CompletableFuture<>();
+                failed.completeExceptionally(t);
+                return failed;
+            }
+        }
 
         java.util.function.Function<WireResponse, Object> processor = response -> {
             if (hasResponseInterceptors || hasMetrics) {
@@ -321,9 +371,26 @@ public class HttpTemplate {
                     );
                 }
             };
-            return executor != null
+            future = executor != null
                     ? future.whenCompleteAsync(interceptorAction, executor)
                     : future.whenComplete(interceptorAction);
+        }
+
+        if (circuitBreaker != null) {
+            java.util.function.BiConsumer<Object, Throwable> cbAction = (res, ex) -> {
+                long duration = System.nanoTime() - startNanos;
+                if (ex == null) {
+                    circuitBreaker.recordSuccess(duration);
+                } else {
+                    Throwable failure = unwrapCause(ex);
+                    if (!(failure instanceof CircuitBreakerOpenException) && !(failure instanceof RateLimitExceededException)) {
+                        circuitBreaker.recordFailure(duration, failure);
+                    }
+                }
+            };
+            future = executor != null
+                    ? future.whenCompleteAsync(cbAction, executor)
+                    : future.whenComplete(cbAction);
         }
 
         return future;
@@ -2144,6 +2211,42 @@ public class HttpTemplate {
      */
     public ClientMetricsListener getMetricsListener() {
         return metricsListener;
+    }
+
+    /**
+     * Sets the {@link CircuitBreaker} protecting this call (ADR-0043).
+     *
+     * @param circuitBreaker the circuit breaker, or {@code null}
+     */
+    public void setCircuitBreaker(CircuitBreaker circuitBreaker) {
+        this.circuitBreaker = circuitBreaker;
+    }
+
+    /**
+     * Returns the configured {@link CircuitBreaker}.
+     *
+     * @return the circuit breaker, or {@code null}
+     */
+    public CircuitBreaker getCircuitBreaker() {
+        return circuitBreaker;
+    }
+
+    /**
+     * Sets the {@link RateLimiter} controlling call throughput (ADR-0043).
+     *
+     * @param rateLimiter the rate limiter, or {@code null}
+     */
+    public void setRateLimiter(RateLimiter rateLimiter) {
+        this.rateLimiter = rateLimiter;
+    }
+
+    /**
+     * Returns the configured {@link RateLimiter}.
+     *
+     * @return the rate limiter, or {@code null}
+     */
+    public RateLimiter getRateLimiter() {
+        return rateLimiter;
     }
 
     private void handleOnError(int statusCode, String payload, List<Header> responseHeaders) {

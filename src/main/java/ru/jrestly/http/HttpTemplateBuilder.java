@@ -38,6 +38,12 @@ import ru.jrestly.tracing.TraceRequestContext;
 import ru.jrestly.interceptor.RequestInterceptor;
 import ru.jrestly.interceptor.ResponseInterceptor;
 import ru.jrestly.metrics.ClientMetricsListener;
+import ru.jrestly.resilience.CircuitBreaker;
+import ru.jrestly.resilience.CircuitBreakerConfig;
+import ru.jrestly.resilience.CircuitBreakerRegistry;
+import ru.jrestly.resilience.RateLimiter;
+import ru.jrestly.resilience.RateLimiterConfig;
+import ru.jrestly.resilience.RateLimiterRegistry;
 
 import java.io.File;
 import java.io.FileNotFoundException;
@@ -88,6 +94,9 @@ import java.util.stream.Collectors;
  * {@link #build()} — the stateful engine lives in the produced template.
  */
 public class HttpTemplateBuilder {
+
+    private static final CircuitBreakerRegistry DEFAULT_CIRCUIT_BREAKER_REGISTRY = CircuitBreakerRegistry.ofDefaults();
+    private static final RateLimiterRegistry DEFAULT_RATE_LIMITER_REGISTRY = RateLimiterRegistry.ofDefaults();
 
     private final ModuleInfo moduleInfo;
     private final HttpClient httpClient;
@@ -282,6 +291,8 @@ public class HttpTemplateBuilder {
         result.setMetricsListener(resolveMetricsListener());
         result.setExecutor(executor != null ? executor : moduleInfo.getExecutor());
         result.setTimeout(resolveTimeout());
+        result.setCircuitBreaker(resolveCircuitBreaker());
+        result.setRateLimiter(resolveRateLimiter());
         result.setControllerClass(controller);
         result.setMethod(method);
         result.setArgs(args);
@@ -1613,5 +1624,79 @@ public class HttpTemplateBuilder {
             }
         }
         return ContentCompressors.get(algorithm);
+    }
+
+    private CircuitBreaker resolveCircuitBreaker() {
+        if (method != null && method.isAnnotationPresent(ru.jrestly.annotation.CircuitBreaker.class)) {
+            ru.jrestly.annotation.CircuitBreaker ann = method.getAnnotation(ru.jrestly.annotation.CircuitBreaker.class);
+            if (!ann.enabled()) {
+                return null;
+            }
+            return getCircuitBreakerFromAnnotation(ann);
+        }
+
+        List<Class<?>> hierarchy = collectInterfaceHierarchy(controller);
+        for (int i = hierarchy.size() - 1; i >= 0; i--) {
+            Class<?> iface = hierarchy.get(i);
+            if (iface.isAnnotationPresent(ru.jrestly.annotation.CircuitBreaker.class)) {
+                ru.jrestly.annotation.CircuitBreaker ann = iface.getAnnotation(ru.jrestly.annotation.CircuitBreaker.class);
+                if (!ann.enabled()) {
+                    return null;
+                }
+                return getCircuitBreakerFromAnnotation(ann);
+            }
+        }
+
+        return moduleInfo != null ? moduleInfo.getCircuitBreaker() : null;
+    }
+
+    private CircuitBreaker getCircuitBreakerFromAnnotation(ru.jrestly.annotation.CircuitBreaker ann) {
+        CircuitBreakerConfig config = CircuitBreakerConfig.builder()
+                .failureRateThreshold(ann.failureRateThreshold())
+                .minimumNumberOfCalls(ann.minimumNumberOfCalls())
+                .slidingWindowSize(ann.slidingWindowSize())
+                .waitDurationInOpenState(Duration.ofMillis(ann.waitDurationMs()))
+                .permittedNumberOfCallsInHalfOpenState(ann.permittedNumberOfCallsInHalfOpenState())
+                .build();
+        CircuitBreakerRegistry registry = (moduleInfo != null && moduleInfo.getCircuitBreakerRegistry() != null)
+                ? moduleInfo.getCircuitBreakerRegistry()
+                : DEFAULT_CIRCUIT_BREAKER_REGISTRY;
+        return registry.getOrCreate(ann.name(), config);
+    }
+
+    private RateLimiter resolveRateLimiter() {
+        if (method != null && method.isAnnotationPresent(ru.jrestly.annotation.RateLimiter.class)) {
+            ru.jrestly.annotation.RateLimiter ann = method.getAnnotation(ru.jrestly.annotation.RateLimiter.class);
+            if (!ann.enabled()) {
+                return null;
+            }
+            return getRateLimiterFromAnnotation(ann);
+        }
+
+        List<Class<?>> hierarchy = collectInterfaceHierarchy(controller);
+        for (int i = hierarchy.size() - 1; i >= 0; i--) {
+            Class<?> iface = hierarchy.get(i);
+            if (iface.isAnnotationPresent(ru.jrestly.annotation.RateLimiter.class)) {
+                ru.jrestly.annotation.RateLimiter ann = iface.getAnnotation(ru.jrestly.annotation.RateLimiter.class);
+                if (!ann.enabled()) {
+                    return null;
+                }
+                return getRateLimiterFromAnnotation(ann);
+            }
+        }
+
+        return moduleInfo != null ? moduleInfo.getRateLimiter() : null;
+    }
+
+    private RateLimiter getRateLimiterFromAnnotation(ru.jrestly.annotation.RateLimiter ann) {
+        RateLimiterConfig config = RateLimiterConfig.builder()
+                .limitForPeriod(ann.limitForPeriod())
+                .limitRefreshPeriod(Duration.ofMillis(ann.limitRefreshPeriodMs()))
+                .timeoutDuration(Duration.ofMillis(ann.timeoutDurationMs()))
+                .build();
+        RateLimiterRegistry registry = (moduleInfo != null && moduleInfo.getRateLimiterRegistry() != null)
+                ? moduleInfo.getRateLimiterRegistry()
+                : DEFAULT_RATE_LIMITER_REGISTRY;
+        return registry.getOrCreate(ann.name(), config);
     }
 }

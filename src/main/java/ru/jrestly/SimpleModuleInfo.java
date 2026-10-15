@@ -78,6 +78,10 @@ public class SimpleModuleInfo implements ModuleInfo {
     private final int requestCompressionThreshold;
     private final Map<String, ContentCompressor> contentCompressors;
     private final TracePropagator tracePropagator;
+    private final ru.jrestly.resilience.CircuitBreaker circuitBreaker;
+    private final ru.jrestly.resilience.CircuitBreakerRegistry circuitBreakerRegistry;
+    private final ru.jrestly.resilience.RateLimiter rateLimiter;
+    private final ru.jrestly.resilience.RateLimiterRegistry rateLimiterRegistry;
 
     private SimpleModuleInfo(Builder builder) {
         this.name = builder.name;
@@ -106,6 +110,14 @@ public class SimpleModuleInfo implements ModuleInfo {
         this.requestCompressionThreshold = builder.requestCompressionThreshold;
         this.contentCompressors = Map.copyOf(builder.contentCompressors);
         this.tracePropagator = builder.tracePropagator;
+        this.circuitBreaker = builder.circuitBreaker;
+        this.circuitBreakerRegistry = builder.circuitBreakerRegistry != null
+                ? builder.circuitBreakerRegistry
+                : ru.jrestly.resilience.CircuitBreakerRegistry.ofDefaults();
+        this.rateLimiter = builder.rateLimiter;
+        this.rateLimiterRegistry = builder.rateLimiterRegistry != null
+                ? builder.rateLimiterRegistry
+                : ru.jrestly.resilience.RateLimiterRegistry.ofDefaults();
     }
 
     /**
@@ -246,6 +258,26 @@ public class SimpleModuleInfo implements ModuleInfo {
         return tracePropagator;
     }
 
+    @Override
+    public ru.jrestly.resilience.CircuitBreaker getCircuitBreaker() {
+        return circuitBreaker;
+    }
+
+    @Override
+    public ru.jrestly.resilience.CircuitBreakerRegistry getCircuitBreakerRegistry() {
+        return circuitBreakerRegistry;
+    }
+
+    @Override
+    public ru.jrestly.resilience.RateLimiter getRateLimiter() {
+        return rateLimiter;
+    }
+
+    @Override
+    public ru.jrestly.resilience.RateLimiterRegistry getRateLimiterRegistry() {
+        return rateLimiterRegistry;
+    }
+
     /**
      * A builder for {@link SimpleModuleInfo}, pre-set to the defaults:
      * name {@code "default"}, 5 s connect timeout, 30 s socket timeout,
@@ -280,6 +312,10 @@ public class SimpleModuleInfo implements ModuleInfo {
         private int requestCompressionThreshold = 0;
         private final Map<String, ContentCompressor> contentCompressors = new java.util.LinkedHashMap<>();
         private TracePropagator tracePropagator;
+        private ru.jrestly.resilience.CircuitBreaker circuitBreaker;
+        private ru.jrestly.resilience.CircuitBreakerRegistry circuitBreakerRegistry;
+        private ru.jrestly.resilience.RateLimiter rateLimiter;
+        private ru.jrestly.resilience.RateLimiterRegistry rateLimiterRegistry;
 
         /**
          * A builder pre-set to the defaults; {@code baseUrl} must still
@@ -867,6 +903,50 @@ public class SimpleModuleInfo implements ModuleInfo {
          */
         public Builder w3cTracing(boolean enabled) {
             this.tracePropagator = enabled ? TracePropagators.w3c() : null;
+            return this;
+        }
+
+        /**
+         * Configures the client-level circuit breaker (ADR-0043).
+         *
+         * @param circuitBreaker the circuit breaker, or {@code null}
+         * @return this builder, for chaining
+         */
+        public Builder circuitBreaker(ru.jrestly.resilience.CircuitBreaker circuitBreaker) {
+            this.circuitBreaker = circuitBreaker;
+            return this;
+        }
+
+        /**
+         * Configures the circuit breaker registry (ADR-0043).
+         *
+         * @param registry the registry, or {@code null}
+         * @return this builder, for chaining
+         */
+        public Builder circuitBreakerRegistry(ru.jrestly.resilience.CircuitBreakerRegistry registry) {
+            this.circuitBreakerRegistry = registry;
+            return this;
+        }
+
+        /**
+         * Configures the client-level rate limiter (ADR-0043).
+         *
+         * @param rateLimiter the rate limiter, or {@code null}
+         * @return this builder, for chaining
+         */
+        public Builder rateLimiter(ru.jrestly.resilience.RateLimiter rateLimiter) {
+            this.rateLimiter = rateLimiter;
+            return this;
+        }
+
+        /**
+         * Configures the rate limiter registry (ADR-0043).
+         *
+         * @param registry the registry, or {@code null}
+         * @return this builder, for chaining
+         */
+        public Builder rateLimiterRegistry(ru.jrestly.resilience.RateLimiterRegistry registry) {
+            this.rateLimiterRegistry = registry;
             return this;
         }
 

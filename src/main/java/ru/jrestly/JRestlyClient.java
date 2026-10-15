@@ -613,6 +613,50 @@ public class JRestlyClient extends AbstractHttpClient {
         }
 
         /**
+         * Configures the client-level circuit breaker (ADR-0043).
+         *
+         * @param circuitBreaker the circuit breaker, or {@code null}
+         * @return this builder, for chaining
+         */
+        public Builder circuitBreaker(ru.jrestly.resilience.CircuitBreaker circuitBreaker) {
+            moduleInfoBuilder.circuitBreaker(circuitBreaker);
+            return this;
+        }
+
+        /**
+         * Configures the circuit breaker registry (ADR-0043).
+         *
+         * @param registry the registry, or {@code null}
+         * @return this builder, for chaining
+         */
+        public Builder circuitBreakerRegistry(ru.jrestly.resilience.CircuitBreakerRegistry registry) {
+            moduleInfoBuilder.circuitBreakerRegistry(registry);
+            return this;
+        }
+
+        /**
+         * Configures the client-level rate limiter (ADR-0043).
+         *
+         * @param rateLimiter the rate limiter, or {@code null}
+         * @return this builder, for chaining
+         */
+        public Builder rateLimiter(ru.jrestly.resilience.RateLimiter rateLimiter) {
+            moduleInfoBuilder.rateLimiter(rateLimiter);
+            return this;
+        }
+
+        /**
+         * Configures the rate limiter registry (ADR-0043).
+         *
+         * @param registry the registry, or {@code null}
+         * @return this builder, for chaining
+         */
+        public Builder rateLimiterRegistry(ru.jrestly.resilience.RateLimiterRegistry registry) {
+            moduleInfoBuilder.rateLimiterRegistry(registry);
+            return this;
+        }
+
+        /**
          * Validates the settings (baseUrl must be set) and creates the
          * client for the resulting {@link SimpleModuleInfo}; an unset
          * {@code jsonCodec} is resolved from the classpath.

@@ -46,16 +46,17 @@
 3. Тесты: 23 новых теста, гейты чистые (866/866). Следующий свободный ADR — **0042**.
 
 [2026-10-15 10:28] Агент (сессия #120): Реализован эпик Request Tracing & Correlation ID Propagation SPI (ADR-0042):
-1. **Zero-Dep W3C TraceContext & Correlation IDs (`ru.jrestly.tracing`):**
-   - `TraceContext`: неизменяемый record W3C TraceContext Level 1 (`traceId` 32-hex, `spanId` 16-hex, `traceFlags` 2-hex, `traceState`). Валидирующий парсинг `parse(traceparent)` с защитой от all-zero и невалидных форматов, генерация `random()`, порождение дочерних span'ов `child()`.
-   - `TraceIdGenerator` & `TraceIdGenerators`: `uuid()`, `hex(bytes)`, `prefixed(...)`, `threadLocal(...)`.
-   - `TracePropagator` SPI & `TracePropagators`: фабрики `correlationId(name)`, `w3c()`, `threadLocal(...)`, `composite(...)`.
-2. **Декларативная и программная эргономика:**
-   - Аннотация `@Trace` (методы и интерфейсы) с атрибутами `header` (дефолт `X-Request-ID`), `w3c`, `enabled` (точечный opt-out), `forceNew`.
-   - Fluent-методы в `SimpleModuleInfo.Builder` и `JRestlyClient.Builder`: `tracePropagator(...)`, `correlationId(...)`, `w3cTracing(...)`.
-   - Валидация в `ControllerValidator`: проверка на blank header name с выбросом `ControllerValidationException`.
-   - Транспортный пайплайн в `HttpTemplateBuilder`: прозрачная инъекция tracing заголовков с гарантией сохранения явно переданных пользователем значений (`@RequestHeader("X-Request-ID")`).
-   - Метаданные в `ResponseHeaders`: прямой доступ `requestId()`, `traceparent()`, `traceContext()`.
-3. **Тестирование (28 новых тестов, итого 894/894 в 106 классах):**
-   - `TraceContextTest` (6 unit тестов), `TracePropagatorTest` (7 unit тестов), `TraceConfigTest` (4 unit теста), `RequestTracingWireMockTest` (11 WireMock интеграционных тестов). Все гейты чистые (0 warnings под постоянными флагами `-Xlint:all -Werror` и `-Xdoclint:all -Werror`), zero-dep core строго сохранен. Следующий свободный ADR — **0043**.
+1. Zero-Dep W3C TraceContext & Correlation IDs (`ru.jrestly.tracing`): `TraceContext` record (W3C traceparent парсинг/генерация), `TraceIdGenerators`, `TracePropagators`.
+2. Декларативная и клиентская эргономика: аннотация `@Trace`, клиентские билдеры `correlationId` и `w3cTracing`, `ResponseHeaders` акцессоры.
+3. Тесты: 28 новых тестов, гейты чистые (894/894 в 106 классах). Следующий свободный ADR — **0043**.
 
+[2026-10-15 11:18] Агент (сессия #121): Реализован эпик Circuit Breaker & Client Rate Limiter SPI (ADR-0043):
+1. **Zero-Dep Fault Tolerance & Rate Limiting (`ru.jrestly.resilience`):**
+   - `CircuitBreaker` (FSM `CLOSED`, `OPEN`, `HALF_OPEN`), `CircuitBreakerConfig` (пороги сбоев, sliding window, таймаут восстановления, умный предикат классификации: 5xx/IO сбои vs 4xx здоровая норма), `CircuitBreakerMetrics`, `CircuitBreakers` factory, `CircuitBreakerRegistry`, `CircuitBreakerOpenException`.
+   - `RateLimiter` (высокоточный Token Bucket на системных наносекундах `System.nanoTime()`), `RateLimiterConfig`, `RateLimiterMetrics`, `RateLimiters` factory, `RateLimiterRegistry`, `RateLimitExceededException`.
+2. **Декларативная и программная эргономика:**
+   - Аннотации `@CircuitBreaker` и `@RateLimiter` на интерфейсах и методах с точечным opt-out (`enabled = false`).
+   - Изолированные per-module реестры по умолчанию в `SimpleModuleInfo` и `JRestlyClient` (исключают утечки состояния между тестами/клиентами, поддерживают явный cross-client шаринг).
+   - Интеграция в `HttpTemplate`: быстрый отказ (fail-fast) до сетевого взаимодействия в синхронном `exchange()` и асинхронном `exchangeAsync()` без лишней нагрузки на сокеты и внешние сервисы.
+3. **Тестирование (+30 новых тестов, итого 924/924 в 111 классах):**
+   - `CircuitBreakerTest` (8 unit тестов), `RateLimiterTest` (4 unit теста), `ResilienceConfigTest` (6 unit тестов), `CircuitBreakerWireMockTest` (6 WireMock тестов), `RateLimiterWireMockTest` (5 WireMock тестов). Все гейты чистые (0 warnings под постоянными флагами `-Xlint:all -Werror` и `-Xdoclint:all -Werror`), zero-dep core строго сохранен. Следующий свободный ADR — **0044**.
