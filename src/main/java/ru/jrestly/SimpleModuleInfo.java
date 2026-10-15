@@ -11,9 +11,13 @@ import ru.jrestly.json.JsonCodecResolver;
 
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLParameters;
+import java.net.Authenticator;
 import java.net.CookieHandler;
 import java.net.CookieManager;
 import java.net.CookiePolicy;
+import java.net.InetSocketAddress;
+import java.net.PasswordAuthentication;
+import java.net.ProxySelector;
 import java.net.http.HttpClient;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -58,6 +62,8 @@ public class SimpleModuleInfo implements ModuleInfo {
     private final boolean virtualThreads;
     private final CookieHandler cookieHandler;
     private final ru.jrestly.metrics.ClientMetricsListener metricsListener;
+    private final ProxySelector proxySelector;
+    private final Authenticator authenticator;
 
     private SimpleModuleInfo(Builder builder) {
         this.name = builder.name;
@@ -80,6 +86,8 @@ public class SimpleModuleInfo implements ModuleInfo {
         this.virtualThreads = builder.virtualThreads;
         this.cookieHandler = builder.cookieHandler;
         this.metricsListener = builder.metricsListener;
+        this.proxySelector = builder.proxySelector;
+        this.authenticator = builder.authenticator;
     }
 
     /**
@@ -182,6 +190,16 @@ public class SimpleModuleInfo implements ModuleInfo {
         return metricsListener;
     }
 
+    @Override
+    public ProxySelector getProxySelector() {
+        return proxySelector;
+    }
+
+    @Override
+    public Authenticator getAuthenticator() {
+        return authenticator;
+    }
+
     /**
      * A builder for {@link SimpleModuleInfo}, pre-set to the defaults:
      * name {@code "default"}, 5 s connect timeout, 30 s socket timeout,
@@ -210,6 +228,8 @@ public class SimpleModuleInfo implements ModuleInfo {
         private boolean virtualThreads = false;
         private CookieHandler cookieHandler;
         private ru.jrestly.metrics.ClientMetricsListener metricsListener;
+        private ProxySelector proxySelector;
+        private Authenticator authenticator;
 
         /**
          * A builder pre-set to the defaults; {@code baseUrl} must still
@@ -538,6 +558,107 @@ public class SimpleModuleInfo implements ModuleInfo {
             } else {
                 this.metricsListener = ru.jrestly.metrics.ClientMetricsListener.composite(this.metricsListener, metricsListener);
             }
+            return this;
+        }
+
+        /**
+         * Sets the proxy selector used for routing HTTP requests (ADR-0037).
+         *
+         * @param proxySelector the proxy selector, not {@code null}
+         * @return this builder, for chaining
+         * @throws NullPointerException if {@code proxySelector} is {@code null}
+         */
+        public Builder proxy(ProxySelector proxySelector) {
+            this.proxySelector = Objects.requireNonNull(proxySelector, "proxySelector");
+            return this;
+        }
+
+        /**
+         * Configures an HTTP proxy address for routing requests (ADR-0037).
+         *
+         * @param host the proxy host, not {@code null} and not blank
+         * @param port the proxy port (1..65535)
+         * @return this builder, for chaining
+         * @throws NullPointerException if {@code host} is {@code null}
+         * @throws IllegalArgumentException if {@code host} is blank or {@code port} is out of bounds (1..65535)
+         */
+        public Builder proxy(String host, int port) {
+            Objects.requireNonNull(host, "host");
+            if (host.isBlank()) {
+                throw new IllegalArgumentException("proxy host must not be blank");
+            }
+            if (port < 1 || port > 65535) {
+                throw new IllegalArgumentException("proxy port must be between 1 and 65535: " + port);
+            }
+            this.proxySelector = ProxySelector.of(new InetSocketAddress(host, port));
+            return this;
+        }
+
+        /**
+         * Configures direct connections bypassing any system or ambient proxy (ADR-0037).
+         * Equivalent to setting {@link HttpClient.Builder#NO_PROXY}.
+         *
+         * @return this builder, for chaining
+         */
+        public Builder noProxy() {
+            this.proxySelector = HttpClient.Builder.NO_PROXY;
+            return this;
+        }
+
+        /**
+         * Sets the transport-level authenticator for proxy and server challenges (ADR-0037).
+         *
+         * @param authenticator the authenticator, not {@code null}
+         * @return this builder, for chaining
+         * @throws NullPointerException if {@code authenticator} is {@code null}
+         */
+        public Builder authenticator(Authenticator authenticator) {
+            this.authenticator = Objects.requireNonNull(authenticator, "authenticator");
+            return this;
+        }
+
+        /**
+         * Configures proxy authentication credentials for HTTP proxy challenges (ADR-0037).
+         *
+         * @param username the proxy username, not {@code null}
+         * @param password the proxy password, not {@code null}
+         * @return this builder, for chaining
+         * @throws NullPointerException if {@code username} or {@code password} is {@code null}
+         */
+        public Builder proxyCredentials(String username, String password) {
+            Objects.requireNonNull(username, "username");
+            Objects.requireNonNull(password, "password");
+            char[] pass = password.toCharArray();
+            this.authenticator = new Authenticator() {
+                @Override
+                protected PasswordAuthentication getPasswordAuthentication() {
+                    if (getRequestorType() == RequestorType.PROXY) {
+                        return new PasswordAuthentication(username, pass);
+                    }
+                    return null;
+                }
+            };
+            return this;
+        }
+
+        /**
+         * Configures universal authentication credentials for both server and proxy challenges (ADR-0037).
+         *
+         * @param username the username, not {@code null}
+         * @param password the password, not {@code null}
+         * @return this builder, for chaining
+         * @throws NullPointerException if {@code username} or {@code password} is {@code null}
+         */
+        public Builder credentials(String username, String password) {
+            Objects.requireNonNull(username, "username");
+            Objects.requireNonNull(password, "password");
+            char[] pass = password.toCharArray();
+            this.authenticator = new Authenticator() {
+                @Override
+                protected PasswordAuthentication getPasswordAuthentication() {
+                    return new PasswordAuthentication(username, pass);
+                }
+            };
             return this;
         }
 

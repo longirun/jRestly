@@ -9,9 +9,11 @@ import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLParameters;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
+import java.net.Authenticator;
 import java.net.CookieHandler;
 import java.net.CookieManager;
 import java.net.CookieStore;
+import java.net.ProxySelector;
 import java.net.http.HttpClient;
 import java.time.Duration;
 import java.util.HashMap;
@@ -111,6 +113,16 @@ public abstract class AbstractHttpClient {
         CookieHandler cookieHandler = moduleInfo.getCookieHandler();
         if (cookieHandler != null) {
             builder.cookieHandler(cookieHandler);
+        }
+
+        ProxySelector proxySelector = moduleInfo.getProxySelector();
+        if (proxySelector != null) {
+            builder.proxy(proxySelector);
+        }
+
+        Authenticator authenticator = moduleInfo.getAuthenticator();
+        if (authenticator != null) {
+            builder.authenticator(authenticator);
         }
 
         Executor customExecutor = moduleInfo.getExecutor();
@@ -274,6 +286,24 @@ public abstract class AbstractHttpClient {
             return Optional.of(cm.getCookieStore());
         }
         return Optional.empty();
+    }
+
+    /**
+     * Returns the proxy selector configured for this client, or {@code null} if default (ADR-0037).
+     *
+     * @return the proxy selector, or {@code null}
+     */
+    public ProxySelector getProxySelector() {
+        return moduleInfo != null ? moduleInfo.getProxySelector() : null;
+    }
+
+    /**
+     * Returns the authenticator configured for this client, or {@code null} if none (ADR-0037).
+     *
+     * @return the authenticator, or {@code null}
+     */
+    public Authenticator getAuthenticator() {
+        return moduleInfo != null ? moduleInfo.getAuthenticator() : null;
     }
 }
 

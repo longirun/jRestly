@@ -40,8 +40,6 @@
 * я думаю еще в реалном исползовании есть миллион важных вещей?
 Это не приказ бросаться сразу все делать, просто можно учесть и разобрать в будущем. 
 
-[2026-10-15 07:07] Агент (сессия #112): Реализован эпик Query Parameter Collection Formatting Styles & OpenAPI Compatibility (ADR-0034): `CollectionFormat`, `@QueryCollectionFormat`, `@RequestParam.format`, иерархия приоритетов, симметрия form/multipart, null-safety. 729/729 тестов (85 классов) зелёные.
-
 [2026-10-15 07:33] Агент (сессия #113): Реализован эпик Outgoing Request Body Streaming & Validation (ADR-0035):
 1. **Стриминг исходящего тела (`@RequestBody`):**
    - `Flow.Publisher<ByteBuffer>` и `Flow.Publisher<String>` (авто-адаптация к UTF-8);
@@ -74,4 +72,17 @@
    - Автоматическое объединение клиентских и декларативных слушателей.
 3. **Fail-Fast upfront валидация (`ControllerValidator`):**
    - Проверка наличия доступного no-arg конструктора у классов слушателей, запрет интерфейсов, абстрактных классов и несовместимых типов.
-18 новых тестов (+18 тестов, итого 767/767 в 89 классах). 0 warnings под `-Werror`, zero-dep core сохранен. Следующий свободный ADR — **0037**.
+18 новых тестов (+18 тестов, итого 767/767 в 89 классах). 0 warnings под `-Werror`, zero-dep core сохранен.
+
+[2026-10-15 08:22] Агент (сессия #115): Реализован эпик HTTP Proxy & Transport Authenticator Configuration (ADR-0037):
+1. **Zero-Dep Proxy & Authenticator Configuration:**
+   - `ModuleInfo`: default методы `getProxySelector()` и `getAuthenticator()`.
+   - `SimpleModuleInfo` & `SimpleModuleInfo.Builder`: fluent-методы `proxy(ProxySelector)`, `proxy(String host, int port)`, `noProxy()` (`HttpClient.Builder.NO_PROXY`), `authenticator(Authenticator)`, `proxyCredentials(username, password)` (для `RequestorType.PROXY`), `credentials(username, password)` (универсальный аутентификатор).
+   - `JRestlyClient.Builder`: прямое проксирование всех настроек прокси и аутентификатора.
+   - `AbstractHttpClient`: проброс `proxySelector` и `authenticator` в `HttpClient.Builder`, публичные геттеры `getProxySelector()` и `getAuthenticator()`.
+2. **Безопасность и fail-fast валидация:**
+   - Проверка `null` selector, `null`/blank host, валидация диапазона портов 1..65535, `null` authenticator, `null` username/password.
+3. **Тестирование (22 новых теста, итого 789/789 в 91 классе):**
+   - `ProxyConfigTest` (16 unit тестов): дефолты, парсинг host/port, `noProxy` bypass, custom/credentials authenticators, fail-fast валидация, геттеры клиента.
+   - `ProxyIntegrationWireMockTest` (6 WireMock интеграционных тестов): маршрутизация через локальный HTTP forward proxy, обработка 407 Proxy Authentication Required challenge с заголовком `Proxy-Authorization`, fail-fast на неверных credentials, серверная 401 аутентификация через `credentials(...)`, обход прокси через `noProxy()`, асинхронный вызов `CompletableFuture`.
+22 новых теста (+22 теста, итого 789/789 в 91 классе). 0 warnings под `-Werror`, zero-dep core сохранен. Следующий свободный ADR — **0038**.

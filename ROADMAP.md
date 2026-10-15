@@ -1229,7 +1229,47 @@ Gates (session #114, clean rebuild):
 - `javadoc` 0 warnings under permanent `-Xdoclint:all -Werror`.
 - Zero external runtime dependencies preserved (0 dependencies in Maven POM).
 
-After the epic: candidate #1 — test-javadoc (ADR-0013 Non-goals); candidate #2 — HTTP/2 Server Push / Custom Headers Frame Inspection; candidate #3 — Resilience Circuit Breaker / Rate Limiting. ADR number **0037** free.
+After the epic: candidate #1 — test-javadoc (ADR-0013 Non-goals); candidate #2 — HTTP Proxy & Transport Authenticator Configuration — done, section below. ADR number **0037** — proxy configuration epic, **0038** free.
+
+## HTTP Proxy & Transport Authenticator Configuration (ADR-0037) — COMPLETE ✅ (2026-10-15, unreleased)
+
+> Source of truth (concept, architecture decisions, proxy routing, transport authenticator, test strategy, status):
+> [`docs/0.10.0/ADR-0037-http-proxy-and-transport-authenticator.md`](docs/0.10.0/ADR-0037-http-proxy-and-transport-authenticator.md).
+> Session #115 (agent-loop). Zero-dependency HTTP proxy routing and transport-level authentication configuration (essential for corporate enterprise networks and automated mock test harnesses).
+> Introduces `ProxySelector` and `Authenticator` support across `ModuleInfo`, `SimpleModuleInfo`, `JRestlyClient.Builder`, and `AbstractHttpClient`.
+> Provides ergonomic builder methods: `proxy(ProxySelector)`, `proxy(String host, int port)`, `noProxy()` (`HttpClient.Builder.NO_PROXY`),
+> `authenticator(Authenticator)`, `proxyCredentials(String username, String password)`, and `credentials(String username, String password)`.
+> Fully validates fail-fast inputs (nulls, blank hosts, invalid TCP ports 1..65535).
+> 100% backward compatible and zero-dependency (Java 21 standard library only).
+
+Key decisions (ADR-0037):
+- **Zero-Dependency Standard Types:**
+  - Uses standard Java 21 platform classes: `java.net.ProxySelector`, `java.net.Proxy`, `java.net.InetSocketAddress`, `java.net.Authenticator`, and `java.net.PasswordAuthentication` from `java.base`.
+  - Zero external dependencies introduced.
+- **Configuration SPI (`ModuleInfo`):**
+  - Added default methods `default ProxySelector getProxySelector() { return null; }` and `default Authenticator getAuthenticator() { return null; }`.
+  - When returning `null`, preserves default platform client behavior.
+- **Builder Ergonomics (`SimpleModuleInfo.Builder` & `JRestlyClient.Builder`):**
+  - `proxy(ProxySelector proxySelector)`: arbitrary proxy routing (e.g. PAC scripts, complex selectors).
+  - `proxy(String host, int port)`: convenient host/port configuration with strict validation.
+  - `noProxy()`: direct connection bypass for testing local mock servers without interference from system-wide proxies.
+  - `authenticator(Authenticator)`: custom transport challenge handler.
+  - `proxyCredentials(username, password)`: dedicated proxy challenge authenticator for `RequestorType.PROXY`.
+  - `credentials(username, password)`: universal authenticator for both server and proxy challenges.
+- **Transport Wiring (`AbstractHttpClient`):**
+  - `createConnection()` wires `proxySelector` and `authenticator` directly into `HttpClient.Builder`.
+  - Exposes `getProxySelector()` and `getAuthenticator()` getters.
+- **Full test coverage:** 22 new tests (+22 cases, total suite 789/789 across 91 classes) spanning:
+  - `ProxyConfigTest` (16 unit tests: default nulls, explicit proxy selector, host/port parsing, noProxy mapping to HttpClient.Builder.NO_PROXY, custom authenticator, proxy/universal credentials helpers, fail-fast on null selector/host/blank/port/authenticator/credentials, client getters);
+  - `ProxyIntegrationWireMockTest` (6 WireMock integration tests: synchronous GET routed through local HTTP forward proxy, 407 Proxy Authentication Required challenge response with Proxy-Authorization header, invalid credentials fail-fast negative test, server 401 challenge with credentials, direct noProxy connection, async CompletableFuture twin over proxy).
+
+Gates (session #115, clean rebuild):
+- `./gradlew test` **789/789** (91 classes, 0 failures/errors; +22 tests in ADR-0037).
+- `compileJava` and `compileTestJava` 0 warnings under permanent `-Xlint:all -Werror`.
+- `javadoc` 0 warnings under permanent `-Xdoclint:all -Werror`.
+- Zero external runtime dependencies preserved (0 dependencies in Maven POM).
+
+After the epic: candidate #1 — test-javadoc (ADR-0013 Non-goals); candidate #2 — HTTP/2 Protocol Negotiation & Response Trailers (Trailers inspection, `response.trailers()`, `response.version()`). ADR number **0038** free.
 
 ## Post-0.5.0 shortlist (not scheduled — see ADR-0003)
 

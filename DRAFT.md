@@ -1,28 +1,22 @@
-# DRAFT: активная зона после закрытия эпика Client Metrics & Observability SPI (ADR-0036)
+# DRAFT: активная зона после закрытия эпика HTTP Proxy & Transport Authenticator Configuration (ADR-0037)
 
-> Эпик Client Metrics & Observability SPI (ADR-0036, `docs/0.10.0/`) закрыт (сессия #114):
-> концепт и ADR-0036 → zero-dep SPI для экспорта метрик вызовов:
-> `ClientMetricsListener` (@FunctionalInterface с default lifecycle hooks `onCallStart`, `onRetry`, `onAttemptComplete` и `onCallComplete(CallMetrics)`),
-> `CallMetrics` (контракт) & `SimpleCallMetrics` (неизменяемый record с проверкой инвариантов),
-> `CompositeClientMetricsListener` и `ClientMetricsListener.composite(...)` с автоматическим flattening и null-filtering,
-> программное конфигурирование в `JRestlyClient.Builder.metricsListener(...)` и `ModuleInfo`,
-> декларативная аннотация `@WithMetrics` для контроллеров и методов (с `@WithMetrics.List`),
-> автоматическое слияние клиентского слушателя и декларативных аннотаций,
-> fail-fast upfront валидация в `ControllerValidator` (проверка типов, no-arg конструкторов, запрет абстрактных классов и интерфейсов),
-> измерение наносекундной длительности (`duration`), подсчет попыток (`attempts`), вычисление байтов тела запроса (`requestBytes`) и ответа (`responseBytes`),
-> изоляция ошибок слушателя (исключения логируются на уровне WARNING и никогда не прерывают HTTP вызовы пользователя),
-> unit тесты (`ClientMetricsValidationTest`, 8 тестов), интеграционные WireMock тесты (`ClientMetricsWireMockTest`, 10 тестов, итого +18 тестов) →
-> дистилляция в ROADMAP («Client Metrics & Observability SPI (ADR-0036) — COMPLETE ✅») + гейты 767/767 тестов (89 классов).
+> Эпик HTTP Proxy & Transport Authenticator Configuration (ADR-0037, `docs/0.10.0/`) закрыт (сессия #115):
+> концепт и ADR-0037 → zero-dep поддержка HTTP Proxy маршрутизации и transport-level аутентификации:
+> `ModuleInfo` default методы `getProxySelector()` и `getAuthenticator()`,
+> `SimpleModuleInfo` & `SimpleModuleInfo.Builder`: `proxy(ProxySelector)`, `proxy(String host, int port)`, `noProxy()` (`HttpClient.Builder.NO_PROXY`), `authenticator(Authenticator)`, `proxyCredentials(username, password)`, `credentials(username, password)`,
+> `JRestlyClient.Builder`: прямое проксирование fluent-методов конфигурации прокси и аутентификатора,
+> `AbstractHttpClient.createConnection()`: проброс `proxySelector` и `authenticator` в `HttpClient.Builder`, публичные геттеры `getProxySelector()` и `getAuthenticator()`,
+> полная fail-fast валидация (проверка nulls, blank hosts, TCP портов 1..65535),
+> unit тесты конфигурации (`ProxyConfigTest`, 16 тестов), интеграционные WireMock тесты (`ProxyIntegrationWireMockTest`, 6 тестов, итого +22 теста) →
+> дистилляция в ROADMAP («HTTP Proxy & Transport Authenticator Configuration (ADR-0037) — COMPLETE ✅») + гейты 789/789 тестов (91 класс).
 > Следующий ход — свободный, выбор из активной зоны.
 
 ## Активная зона (кандидаты на следующий эпик)
 
-- **Кандидат №1 — test-javadoc** (ADR-0013 Non-goals):
+- **Кандидат №1 — HTTP/2 Protocol Negotiation & Response Trailers (ADR-0038)**:
+  Инспекция реально согласованной версии протокола (`HttpResponse.version()` -> `WireResponse.version()`, `ResponseHeaders.version()`, `CallMetrics.version()`) и доступ к trailing headers (`HttpResponse.trailers()` -> `WireResponse.trailers()`, `ResponseHeaders.trailers()`).
+- **Кандидат №2 — test-javadoc** (ADR-0013 Non-goals):
   Test-source javadoc вынесен за скобки аудита; наведение лоска в тестовых классах.
-- **Кандидат №2 — HTTP/2 Server Push / Custom Headers Frame Inspection**:
-  Исследование возможностей и ограничений протокола HTTP/2 на базе JDK HttpClient.
-- **Кандидат №3 — Resilience Circuit Breaker / Rate Limiting**:
-  Исследование zero-dep клиентского предохранителя (Circuit Breaker / sliding window failure rate) для защиты от каскадных сбоев downstream сервисов.
 
 ---
 
@@ -53,6 +47,8 @@
   шаблоны URI и массивы параметров (ADR-0025), виртуальные потоки (ADR-0026),
   декларативные таймауты (ADR-0027), декларативные интерцепторы (ADR-0029),
   отслеживание прогресса загрузки (ADR-0030), куки и управление сессиями (ADR-0032),
-  отслеживание прогресса скачивания и прямой возврат byte[] (ADR-0033).
+  отслеживание прогресса скачивания и прямой возврат byte[] (ADR-0033),
+  форматирование query коллекций (ADR-0034), стриминг тела запроса (ADR-0035),
+  SPI метрик и телеметрии (ADR-0036), настройка прокси и аутентификатора (ADR-0037).
 - **Коммиты — краткие, не дублируют ченджлог** (Антон).
 - **Объём одной сессии в 2–3 раза меньше** — один маленький шаг.

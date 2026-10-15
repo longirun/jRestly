@@ -8,7 +8,9 @@ import ru.jrestly.http.RetryPolicy;
 
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLParameters;
+import java.net.Authenticator;
 import java.net.CookieHandler;
+import java.net.ProxySelector;
 import java.net.http.HttpClient;
 import java.util.List;
 import java.util.concurrent.Executor;
@@ -222,6 +224,27 @@ public interface ModuleInfo {
      * @return the metrics listener, or {@code null} if none configured
      */
     default ru.jrestly.metrics.ClientMetricsListener getMetricsListener() {
+        return null;
+    }
+
+    /**
+     * The proxy selector used for routing HTTP requests (ADR-0037).
+     * When {@code null} (the default), the underlying HTTP client uses the platform default
+     * proxy selector ({@link ProxySelector#getDefault()}).
+     *
+     * @return the proxy selector, or {@code null} for defaults
+     */
+    default ProxySelector getProxySelector() {
+        return null;
+    }
+
+    /**
+     * The transport-level authenticator used for HTTP proxy and server authentication challenges (ADR-0037).
+     * When {@code null} (the default), no authenticator is attached.
+     *
+     * @return the authenticator, or {@code null} if none configured
+     */
+    default Authenticator getAuthenticator() {
         return null;
     }
 }

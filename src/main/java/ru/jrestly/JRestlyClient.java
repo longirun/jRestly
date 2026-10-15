@@ -8,9 +8,11 @@ import ru.jrestly.json.JsonCodec;
 
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLParameters;
+import java.net.Authenticator;
 import java.net.CookieHandler;
 import java.net.CookieManager;
 import java.net.CookiePolicy;
+import java.net.ProxySelector;
 import java.net.http.HttpClient;
 import java.time.Duration;
 import java.util.List;
@@ -379,6 +381,80 @@ public class JRestlyClient extends AbstractHttpClient {
          */
         public Builder metricsListener(ru.jrestly.metrics.ClientMetricsListener metricsListener) {
             moduleInfoBuilder.metricsListener(metricsListener);
+            return this;
+        }
+
+        /**
+         * Sets the proxy selector used for routing HTTP requests (ADR-0037).
+         *
+         * @param proxySelector the proxy selector, not {@code null}
+         * @return this builder, for chaining
+         * @throws NullPointerException if {@code proxySelector} is {@code null}
+         */
+        public Builder proxy(ProxySelector proxySelector) {
+            moduleInfoBuilder.proxy(proxySelector);
+            return this;
+        }
+
+        /**
+         * Configures an HTTP proxy address for routing requests (ADR-0037).
+         *
+         * @param host the proxy host, not {@code null} and not blank
+         * @param port the proxy port (1..65535)
+         * @return this builder, for chaining
+         * @throws NullPointerException if {@code host} is {@code null}
+         * @throws IllegalArgumentException if {@code host} is blank or {@code port} is out of bounds (1..65535)
+         */
+        public Builder proxy(String host, int port) {
+            moduleInfoBuilder.proxy(host, port);
+            return this;
+        }
+
+        /**
+         * Configures direct connections bypassing any system or ambient proxy (ADR-0037).
+         * Equivalent to setting {@link HttpClient.Builder#NO_PROXY}.
+         *
+         * @return this builder, for chaining
+         */
+        public Builder noProxy() {
+            moduleInfoBuilder.noProxy();
+            return this;
+        }
+
+        /**
+         * Sets the transport-level authenticator for proxy and server challenges (ADR-0037).
+         *
+         * @param authenticator the authenticator, not {@code null}
+         * @return this builder, for chaining
+         * @throws NullPointerException if {@code authenticator} is {@code null}
+         */
+        public Builder authenticator(Authenticator authenticator) {
+            moduleInfoBuilder.authenticator(authenticator);
+            return this;
+        }
+
+        /**
+         * Configures proxy authentication credentials for HTTP proxy challenges (ADR-0037).
+         *
+         * @param username the proxy username, not {@code null}
+         * @param password the proxy password, not {@code null}
+         * @return this builder, for chaining
+         * @throws NullPointerException if {@code username} or {@code password} is {@code null}
+         */
+        public Builder proxyCredentials(String username, String password) {
+            moduleInfoBuilder.proxyCredentials(username, password);
+            return this;
+        }
+
+        /**
+         * Configures universal authentication credentials for both server and proxy challenges (ADR-0037).
+         *
+         * @param username the username, not {@code null}
+         * @param password the password, not {@code null}
+         * @return this builder, for chaining
+         */
+        public Builder credentials(String username, String password) {
+            moduleInfoBuilder.credentials(username, password);
             return this;
         }
 
