@@ -66,8 +66,9 @@ public interface ModuleInfo {
     /**
      * The JSON codec for request and response bodies. The default
      * resolves one from the classpath — jackson, then gson, then
-     * moshi, the first found wins (ADR-0007) — and fails fast with an
-     * {@link IllegalStateException} when none is present.
+     * moshi, the first found wins (ADR-0007). When none of the supported
+     * libraries is present, falls back to {@link ru.jrestly.json.NoOpJsonCodec}
+     * allowing pure zero-dependency standalone execution (ADR-0045).
      *
      * @return the JSON codec
      */

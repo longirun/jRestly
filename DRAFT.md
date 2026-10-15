@@ -1,28 +1,16 @@
-# DRAFT: активная зона после закрытия эпика Interceptor @Order Priority (ADR-0044)
+# DRAFT: активная зона после закрытия эпика Zero-Dependency Standalone Mode (ADR-0045)
 
-> Эпик Interceptor `@Order` Priority (ADR-0044, `docs/0.10.0/`) закрыт (сессия #122):
-> `@ru.jrestly.annotation.Order(int value)` на классе интерцептора для детерминированной
-> сортировки внутри `@WithInterceptor(value={...})` — нижнее значение = более ранний запуск,
-> дефолт 0, стабильная сортировка сохраняет порядок объявления при равных значениях,
-> сортировка выполняется один раз в `HttpTemplateBuilder.build()` (ноль накладных расходов на горячем пути),
-> межуровневый порядок (Global → Super → Sub → Method) не затронут.
-> `HttpTemplateBuilder`: `sortedByOrder()` + `orderOf()` helpers, 3 unit-теста → гейты 927/927 (112 классов).
+> Эпик Zero-Dependency Standalone Mode & Fallback NoOpJsonCodec (ADR-0045, `docs/0.10.0/`) закрыт (сессия #125):
+> - `ru.jrestly.json.NoOpJsonCodec`: fallback singleton `NoOpJsonCodec.instance()`.
+> - `JsonCodec.noop()`: публичный фабричный метод.
+> - `JsonCodecResolver`: при отсутствии Jackson, Gson, Moshi возвращает `NoOpJsonCodec.instance()` вместо eager падения.
+> - `HttpTemplate.probePayloadDecode`: поддержка raw `byte[].class`.
+> - Тесты: 14 новых тестов (941/941 в 114 классах), zero-dep POM подтвержден.
 > Следующий ход — свободный, выбор из активной зоны.
 
 ## Активная зона (кандидаты на следующий эпик)
 
-> **Малая зачистка API (сессия #124) — ВЫПОЛНЕНО ✅:**
-> `OnErrorParser` и `RequestMeta` переведены в package-private; `setOnErrorParser`/`getOnErrorParser`
-> в `HttpTemplate` скрыты; `ru.jrestly.http.OnErrorParserTest` создан, `OnErrorConfigTest` очищен.
-> Гейты: 927/927 тестов зеленые, 0 warnings.
-
-- **Кандидат №1 — Честный Zero-Dependency без JSON-кодеков на classpath (ADR-0045)**:
-  Сейчас при `builder.build()` клиент eager-проверяет наличие Jackson/Gson/Moshi и падает с `IllegalStateException`,
-  даже если контроллер работает исключительно со `String`, `byte[]`, `InputStream`, `Stream<String>` или `Void`!
-  Решение: fallback `NoOpJsonCodec` / lazy resolution. Позволяет использовать jRestly вообще без внешних библиотек
-  на classpath (`String getUser(UUID id)` работает из коробки). Фатальная ошибка только при попытке сериализовать DTO без кодека.
-
-- **Кандидат №2 — Zero-Dep Authorization SPI & TokenManager (ADR-0046)**:
+- **Кандидат №1 — Zero-Dep Authorization SPI & TokenManager (ADR-0046)**:
   Полноценная современная авторизация в `ru.jrestly.auth`:
   - `TokenManager` (expire-aware кэширование).
   - Single-flight защита через `CompletableFuture` (предотвращение stampede / thundering herd на auth-сервер).

@@ -8,6 +8,9 @@ import java.util.function.Predicate;
  * <p>An explicit {@code jsonCodec(...)} builder setting always wins; without
  * one, the first library found on the classpath provides its defaults codec,
  * probing in fixed order jackson &rarr; gson &rarr; moshi (ADR-0007, Aspect 1).
+ * When none of the supported libraries is found, resolves to {@link NoOpJsonCodec}
+ * (ADR-0045), allowing pure zero-dependency standalone operation for raw string,
+ * byte array, streaming, and void requests.
  * Each adapter class is only loaded after its probe succeeds, so a classpath
  * that lacks a library never touches the corresponding adapter.
  */
@@ -18,11 +21,10 @@ public final class JsonCodecResolver {
 
     /**
      * Probes the real classpath and returns the first matching codec, or
-     * fails fast naming all supported libraries.
+     * {@link NoOpJsonCodec#instance()} if no supported library is present.
      *
      * @return the defaults codec of the first supported library found on the classpath
-     * (jackson &rarr; gson &rarr; moshi)
-     * @throws IllegalStateException if no supported library is present
+     * (jackson &rarr; gson &rarr; moshi), or {@link NoOpJsonCodec#instance()}
      */
     public static JsonCodec resolve() {
         return resolve(JsonCodecResolver::isOnClasspath);
@@ -44,9 +46,7 @@ public final class JsonCodecResolver {
             return MoshiCodec.defaults();
         }
 
-        throw new IllegalStateException("No JSON codec found on the classpath. "
-                + "Add jackson-databind, gson, or moshi as a runtime dependency, "
-                + "or set one explicitly via JRestlyClient.builder().jsonCodec(...)");
+        return NoOpJsonCodec.instance();
     }
 
     private static boolean isOnClasspath(String fqn) {

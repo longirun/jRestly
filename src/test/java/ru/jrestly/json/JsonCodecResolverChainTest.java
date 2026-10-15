@@ -91,12 +91,15 @@ class JsonCodecResolverChainTest {
     }
 
     @Test
-    @DisplayName("empty classpath fails fast naming all three libraries and the explicit codec")
-    void failFastWhenClasspathIsEmpty() {
-        IllegalStateException e = assertThrows(IllegalStateException.class,
-                () -> JsonCodecResolver.resolve(classpathWith()));
+    @DisplayName("empty classpath falls back to NoOpJsonCodec which fails on serialize/deserialize (ADR-0045)")
+    void emptyClasspathFallsBackToNoOpJsonCodec() {
+        JsonCodec codec = JsonCodecResolver.resolve(classpathWith());
 
-        String message = e.getMessage();
+        assertInstanceOf(NoOpJsonCodec.class, codec);
+
+        IllegalStateException serializeEx = assertThrows(IllegalStateException.class,
+                () -> codec.serialize(new TestDto(7L, "jRestly", "client")));
+        String message = serializeEx.getMessage();
         assertTrue(message.contains("jackson-databind"),
                 "fail-fast message must name jackson-databind: " + message);
         assertTrue(message.contains("gson"),
@@ -105,6 +108,12 @@ class JsonCodecResolverChainTest {
                 "fail-fast message must name moshi: " + message);
         assertTrue(message.contains("jsonCodec"),
                 "fail-fast message must point at the explicit-codec escape hatch: " + message);
+
+        IllegalStateException deserializeEx = assertThrows(IllegalStateException.class,
+                () -> codec.deserialize("{}", TestDto.class));
+        assertTrue(deserializeEx.getMessage().contains("jackson-databind"));
+
+        assertEquals("{}", codec.prettyPrint("{}"));
     }
 
     /**

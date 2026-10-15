@@ -129,8 +129,8 @@ public class JRestlyClient extends AbstractHttpClient {
         /**
          * The JSON codec for request and response bodies. When left
          * unset, {@link #build()} resolves one from the classpath —
-         * jackson, then gson, then moshi, the first found wins
-         * (ADR-0007).
+         * jackson, then gson, then moshi, or falls back to
+         * {@link ru.jrestly.json.NoOpJsonCodec} for pure zero-dependency standalone execution (ADR-0045).
          *
          * @param jsonCodec the codec to use
          * @return this builder, for chaining

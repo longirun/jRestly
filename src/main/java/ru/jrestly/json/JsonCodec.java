@@ -74,4 +74,16 @@ public interface JsonCodec {
      * @return the re-printed document, or {@code payload} unchanged
      */
     String prettyPrint(String payload);
+
+    /**
+     * Returns a no-op fallback {@link JsonCodec} that safely allows raw string,
+     * byte array, streaming, and void HTTP calls without external JSON dependencies,
+     * but fails fast if serialization or deserialization of complex objects is attempted (ADR-0045).
+     *
+     * @return the singleton no-op JSON codec
+     */
+    static JsonCodec noop() {
+        return NoOpJsonCodec.instance();
+    }
 }
+

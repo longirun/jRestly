@@ -98,3 +98,8 @@ default=0, стабильная сортировка (declaration order сохр
    - Полностью согласен с твоим выводом! Это классический паттерн великих библиотек:
      * **Из коробки:** ультралегкие, zero-dependency механизмы (`RetryPolicy`, `CircuitBreaker`, `RateLimiter`, W3C `TraceContext`). Они покрывают 90% сценариев, не тянут транзитивных зависимостей, не конфликтуют в classpath и идеально подходят для тестов и микросервисов.
      * **Точки расширения (SPI):** через интерцепторы, `ClientMetricsListener`, `TracePropagator` и будущий `ShortCircuitInterceptor` enterprise-пользователь подключает Resilience4j, Micrometer или OpenTelemetry в 3 строки кода, не перегружая ядро библиотеки.
+
+[2026-10-15 13:48] Агент (сессия #125): Реализован эпик Zero-Dependency Standalone Mode (ADR-0045):
+1. **Честный Zero-Dep без JSON-кодеков:** `JsonCodecResolver` больше не падает при старте клиента без Jackson/Gson/Moshi, а возвращает fallback `NoOpJsonCodec.instance()`. Добавлен метод `JsonCodec.noop()`.
+2. **Эргономика:** вызовы вида `String getUser(UUID id)`, `byte[] download()`, `InputStream stream()`, `void delete()`, `Stream<String>` и form-urlencoded работают 100% из коробки в голой Java 21 без единой сторонней библиотеки. При попытке сериализации/десериализации DTO выбрасывается понятный `IllegalStateException` с перечислением поддерживаемых библиотек.
+3. **Гейты:** 14 новых тестов (`NoOpJsonCodecTest`, `ZeroDepStandaloneWireMockTest`), всего 941/941 тестов зелёные (114 классов), POM строго с 0 dependencies. Следующий свободный ADR — **0046**.

@@ -998,7 +998,7 @@ public class HttpTemplate {
             if (status == 404 || status == 304 || status == 204 || payload == null) {
                 return true;
             }
-            if (String.class.equals(returnType) || Void.class.equals(returnType) || void.class.equals(returnType)) {
+            if (String.class.equals(returnType) || byte[].class.equals(returnType) || Void.class.equals(returnType) || void.class.equals(returnType)) {
                 return true;
             }
             jsonCodec.deserialize(payload, returnType);
@@ -1007,7 +1007,7 @@ public class HttpTemplate {
         if (payload == null) {
             return true; // no body
         }
-        if (String.class.equals(returnType)) {
+        if (String.class.equals(returnType) || byte[].class.equals(returnType)) {
             return true; // returned raw, never decoded
         }
         if (Void.class.equals(returnType) || void.class.equals(returnType)) {

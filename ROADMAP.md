@@ -1550,7 +1550,34 @@ Gates (session #122, clean rebuild):
 - `javadoc` 0 warnings under permanent `-Xdoclint:all -Werror`.
 - Zero external runtime dependencies preserved (0 dependencies in Maven POM).
 
-After the epic: candidates — test-javadoc (ADR-0013 Non-goals), or next roadmap epic. ADR number **0045** free.
+After the epic: ADR-0045 (Zero-Dependency Standalone Mode and Fallback NoOpJsonCodec) — done, section below. ADR number **0046** free.
+
+## Zero-Dependency Standalone Mode & Fallback NoOpJsonCodec (ADR-0045) — COMPLETE ✅ (2026-10-15, unreleased)
+
+> Source of truth: [`docs/0.10.0/ADR-0045-zero-dependency-standalone-and-noop-codec.md`](docs/0.10.0/ADR-0045-zero-dependency-standalone-and-noop-codec.md).
+
+**Problem:** Previously `JsonCodecResolver.resolve()` eagerly threw `IllegalStateException` during client initialization if no external JSON library (Jackson, Gson, Moshi) was present on the classpath, blocking pure zero-dependency standalone use for standard Java types (`String`, `byte[]`, `InputStream`, `Stream`, `Void`).
+
+**Solution:**
+- Fallback singleton `NoOpJsonCodec` (`ru.jrestly.json.NoOpJsonCodec`, `JsonCodec.noop()`).
+- Best-effort `prettyPrint` returning raw payload; `serialize(null)` returning `"null"`; deferred actionable `IllegalStateException` on attempts to serialize/deserialize non-null objects.
+- `JsonCodecResolver.resolve()` returns `NoOpJsonCodec.instance()` when classpath probe misses, enabling 100% zero-dependency execution.
+- `HttpTemplate.probePayloadDecode` updated to handle `byte[].class` as raw type.
+
+Key changes:
+- `ru.jrestly.json.NoOpJsonCodec`: fallback implementation.
+- `ru.jrestly.json.JsonCodec`: `noop()` factory method.
+- `ru.jrestly.json.JsonCodecResolver`: graceful fallback on probe miss.
+- `ru.jrestly.http.HttpTemplate`: `probePayloadDecode` raw `byte[].class` support.
+- Tests: `NoOpJsonCodecTest` (6 tests), `ZeroDepStandaloneWireMockTest` (8 tests), `JsonCodecResolverChainTest` updated (+14 tests, total 941/941 across 114 classes).
+
+Gates (session #125, clean rebuild):
+- `./gradlew test` **941/941** (114 classes, 0 failures/errors; +14 tests in ADR-0045).
+- `compileJava` and `compileTestJava` 0 warnings under permanent `-Xlint:all -Werror`.
+- `javadoc` 0 warnings under permanent `-Xdoclint:all -Werror`.
+- Zero external runtime dependencies strictly preserved (0 dependencies in Maven POM).
+
+After the epic: candidates — ADR-0046 (Zero-Dep Authorization SPI & TokenManager), ADR-0047 (Short-Circuit SPI), JMH Benchmarks. ADR number **0046** free.
 
 
 ## Post-0.5.0 shortlist (not scheduled — see ADR-0003)
