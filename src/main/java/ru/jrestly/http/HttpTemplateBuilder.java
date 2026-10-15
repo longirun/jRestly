@@ -4,8 +4,12 @@ import ru.jrestly.AuthProvider;
 import ru.jrestly.ModuleInfo;
 import ru.jrestly.annotation.Accept;
 import ru.jrestly.annotation.CollectionFormat;
+import ru.jrestly.annotation.Compress;
 import ru.jrestly.annotation.ContentType;
 import ru.jrestly.annotation.Cookie;
+import ru.jrestly.compression.CompressionAlgorithm;
+import ru.jrestly.compression.ContentCompressor;
+import ru.jrestly.compression.ContentCompressors;
 import ru.jrestly.annotation.Delete;
 import ru.jrestly.annotation.ExpectStatus;
 import ru.jrestly.annotation.FollowRedirects;
@@ -33,6 +37,7 @@ import ru.jrestly.metrics.ClientMetricsListener;
 
 import java.io.File;
 import java.io.FileNotFoundException;
+import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
 import java.lang.reflect.Constructor;
@@ -233,6 +238,26 @@ public class HttpTemplateBuilder {
             }
             result.setContentType(effectiveContentType);
             result.setMultipartBoundary(boundary);
+        }
+
+        // ADR-0041: Request body compression
+        if (body != null && body.length > 0) {
+            EffectiveCompression compression = resolveCompression();
+            if (compression.enabled() && body.length >= compression.minSizeBytes()) {
+                boolean hasContentEncoding = headers.stream()
+                        .anyMatch(h -> h.name() != null && h.name().equalsIgnoreCase("Content-Encoding"));
+                if (!hasContentEncoding) {
+                    ContentCompressor compressor = resolveCompressor(compression.algorithm());
+                    if (compressor != null) {
+                        try {
+                            body = compressor.compress(body);
+                            headers.add(new Header("Content-Encoding", compressor.encoding()));
+                        } catch (IOException e) {
+                            throw new RuntimeException("Failed to compress request body with " + compressor.encoding(), e);
+                        }
+                    }
+                }
+            }
         }
 
         result.setBody(body);
@@ -1467,5 +1492,50 @@ public class HttpTemplateBuilder {
         if (instance instanceof ClientMetricsListener listener) {
             listeners.add(listener);
         }
+    }
+
+    private record EffectiveCompression(boolean enabled, CompressionAlgorithm algorithm, int minSizeBytes) {}
+
+    private EffectiveCompression resolveCompression() {
+        if (method != null && method.isAnnotationPresent(Compress.class)) {
+            Compress ann = method.getAnnotation(Compress.class);
+            if (!ann.enabled()) {
+                return new EffectiveCompression(false, CompressionAlgorithm.NONE, 0);
+            }
+            return new EffectiveCompression(true, ann.algorithm(), Math.max(0, ann.minSizeBytes()));
+        }
+
+        List<Class<?>> hierarchy = collectInterfaceHierarchy(controller);
+        for (int i = hierarchy.size() - 1; i >= 0; i--) {
+            Class<?> iface = hierarchy.get(i);
+            if (iface.isAnnotationPresent(Compress.class)) {
+                Compress ann = iface.getAnnotation(Compress.class);
+                if (!ann.enabled()) {
+                    return new EffectiveCompression(false, CompressionAlgorithm.NONE, 0);
+                }
+                return new EffectiveCompression(true, ann.algorithm(), Math.max(0, ann.minSizeBytes()));
+            }
+        }
+
+        if (moduleInfo != null && moduleInfo.getRequestCompressionAlgorithm() != null
+                && moduleInfo.getRequestCompressionAlgorithm() != CompressionAlgorithm.NONE) {
+            return new EffectiveCompression(true, moduleInfo.getRequestCompressionAlgorithm(),
+                    Math.max(0, moduleInfo.getRequestCompressionThreshold()));
+        }
+
+        return new EffectiveCompression(false, CompressionAlgorithm.NONE, 0);
+    }
+
+    private ContentCompressor resolveCompressor(CompressionAlgorithm algorithm) {
+        if (algorithm == null || algorithm == CompressionAlgorithm.NONE) {
+            return null;
+        }
+        if (moduleInfo != null) {
+            ContentCompressor custom = moduleInfo.getContentCompressor(algorithm.encoding());
+            if (custom != null) {
+                return custom;
+            }
+        }
+        return ContentCompressors.get(algorithm);
     }
 }

@@ -1,5 +1,7 @@
 package ru.jrestly;
 
+import ru.jrestly.compression.CompressionAlgorithm;
+import ru.jrestly.compression.ContentCompressor;
 import ru.jrestly.http.RetryPolicy;
 import ru.jrestly.http.WireRequest;
 import ru.jrestly.interceptor.RequestInterceptor;
@@ -492,6 +494,41 @@ public class JRestlyClient extends AbstractHttpClient {
          */
         public Builder credentials(String username, String password) {
             moduleInfoBuilder.credentials(username, password);
+            return this;
+        }
+
+        /**
+         * Sets the default request body compression algorithm (ADR-0041).
+         *
+         * @param algorithm the compression algorithm, or {@code null} to disable
+         * @return this builder, for chaining
+         */
+        public Builder requestCompression(CompressionAlgorithm algorithm) {
+            moduleInfoBuilder.requestCompression(algorithm);
+            return this;
+        }
+
+        /**
+         * Sets the default request body compression algorithm and minimum payload size threshold in bytes (ADR-0041).
+         *
+         * @param algorithm the compression algorithm, or {@code null} to disable
+         * @param thresholdBytes minimum payload size in bytes to trigger compression (must be non-negative)
+         * @return this builder, for chaining
+         * @throws IllegalArgumentException if thresholdBytes is negative
+         */
+        public Builder requestCompression(CompressionAlgorithm algorithm, int thresholdBytes) {
+            moduleInfoBuilder.requestCompression(algorithm, thresholdBytes);
+            return this;
+        }
+
+        /**
+         * Registers a custom {@link ContentCompressor} for content encoding and decoding (ADR-0041).
+         *
+         * @param compressor the compressor instance, not {@code null}
+         * @return this builder, for chaining
+         */
+        public Builder contentCompressor(ContentCompressor compressor) {
+            moduleInfoBuilder.contentCompressor(compressor);
             return this;
         }
 

@@ -1392,7 +1392,48 @@ Gates (session #118, clean rebuild):
 - `javadoc` 0 warnings under permanent `-Xdoclint:all -Werror`.
 - Zero external runtime dependencies preserved (0 dependencies in Maven POM).
 
-After the epic: candidate #1 — test-javadoc (ADR-0013 Non-goals); candidate #2 — Request & Response Compression Negotiation SPI (ADR-0041). ADR number **0041** free.
+After the epic: candidate #1 — test-javadoc (ADR-0013 Non-goals); candidate #2 — Request & Response Compression Negotiation SPI (ADR-0041) — done, section below. ADR number **0041** — request compression epic, **0042** free.
+
+## Request Body Compression & Content-Encoding SPI (ADR-0041) — COMPLETE ✅ (2026-10-15, unreleased)
+
+> Source of truth (concept, architecture decisions, SPI design, threshold controls, test strategy, status):
+> [`docs/0.10.0/ADR-0041-request-compression-and-content-encoding-spi.md`](docs/0.10.0/ADR-0041-request-compression-and-content-encoding-spi.md).
+> Session #119 (agent-loop). Request body compression and pluggable content coding SPI for high-throughput REST APIs,
+> telemetry/metrics ingestion, and large POST/PUT/PATCH mutations.
+> Introduces `ru.jrestly.compression` package (`CompressionAlgorithm`, `ContentCompressor` SPI, `GzipContentCompressor`, `DeflateContentCompressor`, `ContentCompressors` registry),
+> `@Compress` declarative annotation (`ru.jrestly.annotation.Compress`) with `algorithm`, `minSizeBytes` threshold, and `enabled` controls,
+> client/module builder ergonomics (`requestCompression(algorithm, thresholdBytes)`, `contentCompressor(compressor)`),
+> upfront controller validation (`ControllerValidator` rejects negative thresholds and invalid settings),
+> and transparent pipeline compression in `HttpTemplateBuilder` + symmetric custom decompression in `HttpTemplate`.
+> 100% backward compatible and zero-dependency (Java 21 standard library `java.util.zip` only).
+
+Key decisions (ADR-0041):
+- **Content Coding SPI (`ru.jrestly.compression`):**
+  - `CompressionAlgorithm` enum: `GZIP` (`"gzip"`), `DEFLATE` (`"deflate"`), `NONE` (`"identity"`), with case-insensitive token resolution and alias mapping.
+  - `ContentCompressor` SPI: clean `compress(byte[] uncompressed)` and optional `decompress(byte[] compressed)` interface.
+  - Zero-dep implementations: `GzipContentCompressor` (singleton, `GZIPOutputStream`/`GZIPInputStream`) and `DeflateContentCompressor` (singleton, RFC 1950 zlib and RFC 1951 raw deflate fallback).
+  - Built-in registry `ContentCompressors` for fast resolution and custom extensions.
+- **Declarative Ergonomics (`@Compress`):**
+  - Targets `METHOD` and `TYPE` (interfaces): supports interface-level compression inherited across mutating methods, with per-method overrides (`@Compress(enabled = false)` or custom algorithms/thresholds).
+  - `minSizeBytes`: configurable threshold avoiding compression overhead for small payloads.
+- **Module and Client Builders (`SimpleModuleInfo.Builder`, `JRestlyClient.Builder`):**
+  - `requestCompression(CompressionAlgorithm)` & `requestCompression(CompressionAlgorithm, int thresholdBytes)`.
+  - `contentCompressor(ContentCompressor)` for registering custom codecs.
+- **Header Hygiene & Double Compression Prevention:**
+  - Caller-provided explicit `Content-Encoding` headers are honored without secondary compression.
+- **Full test coverage:** 23 new tests (+23 cases, total suite 866/866 across 102 classes) spanning:
+  - `CompressionAlgorithmTest` (2 unit tests: standard HTTP tokens, case-insensitive and alias resolution);
+  - `ContentCompressorTest` (6 unit tests: GZIP roundtrip and edge cases, Deflate roundtrip and edge cases, registry lookups, default decompress exceptions);
+  - `CompressConfigTest` (7 unit tests: ModuleInfo defaults, SimpleModuleInfo builder, custom compressor registration, client builder, ControllerValidator rules, direct HttpTemplateBuilder byte compression verification);
+  - `RequestCompressionWireMockTest` (8 WireMock integration tests: declarative GZIP POST with JSON DTO, declarative DEFLATE PUT, minSizeBytes threshold filtering, interface inheritance and method opt-out, client-level builder setting, manual header avoidance, async CompletableFuture twin, custom ContentCompressor SPI).
+
+Gates (session #119, clean rebuild):
+- `./gradlew test` **866/866** (102 classes, 0 failures/errors; +23 tests in ADR-0041).
+- `compileJava` and `compileTestJava` 0 warnings under permanent `-Xlint:all -Werror`.
+- `javadoc` 0 warnings under permanent `-Xdoclint:all -Werror`.
+- Zero external runtime dependencies preserved (0 dependencies in Maven POM).
+
+After the epic: candidate #1 — test-javadoc (ADR-0013 Non-goals); candidate #2 — Request Tracing & Correlation ID Propagation SPI (ADR-0042) / W3C TraceContext. ADR number **0042** free.
 
 ## Post-0.5.0 shortlist (not scheduled — see ADR-0003)
 

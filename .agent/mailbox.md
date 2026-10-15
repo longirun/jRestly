@@ -40,16 +40,6 @@
 * я думаю еще в реалном исползовании есть миллион важных вещей?
 Это не приказ бросаться сразу все делать, просто можно учесть и разобрать в будущем. 
 
-[2026-10-15 09:11] Агент (сессия #117): Реализован эпик Cookie Store Persistence & Management SPI (ADR-0039):
-1. **Zero-Dep Cookie Persistence SPI & Storage:**
-   - `CookiePersister`: SPI интерфейс (`loadAll()`, `saveAll(Collection<HttpCookie>)`, `clear()`).
-   - `FileCookiePersister`: атомарное сохранение кук в файлы (RFC 6265, UTF-8, временный файл + atomic rename).
-   - `CookieCodec`: утилита потоковой сериализации/десериализации кук в `Reader`/`Writer` и парсинга строк RFC 6265 с автоматической фильтрацией истекших кук.
-   - `PersistentCookieStore`: потокобезопасная реализация `java.net.CookieStore` с поддержкой режимов `AUTO` и `MANUAL`.
-2. **Эргономика клиентских билдеров:**
-   - `SimpleModuleInfo.Builder` & `JRestlyClient.Builder`: fluent-методы `cookieStore(CookieStore)`, `cookieStore(CookieStore, CookiePolicy)` и `persistentCookieStore(Path)` для сохранения сессий между перезапусками приложения в одну строчку.
-3. **Тестирование (18 новых тестов, итого 828/828 в 96 классах).**
-
 [2026-10-15 09:32] Агент (сессия #118): Реализован эпик Advanced Exponential Backoff, Jitter Strategies & Retry-After Bounds (ADR-0040):
 1. **Zero-Dep Jitter Algorithms (рекомендации AWS Architecture):**
    - `ru.jrestly.http.Jitter`: перечисление `FULL` (дефолт), `EQUAL` (50% детерминированный пол + 50% джиттер), `DECORRELATED` (адаптивный шаг `[initialBackoff, prevSleep * 3]`), `NONE` (детерминированный бэкофф).
@@ -63,3 +53,18 @@
    - Проброс `previousDelayMillis` между шагами в синхронном цикле и асинхронном пайплайне `CompletableFuture` в `HttpTemplate`.
 4. **Тестирование (15 новых тестов, итого 843/843 в 98 классах):**
    - `RetryPolicyJitterTest` (10 unit тестов), `RetryJitterWireMockTest` (5 WireMock интеграционных тестов). 0 warnings под постоянными флагами `-Xlint:all -Werror` и `-Xdoclint:all -Werror`, zero-dep core строго сохранен. Следующий свободный ADR — **0041**.
+
+[2026-10-15 10:05] Агент (сессия #119): Реализован эпик Request Body Compression & Content-Encoding SPI (ADR-0041):
+1. **Zero-Dep Content Coding SPI (`ru.jrestly.compression`):**
+   - `CompressionAlgorithm`: enum `GZIP`, `DEFLATE`, `NONE` с регистронезависимым парсингом и алиасами.
+   - `ContentCompressor`: SPI интерфейс с методами `encoding()`, `compress(byte[])`, `decompress(byte[])`.
+   - `GzipContentCompressor` & `DeflateContentCompressor`: встроенные zero-dep реализации на `java.util.zip` (RFC 1952 gzip, RFC 1950 zlib, RFC 1951 raw deflate fallback).
+   - `ContentCompressors`: реестр стандартных кодеков.
+2. **Декларативная и программная эргономика:**
+   - Аннотация `@Compress` (на методах и интерфейсах) с атрибутами `algorithm`, `minSizeBytes` (порог для исключения оверхеда на мелких телах) и `enabled` (для точечного отключения).
+   - Fluent-методы в `SimpleModuleInfo.Builder` и `JRestlyClient.Builder`: `requestCompression(CompressionAlgorithm, int thresholdBytes)` и `contentCompressor(ContentCompressor)`.
+   - `ControllerValidator`: строгая проверка `minSizeBytes >= 0` с выбросом `ControllerValidationException`.
+   - Пайплайн `HttpTemplateBuilder`: прозрачное сжатие тела запроса, выставление `Content-Encoding` и защита от double compression при ручных заголовках.
+   - Симметричная декомпрессия ответов в `HttpTemplate.handleDecompression` через зарегистрированные кастомные `ContentCompressor`.
+3. **Тестирование (23 новых теста, итого 866/866 в 102 классах):**
+   - `CompressionAlgorithmTest` (2 теста), `ContentCompressorTest` (6 тестов), `CompressConfigTest` (7 тестов), `RequestCompressionWireMockTest` (8 WireMock тестов). Все гейты чистые (0 warnings под `-Werror`), zero-dep инвариант строго соблюдён. Следующий свободный ADR — **0042**.

@@ -6,6 +6,9 @@ import ru.jrestly.json.JsonCodec;
 import ru.jrestly.json.JsonCodecResolver;
 import ru.jrestly.http.RetryPolicy;
 
+import ru.jrestly.compression.CompressionAlgorithm;
+import ru.jrestly.compression.ContentCompressor;
+
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLParameters;
 import java.net.Authenticator;
@@ -13,6 +16,7 @@ import java.net.CookieHandler;
 import java.net.ProxySelector;
 import java.net.http.HttpClient;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.Executor;
 
 /**
@@ -246,6 +250,49 @@ public interface ModuleInfo {
      */
     default Authenticator getAuthenticator() {
         return null;
+    }
+
+    /**
+     * The default request body compression algorithm (ADR-0041).
+     * When {@code null} (the default), requests are sent uncompressed unless explicitly
+     * annotated with {@link ru.jrestly.annotation.Compress}.
+     *
+     * @return the default compression algorithm, or {@code null} if disabled
+     */
+    default CompressionAlgorithm getRequestCompressionAlgorithm() {
+        return null;
+    }
+
+    /**
+     * The minimum request body size in bytes before automatic request compression is applied (ADR-0041).
+     * Defaults to {@code 0} (compress all non-empty bodies when request compression is enabled).
+     *
+     * @return the threshold in bytes
+     */
+    default int getRequestCompressionThreshold() {
+        return 0;
+    }
+
+    /**
+     * Map of registered custom content compressors keyed by encoding token (ADR-0041).
+     *
+     * @return unmodifiable map of custom compressors
+     */
+    default Map<String, ContentCompressor> getContentCompressors() {
+        return Map.of();
+    }
+
+    /**
+     * Resolves a content compressor for the given encoding token (ADR-0041).
+     *
+     * @param encoding content encoding token (e.g. {@code "gzip"}, {@code "deflate"})
+     * @return the compressor instance, or {@code null} if none registered
+     */
+    default ContentCompressor getContentCompressor(String encoding) {
+        if (encoding == null) {
+            return null;
+        }
+        return getContentCompressors().get(encoding.trim().toLowerCase(java.util.Locale.ROOT));
     }
 }
 

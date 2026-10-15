@@ -9,6 +9,9 @@ import ru.jrestly.interceptor.ResponseInterceptor;
 import ru.jrestly.json.JsonCodec;
 import ru.jrestly.json.JsonCodecResolver;
 
+import ru.jrestly.compression.CompressionAlgorithm;
+import ru.jrestly.compression.ContentCompressor;
+
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLParameters;
 import java.net.Authenticator;
@@ -24,6 +27,7 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.Executor;
 import java.util.function.UnaryOperator;
@@ -66,6 +70,9 @@ public class SimpleModuleInfo implements ModuleInfo {
     private final ru.jrestly.metrics.ClientMetricsListener metricsListener;
     private final ProxySelector proxySelector;
     private final Authenticator authenticator;
+    private final CompressionAlgorithm requestCompressionAlgorithm;
+    private final int requestCompressionThreshold;
+    private final Map<String, ContentCompressor> contentCompressors;
 
     private SimpleModuleInfo(Builder builder) {
         this.name = builder.name;
@@ -90,6 +97,9 @@ public class SimpleModuleInfo implements ModuleInfo {
         this.metricsListener = builder.metricsListener;
         this.proxySelector = builder.proxySelector;
         this.authenticator = builder.authenticator;
+        this.requestCompressionAlgorithm = builder.requestCompressionAlgorithm;
+        this.requestCompressionThreshold = builder.requestCompressionThreshold;
+        this.contentCompressors = Map.copyOf(builder.contentCompressors);
     }
 
     /**
@@ -202,6 +212,29 @@ public class SimpleModuleInfo implements ModuleInfo {
         return authenticator;
     }
 
+    @Override
+    public CompressionAlgorithm getRequestCompressionAlgorithm() {
+        return requestCompressionAlgorithm;
+    }
+
+    @Override
+    public int getRequestCompressionThreshold() {
+        return requestCompressionThreshold;
+    }
+
+    @Override
+    public Map<String, ContentCompressor> getContentCompressors() {
+        return contentCompressors;
+    }
+
+    @Override
+    public ContentCompressor getContentCompressor(String encoding) {
+        if (encoding == null) {
+            return null;
+        }
+        return contentCompressors.get(encoding.trim().toLowerCase(java.util.Locale.ROOT));
+    }
+
     /**
      * A builder for {@link SimpleModuleInfo}, pre-set to the defaults:
      * name {@code "default"}, 5 s connect timeout, 30 s socket timeout,
@@ -232,6 +265,9 @@ public class SimpleModuleInfo implements ModuleInfo {
         private ru.jrestly.metrics.ClientMetricsListener metricsListener;
         private ProxySelector proxySelector;
         private Authenticator authenticator;
+        private CompressionAlgorithm requestCompressionAlgorithm;
+        private int requestCompressionThreshold = 0;
+        private final Map<String, ContentCompressor> contentCompressors = new java.util.LinkedHashMap<>();
 
         /**
          * A builder pre-set to the defaults; {@code baseUrl} must still
@@ -699,6 +735,49 @@ public class SimpleModuleInfo implements ModuleInfo {
                     return new PasswordAuthentication(username, pass);
                 }
             };
+            return this;
+        }
+
+        /**
+         * Sets the default request body compression algorithm (ADR-0041).
+         *
+         * @param algorithm the compression algorithm, or {@code null} to disable
+         * @return this builder, for chaining
+         */
+        public Builder requestCompression(CompressionAlgorithm algorithm) {
+            this.requestCompressionAlgorithm = algorithm;
+            return this;
+        }
+
+        /**
+         * Sets the default request body compression algorithm and minimum payload size threshold in bytes (ADR-0041).
+         *
+         * @param algorithm the compression algorithm, or {@code null} to disable
+         * @param thresholdBytes minimum payload size in bytes to trigger compression (must be non-negative)
+         * @return this builder, for chaining
+         * @throws IllegalArgumentException if thresholdBytes is negative
+         */
+        public Builder requestCompression(CompressionAlgorithm algorithm, int thresholdBytes) {
+            if (thresholdBytes < 0) {
+                throw new IllegalArgumentException("request compression threshold must not be negative: " + thresholdBytes);
+            }
+            this.requestCompressionAlgorithm = algorithm;
+            this.requestCompressionThreshold = thresholdBytes;
+            return this;
+        }
+
+        /**
+         * Registers a custom {@link ContentCompressor} for content encoding and decoding (ADR-0041).
+         *
+         * @param compressor the compressor instance, not {@code null}
+         * @return this builder, for chaining
+         */
+        public Builder contentCompressor(ContentCompressor compressor) {
+            Objects.requireNonNull(compressor, "compressor must not be null");
+            if (compressor.encoding() == null || compressor.encoding().isBlank()) {
+                throw new IllegalArgumentException("compressor encoding must not be blank");
+            }
+            this.contentCompressors.put(compressor.encoding().trim().toLowerCase(java.util.Locale.ROOT), compressor);
             return this;
         }
 

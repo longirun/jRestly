@@ -1,6 +1,7 @@
 package ru.jrestly.http;
 
 import ru.jrestly.ModuleInfo;
+import ru.jrestly.compression.ContentCompressor;
 import ru.jrestly.interceptor.RequestContext;
 import ru.jrestly.interceptor.RequestInterceptor;
 import ru.jrestly.interceptor.ResponseContext;
@@ -1299,10 +1300,11 @@ public class HttpTemplate {
             return response;
         }
 
+        ContentCompressor customCompressor = moduleInfo.getContentCompressor(encoding);
         boolean isGzip = "gzip".equals(encoding) || "x-gzip".equals(encoding);
         boolean isDeflate = "deflate".equals(encoding);
 
-        if (!isGzip && !isDeflate) {
+        if (!isGzip && !isDeflate && customCompressor == null) {
             return response;
         }
 
@@ -1323,7 +1325,14 @@ public class HttpTemplate {
             return new WireResponse(response.statusCode(), strippedHeaders, rawBody, null, response.version(), response.trailers());
         }
 
-        byte[] decompressedBytes = isGzip ? decompressGzip(rawBody) : decompressDeflate(rawBody);
+        byte[] decompressedBytes;
+        if (customCompressor != null) {
+            decompressedBytes = customCompressor.decompress(rawBody);
+        } else if (isGzip) {
+            decompressedBytes = decompressGzip(rawBody);
+        } else {
+            decompressedBytes = decompressDeflate(rawBody);
+        }
         return new WireResponse(response.statusCode(), strippedHeaders, decompressedBytes, null, response.version(), response.trailers());
     }
 
@@ -1793,6 +1802,15 @@ public class HttpTemplate {
      */
     public void setBody(byte[] body) {
         this.body = body;
+    }
+
+    /**
+     * The raw request body bytes, or {@code null} if no body is present.
+     *
+     * @return the request body bytes, or {@code null}
+     */
+    public byte[] getBody() {
+        return body;
     }
 
     /**

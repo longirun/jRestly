@@ -2,6 +2,7 @@ package ru.jrestly;
 
 import ru.jrestly.annotation.Accept;
 import ru.jrestly.annotation.CollectionFormat;
+import ru.jrestly.annotation.Compress;
 import ru.jrestly.annotation.ContentType;
 import ru.jrestly.annotation.Cookie;
 import ru.jrestly.annotation.Delete;
@@ -100,6 +101,11 @@ public final class ControllerValidator {
         for (Timeout timeout : current.getAnnotationsByType(Timeout.class)) {
             if (timeout.value() <= 0) {
                 problems.add(current.getSimpleName() + ": @Timeout value must be strictly positive, was " + timeout.value());
+            }
+        }
+        for (Compress compress : current.getAnnotationsByType(Compress.class)) {
+            if (compress.minSizeBytes() < 0) {
+                problems.add(current.getSimpleName() + ": @Compress minSizeBytes must not be negative, was " + compress.minSizeBytes());
             }
         }
         for (Accept accept : current.getAnnotationsByType(Accept.class)) {
@@ -239,6 +245,13 @@ public final class ControllerValidator {
             Timeout timeout = method.getAnnotation(Timeout.class);
             if (timeout.value() <= 0) {
                 problems.add(method.getName() + "(): @Timeout value must be strictly positive, was " + timeout.value());
+            }
+        }
+
+        if (method.isAnnotationPresent(Compress.class)) {
+            Compress compress = method.getAnnotation(Compress.class);
+            if (compress.minSizeBytes() < 0) {
+                problems.add(method.getName() + "(): @Compress minSizeBytes must not be negative, was " + compress.minSizeBytes());
             }
         }
 
