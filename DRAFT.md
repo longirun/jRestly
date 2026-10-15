@@ -1,31 +1,27 @@
-# DRAFT: активная зона после закрытия эпика Zero-Dependency Authorization SPI & TokenManager (ADR-0046)
+# DRAFT: активная зона после закрытия эпика Interceptor Chain Short-Circuit SPI (ADR-0047)
 
-> Эпик Zero-Dependency Authorization SPI, TokenManager & Transparent 401 Retry (ADR-0046, `docs/0.10.0/`) закрыт (сессия #126):
-> - `ru.jrestly.auth.Token`: immutable record со сроками жизни и `refreshBuffer`.
-> - `ru.jrestly.auth.TokenManager` & `SingleFlightTokenManager`: single-flight защита от stampede/thundering herd.
-> - `ru.jrestly.auth.BearerAuth`, `BasicAuth`, `ApiKeyAuth`: zero-dep интерцепторы с `@Order(-1000)`.
-> - Прозрачный 401 retry: при получении 401 токен сбрасывается, запрос повторяется со свежим токеном (в `exchange` и `exchangeAsync`).
-> - Fluent builder ergonomics: `bearerAuth`, `basicAuth`, `apiKeyHeader`, `apiKeyQuery`, `tokenManager`, `retryOnUnauthorized`.
-> - Тесты: 24 новых теста (965/965 в 118 классах), zero-dep POM подтвержден.
+> Эпик Interceptor Chain Short-Circuit SPI (ADR-0047, `docs/0.10.0/`) закрыт (сессия #127):
+> - `ru.jrestly.interceptor.RequestContext`: методы `shortCircuit(WireResponse)`, `shortCircuitResponse()`, `isShortCircuited()`.
+> - `ru.jrestly.interceptor.ShortCircuitInterceptor`: функциональный SPI с `shortCircuit(req, ctx)` и фабриками `of(...)`, `matching(...)`.
+> - `ru.jrestly.http.HttpTemplate`: немедленный break цикла интерцепторов, обход сети, rate limiter и circuit breaker, маршрутизация в `processResponse` (синхронно и асинхронно в `CompletableFuture`).
+> - `ru.jrestly.http.WireResponse`: фабрики `of(...)`, builder `WireResponse.Builder`, `header(name)`, `hasBody()`.
+> - `ru.jrestly.http.WireRequest`: 5-аргументный конструктор.
+> - Fluent ergonomics: `shortCircuit(...)`, `mock(...)` в `JRestlyClient.Builder` и `SimpleModuleInfo.Builder`.
+> - Тесты: 16 новых тестов (981/981 в 120 классах), zero-dep POM подтвержден.
 > Следующий ход — свободный, выбор из активной зоны.
 
 ## Активная зона (кандидаты на следующий эпик)
 
-- **Кандидат №1 — Interceptor Chain Short-Circuit SPI (ADR-0047)**:
-  Интерцептор может вернуть синтетический ответ (мок/кэш) без сетевого вызова:
-  специальный `ShortCircuitInterceptor` интерфейс или возврат `Optional<WireResponse>`. Полезно для мок-тестирования,
-  кэш-слоя, circuit-from-cache, интеграции с внешними моками.
-
-- **Кандидат №2 — HttpTemplate инкапсуляция (новый ADR)**:
+- **Кандидат №1 — HttpTemplate инкапсуляция (ADR-0048)**:
   `HttpTemplate` — 57 публичных setter-ов, leaked internal. Перевод в package-private.
   Требует: переписать 5-6 тестов (`DecompressionConfigTest`, `PutMethodTest`, `TimeoutConfigTest` и др.),
-  которые инстанцируют `new HttpTemplate()` напрямую. Крупная работа, высокая ценность.
+  которые инстанцируют `new HttpTemplate()` напрямую. Крупная работа, высокая архитектурная ценность.
 
-- **Кандидат №3 — JMH Benchmarks suite**:
+- **Кандидат №2 — JMH Benchmarks suite**:
   Тестирование производительности и накладных расходов jRestly (RPS, latency p99, gc allocs)
-  в сравнении с `HttpClient`, Retrofit и Feign.
+  в сравнении с прямым `HttpClient`, Retrofit и Feign.
 
-- **Кандидат №4 — test-javadoc** (ADR-0013 Non-goals):
+- **Кандидат №3 — test-javadoc** (ADR-0013 Non-goals):
   Наведение лоска в тестовых классах.
 
 

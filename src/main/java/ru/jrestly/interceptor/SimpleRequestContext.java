@@ -4,8 +4,10 @@ import java.lang.reflect.Method;
 import java.util.Collections;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import ru.jrestly.http.WireResponse;
 
 /**
  * Standard implementation of {@link RequestContext}.
@@ -20,6 +22,7 @@ public class SimpleRequestContext implements RequestContext {
     private final Method method;
     private final Object[] args;
     private final ConcurrentMap<String, Object> attributes;
+    private volatile WireResponse shortCircuitResponse;
 
     /**
      * Creates a new invocation request context.
@@ -77,5 +80,15 @@ public class SimpleRequestContext implements RequestContext {
     @Override
     public Map<String, Object> attributes() {
         return Collections.unmodifiableMap(attributes);
+    }
+
+    @Override
+    public void shortCircuit(WireResponse response) {
+        this.shortCircuitResponse = Objects.requireNonNull(response, "response");
+    }
+
+    @Override
+    public Optional<WireResponse> shortCircuitResponse() {
+        return Optional.ofNullable(shortCircuitResponse);
     }
 }

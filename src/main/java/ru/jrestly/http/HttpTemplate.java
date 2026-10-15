@@ -218,21 +218,29 @@ public class HttpTemplate {
         Throwable failure = null;
         int[] attemptsHolder = new int[] {1};
         try {
-            if (rateLimiter != null) {
-                rateLimiter.acquire();
-            }
-            if (circuitBreaker != null) {
-                circuitBreaker.acquirePermission();
-            }
-            response = executeWithRetries(effectiveRequest, requestContext, attemptsHolder);
-            if (response.statusCode() == 401 && retryOnUnauthorized && tokenManager != null) {
-                closeIntermediateStream(response);
-                tokenManager.invalidate();
-                effectiveRequest = applyRequestInterceptors(request, requestContext);
+            WireResponse shortCircuited = (requestContext != null)
+                    ? requestContext.shortCircuitResponse().orElse(null)
+                    : null;
+            if (shortCircuited != null) {
+                attemptsHolder[0] = 0;
+                response = handleDecompression(shortCircuited);
+            } else {
+                if (rateLimiter != null) {
+                    rateLimiter.acquire();
+                }
+                if (circuitBreaker != null) {
+                    circuitBreaker.acquirePermission();
+                }
                 response = executeWithRetries(effectiveRequest, requestContext, attemptsHolder);
+                if (response.statusCode() == 401 && retryOnUnauthorized && tokenManager != null) {
+                    closeIntermediateStream(response);
+                    tokenManager.invalidate();
+                    effectiveRequest = applyRequestInterceptors(request, requestContext);
+                    response = executeWithRetries(effectiveRequest, requestContext, attemptsHolder);
+                }
             }
             T result = processResponse(effectiveRequest, response, start);
-            if (circuitBreaker != null) {
+            if (circuitBreaker != null && attemptsHolder[0] > 0) {
                 circuitBreaker.recordSuccess(System.nanoTime() - start);
             }
             return result;
@@ -250,7 +258,7 @@ public class HttpTemplate {
             failure = t;
             throw t;
         } finally {
-            if (failure != null && circuitBreaker != null
+            if (failure != null && circuitBreaker != null && attemptsHolder[0] > 0
                     && !(failure instanceof CircuitBreakerOpenException)
                     && !(failure instanceof RateLimitExceededException)) {
                 circuitBreaker.recordFailure(System.nanoTime() - start, failure);
@@ -272,6 +280,9 @@ public class HttpTemplate {
                 throw new NullPointerException("RequestInterceptor returned null WireRequest");
             }
             current = next;
+            if (requestContext != null && requestContext.shortCircuitResponse().isPresent()) {
+                break;
+            }
         }
         return current;
     }
@@ -293,37 +304,53 @@ public class HttpTemplate {
         boolean hasResponseInterceptors = !responseInterceptors.isEmpty() && requestContext != null;
         boolean hasMetrics = metricsListener != null && requestContext != null;
 
-        if (rateLimiter != null) {
-            if (!rateLimiter.tryAcquire(rateLimiter.config().timeoutDuration())) {
-                Throwable t = new RateLimitExceededException(rateLimiter.name());
-                if (hasResponseInterceptors) {
-                    invokeResponseInterceptors(requestContext, request, null, t, startNanos);
-                }
-                if (hasMetrics) {
-                    notifyCallComplete(requestContext, request, null, t, startNanos, 1);
-                }
-                CompletableFuture<Object> failed = new CompletableFuture<>();
-                failed.completeExceptionally(t);
-                return failed;
+        WireResponse shortCircuited = (requestContext != null)
+                ? requestContext.shortCircuitResponse().orElse(null)
+                : null;
+
+        CompletableFuture<WireResponse> retriesFuture;
+        if (shortCircuited != null) {
+            attemptsRef.set(0);
+            try {
+                WireResponse decompressed = handleDecompression(shortCircuited);
+                retriesFuture = CompletableFuture.completedFuture(decompressed);
+            } catch (IOException e) {
+                retriesFuture = new CompletableFuture<>();
+                retriesFuture.completeExceptionally(e);
             }
-        }
-        if (circuitBreaker != null) {
-            if (!circuitBreaker.tryAcquirePermission()) {
-                Throwable t = new CircuitBreakerOpenException(circuitBreaker.name(), circuitBreaker.remainingWaitDuration());
-                if (hasResponseInterceptors) {
-                    invokeResponseInterceptors(requestContext, request, null, t, startNanos);
+        } else {
+            if (rateLimiter != null) {
+                if (!rateLimiter.tryAcquire(rateLimiter.config().timeoutDuration())) {
+                    Throwable t = new RateLimitExceededException(rateLimiter.name());
+                    if (hasResponseInterceptors) {
+                        invokeResponseInterceptors(requestContext, request, null, t, startNanos);
+                    }
+                    if (hasMetrics) {
+                        notifyCallComplete(requestContext, request, null, t, startNanos, 1);
+                    }
+                    CompletableFuture<Object> failed = new CompletableFuture<>();
+                    failed.completeExceptionally(t);
+                    return failed;
                 }
-                if (hasMetrics) {
-                    notifyCallComplete(requestContext, request, null, t, startNanos, 1);
-                }
-                CompletableFuture<Object> failed = new CompletableFuture<>();
-                failed.completeExceptionally(t);
-                return failed;
             }
+            if (circuitBreaker != null) {
+                if (!circuitBreaker.tryAcquirePermission()) {
+                    Throwable t = new CircuitBreakerOpenException(circuitBreaker.name(), circuitBreaker.remainingWaitDuration());
+                    if (hasResponseInterceptors) {
+                        invokeResponseInterceptors(requestContext, request, null, t, startNanos);
+                    }
+                    if (hasMetrics) {
+                        notifyCallComplete(requestContext, request, null, t, startNanos, 1);
+                    }
+                    CompletableFuture<Object> failed = new CompletableFuture<>();
+                    failed.completeExceptionally(t);
+                    return failed;
+                }
+            }
+            retriesFuture = executeAsyncWithRetries(request, requestContext, attemptsRef);
         }
 
-        CompletableFuture<WireResponse> retriesFuture = executeAsyncWithRetries(request, requestContext, attemptsRef);
-        CompletableFuture<WireResponse> authGuardedFuture = (retryOnUnauthorized && tokenManager != null)
+        CompletableFuture<WireResponse> authGuardedFuture = (retryOnUnauthorized && tokenManager != null && shortCircuited == null)
                 ? retriesFuture.thenCompose(response -> {
                     if (response.statusCode() == 401) {
                         closeIntermediateStream(response);
@@ -411,7 +438,7 @@ public class HttpTemplate {
                     : future.whenComplete(interceptorAction);
         }
 
-        if (circuitBreaker != null) {
+        if (circuitBreaker != null && shortCircuited == null) {
             java.util.function.BiConsumer<Object, Throwable> cbAction = (res, ex) -> {
                 long duration = System.nanoTime() - startNanos;
                 if (ex == null) {

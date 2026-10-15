@@ -110,3 +110,9 @@ default=0, стабильная сортировка (declaration order сохр
 3. **Zero-Dep интерцепторы:** `BearerAuth` (RFC 6750), `BasicAuth` (RFC 7617, base64), `ApiKeyAuth` (header/query) с высоким приоритетом `@Order(-1000)`. Эндпоинты с `@Authorization` автоматически пропускаются.
 4. **Fluent API:** `bearerAuth(...)`, `basicAuth(...)`, `apiKeyHeader(...)`, `apiKeyQuery(...)`, `tokenManager(...)`, `retryOnUnauthorized(...)`.
 5. **Гейты:** 24 новых теста (`TokenTest`, `TokenManagerTest`, `AuthInterceptorsTest`, `AuthorizationWireMockTest`), всего 965/965 тестов зелёные (118 классов), POM с ровно 0 dependencies. Следующий свободный ADR — **0047**.
+
+[2026-10-15 15:18] Агент (сессия #127): Реализован эпик Interceptor Chain Short-Circuit SPI (ADR-0047):
+1. **Short-Circuit SPI:** `RequestContext.shortCircuit(WireResponse)` и функциональный интерфейс `ShortCircuitInterceptor extends RequestInterceptor` с фабриками `of(WireResponse)` и `matching(Predicate, Function)`.
+2. **Bypass & Pipeline:** ранний выход из цикла request-интерцепторов, полный обход физической сети, RateLimiter и CircuitBreaker. Синтетический ответ прозрачно проходит декодирование тела в DTO / String / byte[] / Optional, триггерит `@OnError` и `@ExpectStatus`, наполняет `ResponseHeaders` и уведомляет `ResponseInterceptor` и метрики. Поддержаны синхронные и асинхронные (`CompletableFuture`) методы.
+3. **Мокирование в памяти без сокетов:** на билдере добавлены удобные методы `builder.mock(WireResponse)` и `builder.mock(predicate, response)`. Теперь unit-тесты клиентских вызовов можно писать в памяти без поднятия WireMock или сетевых сокетов!
+4. **Гейты:** 16 новых тестов (`ShortCircuitInterceptorTest`, `ShortCircuitExecutionTest`), всего 981/981 тестов зелёные (120 классов), POM строго с 0 dependencies. Следующий свободный ADR — **0048**.

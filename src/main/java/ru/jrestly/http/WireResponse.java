@@ -2,7 +2,12 @@ package ru.jrestly.http;
 
 import java.io.InputStream;
 import java.net.http.HttpClient;
+import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
+import java.util.Optional;
 
 /**
  * Internal wire model: the engine's view of a response — status, headers,
@@ -75,5 +80,276 @@ public record WireResponse(
      */
     public WireResponse(int statusCode, List<Header> headers, byte[] body, InputStream stream, HttpClient.Version version) {
         this(statusCode, headers, body, stream, version, List.of());
+    }
+
+    /**
+     * Creates a minimal body-less synthetic wire response.
+     *
+     * @param statusCode the HTTP status code
+     * @return a synthetic wire response
+     */
+    public static WireResponse of(int statusCode) {
+        return new WireResponse(statusCode, List.of(), null, null, HttpClient.Version.HTTP_1_1, List.of());
+    }
+
+    /**
+     * Creates a synthetic wire response with a UTF-8 string payload.
+     *
+     * @param statusCode the HTTP status code
+     * @param body the response body string, or {@code null}
+     * @return a synthetic wire response
+     */
+    public static WireResponse of(int statusCode, String body) {
+        byte[] bytes = body != null ? body.getBytes(StandardCharsets.UTF_8) : null;
+        return new WireResponse(statusCode, List.of(), bytes, null, HttpClient.Version.HTTP_1_1, List.of());
+    }
+
+    /**
+     * Creates a synthetic wire response with raw byte payload.
+     *
+     * @param statusCode the HTTP status code
+     * @param body the raw response body bytes, or {@code null}
+     * @return a synthetic wire response
+     */
+    public static WireResponse of(int statusCode, byte[] body) {
+        return new WireResponse(statusCode, List.of(), body, null, HttpClient.Version.HTTP_1_1, List.of());
+    }
+
+    /**
+     * Creates a synthetic wire response with headers and a UTF-8 string payload.
+     *
+     * @param statusCode the HTTP status code
+     * @param headers the response headers
+     * @param body the response body string, or {@code null}
+     * @return a synthetic wire response
+     */
+    public static WireResponse of(int statusCode, List<Header> headers, String body) {
+        byte[] bytes = body != null ? body.getBytes(StandardCharsets.UTF_8) : null;
+        return new WireResponse(statusCode, headers, bytes, null, HttpClient.Version.HTTP_1_1, List.of());
+    }
+
+    /**
+     * Creates a synthetic wire response with headers and raw byte payload.
+     *
+     * @param statusCode the HTTP status code
+     * @param headers the response headers
+     * @param body the raw response body bytes, or {@code null}
+     * @return a synthetic wire response
+     */
+    public static WireResponse of(int statusCode, List<Header> headers, byte[] body) {
+        return new WireResponse(statusCode, headers, body, null, HttpClient.Version.HTTP_1_1, List.of());
+    }
+
+    /**
+     * Finds the first value of the specified header (case-insensitive).
+     *
+     * @param name the header name to find, must not be {@code null}
+     * @return an {@link Optional} containing the header value, or {@link Optional#empty()}
+     * @throws NullPointerException if {@code name} is {@code null}
+     */
+    public Optional<String> header(String name) {
+        Objects.requireNonNull(name, "name");
+        for (Header h : headers) {
+            if (h.name().equalsIgnoreCase(name)) {
+                return Optional.ofNullable(h.value());
+            }
+        }
+        return Optional.empty();
+    }
+
+    /**
+     * Returns whether this response carries a non-empty byte body.
+     *
+     * @return {@code true} if body bytes are present and non-empty
+     */
+    public boolean hasBody() {
+        return body != null && body.length > 0;
+    }
+
+    /**
+     * Creates a new fluent {@link Builder} initialized with status code 200.
+     *
+     * @return a new response builder
+     */
+    public static Builder builder() {
+        return new Builder();
+    }
+
+    /**
+     * Fluent builder for synthetic {@link WireResponse} instances.
+     */
+    public static final class Builder {
+
+        private int statusCode = 200;
+        private final List<Header> headers = new ArrayList<>();
+        private byte[] body;
+        private InputStream stream;
+        private HttpClient.Version version = HttpClient.Version.HTTP_1_1;
+        private final List<Header> trailers = new ArrayList<>();
+
+        private Builder() {
+        }
+
+        /**
+         * Sets the HTTP status code.
+         *
+         * @param statusCode the HTTP status code
+         * @return this builder
+         */
+        public Builder statusCode(int statusCode) {
+            this.statusCode = statusCode;
+            return this;
+        }
+
+        /**
+         * Appends a header.
+         *
+         * @param name the header name, must not be {@code null}
+         * @param value the header value
+         * @return this builder
+         * @throws NullPointerException if {@code name} is {@code null}
+         */
+        public Builder header(String name, String value) {
+            Objects.requireNonNull(name, "name");
+            this.headers.add(new Header(name, value));
+            return this;
+        }
+
+        /**
+         * Appends a header.
+         *
+         * @param header the header to append, must not be {@code null}
+         * @return this builder
+         * @throws NullPointerException if {@code header} is {@code null}
+         */
+        public Builder header(Header header) {
+            Objects.requireNonNull(header, "header");
+            this.headers.add(header);
+            return this;
+        }
+
+        /**
+         * Appends multiple headers.
+         *
+         * @param headers the list of headers to append
+         * @return this builder
+         */
+        public Builder headers(List<Header> headers) {
+            if (headers != null) {
+                this.headers.addAll(headers);
+            }
+            return this;
+        }
+
+        /**
+         * Sets the body bytes.
+         *
+         * @param body the body bytes, or {@code null}
+         * @return this builder
+         */
+        public Builder body(byte[] body) {
+            this.body = body;
+            this.stream = null;
+            return this;
+        }
+
+        /**
+         * Sets the body as a UTF-8 string.
+         *
+         * @param body the body string, or {@code null}
+         * @return this builder
+         */
+        public Builder body(String body) {
+            this.body = body != null ? body.getBytes(StandardCharsets.UTF_8) : null;
+            this.stream = null;
+            return this;
+        }
+
+        /**
+         * Sets the body string with the specified character set.
+         *
+         * @param body the body string, or {@code null}
+         * @param charset the character set to encode with, must not be {@code null}
+         * @return this builder
+         * @throws NullPointerException if {@code charset} is {@code null}
+         */
+        public Builder body(String body, Charset charset) {
+            Objects.requireNonNull(charset, "charset");
+            this.body = body != null ? body.getBytes(charset) : null;
+            this.stream = null;
+            return this;
+        }
+
+        /**
+         * Sets the body stream.
+         *
+         * @param stream the body stream, or {@code null}
+         * @return this builder
+         */
+        public Builder stream(InputStream stream) {
+            this.stream = stream;
+            this.body = null;
+            return this;
+        }
+
+        /**
+         * Sets the HTTP version.
+         *
+         * @param version the HTTP protocol version, or {@code null} for default HTTP/1.1
+         * @return this builder
+         */
+        public Builder version(HttpClient.Version version) {
+            this.version = version != null ? version : HttpClient.Version.HTTP_1_1;
+            return this;
+        }
+
+        /**
+         * Appends a trailing header.
+         *
+         * @param name the trailer name, must not be {@code null}
+         * @param value the trailer value
+         * @return this builder
+         * @throws NullPointerException if {@code name} is {@code null}
+         */
+        public Builder trailer(String name, String value) {
+            Objects.requireNonNull(name, "name");
+            this.trailers.add(new Header(name, value));
+            return this;
+        }
+
+        /**
+         * Appends a trailing header.
+         *
+         * @param header the trailer header to append, must not be {@code null}
+         * @return this builder
+         * @throws NullPointerException if {@code header} is {@code null}
+         */
+        public Builder trailer(Header header) {
+            Objects.requireNonNull(header, "header");
+            this.trailers.add(header);
+            return this;
+        }
+
+        /**
+         * Appends multiple trailing headers.
+         *
+         * @param trailers the trailing headers to append
+         * @return this builder
+         */
+        public Builder trailers(List<Header> trailers) {
+            if (trailers != null) {
+                this.trailers.addAll(trailers);
+            }
+            return this;
+        }
+
+        /**
+         * Builds the {@link WireResponse} instance.
+         *
+         * @return the newly constructed wire response
+         */
+        public WireResponse build() {
+            return new WireResponse(statusCode, headers, body, stream, version, trailers);
+        }
     }
 }

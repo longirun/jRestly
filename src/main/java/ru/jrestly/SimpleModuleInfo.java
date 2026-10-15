@@ -1109,6 +1109,58 @@ public class SimpleModuleInfo implements ModuleInfo {
         }
 
         /**
+         * Appends a short-circuit interceptor capable of returning synthetic responses (ADR-0047).
+         *
+         * @param interceptor the short-circuit interceptor, must not be {@code null}
+         * @return this builder, for chaining
+         * @throws NullPointerException if {@code interceptor} is {@code null}
+         */
+        public Builder shortCircuit(ru.jrestly.interceptor.ShortCircuitInterceptor interceptor) {
+            java.util.Objects.requireNonNull(interceptor, "interceptor");
+            this.requestInterceptors.add(interceptor);
+            return this;
+        }
+
+        /**
+         * Configures an unconditional synthetic mock response for all requests (ADR-0047).
+         *
+         * @param response the synthetic wire response to return, must not be {@code null}
+         * @return this builder, for chaining
+         * @throws NullPointerException if {@code response} is {@code null}
+         */
+        public Builder mock(ru.jrestly.http.WireResponse response) {
+            return shortCircuit(ru.jrestly.interceptor.ShortCircuitInterceptor.of(response));
+        }
+
+        /**
+         * Configures a conditional synthetic mock response matching the specified predicate (ADR-0047).
+         *
+         * @param predicate the predicate matching requests to mock, must not be {@code null}
+         * @param response the synthetic response to return, must not be {@code null}
+         * @return this builder, for chaining
+         * @throws NullPointerException if {@code predicate} or {@code response} is {@code null}
+         */
+        public Builder mock(java.util.function.Predicate<ru.jrestly.http.WireRequest> predicate, ru.jrestly.http.WireResponse response) {
+            java.util.Objects.requireNonNull(response, "response");
+            return shortCircuit(ru.jrestly.interceptor.ShortCircuitInterceptor.matching(predicate, req -> response));
+        }
+
+        /**
+         * Configures a conditional synthetic mock response produced dynamically by a factory function (ADR-0047).
+         *
+         * @param predicate the predicate matching requests to mock, must not be {@code null}
+         * @param responseSupplier the factory producing synthetic responses for matching requests, must not be {@code null}
+         * @return this builder, for chaining
+         * @throws NullPointerException if {@code predicate} or {@code responseSupplier} is {@code null}
+         */
+        public Builder mock(
+                java.util.function.Predicate<ru.jrestly.http.WireRequest> predicate,
+                java.util.function.Function<ru.jrestly.http.WireRequest, ru.jrestly.http.WireResponse> responseSupplier
+        ) {
+            return shortCircuit(ru.jrestly.interceptor.ShortCircuitInterceptor.matching(predicate, responseSupplier));
+        }
+
+        /**
          * Validates the settings and creates the module: {@code baseUrl}
          * must be set (not blank) and an unset {@code jsonCodec} is
          * resolved from the classpath.

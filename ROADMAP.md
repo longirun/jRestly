@@ -1608,7 +1608,39 @@ Gates (session #126, clean rebuild):
 - `javadoc` 0 warnings under permanent `-Xdoclint:all -Werror`.
 - Zero external runtime dependencies strictly preserved (0 dependencies in Maven POM).
 
-After the epic: candidates — ADR-0047 (Short-Circuit Interceptor SPI), HttpTemplate package-private encapsulation, JMH Benchmarks. ADR number **0047** free.
+After the epic: ADR-0047 (Interceptor Chain Short-Circuit SPI) — done, section below. ADR number **0048** free.
+
+## Interceptor Chain Short-Circuit SPI (ADR-0047) — COMPLETE ✅ (2026-10-15, unreleased)
+
+> Source of truth: [`docs/0.10.0/ADR-0047-interceptor-chain-short-circuit-spi.md`](docs/0.10.0/ADR-0047-interceptor-chain-short-circuit-spi.md).
+
+**Problem:** Previously `RequestInterceptor` could only mutate an outgoing `WireRequest`. Every call was unconditionally placed on the wire. There was no mechanism for an interceptor to abort network transmission and return a synthetic `WireResponse` (essential for local HTTP caching, offline fallbacks, policy enforcement, and socket-less unit test mocking without WireMock).
+
+**Solution:**
+- Context-driven short-circuit SPI: `RequestContext.shortCircuit(WireResponse)`, `RequestContext.shortCircuitResponse()`, `RequestContext.isShortCircuited()`.
+- Specialized `ShortCircuitInterceptor` functional interface extending `RequestInterceptor` with `shortCircuit(WireRequest, RequestContext)` and static factories `ShortCircuitInterceptor.of(WireResponse)` and `ShortCircuitInterceptor.matching(Predicate, Function)`.
+- Core engine routing in `HttpTemplate`: breaks request interceptor loop immediately upon short-circuit, bypasses physical network I/O, rate limiters, and circuit breakers, routes the synthetic `WireResponse` directly through standard decompression, `processResponse` (DTO decoding, `@OnError`, `@ExpectStatus`), and triggers `ResponseInterceptor` and `ClientMetricsListener`.
+- Full asynchronous support: non-blocking completion of `CompletableFuture<T>` in `exchangeAsync()`.
+- Synthetic response model enhancements on `ru.jrestly.http.WireResponse`: static factories `of(...)`, fluent `WireResponse.Builder`, header lookup `header(name)`, body check `hasBody()`.
+- Ergonomic fluent builder methods on `JRestlyClient.Builder` and `SimpleModuleInfo.Builder`: `shortCircuit(interceptor)`, `mock(response)`, `mock(predicate, response)`, `mock(predicate, supplier)`.
+
+Key changes:
+- `ru.jrestly.interceptor.RequestContext` & `SimpleRequestContext`: short-circuit state management.
+- `ru.jrestly.interceptor.ShortCircuitInterceptor`: specialized SPI extending `RequestInterceptor`.
+- `ru.jrestly.http.WireResponse`: static factory methods, `Builder`, `header(name)`, `hasBody()`.
+- `ru.jrestly.http.WireRequest`: 5-argument constructor for simplified non-multipart non-streaming requests.
+- `ru.jrestly.http.HttpTemplate`: early break in `applyRequestInterceptors`, synthetic bypass in `exchange()` and `exchangeAsync()`.
+- `ru.jrestly.SimpleModuleInfo` & `ru.jrestly.JRestlyClient`: fluent builder methods.
+- Tests: `ShortCircuitInterceptorTest` (6 tests), `ShortCircuitExecutionTest` (10 tests) (+16 tests, total 981/981 across 120 classes).
+
+Gates (session #127, clean rebuild):
+- `./gradlew test` **981/981** (120 classes, 0 failures/errors; +16 tests in ADR-0047).
+- `compileJava` and `compileTestJava` 0 warnings under permanent `-Xlint:all -Werror`.
+- `javadoc` 0 warnings under permanent `-Xdoclint:all -Werror`.
+- Zero external runtime dependencies strictly preserved (0 dependencies in Maven POM).
+
+After the epic: candidates — HttpTemplate package-private encapsulation (ADR-0048), JMH Benchmarks suite, test-javadoc. ADR number **0048** free.
+
 
 
 ## Post-0.5.0 shortlist (not scheduled — see ADR-0003)

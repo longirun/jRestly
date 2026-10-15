@@ -65,6 +65,25 @@ public record WireRequest(
     }
 
     /**
+     * Convenient constructor for non-multipart, non-streaming wire requests.
+     *
+     * @param method the HTTP method
+     * @param uri the target URI
+     * @param headers the headers
+     * @param contentType the Content-Type header
+     * @param body the raw payload bytes
+     */
+    public WireRequest(
+            HttpMethod method,
+            URI uri,
+            List<Header> headers,
+            String contentType,
+            byte[] body
+    ) {
+        this(method, uri, headers, contentType, body, null, null, null);
+    }
+
+    /**
      * Returns a copy of this request with the specified header appended.
      *
      * @param name the header name, must not be {@code null}

@@ -4,6 +4,7 @@ import java.lang.reflect.Method;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import ru.jrestly.http.WireResponse;
 
 /**
  * Invocation context passed to request and response interceptors, carrying call metadata
@@ -78,4 +79,37 @@ public interface RequestContext {
      * @return an unmodifiable map of attributes, never {@code null}
      */
     Map<String, Object> attributes();
+
+    /**
+     * Short-circuits the request pipeline with a synthetic response, bypassing network transmission.
+     * <p>
+     * When invoked, further request interceptors and network calls are bypassed, and the supplied
+     * response is routed directly to the client's response processing pipeline (decoding, {@code @OnError},
+     * and {@link ResponseInterceptor}).
+     *
+     * @param response the synthetic wire response to return, must not be {@code null}
+     * @throws NullPointerException if {@code response} is {@code null}
+     * @throws UnsupportedOperationException if this context implementation does not support short-circuiting
+     */
+    default void shortCircuit(WireResponse response) {
+        throw new UnsupportedOperationException("shortCircuit is not supported by this context");
+    }
+
+    /**
+     * Returns the synthetic wire response if this request has been short-circuited.
+     *
+     * @return an {@link Optional} containing the synthetic response, or {@link Optional#empty()} if not short-circuited
+     */
+    default Optional<WireResponse> shortCircuitResponse() {
+        return Optional.empty();
+    }
+
+    /**
+     * Returns whether this request has been short-circuited.
+     *
+     * @return {@code true} if a synthetic response was supplied, {@code false} otherwise
+     */
+    default boolean isShortCircuited() {
+        return shortCircuitResponse().isPresent();
+    }
 }
