@@ -132,6 +132,7 @@ public class HttpTemplate {
     private Method method;
     private Object[] args;
     private ResponseHeaders responseHeadersHolder;
+    private UploadProgressListener uploadProgressListener;
     private Executor executor;
     private Duration timeout;
 
@@ -1146,12 +1147,19 @@ public class HttpTemplate {
 
     // a fresh publisher per send: stream suppliers are single-use, a redirect re-send must get a live body
     private HttpRequest.BodyPublisher bodyPublisher(WireRequest request) {
+        HttpRequest.BodyPublisher publisher;
         if (request.parts() != null) {
-            return MultipartBodyPublisher.of(request.boundary(), request.parts());
+            publisher = MultipartBodyPublisher.of(request.boundary(), request.parts());
+        } else if (request.body() == null) {
+            publisher = HttpRequest.BodyPublishers.noBody();
+        } else {
+            publisher = HttpRequest.BodyPublishers.ofByteArray(request.body());
         }
-        return request.body() == null
-                ? HttpRequest.BodyPublishers.noBody()
-                : HttpRequest.BodyPublishers.ofByteArray(request.body());
+
+        if (uploadProgressListener != null) {
+            publisher = new ProgressBodyPublisher(publisher, uploadProgressListener);
+        }
+        return publisher;
     }
 
     private String redirectLocation(WireResponse response) {
@@ -1744,6 +1752,24 @@ public class HttpTemplate {
      */
     public ResponseHeaders getResponseHeadersHolder() {
         return responseHeadersHolder;
+    }
+
+    /**
+     * Sets the upload progress listener (ADR-0030).
+     *
+     * @param uploadProgressListener the listener, or {@code null}
+     */
+    public void setUploadProgressListener(UploadProgressListener uploadProgressListener) {
+        this.uploadProgressListener = uploadProgressListener;
+    }
+
+    /**
+     * The upload progress listener (ADR-0030).
+     *
+     * @return the listener, or {@code null}
+     */
+    public UploadProgressListener getUploadProgressListener() {
+        return uploadProgressListener;
     }
 
     private void handleOnError(int statusCode, String payload, List<Header> responseHeaders) {

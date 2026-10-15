@@ -197,6 +197,7 @@ public class HttpTemplateBuilder {
         result.setRequestInterceptors(resolvedInterceptors.requestInterceptors());
         result.setResponseInterceptors(resolvedInterceptors.responseInterceptors());
         result.setResponseHeadersHolder(resolveResponseHeadersHolder());
+        result.setUploadProgressListener(resolveUploadProgressListener());
         result.setExecutor(executor != null ? executor : moduleInfo.getExecutor());
         result.setTimeout(resolveTimeout());
         result.setControllerClass(controller);
@@ -215,6 +216,22 @@ public class HttpTemplateBuilder {
             if (ResponseHeaders.class.equals(parameters[i].getType())) {
                 if (args != null && i < args.length && args[i] instanceof ResponseHeaders holder) {
                     return holder;
+                }
+                return null;
+            }
+        }
+        return null;
+    }
+
+    private UploadProgressListener resolveUploadProgressListener() {
+        if (method == null) {
+            return null;
+        }
+        Parameter[] parameters = method.getParameters();
+        for (int i = 0; i < parameters.length; i++) {
+            if (UploadProgressListener.class.equals(parameters[i].getType())) {
+                if (args != null && i < args.length && args[i] instanceof UploadProgressListener listener) {
+                    return listener;
                 }
                 return null;
             }

@@ -1,21 +1,21 @@
-# DRAFT: активная зона после закрытия эпика Declarative Interceptors @WithInterceptor (ADR-0029)
+# DRAFT: активная зона после закрытия эпика Upload Progress Listener (ADR-0030)
 
-> Эпик Declarative Interceptors (@WithInterceptor) per Controller & Method (ADR-0029, `docs/0.10.0/`) закрыт 6/6 (сессия #107):
-> концепт и ADR-0029 → `@WithInterceptor` аннотация (`ElementType.METHOD`, `ElementType.TYPE`, `@Repeatable(WithInterceptor.List.class)`, массив классов) +
-> поддержка `RequestInterceptor`, `ResponseInterceptor` и дуальных интерцепторов +
-> детерминированный порядок пайплайна (Global &rarr; Super-interface &rarr; Sub-interface &rarr; Method) и дедупликация классов в `HttpTemplateBuilder` +
-> fail-fast валидация в `ControllerValidator` (`ControllerValidationException`) на типы интерцепторов, запрет abstract/interface, проверка no-arg конструктора +
-> кэширование инстансов в `AbstractHttpClient` / `HttpTemplateBuilder` (Hot-path zero-allocation) +
-> unit тесты (`InterceptorAnnotationTest`, 7 тестов) и WireMock интеграционные тесты (`DeclarativeInterceptorWireMockTest`, 10 тестов, итого +17 тестов) →
-> дистилляция в ROADMAP («Declarative Interceptors (@WithInterceptor) per Controller & Method (ADR-0029) — COMPLETE ✅») + гейты 596/596 тестов (72 класса).
+> Эпик Upload Progress Tracking (`UploadProgressListener`, ADR-0030, `docs/0.10.0/`) закрыт 6/6 (сессия #108):
+> концепт и ADR-0030 → функциональный интерфейс `ru.jrestly.http.UploadProgressListener` +
+> реактивный `ProgressBodyPublisher` поверх `HttpRequest.BodyPublisher` и `Flow.Subscriber` +
+> интринсик параметр в сигнатуре методов (ADR-0022 alignment) без загрязнения payload-параметров +
+> fail-fast валидация в `ControllerValidator` (`ControllerValidationException`) против аннотирования HTTP параметрами +
+> независимый сброс счетчика `bytesSent` для попыток `@Retry` и редиректов +
+> unit тесты (`ProgressBodyPublisherTest`, 5 тестов; `UploadProgressValidationTest`, 8 тестов) и WireMock интеграционные тесты (`UploadProgressWireMockTest`, 11 тестов, итого +24 теста) →
+> дистилляция в ROADMAP («Upload Progress Tracking (UploadProgressListener, ADR-0030) — COMPLETE ✅») + гейты 620/620 тестов (75 классов).
 > Следующий ход — свободный, выбор из активной зоны.
 
 ## Активная зона (кандидаты на следующий эпик)
 
 - **Кандидат №1 — test-javadoc** (ADR-0013 Non-goals):
   Test-source javadoc вынесен за скобки аудита; наведение лоска в тестовых классах.
-- **Кандидат №2 — Multipart upload progress listener**:
-  Возможность передачи функционального `ProgressListener` / callback для отслеживания отправки больших файлов в multipart-запросах без нарушения zero-dep ядра.
+- **Кандидат №2 — Декларативные аннотации `@Accept` и `@ContentType`**:
+  Специализированные типобезопасные аннотации на уровне методов и интерфейсов для лаконичного переопределения `Accept` и `Content-Type` без раздувания `@RequestHeader`.
 
 ---
 
@@ -44,6 +44,7 @@
   прозрачный GZIP/Deflate (ADR-0021), доступ к метаданным заголовков (ADR-0022),
   условные запросы & Optional (ADR-0023), гибкость form-data/multipart (ADR-0024),
   шаблоны URI и массивы параметров (ADR-0025), виртуальные потоки (ADR-0026),
-  декларативные таймауты (ADR-0027).
+  декларативные таймауты (ADR-0027), декларативные интерцепторы (ADR-0029),
+  отслеживание прогресса загрузки (ADR-0030).
 - **Коммиты — краткие, не дублируют ченджлог** (Антон).
 - **Объём одной сессии в 2–3 раза меньше** — один маленький шаг.

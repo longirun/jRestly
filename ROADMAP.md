@@ -950,7 +950,37 @@ Gates (session #107, clean rebuild):
 - `javadoc` 0 warnings under permanent `-Xdoclint:all -Werror`.
 - Zero external runtime dependencies preserved (0 dependencies in Maven POM).
 
-After the epic: candidate #1 — test-javadoc (ADR-0013 Non-goals); candidate #2 — multipart streaming / upload progress listener. ADR number **0030** free.
+After the epic: candidate #1 — test-javadoc (ADR-0013 Non-goals); candidate #2 — multipart streaming / upload progress listener — done, section below. ADR number **0030** — upload progress listener epic, **0031** free.
+
+## Upload Progress Tracking (UploadProgressListener, ADR-0030) — COMPLETE ✅ (2026-10-15, unreleased)
+
+> Source of truth (concept, architecture decisions, reactive streams integration, validation, test strategy, status):
+> [`docs/0.10.0/ADR-0030-upload-progress-listener.md`](docs/0.10.0/ADR-0030-upload-progress-listener.md).
+> Session #108 (agent-loop). Real-world API file upload ergonomics (candidate #2 from DRAFT.md).
+> Functional `UploadProgressListener` callback for tracking request body upload progress as bytes are transmitted
+> to the network transport. Built on standard Java 21 `java.net.http.HttpRequest.BodyPublisher` and `java.util.concurrent.Flow`
+> reactive streams. Declared as an unannotated intrinsic method parameter on controller interfaces without polluting payload parameters.
+> Supports multipart file uploads (Path, FileContent, streams), raw binary payloads, JSON DTOs, async CompletableFuture methods, and retry resets.
+> 100% zero-dependency on standard Java 21 platform classes.
+
+Key decisions (ADR-0030):
+- **Functional interface `UploadProgressListener`:** Added `ru.jrestly.http.UploadProgressListener` with single method `void onProgress(long bytesSent, long totalBytes)`. Reports monotonic bytes sent for the current attempt and total body length in bytes (or `-1` if unknown/chunked).
+- **Intrinsic parameter pattern (ADR-0022 alignment):** Declared directly on declarative controller methods without special annotations. Excluded from payload parameter count and not serialized into query params, headers, or body parts. Passing `null` is safe and introduces zero overhead.
+- **Reactive streams interception via `ProgressBodyPublisher`:** Package-private `HttpRequest.BodyPublisher` decorator wraps the delegate publisher. Intercepts subscriber `onNext(ByteBuffer)` calls, reads `item.remaining()` before passing downstream, updates running totals, and dispatches callbacks.
+- **Retry & redirect independence:** Each send or retry attempt creates a fresh publisher via `HttpTemplate.bodyPublisher(WireRequest)`, naturally resetting `bytesSent` to 0 per attempt.
+- **Upfront fail-fast validation:** `ControllerValidator` ensures `UploadProgressListener` parameters are not mistakenly annotated with `@RequestParam`, `@PathVariable`, `@RequestHeader`, or `@MultipartFormFile` (`ControllerValidationException`).
+- **Full test coverage:** 24 new tests (+24 cases, total suite 620/620 across 75 classes) spanning:
+  - `ProgressBodyPublisherTest` (5 unit tests: exact contentLength delegation, null fail-fast, Flow.Subscriber sequential progress tracking, unknown length -1 tracking, independent subscriber reset for retry);
+  - `UploadProgressValidationTest` (8 unit tests: validator rejection of annotated progress listener, multipart parameter count validation, valid controller acceptance, proxy initialization validation exception, HttpTemplateBuilder extraction and null-safety);
+  - `UploadProgressWireMockTest` (11 WireMock integration tests: single multipart file upload tracking to 100%, disk Path upload, multi-file upload tracking, stream content unknown length -1, raw bytes upload, JSON DTO upload, async CompletableFuture twin, null-safety, unannotated method regression safety, retry attempt reset, large 128 KiB chunked payload).
+
+Gates (session #108, clean rebuild):
+- `./gradlew test` **620/620** (75 classes, 0 failures/errors; +24 tests in ADR-0030).
+- `compileJava` and `compileTestJava` 0 warnings under permanent `-Xlint:all -Werror`.
+- `javadoc` 0 warnings under permanent `-Xdoclint:all -Werror`.
+- Zero external runtime dependencies preserved (0 dependencies in Maven POM).
+
+After the epic: candidate #1 — test-javadoc (ADR-0013 Non-goals); candidate #2 — declarative `@Accept` / `@ContentType` short-cuts or response body streaming progress listener. ADR number **0031** free.
 
 ## Post-0.5.0 shortlist (not scheduled — see ADR-0003)
 

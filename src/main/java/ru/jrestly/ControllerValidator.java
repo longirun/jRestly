@@ -10,8 +10,12 @@ import ru.jrestly.annotation.RequestDefaultParam;
 import ru.jrestly.annotation.RequestHeader;
 import ru.jrestly.annotation.Timeout;
 import ru.jrestly.annotation.WithInterceptor;
+import ru.jrestly.annotation.MultipartFormFile;
+import ru.jrestly.annotation.PathVariable;
+import ru.jrestly.annotation.RequestParam;
 import ru.jrestly.http.RequestType;
 import ru.jrestly.http.ResponseHeaders;
+import ru.jrestly.http.UploadProgressListener;
 import ru.jrestly.interceptor.RequestInterceptor;
 import ru.jrestly.interceptor.ResponseInterceptor;
 
@@ -202,8 +206,19 @@ public final class ControllerValidator {
             }
         }
 
+        for (java.lang.reflect.Parameter param : method.getParameters()) {
+            if (UploadProgressListener.class.equals(param.getType())) {
+                if (param.isAnnotationPresent(RequestParam.class)
+                        || param.isAnnotationPresent(PathVariable.class)
+                        || param.isAnnotationPresent(RequestHeader.class)
+                        || param.isAnnotationPresent(MultipartFormFile.class)) {
+                    problems.add(method.getName() + "(): UploadProgressListener parameter must not be annotated with HTTP parameter annotations");
+                }
+            }
+        }
+
         long payloadParamCount = Arrays.stream(method.getParameters())
-                .filter(p -> !ResponseHeaders.class.equals(p.getType()))
+                .filter(p -> !ResponseHeaders.class.equals(p.getType()) && !UploadProgressListener.class.equals(p.getType()))
                 .count();
         if (payloadParamCount == 0) {
             RequestType requestType = resolveRequestType(method);

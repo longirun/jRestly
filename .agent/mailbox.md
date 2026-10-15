@@ -40,15 +40,15 @@
 * я думаю еще в реалном исползовании есть миллион важных вещей?
 Это не приказ бросаться сразу все делать, просто можно учесть и разобрать в будущем. 
 
-[2026-10-15 04:02] Агент (сессия #105): Реализован эпик декларативного управления таймаутами per-method и per-interface (ADR-0027): `@Timeout`, приоритеты method > sub-interface > super-interface > client, Duration перегрузки в билдерах, валидация. 562/562 тестов зелёные.
-
 [2026-10-15 04:28] Агент (сессия #106): Реализован эпик многостатусных ошибок, интерфейсных обработчиков и типизированных исключений (ADR-0028): повторяемый `@OnError`, прямой выброс кастомных исключений, `ClientErrorException` и `ServerErrorException`, валидация. 579/579 тестов зелёные.
 
-[2026-10-15 04:54] Агент (сессия #107): Реализован эпик декларативных интерцепторов `@WithInterceptor` per controller & method (ADR-0029):
-1. **Аннотация `@WithInterceptor`:** таргетинг `ElementType.TYPE` и `ElementType.METHOD`, `@Repeatable(WithInterceptor.List.class)` и массив классов `Class<?>[] value()`. Теперь интерфейсы и методы могут декларативно объявлять интерцепторы аудита, подписи, метрик или специфических заголовков.
-2. **Поддержка `RequestInterceptor`, `ResponseInterceptor` и дуальных интерцепторов:** класс может реализовывать любой из интерфейсов или оба сразу. При реализации обоих один и тот же singleton-экземпляр участвует в обоих этапах пайплайна.
-3. **Детерминированный порядок пайплайна:** Global Client &rarr; Super-interface &rarr; Sub-interface &rarr; Method для обоих типов интерцепторов.
-4. **Hot-path zero-allocation:** экземпляры интерцепторов кэшируются в клиенте (`ConcurrentHashMap`), исключая аллокации на горячем пути вызовов и поддерживая stateful singleton-интерцепторы.
-5. **Fail-fast валидация:** `ControllerValidator` проверяет реализуемые интерфейсы, запрещает абстрактные классы/интерфейсы и требует наличия no-arg конструктора (`ControllerValidationException`).
-Написано 17 новых тестов (7 в `InterceptorAnnotationTest`, 10 в `DeclarativeInterceptorWireMockTest`).
-Гейты: **596/596** тестов (72 класса) зелёные, 0 warnings под `-Werror`, zero-dep core строго сохранен.
+[2026-10-15 04:54] Агент (сессия #107): Реализован эпик декларативных интерцепторов `@WithInterceptor` per controller & method (ADR-0029): `@WithInterceptor` (`ElementType.TYPE`/`METHOD`, `@Repeatable`), поддержка дуальных интерцепторов, порядок пайплайна (Global &rarr; Super-interface &rarr; Sub-interface &rarr; Method), кэширование инстансов в клиенте (zero-allocation), fail-fast валидация. 596/596 тестов зелёные.
+
+[2026-10-15 05:20] Агент (сессия #108): Реализован эпик отслеживания прогресса отправки тела запросов и multipart-файлов (ADR-0030):
+1. **Интерфейс `UploadProgressListener`:** функциональный callback `void onProgress(long bytesSent, long totalBytes)`. Отслеживает монотонно возрастающее количество переданных байт для текущей попытки и общий размер тела (или `-1` для chunked transfer).
+2. **Интринсик параметр в методах:** объявляется прямо в декларативном методе интерфейса контроллера без аннотаций (`void upload(@MultipartFormFile(...) FileContent file, UploadProgressListener progress)`), не загрязняя параметры запроса. Передача `null` безопасна и не создает оверхеда.
+3. **Реактивный перехват `ProgressBodyPublisher`:** пакетно-приватный декоратор над стандартным `HttpRequest.BodyPublisher` перехватывает сетевые чанки через `Flow.Subscriber.onNext(ByteBuffer)` без копирования буферов и лишних аллокаций.
+4. **Независимость попыток `@Retry` и редиректов:** при повторе запроса создается свежий publisher и отсчет `bytesSent` прозрачно начинается заново с 0.
+5. **Fail-fast валидация:** `ControllerValidator` запрещает вешать HTTP-аннотации (`@RequestParam` и др.) на `UploadProgressListener`.
+Написано 24 новых теста (5 в `ProgressBodyPublisherTest`, 8 в `UploadProgressValidationTest`, 11 в `UploadProgressWireMockTest`).
+Гейты: **620/620** тестов (75 классов) зелёные, 0 warnings под `-Werror`, zero-dep core строго сохранен.
