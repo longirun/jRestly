@@ -91,7 +91,7 @@ class ServerSentEventsAndLineStreamingTest extends BaseWireMockTest {
             assertFalse(e2.isDone());
 
             ServerSentEvent e3 = events.get(2);
-            assertNull(e3.id());
+            assertEquals("2", e3.id());
             assertNull(e3.event());
             assertEquals("[DONE]", e3.data());
             assertTrue(e3.isDone());

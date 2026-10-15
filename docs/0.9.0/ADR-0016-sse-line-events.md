@@ -168,3 +168,31 @@ APIs stream incremental text using two primary wire formats:
 - Retains zero-dependency core and transparent API principles.
 - The 0.9.0 cycle advances with a unified streaming story (byte streaming in ADR-0015,
   line/event streaming in ADR-0016).
+
+## Amendment 2026-10-15 (session #142): WHATWG dispatch algorithm conformance
+
+An audit slice against the WHATWG "dispatch the event" algorithm (HTML §9.2.5)
+found and fixed four parser deviations in `ServerSentEventParser`:
+
+1. **No phantom events for data-less blocks.** A block carrying only `id:` /
+   `event:` / `retry:` fields was dispatched as an event with `data == null`.
+   Per WHATWG, a dispatch with an empty data buffer aborts (and the event type
+   buffer is reset). This mattered for real servers opening a stream with
+   `retry: 3000\n\n` or sending `event: ping\n\n` control blocks: user pipelines
+   (`.map(e -> codec.deserialize(e.data(), ...))`) received an unexpected
+   null-data event.
+2. **Last-Event-ID is stream-level state.** `id` now persists across events until
+   overwritten by a later `id:` field (an empty `id:` resets it), matching
+   `EventSource.lastEventId` semantics; previously every event without its own
+   `id:` carried `null`, losing resume information (e.g. the `[DONE]` event of an
+   LLM stream no longer forgets the last id).
+3. **`id` containing U+0000 NULL is ignored** per WHATWG.
+4. **`retry` accepts only ASCII digits** (signed values such as `+5` / `-7` were
+   silently accepted through `Long.parseLong`); the value persists as the
+   stream's effective reconnection time.
+
+Dispatched events now always carry non-null `data` (possibly an empty string);
+`ServerSentEvent` Javadoc documents the stream-level semantics. Tests: 5 new
+cases in `ServerSentEventTest` (red-first against the old parser) plus updated
+last-event-ID expectations in `ServerSentEventTest` and
+`ServerSentEventsAndLineStreamingTest`.

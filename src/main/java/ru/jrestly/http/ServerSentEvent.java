@@ -8,10 +8,17 @@ import java.util.stream.Stream;
  *
  * <p>Commonly used by LLM inference providers and real-time streaming endpoints.
  *
- * @param id the optional event identifier (from the {@code id:} field), or {@code null}
+ * <p>The {@code id} and {@code retry} components are stream-level state per WHATWG:
+ * they persist across events until overwritten by a later field. The {@code event}
+ * component is per-event and reset after each dispatch.
+ *
+ * @param id the last event identifier (from the {@code id:} field), persisted across events
+ *           until overwritten, or {@code null} if the stream never declared one
  * @param event the optional event type (from the {@code event:} field), or {@code null}
- * @param data the event payload (from concatenated {@code data:} lines), or {@code null}
- * @param retry the reconnection time in milliseconds (from the {@code retry:} field), or {@code null}
+ * @param data the event payload (from concatenated {@code data:} lines); dispatched events
+ *             always carry a value, which may be an empty string
+ * @param retry the currently effective reconnection time in milliseconds (from the
+ *              {@code retry:} field), persisted across events until overwritten, or {@code null}
  */
 public record ServerSentEvent(String id, String event, String data, Long retry) {
 

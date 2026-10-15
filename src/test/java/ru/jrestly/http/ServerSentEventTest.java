@@ -196,7 +196,7 @@ class ServerSentEventTest {
     }
 
     @Test
-    @DisplayName("parse multiple consecutive events resetting fields between dispatches")
+    @DisplayName("parse multiple consecutive events: event type resets, last-event-ID persists per WHATWG")
     void parseMultipleConsecutiveEvents() {
         Stream<String> lines = Stream.of(
                 "id: 1",
@@ -217,13 +217,108 @@ class ServerSentEventTest {
         assertEquals("first-type", events.get(0).event());
         assertEquals("one", events.get(0).data());
 
-        assertNull(events.get(1).id());
+        assertEquals("1", events.get(1).id());
         assertNull(events.get(1).event());
         assertEquals("two", events.get(1).data());
 
         assertEquals("3", events.get(2).id());
         assertNull(events.get(2).event());
         assertEquals("three", events.get(2).data());
+    }
+
+    @Test
+    @DisplayName("data-less blocks (id/event/retry alone) do not dispatch phantom events per WHATWG")
+    void dataLessBlocksDoNotDispatchPhantomEvents() {
+        Stream<String> lines = Stream.of(
+                "id: 9",
+                "event: ping",
+                "retry: 7000",
+                "",
+                "data: real payload",
+                ""
+        );
+        List<ServerSentEvent> events = ServerSentEvent.parse(lines).toList();
+
+        assertEquals(1, events.size());
+        ServerSentEvent event = events.getFirst();
+        assertEquals("real payload", event.data());
+        assertEquals("9", event.id());
+        assertNull(event.event());
+        assertEquals(7000L, event.retry());
+    }
+
+    @Test
+    @DisplayName("last-event-ID persists until overwritten; empty id: resets it")
+    void lastEventIdPersistsUntilOverwritten() {
+        Stream<String> lines = Stream.of(
+                "id: alpha",
+                "data: one",
+                "",
+                "data: two",
+                "",
+                "id: beta",
+                "data: three",
+                "",
+                "id:",
+                "data: four",
+                ""
+        );
+        List<ServerSentEvent> events = ServerSentEvent.parse(lines).toList();
+
+        assertEquals(4, events.size());
+        assertEquals("alpha", events.get(0).id());
+        assertEquals("alpha", events.get(1).id());
+        assertEquals("beta", events.get(2).id());
+        assertEquals("", events.get(3).id());
+    }
+
+    @Test
+    @DisplayName("id field containing U+0000 NULL is ignored per WHATWG")
+    void idFieldContainingNullCharacterIgnored() {
+        Stream<String> lines = Stream.of("id: bad\u0000id", "data: payload", "");
+        List<ServerSentEvent> events = ServerSentEvent.parse(lines).toList();
+
+        assertEquals(1, events.size());
+        assertNull(events.getFirst().id());
+        assertEquals("payload", events.getFirst().data());
+    }
+
+    @Test
+    @DisplayName("retry accepts only ASCII digits per WHATWG; signed values are ignored")
+    void retryAcceptsOnlyAsciiDigits() {
+        Stream<String> lines = Stream.of(
+                "retry: +5",
+                "data: signed plus",
+                "",
+                "retry: -7",
+                "data: signed minus",
+                "",
+                "retry: 150",
+                "data: digits",
+                ""
+        );
+        List<ServerSentEvent> events = ServerSentEvent.parse(lines).toList();
+
+        assertEquals(3, events.size());
+        assertNull(events.get(0).retry());
+        assertNull(events.get(1).retry());
+        assertEquals(150L, events.get(2).retry());
+    }
+
+    @Test
+    @DisplayName("event type is reset after a data-less block per WHATWG")
+    void eventTypeResetAfterDataLessBlock() {
+        Stream<String> lines = Stream.of(
+                "event: control",
+                "",
+                "data: payload",
+                ""
+        );
+        List<ServerSentEvent> events = ServerSentEvent.parse(lines).toList();
+
+        assertEquals(1, events.size());
+        assertEquals("payload", events.getFirst().data());
+        assertNull(events.getFirst().event());
     }
 
     @Test

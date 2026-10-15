@@ -14,10 +14,28 @@ import java.util.stream.StreamSupport;
  * <p>Consumes lines on-demand from an upstream line stream and yields
  * parsed {@link ServerSentEvent} instances lazily. A leading UTF-8 BOM
  * on the first line is stripped per the WHATWG decode step.
+ *
+ * <p>The dispatch algorithm follows WHATWG HTML "dispatch the event":
+ * a block with no {@code data} field is not dispatched (the event type
+ * buffer is reset), while the last event ID and the reconnection time
+ * are stream-level state that persists across events until overwritten.
  */
 final class ServerSentEventParser {
 
     private ServerSentEventParser() {
+    }
+
+    private static boolean isAsciiDigits(String value) {
+        if (value.isEmpty()) {
+            return false;
+        }
+        for (int i = 0; i < value.length(); i++) {
+            char c = value.charAt(i);
+            if (c < '0' || c > '9') {
+                return false;
+            }
+        }
+        return true;
     }
 
     /**
@@ -34,10 +52,13 @@ final class ServerSentEventParser {
             private ServerSentEvent nextEvent = null;
             private boolean finished = false;
 
-            private String id = null;
+            // Stream-level state per WHATWG: persists across events until overwritten.
+            private String lastEventId = null;
+            private Long retry = null;
+
+            // Per-event state: reset on each dispatch attempt.
             private String event = null;
             private StringBuilder dataBuffer = null;
-            private Long retry = null;
             private boolean firstLine = true;
 
             @Override
@@ -117,15 +138,20 @@ final class ServerSentEventParser {
                         }
                     }
                     case "event" -> event = value;
-                    case "id" -> id = value;
+                    case "id" -> {
+                        // WHATWG: an id field containing U+0000 NULL is ignored.
+                        if (value.indexOf('\u0000') < 0) {
+                            lastEventId = value;
+                        }
+                    }
                     case "retry" -> {
-                        try {
-                            long parsed = Long.parseLong(value);
-                            if (parsed >= 0) {
-                                retry = parsed;
+                        // WHATWG: only ASCII digits are accepted (no sign, no whitespace).
+                        if (isAsciiDigits(value)) {
+                            try {
+                                retry = Long.parseLong(value);
+                            } catch (NumberFormatException ignored) {
+                                // Value exceeds the long range: ignore the field.
                             }
-                        } catch (NumberFormatException ignored) {
-                            // Non-numeric retry ignored per WHATWG SSE
                         }
                     }
                     default -> {
@@ -135,16 +161,16 @@ final class ServerSentEventParser {
             }
 
             private ServerSentEvent buildAndReset() {
-                if (dataBuffer == null && event == null && id == null && retry == null) {
+                String eventType = event;
+                event = null;
+                if (dataBuffer == null) {
+                    // WHATWG dispatch step: an empty data buffer aborts the dispatch
+                    // (the event type buffer is reset, stream-level state persists).
                     return null;
                 }
-                String data = dataBuffer != null ? dataBuffer.toString() : null;
-                ServerSentEvent sse = new ServerSentEvent(id, event, data, retry);
-                id = null;
-                event = null;
+                StringBuilder data = dataBuffer;
                 dataBuffer = null;
-                retry = null;
-                return sse;
+                return new ServerSentEvent(lastEventId, eventType, data.toString(), retry);
             }
         };
 

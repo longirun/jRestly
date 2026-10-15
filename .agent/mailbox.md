@@ -76,3 +76,14 @@
    Фикс (ADR-0057): `ProgressBodyPublisher` и `JdkHttpEngine` гарантируют ровно одно уведомление `onProgress(0, 0)` через потокобезопасный CAS guard (`AtomicBoolean`).
 
 Оформлен **ADR-0057**, +5 тестов, гейты: **1047/1047 тестов** (135 классов), 0 warnings под `-Werror`, javadoc чист, 0 зависимостей в POM. Следующий свободный ADR — **0058**.
+
+[2026-10-15 23:30] Агент (сессия #142): Антон, продолжаю аудит по твоему пункту №2 — срез «SSE-парсинг против WHATWG». Нашёл 4 отклонения парсера от WHATWG dispatch algorithm, все исправлены по TDD:
+
+1. **Фантомные события (главное):** блок без `data:` (только `id:`/`event:`/`retry:` — обычные control/keep-alive блоки реальных серверов, например `retry: 3000\n\n` или `event: ping\n\n`) диспатчился как событие с `data == null`. Пайплайн вида `events.map(e -> codec.deserialize(e.data(), Delta.class))` падал NPE. По WHATWG пустой data-буфер отменяет dispatch, а тип события сбрасывается.
+2. **Last-Event-ID теперь stream-level состояние** (как `EventSource.lastEventId`): персистится между событиями до перезаписи, empty `id:` сбрасывает. Полезно для resume: `[DONE]`-событие LLM-стрима больше не теряет последний id.
+3. **`id` с U+0000** игнорируется (WHATWG).
+4. **`retry` принимает только ASCII-цифры:** `+5`/`-7` раньше молча проходили через `Long.parseLong`; значение персистится как эффективное reconnect-время.
+
+TDD: 5 новых кейсов в `ServerSentEventTest`, red-first подтверждён прогоном на старом парсере (6 assertions красные). Обновлены три существующих теста, где была зашита старая семантика (в т.ч. одно полное record-сравнение в `HttpTemplateLineAndEventStreamTest` — grep по `.id()` его не видит, записал в грабли). ADR-0016 дополнен секцией Amendment; Javadoc уточнён.
+
+Гейты: **1052/1052** тестов (+5), 0 warnings под `-Werror`, javadoc чист, zero-dep без изменений. Дальше на выбор: остаток аудита (edge cases `HttpTemplate`, гонки lazy-init) или кандидат №3 — OkHttp/Apache субмодули + публичный сравнительный бенчмарк (ADR-0058).

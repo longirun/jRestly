@@ -54,6 +54,23 @@
 > - +5 тестов (`RequestCompressionWireMockTest`, `ContentCompressorTest`, `ProgressBodyPublisherTest`,
 >   `UploadProgressWireMockTest`), всего **1047/1047 тестов**, 0 warnings под `-Werror`, zero-dep core.
 > 
+> **Сессия #142 (аудит, SSE-парсинг против WHATWG dispatch algorithm):**
+> - Найдено и исправлено 4 отклонения в `ServerSentEventParser` (HTML §9.2.5):
+>   (1) блоки без `data:` (только `id:`/`event:`/`retry:`) порождали фантомные события
+>   с `data == null` — реальные серверы шлют так control/keep-alive блоки (`retry: 3000\n\n`,
+>   `event: ping\n\n`), и `.map(e -> codec.deserialize(e.data(), ...))` падал NPE;
+>   по WHATWG пустой data-буфер отменяет dispatch и сбрасывает тип события;
+>   (2) last-event-ID теперь stream-level состояние: персистится между событиями
+>   (empty `id:` сбрасывает) — `[DONE]`-событие LLM-стрима больше не «забывает» последний id;
+>   (3) `id`, содержащий U+0000, игнорируется; (4) `retry` принимает только ASCII-цифры
+>   (`+5`/`-7` раньше молча проходили через `Long.parseLong`) и персистится как
+>   эффективное время переподключения.
+> - TDD: 5 новых кейсов в `ServerSentEventTest` (red-first подтверждён на старом парсере),
+>   обновлены last-event-ID ожидания в `ServerSentEventTest`, `ServerSentEventsAndLineStreamingTest`,
+>   `HttpTemplateLineAndEventStreamTest`.
+> - `ADR-0016` дополнен секцией Amendment; Javadoc `ServerSentEvent`/`ServerSentEventParser` уточнён.
+> - **1052/1052 тестов** (+5), 0 warnings, javadoc чист.
+> 
 > Следующий свободный ADR — **0058**.
 
 ## Активная зона (кандидаты на следующий эпик)

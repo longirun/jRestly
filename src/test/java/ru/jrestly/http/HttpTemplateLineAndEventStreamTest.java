@@ -200,7 +200,8 @@ class HttpTemplateLineAndEventStreamTest {
 
         assertEquals(2, eventList.size());
         assertEquals(new ServerSentEvent("101", "greeting", "hello world", null), eventList.get(0));
-        assertEquals(new ServerSentEvent(null, null, "token delta", null), eventList.get(1));
+        // Last-event-ID is stream-level state per WHATWG: it persists into the next event.
+        assertEquals(new ServerSentEvent("101", null, "token delta", null), eventList.get(1));
     }
 
     @Test
