@@ -9,8 +9,11 @@ import ru.jrestly.annotation.Put;
 import ru.jrestly.annotation.RequestDefaultParam;
 import ru.jrestly.annotation.RequestHeader;
 import ru.jrestly.annotation.Timeout;
+import ru.jrestly.annotation.WithInterceptor;
 import ru.jrestly.http.RequestType;
 import ru.jrestly.http.ResponseHeaders;
+import ru.jrestly.interceptor.RequestInterceptor;
+import ru.jrestly.interceptor.ResponseInterceptor;
 
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
@@ -98,6 +101,11 @@ public final class ControllerValidator {
                                 + " mapped to conflicting classes: " + prev.getSimpleName() + " and " + onError.errorObject().getSimpleName());
                     }
                 }
+            }
+        }
+        for (WithInterceptor withInterceptor : current.getAnnotationsByType(WithInterceptor.class)) {
+            for (Class<?> interceptorClass : withInterceptor.value()) {
+                validateInterceptorClass(interceptorClass, current.getSimpleName(), problems);
             }
         }
         for (Class<?> parent : current.getInterfaces()) {
@@ -205,7 +213,33 @@ public final class ControllerValidator {
                 problems.add(method.getName() + "(): APPLICATION_FORM_URLENCODED method must have at least one parameter");
             }
         }
+
+        for (WithInterceptor withInterceptor : method.getAnnotationsByType(WithInterceptor.class)) {
+            for (Class<?> interceptorClass : withInterceptor.value()) {
+                validateInterceptorClass(interceptorClass, method.getName() + "()", problems);
+            }
+        }
         return problems;
+    }
+
+    private static void validateInterceptorClass(Class<?> clazz, String prefix, List<String> problems) {
+        if (clazz == null) {
+            problems.add(prefix + ": @WithInterceptor class must not be null");
+            return;
+        }
+        if (clazz.isInterface() || Modifier.isAbstract(clazz.getModifiers())) {
+            problems.add(prefix + ": @WithInterceptor class " + clazz.getSimpleName() + " must not be abstract or an interface");
+            return;
+        }
+        if (!RequestInterceptor.class.isAssignableFrom(clazz) && !ResponseInterceptor.class.isAssignableFrom(clazz)) {
+            problems.add(prefix + ": @WithInterceptor class " + clazz.getSimpleName() + " must implement RequestInterceptor or ResponseInterceptor");
+            return;
+        }
+        try {
+            clazz.getDeclaredConstructor();
+        } catch (NoSuchMethodException e) {
+            problems.add(prefix + ": @WithInterceptor class " + clazz.getSimpleName() + " must declare a no-arg constructor");
+        }
     }
 
     private static RequestDefaultParam[] resolveVerbDefaultParams(Method method) {

@@ -1,22 +1,21 @@
-# DRAFT: активная зона после закрытия эпика Repeatable @OnError & Typed Error Hierarchy (ADR-0028)
+# DRAFT: активная зона после закрытия эпика Declarative Interceptors @WithInterceptor (ADR-0029)
 
-> Эпик Repeatable @OnError, Type-Level Error Handlers & Refined Exception Hierarchy (ADR-0028, `docs/0.10.0/`) закрыт 6/6 (сессия #106):
-> концепт и ADR-0028 → `@OnError` аннотация (`ElementType.METHOD`, `ElementType.TYPE`, `@Repeatable(OnError.List.class)`) +
-> многостатусный `OnErrorParser` с поддержкой маппингов статус -> класс и fallback-правил +
-> валидация диапазонов статусов и конфликтующих дубликатов в `ControllerValidator` (`ControllerValidationException`) +
-> иерархическое разрешение приоритетов в `HttpTemplateBuilder` (method > sub-interface > super-interface) +
-> прямой выброс кастомных `RuntimeException` / `Throwable` классов без ручного разворачивания +
-> `ClientErrorException` (HTTP 4xx) и `ServerErrorException` (HTTP 5xx) в `HttpTemplate` (наследники `UnexpectedStatusException`) +
-> unit тесты (`OnErrorConfigTest`, 7 тестов) и WireMock интеграционные тесты (`OnErrorWireMockTest`, 10 тестов, итого +17 тестов) →
-> дистилляция в ROADMAP («Repeatable @OnError, Type-Level Error Handlers & Refined Exception Hierarchy (ADR-0028) — COMPLETE ✅») + гейты 579/579 тестов (70 классов).
+> Эпик Declarative Interceptors (@WithInterceptor) per Controller & Method (ADR-0029, `docs/0.10.0/`) закрыт 6/6 (сессия #107):
+> концепт и ADR-0029 → `@WithInterceptor` аннотация (`ElementType.METHOD`, `ElementType.TYPE`, `@Repeatable(WithInterceptor.List.class)`, массив классов) +
+> поддержка `RequestInterceptor`, `ResponseInterceptor` и дуальных интерцепторов +
+> детерминированный порядок пайплайна (Global &rarr; Super-interface &rarr; Sub-interface &rarr; Method) и дедупликация классов в `HttpTemplateBuilder` +
+> fail-fast валидация в `ControllerValidator` (`ControllerValidationException`) на типы интерцепторов, запрет abstract/interface, проверка no-arg конструктора +
+> кэширование инстансов в `AbstractHttpClient` / `HttpTemplateBuilder` (Hot-path zero-allocation) +
+> unit тесты (`InterceptorAnnotationTest`, 7 тестов) и WireMock интеграционные тесты (`DeclarativeInterceptorWireMockTest`, 10 тестов, итого +17 тестов) →
+> дистилляция в ROADMAP («Declarative Interceptors (@WithInterceptor) per Controller & Method (ADR-0029) — COMPLETE ✅») + гейты 596/596 тестов (72 класса).
 > Следующий ход — свободный, выбор из активной зоны.
 
 ## Активная зона (кандидаты на следующий эпик)
 
 - **Кандидат №1 — test-javadoc** (ADR-0013 Non-goals):
   Test-source javadoc вынесен за скобки аудита; наведение лоска в тестовых классах.
-- **Кандидат №2 — Declarative Interceptors (`@WithInterceptor`) per controller/method**:
-  Возможность декларативно навешивать специфичные интерцепторы логирования, аудита или трассировки на отдельные контроллеры или методы без изменения глобального пайплайна.
+- **Кандидат №2 — Multipart upload progress listener**:
+  Возможность передачи функционального `ProgressListener` / callback для отслеживания отправки больших файлов в multipart-запросах без нарушения zero-dep ядра.
 
 ---
 

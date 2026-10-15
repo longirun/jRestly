@@ -920,7 +920,37 @@ Gates (session #106, clean rebuild):
 - `javadoc` 0 warnings under permanent `-Xdoclint:all -Werror`.
 - Zero external runtime dependencies preserved (0 dependencies in Maven POM).
 
-After the epic: candidate #1 — test-javadoc (ADR-0013 Non-goals); candidate #2 — declarative `@WithInterceptor` per controller/method. ADR number **0029** free.
+After the epic: candidate #1 — test-javadoc (ADR-0013 Non-goals); candidate #2 — declarative `@WithInterceptor` per controller/method — done, section below. ADR number **0029** — declarative interceptors epic, **0030** free.
+
+## Declarative Interceptors (@WithInterceptor) per Controller & Method (ADR-0029) — COMPLETE ✅ (2026-10-15, unreleased)
+
+> Source of truth (concept, architecture decisions, pipeline ordering, validation, test strategy, status):
+> [`docs/0.10.0/ADR-0029-declarative-interceptors-with-interceptor.md`](docs/0.10.0/ADR-0029-declarative-interceptors-with-interceptor.md).
+> Session #107 (agent-loop). Real-world API gateway & microservice ergonomics (candidate #2 from DRAFT.md).
+> Declarative binding of `RequestInterceptor` and `ResponseInterceptor` classes via `@WithInterceptor` on controller
+> interfaces (`ElementType.TYPE`) and individual methods (`ElementType.METHOD`), with `@Repeatable(WithInterceptor.List.class)` support.
+> Zero-dep hot-path zero-allocation caching in `AbstractHttpClient` / `HttpTemplateBuilder`, deterministic pipeline ordering
+> (Global &rarr; Super-interface &rarr; Sub-interface &rarr; Method), deduplication, and upfront fail-fast validation in `ControllerValidator`.
+> 100% zero-dependency on standard Java 21 platform classes.
+
+Key decisions (ADR-0029):
+- **`@WithInterceptor` annotation with repeatable & array support:** Created `ru.jrestly.annotation.WithInterceptor` supporting `@Target({ElementType.TYPE, ElementType.METHOD})`, `@Repeatable(WithInterceptor.List.class)`, and container annotation `ru.jrestly.annotation.WithInterceptor.List`. Accepts single or multiple interceptor classes (`@WithInterceptor(MyInterceptor.class)`, `@WithInterceptor({A.class, B.class})`).
+- **Dual interceptor support:** Declared classes may implement `RequestInterceptor`, `ResponseInterceptor`, or both simultaneously (e.g. stateful auditing/metrics).
+- **Deterministic pipeline ordering:**
+  - `RequestInterceptor`: Global Client &rarr; Super-interface &rarr; Sub-interface &rarr; Method.
+  - `ResponseInterceptor`: Global Client &rarr; Super-interface &rarr; Sub-interface &rarr; Method.
+- **Hot-path zero-allocation & caching:** Interceptor instances are instantiated once via accessible no-arg constructor and cached per client (`ConcurrentHashMap<Class<?>, Object>`), avoiding allocations on hot execution paths and supporting stateful singletons.
+- **Deduplication:** Repeated declarations of the same interceptor class across hierarchy levels execute only once.
+- **Upfront fail-fast validation:** `ControllerValidator` verifies that declared classes implement `RequestInterceptor` or `ResponseInterceptor`, are not interfaces or abstract classes, and declare a no-arg constructor. Violations throw `ControllerValidationException` at client initialization.
+- **Full test coverage:** 17 new tests (+17 cases, total suite 596/596 across 72 classes) spanning `InterceptorAnnotationTest` (7 unit tests: validator invalid class, abstract class, missing no-arg constructor, interface-level failure, proxy initialization exception, pipeline hierarchy ordering, deduplication) and `DeclarativeInterceptorWireMockTest` (10 WireMock integration tests: interface-level interceptor applied to all methods, method-level interceptor applied only to targeted method, multi-level hierarchy ordering with global interceptor, multi-class array execution, repeatable annotation execution, dual request/response auditing, status code observation, async CompletableFuture twin, streaming InputStream twin, stateful singleton instance reuse).
+
+Gates (session #107, clean rebuild):
+- `./gradlew test` **596/596** (72 classes, 0 failures/errors; +17 tests in ADR-0029).
+- `compileJava` and `compileTestJava` 0 warnings under permanent `-Xlint:all -Werror`.
+- `javadoc` 0 warnings under permanent `-Xdoclint:all -Werror`.
+- Zero external runtime dependencies preserved (0 dependencies in Maven POM).
+
+After the epic: candidate #1 — test-javadoc (ADR-0013 Non-goals); candidate #2 — multipart streaming / upload progress listener. ADR number **0030** free.
 
 ## Post-0.5.0 shortlist (not scheduled — see ADR-0003)
 

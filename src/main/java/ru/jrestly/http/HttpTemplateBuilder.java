@@ -20,9 +20,13 @@ import ru.jrestly.annotation.RequestParam;
 import ru.jrestly.annotation.Retry;
 import ru.jrestly.annotation.SetAuthDetails;
 import ru.jrestly.annotation.Timeout;
+import ru.jrestly.annotation.WithInterceptor;
+import ru.jrestly.interceptor.RequestInterceptor;
+import ru.jrestly.interceptor.ResponseInterceptor;
 
 import java.io.File;
 import java.io.InputStream;
+import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
 import java.lang.reflect.Parameter;
 import java.lang.reflect.ParameterizedType;
@@ -36,6 +40,8 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -68,6 +74,7 @@ public class HttpTemplateBuilder {
 
     private RequestMeta requestMeta;
     private Executor executor;
+    private Map<Class<?>, Object> interceptorCache;
 
     /**
      * Creates a builder for the given invocation.
@@ -94,6 +101,17 @@ public class HttpTemplateBuilder {
      */
     public HttpTemplateBuilder executor(Executor executor) {
         this.executor = executor;
+        return this;
+    }
+
+    /**
+     * Sets the cache for declarative interceptor instances (ADR-0029).
+     *
+     * @param interceptorCache the cache map
+     * @return this builder, for chaining
+     */
+    public HttpTemplateBuilder interceptorCache(Map<Class<?>, Object> interceptorCache) {
+        this.interceptorCache = interceptorCache;
         return this;
     }
 
@@ -175,8 +193,9 @@ public class HttpTemplateBuilder {
         result.setFollowRedirectsNumber(getFollowRedirectsNumber());
         result.setHttpVersion(getHttpVersion());
         result.setRetryPolicy(resolveRetryPolicy());
-        result.setRequestInterceptors(moduleInfo.getRequestInterceptors());
-        result.setResponseInterceptors(moduleInfo.getResponseInterceptors());
+        ResolvedInterceptors resolvedInterceptors = resolveInterceptors();
+        result.setRequestInterceptors(resolvedInterceptors.requestInterceptors());
+        result.setResponseInterceptors(resolvedInterceptors.responseInterceptors());
         result.setResponseHeadersHolder(resolveResponseHeadersHolder());
         result.setExecutor(executor != null ? executor : moduleInfo.getExecutor());
         result.setTimeout(resolveTimeout());
@@ -858,6 +877,78 @@ public class HttpTemplateBuilder {
             }
         } else {
             result.add(new Param(name, value.toString()));
+        }
+    }
+
+    private record ResolvedInterceptors(
+            List<RequestInterceptor> requestInterceptors,
+            List<ResponseInterceptor> responseInterceptors
+    ) {
+    }
+
+    private ResolvedInterceptors resolveInterceptors() {
+        List<RequestInterceptor> reqs = new ArrayList<>(moduleInfo.getRequestInterceptors());
+        List<ResponseInterceptor> resps = new ArrayList<>(moduleInfo.getResponseInterceptors());
+        Set<Class<?>> seen = new HashSet<>();
+
+        List<Class<?>> hierarchy = collectInterfaceHierarchy(controller);
+        for (Class<?> iface : hierarchy) {
+            WithInterceptor[] annotations = iface.getAnnotationsByType(WithInterceptor.class);
+            for (WithInterceptor ann : annotations) {
+                for (Class<?> clazz : ann.value()) {
+                    addDeclarativeInterceptor(clazz, seen, reqs, resps);
+                }
+            }
+        }
+
+        if (method != null) {
+            WithInterceptor[] methodAnnotations = method.getAnnotationsByType(WithInterceptor.class);
+            for (WithInterceptor ann : methodAnnotations) {
+                for (Class<?> clazz : ann.value()) {
+                    addDeclarativeInterceptor(clazz, seen, reqs, resps);
+                }
+            }
+        }
+
+        return new ResolvedInterceptors(
+                Collections.unmodifiableList(reqs),
+                Collections.unmodifiableList(resps)
+        );
+    }
+
+    private void addDeclarativeInterceptor(
+            Class<?> clazz,
+            Set<Class<?>> seen,
+            List<RequestInterceptor> reqs,
+            List<ResponseInterceptor> resps
+    ) {
+        if (clazz == null || !seen.add(clazz)) {
+            return;
+        }
+        Object instance = getOrCreateInterceptor(clazz);
+        if (instance instanceof RequestInterceptor req) {
+            reqs.add(req);
+        }
+        if (instance instanceof ResponseInterceptor resp) {
+            resps.add(resp);
+        }
+    }
+
+    private Object getOrCreateInterceptor(Class<?> clazz) {
+        if (interceptorCache != null) {
+            return interceptorCache.computeIfAbsent(clazz, this::instantiateInterceptor);
+        }
+        return instantiateInterceptor(clazz);
+    }
+
+    private Object instantiateInterceptor(Class<?> clazz) {
+        try {
+            Constructor<?> constructor = clazz.getDeclaredConstructor();
+            constructor.setAccessible(true);
+            return constructor.newInstance();
+        } catch (Exception e) {
+            throw new IllegalStateException("Failed to instantiate interceptor " + clazz.getName()
+                    + ". Ensure it has an accessible no-arg constructor.", e);
         }
     }
 }

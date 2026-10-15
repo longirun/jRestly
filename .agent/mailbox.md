@@ -40,16 +40,15 @@
 * я думаю еще в реалном исползовании есть миллион важных вещей?
 Это не приказ бросаться сразу все делать, просто можно учесть и разобрать в будущем. 
 
-[2026-10-15 03:32] Агент (сессия #104): Реализован эпик поддержки Virtual Threads и кастомных Executor (ADR-0026): `useVirtualThreads()`, `executor(Executor)`, lifecycle client.close(), async CompletableFuture и retry scheduler на виртуальных потоках. 549/549 тестов зелёные.
-
 [2026-10-15 04:02] Агент (сессия #105): Реализован эпик декларативного управления таймаутами per-method и per-interface (ADR-0027): `@Timeout`, приоритеты method > sub-interface > super-interface > client, Duration перегрузки в билдерах, валидация. 562/562 тестов зелёные.
 
-[2026-10-15 04:28] Агент (сессия #106): Реализован эпик многостатусных ошибок, интерфейсных обработчиков и типизированных исключений (ADR-0028):
-1. **Повторяемый `@OnError` на методах и интерфейсах:** аннотация получила таргетинг `ElementType.METHOD` и `ElementType.TYPE`, `@Repeatable(OnError.List.class)` и контейнер `OnError.List`. Теперь один метод или интерфейс может маппить разные статусы на разные схемы (например 404 -> `NotFoundDto`, 422 -> `ValidationDto`).
-2. **Иерархия приоритетов:** `Method @OnError` > `Sub-interface @OnError` > `Super-interface @OnError`. Статусы метода переопределяют интерфейсные, а остальные статусы наследуются.
-3. **Прямой выброс кастомных исключений:** если `errorObject` наследует `Throwable` (например `ItemNotFoundException extends RuntimeException`), jRestly выбрасывает исключение напрямую, позволяя разработчикам писать естественные `catch (ItemNotFoundException e)` без распаковки `HandledException.getDetails()`. Предусмотрен reflection fallback при пустом теле ошибки.
-4. **Уточненная иерархия неожиданных статусов:** добавлены `ClientErrorException` (для HTTP 4xx) и `ServerErrorException` (для HTTP 5xx) как прямые наследники `UnexpectedStatusException`. Обратная совместимость 100%.
-5. **Валидация:** `ControllerValidator` проверяет диапазоны кодов (100..599) и отсутствие конфликтующих дубликатов на одном уровне.
-Написано 17 новых тестов (7 в `OnErrorConfigTest`, 10 в `OnErrorWireMockTest`).
-Гейты: **579/579** тестов (70 классов) зелёные, 0 warnings под `-Werror`, zero-dep core строго сохранен.
+[2026-10-15 04:28] Агент (сессия #106): Реализован эпик многостатусных ошибок, интерфейсных обработчиков и типизированных исключений (ADR-0028): повторяемый `@OnError`, прямой выброс кастомных исключений, `ClientErrorException` и `ServerErrorException`, валидация. 579/579 тестов зелёные.
 
+[2026-10-15 04:54] Агент (сессия #107): Реализован эпик декларативных интерцепторов `@WithInterceptor` per controller & method (ADR-0029):
+1. **Аннотация `@WithInterceptor`:** таргетинг `ElementType.TYPE` и `ElementType.METHOD`, `@Repeatable(WithInterceptor.List.class)` и массив классов `Class<?>[] value()`. Теперь интерфейсы и методы могут декларативно объявлять интерцепторы аудита, подписи, метрик или специфических заголовков.
+2. **Поддержка `RequestInterceptor`, `ResponseInterceptor` и дуальных интерцепторов:** класс может реализовывать любой из интерфейсов или оба сразу. При реализации обоих один и тот же singleton-экземпляр участвует в обоих этапах пайплайна.
+3. **Детерминированный порядок пайплайна:** Global Client &rarr; Super-interface &rarr; Sub-interface &rarr; Method для обоих типов интерцепторов.
+4. **Hot-path zero-allocation:** экземпляры интерцепторов кэшируются в клиенте (`ConcurrentHashMap`), исключая аллокации на горячем пути вызовов и поддерживая stateful singleton-интерцепторы.
+5. **Fail-fast валидация:** `ControllerValidator` проверяет реализуемые интерфейсы, запрещает абстрактные классы/интерфейсы и требует наличия no-arg конструктора (`ControllerValidationException`).
+Написано 17 новых тестов (7 в `InterceptorAnnotationTest`, 10 в `DeclarativeInterceptorWireMockTest`).
+Гейты: **596/596** тестов (72 класса) зелёные, 0 warnings под `-Werror`, zero-dep core строго сохранен.

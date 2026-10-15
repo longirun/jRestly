@@ -14,6 +14,7 @@ import java.time.Duration;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -29,6 +30,9 @@ public abstract class AbstractHttpClient {
 
     /** The created controller proxies, keyed by the controller interface. */
     protected final Map<Class<?>, Proxy> controllers = new HashMap<>();
+
+    /** Cached instances of declarative interceptors declared via @WithInterceptor. */
+    protected final Map<Class<?>, Object> interceptorInstances = new ConcurrentHashMap<>();
 
     /** The module configuration this client was created with. */
     protected ModuleInfo moduleInfo;
@@ -172,6 +176,7 @@ public abstract class AbstractHttpClient {
                     if (executor != null) {
                         builder.executor(executor);
                     }
+                    builder.interceptorCache(interceptorInstances);
                     HttpTemplate httpTemplate = builder.build();
 
                     return httpTemplate.exchange();
