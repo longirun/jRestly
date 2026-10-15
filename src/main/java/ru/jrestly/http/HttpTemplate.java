@@ -732,14 +732,15 @@ class HttpTemplate {
         }
 
         byte[] bytes = response.body();
-        String payload = (bytes != null && bytes.length > 0) ? new String(bytes, StandardCharsets.UTF_8) : null;
 
         if (onErrorParser != null && onErrorParser.canParse(statusCode)) {
-            handleOnError(statusCode, payload, responseHeaders);
+            String errorPayload = (bytes != null && bytes.length > 0) ? new String(bytes, StandardCharsets.UTF_8) : null;
+            handleOnError(statusCode, errorPayload, responseHeaders);
         }
 
         if (!isExpectedStatus(statusCode)) {
-            throw createUnexpectedStatusException(statusCode, payload == null ? "" : payload, responseHeaders);
+            String errorPayload = (bytes != null && bytes.length > 0) ? new String(bytes, StandardCharsets.UTF_8) : "";
+            throw createUnexpectedStatusException(statusCode, errorPayload, responseHeaders);
         }
 
         if (optional) {
@@ -756,6 +757,7 @@ class HttpTemplate {
                 return (T) Optional.of(bytes);
             }
             if (String.class.equals(returnType)) {
+                String payload = new String(bytes, StandardCharsets.UTF_8);
                 if (logger.isLoggable(System.Logger.Level.INFO)) {
                     logger.log(System.Logger.Level.INFO, "Response size: " + payload.length() + " bytes\n" + payload);
                 }
@@ -765,9 +767,10 @@ class HttpTemplate {
                 return (T) Optional.empty();
             }
             if (logger.isLoggable(System.Logger.Level.INFO)) {
+                String payload = new String(bytes, StandardCharsets.UTF_8);
                 logger.log(System.Logger.Level.INFO, "Response size: " + payload.length() + " bytes\n" + jsonCodec.prettyPrint(payload));
             }
-            Object deserialized = jsonCodec.deserialize(payload, returnType);
+            Object deserialized = jsonCodec.deserializeBytes(bytes, returnType);
             return (T) Optional.ofNullable(deserialized);
         }
 
@@ -786,22 +789,23 @@ class HttpTemplate {
         }
 
         if (String.class.equals(returnType)) {
+            String payload = new String(bytes, StandardCharsets.UTF_8);
             if (logger.isLoggable(System.Logger.Level.INFO)) {
                 logger.log(System.Logger.Level.INFO, "Response size: " + payload.length() + " bytes\n" + payload);
             }
             return (T) payload;
         }
 
-        if (logger.isLoggable(System.Logger.Level.INFO)) {
-            logger.log(System.Logger.Level.INFO, "Response size: " + payload.length() + " bytes\n" + jsonCodec.prettyPrint(payload));
-        }
-        // ADR-0009 candidate 2: the primitive and the boxed form are one
-        // contract — a void/Void method never decodes the body
         if (Void.class.equals(returnType) || void.class.equals(returnType)) {
             return null;
         }
 
-        return jsonCodec.deserialize(payload, returnType);
+        if (logger.isLoggable(System.Logger.Level.INFO)) {
+            String payload = new String(bytes, StandardCharsets.UTF_8);
+            logger.log(System.Logger.Level.INFO, "Response size: " + payload.length() + " bytes\n" + jsonCodec.prettyPrint(payload));
+        }
+
+        return jsonCodec.deserializeBytes(bytes, returnType);
     }
 
     // ADR-0015 Aspect 3: the error paths' consumption — the stream's

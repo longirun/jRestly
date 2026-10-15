@@ -1826,7 +1826,43 @@ Gates (session #133, clean rebuild):
 - `javadoc` 0 warnings under permanent `-Xdoclint:all -Werror`.
 - Zero external runtime dependencies strictly preserved (0 dependencies in root Maven POM).
 
-After the epic: candidate №1 — test-javadoc, candidate №2 — HTTP Trailers & Advanced Streaming ergonomics, candidate №3 — OkHttpEngine / ApacheHttpEngine external modules. ADR number **0054** free.
+## Zero-Copy Raw-Byte Codec Pipeline and Stream-Free Transport Headers (ADR-0054) — COMPLETE ✅ (2026-10-15, unreleased)
+
+> Source of truth: [`docs/0.10.0/ADR-0054-zero-copy-raw-byte-json-pipeline-and-stream-free-transport-headers.md`](docs/0.10.0/ADR-0054-zero-copy-raw-byte-json-pipeline-and-stream-free-transport-headers.md).
+> Session #134 (agent-loop). Prompted by maintainer insight into trimming ~10 KB of heap allocations per request across end-to-end network benchmarks.
+
+**Problem:**
+1. In `HttpTemplate.processResponse()`, wire response bytes (`byte[]`) were unconditionally decoded into a `new String(bytes, UTF_8)`, even when returning DTOs, `byte[]`, or `void`. For batch payloads (6.5 KB), this caused multi-kilobyte redundant allocations, followed by Jackson parsing strings via `StringReader` rather than streaming raw byte buffers directly.
+2. In `HttpTemplateBuilder.createBody()`, DTO bodies were stringified via `serialize()` and then re-encoded via `.getBytes(UTF_8)` (double allocation).
+3. In `JdkHttpEngine.toHeaders()`, JDK `HttpHeaders` were parsed via a heavy Stream pipeline (`headers.map().entrySet().stream().flatMap(...).toList()`), creating multiple stream pipelines, spliterators, and lambdas per response.
+4. In `HttpTemplateBuilder.createHeaders()`, requests without auth headers still allocated intermediate `ArrayList` and `HashSet` instances for duplicate filtering.
+
+**Solution:**
+- **Raw-Byte Codec SPI Enhancements:**
+  * Added default methods `<T> T deserializeBytes(byte[] payload, Type type)` and `byte[] serializeToBytes(Object value)` to `ru.jrestly.json.JsonCodec`.
+  * Implemented zero-copy streaming overrides in `JacksonCodec` (`mapper.readValue(payload, javaType)` and `mapper.writeValueAsBytes(value)`).
+  * Implemented direct Okio buffer overrides in `MoshiCodec` (`Buffer.write(payload)` and `Buffer.readByteArray()`).
+  * Updated `NoOpJsonCodec` to handle raw byte signatures safely.
+- **Lazy String Materialization in `HttpTemplate`:**
+  * Deferred string decoding only to error paths (`@OnError`, `UnexpectedStatusException`), `String` returns, or active `INFO` logging.
+  * DTOs and `Optional<DTO>` are deserialized directly from raw wire bytes via `jsonCodec.deserializeBytes(bytes, returnType)`.
+- **Stream-Free Transport Headers:**
+  * In `JdkHttpEngine.toHeaders()`, replaced Stream API with direct iteration into a pre-sized array list, returning `List.copyOf(list)` (1 allocation).
+- **Fast-Path Static Headers Resolution:**
+  * In `HttpTemplateBuilder.createHeaders()`, bypass `HashSet` and filter allocations when `authHeaders` are empty.
+- **Benchmark & Allocation Results:**
+  * Batch payload allocation (`getUsersBatch`): reduced from **94.1 KB/op to 87.2 KB/op** (saving **~7 KB of heap garbage per call**).
+  * Single DTO allocation (`getUser`): reduced from **51.0 KB/op to 50.1 KB/op**.
+  * Multi-threaded GC pause time under 16 concurrent threads: dropped from **12.0 ms to 7.0 ms** (nearly 2x GC pause reduction!).
+- **Automated Verification:** Added unit tests across `JacksonCodecDefaultsTest`, `MoshiCodecTest`, and `NoOpJsonCodecTest` (+4 tests, total **1026/1026 tests** across 133 classes).
+
+Gates (session #134, clean rebuild):
+- `./gradlew test` **1026/1026** (133 classes, 0 failures/errors; +4 tests in ADR-0054).
+- `compileJava` and `compileTestJava` 0 warnings under permanent `-Xlint:all -Werror`.
+- `javadoc` 0 warnings under permanent `-Xdoclint:all -Werror`.
+- Zero external runtime dependencies strictly preserved (0 dependencies in root Maven POM).
+
+After the epic: candidate №1 — test-javadoc, candidate №2 — HTTP Trailers & Advanced Streaming ergonomics, candidate №3 — OkHttpEngine / ApacheHttpEngine external modules. ADR number **0055** free.
 
 
 

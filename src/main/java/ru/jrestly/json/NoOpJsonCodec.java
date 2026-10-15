@@ -47,9 +47,26 @@ public final class NoOpJsonCodec implements JsonCodec {
     }
 
     @Override
+    public <T> T deserializeBytes(byte[] payload, Type type) {
+        if (payload == null || payload.length == 0) {
+            return null;
+        }
+        String s = new String(payload, java.nio.charset.StandardCharsets.UTF_8);
+        return deserialize(s, type);
+    }
+
+    @Override
     public String serialize(Object value) {
         if (value == null) {
             return "null";
+        }
+        throw new IllegalStateException(ERROR_MESSAGE);
+    }
+
+    @Override
+    public byte[] serializeToBytes(Object value) {
+        if (value == null) {
+            return new byte[] {'n', 'u', 'l', 'l'};
         }
         throw new IllegalStateException(ERROR_MESSAGE);
     }

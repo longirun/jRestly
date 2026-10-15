@@ -205,6 +205,23 @@ class MoshiCodecTest {
         assertTrue(pretty.contains("\"big\": 123456789012345"), "long literals must keep full precision: " + pretty);
     }
 
+    @Test
+    @DisplayName("deserializeBytes() and serializeToBytes() roundtrip raw bytes in Moshi")
+    void rawByteRoundtripInMoshi() {
+        TestDto dto = new TestDto(99L, "ZeroAlloc", "Moshi byte pipeline");
+
+        byte[] bytes = codec.serializeToBytes(dto);
+        assertNotNull(bytes);
+        assertTrue(bytes.length > 0);
+
+        TestDto roundtrip = codec.deserializeBytes(bytes, TestDto.class);
+        assertEquals(dto, roundtrip);
+
+        assertNull(codec.deserializeBytes(null, TestDto.class));
+        assertNull(codec.deserializeBytes(new byte[0], TestDto.class));
+        assertArrayEquals("null".getBytes(java.nio.charset.StandardCharsets.UTF_8), codec.serializeToBytes(null));
+    }
+
     private record Person(String firstName, String lastName) {}
 
     /** The java.time escape hatch in action: an ISO-8601 string adapter for {@link LocalDateTime}. */

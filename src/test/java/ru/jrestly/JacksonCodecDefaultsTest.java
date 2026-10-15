@@ -237,5 +237,36 @@ class JacksonCodecDefaultsTest {
         assertEquals(LocalDateTime.of(2026, 8, 24, 12, 35, 56), events.get(1).createdAt());
     }
 
+    @Test
+    @DisplayName("deserializeBytes() parses raw byte array without intermediate string allocation")
+    void deserializeBytesParsesRawBytes() {
+        byte[] bytes = "{\"id\":42,\"name\":\"Alice\",\"description\":\"Engineer\"}".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+
+        TestDto dto = codec.deserializeBytes(bytes, TestDto.class);
+
+        assertNotNull(dto);
+        assertEquals(42L, dto.id());
+        assertEquals("Alice", dto.name());
+        assertEquals("Engineer", dto.description());
+
+        assertNull(codec.deserializeBytes(null, TestDto.class));
+        assertNull(codec.deserializeBytes(new byte[0], TestDto.class));
+    }
+
+    @Test
+    @DisplayName("serializeToBytes() serializes directly to raw byte array")
+    void serializeToBytesSerializesDirectly() {
+        TestDto dto = new TestDto(42L, "Bob", "Tester");
+
+        byte[] bytes = codec.serializeToBytes(dto);
+
+        assertNotNull(bytes);
+        assertTrue(bytes.length > 0);
+        TestDto roundtrip = codec.deserializeBytes(bytes, TestDto.class);
+        assertEquals(dto, roundtrip);
+
+        assertArrayEquals("null".getBytes(java.nio.charset.StandardCharsets.UTF_8), codec.serializeToBytes(null));
+    }
+
     private record Person(String firstName, String lastName) {}
 }

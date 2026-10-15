@@ -4,6 +4,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import ru.jrestly.fixtures.TestDto;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -80,5 +81,22 @@ class NoOpJsonCodecTest {
         assertNull(codec.prettyPrint(null));
         assertEquals("{\"id\":1}", codec.prettyPrint("{\"id\":1}"));
         assertEquals("hello raw payload", codec.prettyPrint("hello raw payload"));
+    }
+
+    @Test
+    @DisplayName("deserializeBytes and serializeToBytes handle null and fail on complex types")
+    void rawByteMethodsInNoOpJsonCodec() {
+        NoOpJsonCodec codec = NoOpJsonCodec.instance();
+
+        assertNull(codec.deserializeBytes(null, TestDto.class));
+        assertNull(codec.deserializeBytes(new byte[0], TestDto.class));
+        assertNull(codec.deserializeBytes("   ".getBytes(java.nio.charset.StandardCharsets.UTF_8), TestDto.class));
+
+        assertArrayEquals("null".getBytes(java.nio.charset.StandardCharsets.UTF_8), codec.serializeToBytes(null));
+
+        assertThrows(IllegalStateException.class,
+                () -> codec.deserializeBytes("{\"id\":1}".getBytes(java.nio.charset.StandardCharsets.UTF_8), TestDto.class));
+        assertThrows(IllegalStateException.class,
+                () -> codec.serializeToBytes(new TestDto(1L, "Alice", "test")));
     }
 }

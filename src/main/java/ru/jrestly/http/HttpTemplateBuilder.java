@@ -422,10 +422,15 @@ public class HttpTemplateBuilder {
     }
 
     private List<Header> createHeaders() {
-        List<Header> result = new ArrayList<>(moduleInfo.getAuthProvider().getAuthHeaders());
-
+        List<Header> authHeaders = moduleInfo.getAuthProvider().getAuthHeaders();
         List<Header> staticHeaders = methodMetadata.staticHeaders();
-        if (!staticHeaders.isEmpty()) {
+        List<Header> result;
+        if (authHeaders == null || authHeaders.isEmpty()) {
+            result = new ArrayList<>(staticHeaders);
+        } else if (staticHeaders.isEmpty()) {
+            result = new ArrayList<>(authHeaders);
+        } else {
+            result = new ArrayList<>(authHeaders);
             Set<String> staticNames = new HashSet<>();
             for (Header h : staticHeaders) {
                 staticNames.add(h.name().toLowerCase(Locale.ROOT));
@@ -751,8 +756,8 @@ public class HttpTemplateBuilder {
             return new BodyPayload(stringBody.getBytes(charset), null, effectiveContentType);
         }
 
-        String stringifiedBody = moduleInfo.getJsonCodec().serialize(body);
-        return new BodyPayload(stringifiedBody.getBytes(StandardCharsets.UTF_8), null, effectiveContentType);
+        byte[] bodyBytes = moduleInfo.getJsonCodec().serializeToBytes(body);
+        return new BodyPayload(bodyBytes, null, effectiveContentType);
     }
 
     private static Flow.Publisher<ByteBuffer> adaptToByteBufferPublisher(Flow.Publisher<?> source, Charset charset) {

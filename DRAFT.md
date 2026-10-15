@@ -1,12 +1,14 @@
-# DRAFT: активная зона после закрытия Lifecycle Resource Safety & Zero-Reflection Parameter Descriptors (ADR-0053)
+# DRAFT: активная зона после закрытия Zero-Copy Raw-Byte Codec Pipeline and Stream-Free Transport Headers (ADR-0054)
 
-> Эпик Lifecycle Resource Safety and Zero-Reflection Parameter Descriptors (ADR-0053, `docs/0.10.0/`) закрыт (сессия #133):
-> - Устранена утечка ресурсов жизненного цикла: `AbstractHttpClient` теперь устанавливает `ownsClient = true` на управляемых движках и гарантированно вызывает `this.httpClient.close()` при `client.close()`. Добавлен `AbstractHttpClientLifecycleTest` (+2 теста).
-> - В `MethodMetadata` вынесены и предвычислены `staticHeaders`, `staticCookies`, `staticDefaultParams`, `hasAuthAnnotation`, `effectiveTrace`.
-> - Создана модель `ParameterDescriptor`, исключившая многократные вызовы `Method.getParameters()`, `Class.getInterfaces()` и рефлексивный поиск аннотаций параметров на горячем пути диспетчеризации.
-> - `HttpTemplateBuilder` переведен на работу в $O(1)$ без рефлексии и промежуточных стрим-аллокаций.
-> - Бенчмарки JMH: диспетчеризация ускорилась до **6.99 µs/op** (пик 5.86 µs/op), ping до **2.33 µs/op**, аллокации кучи сократились на 21% (до 3234 B/op).
-> - Достигнута отметка **1022/1022 тестов** в 133 классах, 0 warnings под `-Werror`, POM строго zero-dep.
+> Эпик Zero-Copy Raw-Byte Codec Pipeline and Stream-Free Transport Headers (ADR-0054, `docs/0.10.0/`) закрыт (сессия #134):
+> - В `JsonCodec` добавлены методы прямого чтения и записи байтов без промежуточной аллокации строк: `<T> T deserializeBytes(byte[], Type)` и `byte[] serializeToBytes(Object)`.
+> - `JacksonCodec` переведен на прямой streaming parse из byte-буферов (`mapper.readValue(payload, javaType)`) и сериализацию `mapper.writeValueAsBytes(value)`.
+> - `MoshiCodec` переведен на прямое чтение/запись Okio Buffer (`Buffer.write(payload)`, `Buffer.readByteArray()`).
+> - В `HttpTemplate.processResponse()` материализация `String payload` сделана ленивой (создается только при ошибках, прямом типе `String` или активном `INFO` логировании). Для DTO и `byte[]` парсинг идет напрямую из `byte[]`.
+> - В `JdkHttpEngine.toHeaders()` Stream API заменен на прямой плоский цикл, возвращающий `List.copyOf(list)` (1 аллокация).
+> - В `HttpTemplateBuilder.createHeaders()` добавлен fast-path для пустых auth-заголовков, устранивший создание `HashSet` и `removeIf`.
+> - Замеры JMH с `-prof gc`: аллокации на batch запросах снижены с **94.1 KB/op до 87.2 KB/op** (срезано ~7 КБ мусора с каждой операции!), паузы GC сократились с **12.0 ms до 7.0 ms**!
+> - Достигнута отметка **1026/1026 тестов** в 133 классах (+4 новых теста), 0 warnings под `-Werror`, POM строго zero-dep.
 > Следующий ход — свободный, выбор из активной зоны.
 
 ## Активная зона (кандидаты на следующий эпик)

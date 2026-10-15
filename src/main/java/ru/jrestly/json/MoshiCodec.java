@@ -89,6 +89,22 @@ public class MoshiCodec implements JsonCodec {
     }
 
     @Override
+    public <T> T deserializeBytes(byte[] payload, Type type) {
+        if (payload == null || payload.length == 0) {
+            return null;
+        }
+        try {
+            Buffer source = new Buffer();
+            source.write(payload);
+            JsonReader reader = JsonReader.of(source);
+            JsonAdapter<T> adapter = moshi.adapter(type);
+            return adapter.fromJson(reader);
+        } catch (IOException | RuntimeException e) {
+            throw new JsonDataException("Failed to deserialize JSON into " + type.getTypeName(), e);
+        }
+    }
+
+    @Override
     public String serialize(Object value) {
         if (value == null) {
             return "null";
@@ -103,6 +119,21 @@ public class MoshiCodec implements JsonCodec {
             throw new JsonDataException("Failed to serialize " + value.getClass().getName() + " to JSON", e);
         }
         return sink.readUtf8();
+    }
+
+    @Override
+    public byte[] serializeToBytes(Object value) {
+        if (value == null) {
+            return new byte[] {'n', 'u', 'l', 'l'};
+        }
+        Buffer sink = new Buffer();
+        try {
+            JsonAdapter<Object> adapter = moshi.adapter((Type) value.getClass());
+            adapter.toJson(JsonWriter.of(sink), value);
+        } catch (IOException | RuntimeException e) {
+            throw new JsonDataException("Failed to serialize " + value.getClass().getName() + " to JSON", e);
+        }
+        return sink.readByteArray();
     }
 
     @Override

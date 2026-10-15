@@ -121,11 +121,33 @@ public class JacksonCodec implements JsonCodec {
     }
 
     @Override
+    public <T> T deserializeBytes(byte[] payload, Type type) {
+        if (payload == null || payload.length == 0) {
+            return null;
+        }
+        JavaType javaType = mapper.getTypeFactory().constructType(type);
+        try {
+            return mapper.readValue(payload, javaType);
+        } catch (IOException e) {
+            throw new UncheckedIOException("Failed to deserialize JSON into " + type.getTypeName(), e);
+        }
+    }
+
+    @Override
     public String serialize(Object value) {
         try {
             return mapper.writeValueAsString(value);
         } catch (IOException e) {
-            throw new UncheckedIOException("Failed to serialize " + value.getClass().getName() + " to JSON", e);
+            throw new UncheckedIOException("Failed to serialize " + (value != null ? value.getClass().getName() : "null") + " to JSON", e);
+        }
+    }
+
+    @Override
+    public byte[] serializeToBytes(Object value) {
+        try {
+            return mapper.writeValueAsBytes(value);
+        } catch (IOException e) {
+            throw new UncheckedIOException("Failed to serialize " + (value != null ? value.getClass().getName() : "null") + " to JSON", e);
         }
     }
 

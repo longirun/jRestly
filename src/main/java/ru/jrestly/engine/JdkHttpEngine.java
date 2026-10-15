@@ -22,6 +22,7 @@ import java.net.http.HttpHeaders;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
@@ -229,9 +230,18 @@ public class JdkHttpEngine implements HttpEngine {
         if (headers == null) {
             return List.of();
         }
-        return headers.map().entrySet().stream()
-                .flatMap(entry -> entry.getValue().stream()
-                        .map(value -> new Header(entry.getKey(), value)))
-                .toList();
+        var map = headers.map();
+        if (map.isEmpty()) {
+            return List.of();
+        }
+        List<Header> list = new ArrayList<>(map.size() * 2);
+        for (var entry : map.entrySet()) {
+            String name = entry.getKey();
+            List<String> values = entry.getValue();
+            for (int i = 0, size = values.size(); i < size; i++) {
+                list.add(new Header(name, values.get(i)));
+            }
+        }
+        return List.copyOf(list);
     }
 }

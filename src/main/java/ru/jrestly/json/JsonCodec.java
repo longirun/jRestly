@@ -76,6 +76,42 @@ public interface JsonCodec {
     String prettyPrint(String payload);
 
     /**
+     * Deserializes the given JSON payload from a raw byte array into a value of the given type.
+     *
+     * <p>Default implementation decodes the byte array as a UTF-8 string and delegates to
+     * {@link #deserialize(String, Type)}. Implementations may override this to parse directly
+     * from raw bytes without intermediate string allocation (ADR-0054).
+     *
+     * @param payload the JSON document bytes; may be {@code null} or empty
+     * @param type    the target type, including generic signatures; never {@code null}
+     * @param <T>     the static type of the deserialized value
+     * @return the deserialized value, or {@code null} for an empty or {@code null} payload
+     * @throws RuntimeException if the payload cannot be bound to the type
+     */
+    default <T> T deserializeBytes(byte[] payload, Type type) {
+        if (payload == null || payload.length == 0) {
+            return null;
+        }
+        return deserialize(new String(payload, java.nio.charset.StandardCharsets.UTF_8), type);
+    }
+
+    /**
+     * Serializes the given value to a raw UTF-8 JSON byte array.
+     *
+     * <p>Default implementation delegates to {@link #serialize(Object)} and encodes the result
+     * as UTF-8 bytes. Implementations may override this to serialize directly into a byte buffer
+     * without intermediate string allocation (ADR-0054).
+     *
+     * @param value the value to write; may be {@code null}
+     * @return the UTF-8 encoded JSON document bytes
+     * @throws RuntimeException if the value cannot be written
+     */
+    default byte[] serializeToBytes(Object value) {
+        String json = serialize(value);
+        return json != null ? json.getBytes(java.nio.charset.StandardCharsets.UTF_8) : new byte[0];
+    }
+
+    /**
      * Returns a no-op fallback {@link JsonCodec} that safely allows raw string,
      * byte array, streaming, and void HTTP calls without external JSON dependencies,
      * but fails fast if serialization or deserialization of complex objects is attempted (ADR-0045).
