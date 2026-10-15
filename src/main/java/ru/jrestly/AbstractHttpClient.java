@@ -45,6 +45,9 @@ public abstract class AbstractHttpClient {
     /** The JDK HTTP client used for every exchange; created by {@link #createConnection()}. */
     protected HttpClient httpClient;
 
+    /** The HTTP engine used for every exchange (ADR-0052); created by {@link #createConnection()}. */
+    protected ru.jrestly.engine.HttpEngine httpEngine;
+
     /** The executor used for asynchronous tasks; either from module configuration or managed virtual threads. */
     protected Executor executor;
 
@@ -64,6 +67,9 @@ public abstract class AbstractHttpClient {
         this.moduleInfo = moduleInfo;
 
         createConnection();
+        if (this.httpEngine == null && this.httpClient != null) {
+            this.httpEngine = ru.jrestly.engine.JdkHttpEngine.from(this.httpClient);
+        }
     }
 
     /**
@@ -94,6 +100,14 @@ public abstract class AbstractHttpClient {
      * client (e.g. with a network proxy or custom transport settings).
      */
     protected void createConnection() {
+        if (moduleInfo.getHttpEngine() != null) {
+            this.httpEngine = moduleInfo.getHttpEngine();
+            if (this.httpEngine instanceof ru.jrestly.engine.JdkHttpEngine jdkEngine) {
+                this.httpClient = jdkEngine.getHttpClient();
+            }
+            return;
+        }
+
         HttpClient.Builder builder = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofMillis(moduleInfo.getConnectTimeout()))
                 .version(moduleInfo.getHttpVersion())
@@ -135,18 +149,22 @@ public abstract class AbstractHttpClient {
         }
 
         this.httpClient = builder.build();
+        this.httpEngine = ru.jrestly.engine.JdkHttpEngine.from(this.httpClient);
     }
 
     /**
-     * Closes the underlying {@link HttpClient} and shuts down any internally
-     * managed executor service (ADR-0026); safe to call twice.
+     * Closes the underlying {@link HttpClient} or {@link ru.jrestly.engine.HttpEngine} and shuts down
+     * any internally managed executor service (ADR-0026); safe to call twice.
      *
      * <p>Deliberately not {@code AutoCloseable}: the client is an
      * app-lifetime singleton, and the interface would provoke per-request
      * try-with-resources usage.
      */
     public void close() {
-        if (httpClient != null) {
+        if (httpEngine != null) {
+            httpEngine.close();
+        }
+        if (httpClient != null && !(httpEngine instanceof ru.jrestly.engine.JdkHttpEngine)) {
             httpClient.close();
         }
         if (managedExecutorService != null) {
@@ -191,7 +209,7 @@ public abstract class AbstractHttpClient {
                         login();
                     }
 
-                    HttpTemplateBuilder builder = new HttpTemplateBuilder(moduleInfo, httpClient, method, args, classInterface);
+                    HttpTemplateBuilder builder = new HttpTemplateBuilder(moduleInfo, httpEngine, method, args, classInterface);
                     if (executor != null) {
                         builder.executor(executor);
                     }
@@ -304,6 +322,30 @@ public abstract class AbstractHttpClient {
      */
     public Authenticator getAuthenticator() {
         return moduleInfo != null ? moduleInfo.getAuthenticator() : null;
+    }
+
+    /**
+     * Returns the HTTP transport engine used by this client (ADR-0052).
+     *
+     * @return the HTTP engine
+     */
+    public ru.jrestly.engine.HttpEngine getHttpEngine() {
+        return httpEngine;
+    }
+
+    /**
+     * Returns the underlying JDK HTTP client, or {@code null} if a non-JDK engine is configured.
+     *
+     * @return the JDK HTTP client, or {@code null}
+     */
+    public HttpClient getHttpClient() {
+        if (httpClient != null) {
+            return httpClient;
+        }
+        if (httpEngine instanceof ru.jrestly.engine.JdkHttpEngine jdk) {
+            return jdk.getHttpClient();
+        }
+        return null;
     }
 }
 

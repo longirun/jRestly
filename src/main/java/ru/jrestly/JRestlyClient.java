@@ -859,6 +859,17 @@ public class JRestlyClient extends AbstractHttpClient {
         }
 
         /**
+         * Sets the custom pluggable {@link ru.jrestly.engine.HttpEngine} (ADR-0052).
+         *
+         * @param httpEngine the HTTP engine, or {@code null} to use default engine resolution
+         * @return this builder, for chaining
+         */
+        public Builder httpEngine(ru.jrestly.engine.HttpEngine httpEngine) {
+            moduleInfoBuilder.httpEngine(httpEngine);
+            return this;
+        }
+
+        /**
          * Validates the settings (baseUrl must be set) and creates the
          * client for the resulting {@link SimpleModuleInfo}; an unset
          * {@code jsonCodec} is resolved from the classpath.

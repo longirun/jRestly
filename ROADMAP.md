@@ -1771,9 +1771,37 @@ Gates (session #131, clean rebuild):
 - `./gradlew test` **1000/1000** (129 classes, 0 failures/errors; +7 tests in ADR-0051). Milestone of 1000 tests passed!
 - `compileJava` and `compileTestJava` 0 warnings under permanent `-Xlint:all -Werror`.
 - `javadoc` 0 warnings under permanent `-Xdoclint:all -Werror`.
+After the epic: ADR-0052 (Pluggable HttpEngine SPI & JdkHttpEngine Architecture) — done, section below. ADR number **0052** used.
+
+## Pluggable HttpEngine SPI & JdkHttpEngine Architecture (ADR-0052) — COMPLETE ✅ (2026-10-15, unreleased)
+
+> Source of truth: [`docs/0.10.0/ADR-0052-http-engine-spi-and-jdk-engine.md`](docs/0.10.0/ADR-0052-http-engine-spi-and-jdk-engine.md).
+
+**Problem:** High-level pipeline in `HttpTemplate` was tightly coupled directly to `java.net.http.HttpClient` and its concrete request/response classes. To achieve maximum throughput matching or exceeding external giants (OkHttp, Apache 5) and to enable fast in-memory mock transports without allocating OS sockets, the transport layer needed to be abstracted behind a clean SPI without compromising the 0-dependency core.
+
+**Solution:**
+- **Pluggable `HttpEngine` Interface (`ru.jrestly.engine`):**
+  * `AutoCloseable` transport contract with synchronous `send(WireRequest, HttpEngineOptions)` and asynchronous `sendAsync(WireRequest, HttpEngineOptions)`.
+- **`HttpEngineOptions` Record:**
+  * Encapsulates per-call options: `timeout`, negotiated protocol `version`, `streamResponse` flag, `uploadProgressListener`, and `downloadProgressListener`.
+- **Standard Zero-Dep `JdkHttpEngine`:**
+  * 100% zero-dependency core implementation backed by Java 21 `HttpClient`.
+  * Encapsulates low-level HTTP mapping (`toHttpRequest`, `ProgressBodyHandler`, `ProgressBodyPublisher`, `MultipartBodyPublisher`).
+  * Factory methods `JdkHttpEngine.from(HttpClient)` and `JdkHttpEngine.create(ModuleInfo)`.
+- **SPI Discovery (`HttpEngineProvider` & `HttpEngineResolver`):**
+  * Pluggable provider resolution: (1) explicit builder setting > (2) `ServiceLoader` SPI provider > (3) standard `JdkHttpEngine` fallback.
+- **Pipeline Integration:**
+  * `ModuleInfo.getHttpEngine()`, `SimpleModuleInfo.Builder.httpEngine()`, `JRestlyClient.Builder.httpEngine()`.
+  * `HttpTemplate` delegates all wire transmissions through `HttpEngine`, keeping high-level features (GZIP/Deflate, retries, metrics, interceptors, CircuitBreaker, JSON decoding) fully functional across any pluggable transport.
+- **Automated Verification:** Added `JdkHttpEngineTest`, `HttpEngineResolverTest`, and `CustomHttpEngineIntegrationTest` (+20 tests, total **1020/1020 tests** across 132 classes).
+
+Gates (session #132, clean rebuild):
+- `./gradlew test` **1020/1020** (132 classes, 0 failures/errors; +20 tests in ADR-0052).
+- `compileJava` and `compileTestJava` 0 warnings under permanent `-Xlint:all -Werror`.
+- `javadoc` 0 warnings under permanent `-Xdoclint:all -Werror`.
 - Zero external runtime dependencies strictly preserved (0 dependencies in root Maven POM).
 
-After the epic: candidate №1 — `HttpEngine SPI & JdkHttpEngine` (ADR-0052), candidate №2 — test-javadoc, candidate №3 — HTTP Trailers & Advanced Streaming. ADR number **0052** free.
+After the epic: candidate №1 — test-javadoc, candidate №2 — HTTP Trailers & Advanced Streaming ergonomics, candidate №3 — OkHttpEngine / ApacheHttpEngine external modules. ADR number **0053** free.
 
 
 

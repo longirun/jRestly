@@ -101,6 +101,7 @@ public class HttpTemplateBuilder {
 
     private final ModuleInfo moduleInfo;
     private final HttpClient httpClient;
+    private final ru.jrestly.engine.HttpEngine httpEngine;
     private final Method method;
     private final Object[] args;
     private final Class<?> controller;
@@ -112,7 +113,25 @@ public class HttpTemplateBuilder {
     private System.Logger customLogger;
 
     /**
-     * Creates a builder for the given invocation.
+     * Creates a builder for the given invocation using a pluggable {@link ru.jrestly.engine.HttpEngine} (ADR-0052).
+     *
+     * @param moduleInfo the module configuration (environment, codec, auth provider, retry policy)
+     * @param httpEngine the client's transport engine
+     * @param method the invoked controller method; its verb annotation drives the request
+     * @param args the invocation arguments
+     * @param controller the proxied controller interface; names the request logger
+     */
+    public HttpTemplateBuilder(ModuleInfo moduleInfo, ru.jrestly.engine.HttpEngine httpEngine, Method method, Object[] args, Class<?> controller) {
+        this.moduleInfo = moduleInfo;
+        this.httpEngine = httpEngine;
+        this.httpClient = (httpEngine instanceof ru.jrestly.engine.JdkHttpEngine jdk) ? jdk.getHttpClient() : null;
+        this.method = method;
+        this.args = args;
+        this.controller = controller;
+    }
+
+    /**
+     * Creates a builder for the given invocation with a JDK {@link HttpClient}.
      *
      * @param moduleInfo the module configuration (environment, codec, auth provider, retry policy)
      * @param httpClient the client's preconfigured {@link HttpClient}
@@ -121,11 +140,7 @@ public class HttpTemplateBuilder {
      * @param controller the proxied controller interface; names the request logger
      */
     public HttpTemplateBuilder(ModuleInfo moduleInfo, HttpClient httpClient, Method method, Object[] args, Class<?> controller) {
-        this.moduleInfo = moduleInfo;
-        this.httpClient = httpClient;
-        this.method = method;
-        this.args = args;
-        this.controller = controller;
+        this(moduleInfo, httpClient != null ? ru.jrestly.engine.JdkHttpEngine.from(httpClient) : null, method, args, controller);
     }
 
     /**
@@ -212,7 +227,11 @@ public class HttpTemplateBuilder {
         result.setModuleInfo(moduleInfo);
         result.setJsonCodec(moduleInfo.getJsonCodec());
 
-        result.setHttpClient(httpClient);
+        if (httpEngine != null) {
+            result.setHttpEngine(httpEngine);
+        } else if (httpClient != null) {
+            result.setHttpClient(httpClient);
+        }
         result.setUrl(createUrl());
         result.setHttpMethod(requestMeta.httpMethod());
 

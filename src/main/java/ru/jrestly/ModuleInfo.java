@@ -375,5 +375,15 @@ public interface ModuleInfo {
     default System.Logger getLogger() {
         return null;
     }
+
+    /**
+     * The custom pluggable {@link ru.jrestly.engine.HttpEngine} (ADR-0052).
+     * When {@code null} (the default), the engine is resolved via {@link ru.jrestly.engine.HttpEngineResolver}.
+     *
+     * @return the HTTP engine, or {@code null} if not configured
+     */
+    default ru.jrestly.engine.HttpEngine getHttpEngine() {
+        return null;
+    }
 }
 

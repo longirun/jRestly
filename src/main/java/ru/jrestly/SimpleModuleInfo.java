@@ -85,10 +85,12 @@ public class SimpleModuleInfo implements ModuleInfo {
     private final ru.jrestly.auth.TokenManager tokenManager;
     private final boolean retryOnUnauthorized;
     private final System.Logger logger;
+    private final ru.jrestly.engine.HttpEngine httpEngine;
 
     private SimpleModuleInfo(Builder builder) {
         this.name = builder.name;
         this.baseUrl = builder.baseUrl;
+        this.httpEngine = builder.httpEngine;
         this.authProvider = builder.authHeaderName != null
                 ? new AuthHeaderProvider(builder.authHeaderName, builder.authHeaderValue)
                 : new AuthHeaderProvider();
@@ -299,6 +301,11 @@ public class SimpleModuleInfo implements ModuleInfo {
         return logger;
     }
 
+    @Override
+    public ru.jrestly.engine.HttpEngine getHttpEngine() {
+        return httpEngine;
+    }
+
     /**
      * A builder for {@link SimpleModuleInfo}, pre-set to the defaults:
      * name {@code "default"}, 5 s connect timeout, 30 s socket timeout,
@@ -310,6 +317,7 @@ public class SimpleModuleInfo implements ModuleInfo {
     public static class Builder {
         private String name = "default";
         private String baseUrl;
+        private ru.jrestly.engine.HttpEngine httpEngine;
         private String authHeaderName;
         private String authHeaderValue;
         private JsonCodec jsonCodec;
@@ -1177,6 +1185,17 @@ public class SimpleModuleInfo implements ModuleInfo {
                 java.util.function.Function<ru.jrestly.http.WireRequest, ru.jrestly.http.WireResponse> responseSupplier
         ) {
             return shortCircuit(ru.jrestly.interceptor.ShortCircuitInterceptor.matching(predicate, responseSupplier));
+        }
+
+        /**
+         * Sets the custom pluggable {@link ru.jrestly.engine.HttpEngine} (ADR-0052).
+         *
+         * @param httpEngine the HTTP engine, or {@code null} to use default engine resolution
+         * @return this builder, for chaining
+         */
+        public Builder httpEngine(ru.jrestly.engine.HttpEngine httpEngine) {
+            this.httpEngine = httpEngine;
+            return this;
         }
 
         /**

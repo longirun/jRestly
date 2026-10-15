@@ -1,37 +1,35 @@
-# Last Session: #131 (2026-10-15)
+# Last Session: #132 (2026-10-15)
 
 ## Что сделано
 
-1. **Реализован эпик MethodMetadata Caching and Proxy Dispatch Hot-Path Optimization (ADR-0051):**
-   - Создан `docs/0.10.0/ADR-0051-method-metadata-caching-and-proxy-dispatch-optimization.md` (статус **Accepted**).
-   - Создан package-private класс `MethodMetadata` (`ru.jrestly.http`) с lock-free concurrent кэшем `ConcurrentHashMap<MethodKey, MethodMetadata>`.
-   - В `MethodMetadata` один раз разбираются и кэшируются: HTTP метод, URL-шаблон, Content-Type, Accept, CollectionFormat, Trace, OnErrorParser, ExpectStatuses, FollowRedirects, HttpVersion, RetryPolicy, Timeout, декларативные интерцепторы (`declarativeRequestInterceptorClasses`, `declarativeResponseInterceptorClasses`), метрики (`declarativeMetricsListenerClasses`), настройки сжатия, аннотации CircuitBreaker/RateLimiter, ReturnTypeInfo и индексы специальных параметров (`responseHeadersParamIndex`, `uploadProgressParamIndex`, `downloadProgressParamIndex`, `authDetailsHeaderName`).
-   - `HttpTemplateBuilder.build()` и резолверы параметров оптимизированы: все статические свойства читаются мгновенно из `MethodMetadata` без повторных рефлексивных вызовов `Method.getAnnotation()`, `Class.getAnnotationsByType()`, `method.getParameters()` и рекурсивного `collectInterfaceHierarchy()`.
-   - **Замеры производительности JMH (`DispatchOverheadBenchmark`):**
-     * In-memory mock dispatch с Jackson декодированием: ускорился с **29.5 µs до 7.89 µs** (в 3.7 раза быстрее!).
-     * Ping / raw text: ускорился с **6.3 µs до 2.95 µs** (в 2.1 раза быстрее — полный цикл прокси менее 3 микросекунд!).
-   - Написан `MethodMetadataTest` (+7 тестов), проверяющий кэширование, иерархию таймаутов, парсинг типов и параметров.
-   - **Исторический рубеж:** в библиотеке пройден рубеж в **1000/1000 тестов** (129 классов).
+1. **Реализован эпик Pluggable HttpEngine SPI & JdkHttpEngine Architecture (ADR-0052):**
+   - Создан `docs/0.10.0/ADR-0052-http-engine-spi-and-jdk-engine.md` (статус **Accepted**).
+   - Выделен открытый интерфейс сетевого транспорта `HttpEngine` (`ru.jrestly.engine`) с методами `send(WireRequest, HttpEngineOptions)` и `sendAsync(WireRequest, HttpEngineOptions)`.
+   - Создан неизменяемый record `HttpEngineOptions` (таймаут, версия протокола HTTP, флаг потокового чтения, листенеры прогресса загрузки и выгрузки) с fluent builder.
+   - Реализован дефолтный zero-dep `JdkHttpEngine` на базе Java 21 `HttpClient` со встроенным преобразованием запросов и ответов (`toHttpRequest`, `ProgressBodyHandler`, `ProgressBodyPublisher`, `MultipartBodyPublisher`). Фабрики `JdkHttpEngine.from(HttpClient)` и `JdkHttpEngine.create(ModuleInfo)`.
+   - Реализован SPI механизм обнаружения `HttpEngineProvider` через `java.util.ServiceLoader` и `HttpEngineResolver`.
+   - `AbstractHttpClient`, `ModuleInfo`, `SimpleModuleInfo`, `JRestlyClient.Builder`, `HttpTemplateBuilder` и `HttpTemplate` переведены на работу через `HttpEngine` при сохранении 100% обратной совместимости.
+   - Все высокоуровневые возможности (GZIP/Deflate, повторные попытки `@Retry`, `@Timeout`, CircuitBreaker, RateLimiter, W3C TraceContext, интерцепторы, метрики, JSON/String/byte[]/Optional декодирование) работают поверх любого pluggable `HttpEngine`.
+   - Написаны `JdkHttpEngineTest`, `HttpEngineResolverTest`, `CustomHttpEngineIntegrationTest` (+20 тестов, достигнута отметка **1020/1020 тестов** в 132 классах).
 2. **Обновлены артефакты памяти и проекта:**
-   - `ROADMAP.md`: зафиксирован ADR-0051, следующий свободный — ADR-0052.
-   - `DRAFT.md`: активная зона обновлена, кандидат №1 — `HttpEngine SPI & JdkHttpEngine` (ADR-0052).
-   - `.agent/days/2026-10-15.md`: добавлен лог сессии #131.
-   - `.agent/mailbox.md`: Антону дан развернутый ответ по `HttpEngine SPI`, XML и результатам оптимизации горячего пути.
+   - `ROADMAP.md`: зафиксирован ADR-0052, следующий свободный — ADR-0053.
+   - `DRAFT.md`: эпик закрыт, активная зона обновлена.
+   - `.agent/days/2026-10-15.md`: добавлен лог сессии #132.
    - Maven POM публикации строго подтвержден: ровно 0 dependencies.
 
 ## Гейты
 
-- `./gradlew test` → **1000/1000** тестов зелёные (129 классов, 0 failures, 0 errors).
+- `./gradlew test` → **1020/1020** тестов зелёные (132 класса, 0 failures, 0 errors, +20 тестов).
 - `compileJava` и `compileTestJava` → 0 warnings под постоянными флагами `-Xlint:all -Werror`.
 - `javadoc` → 0 warnings под постоянным флагом `-Xdoclint:all -Werror`.
 - Zero-dep core строго подтвержден: ровно 0 `<dependency>` в POM публикации Maven.
 
-## Контекст для следующей сессии (#132)
+## Контекст для следующей сессии (#133)
 
 ### Активная зона DRAFT:
-- **Кандидат №1:** `HttpEngine SPI & JdkHttpEngine` (ADR-0052) — выделение сетевого транспорта за интерфейс `HttpEngine` со стандартным zero-dep `JdkHttpEngine` и возможностью подключения высокоскоростных внешних клиентов (OkHttp / Apache 5).
-- **Кандидат №2:** test-javadoc (наведение лоска в тестовых классах).
-- **Кандидат №3:** HTTP Trailers & Advanced Streaming ergonomics.
+- **Кандидат №1:** test-javadoc (наведение лоска в тестовых классах).
+- **Кандидат №2:** HTTP Trailers & Advanced Streaming ergonomics.
+- **Кандидат №3:** OkHttpEngine / ApacheHttpEngine external modules.
 
 ### Грабли (актуальный набор)
 - **`GRADLE_USER_HOME=/tmp/opencode/gradle-home`**: всегда указывать при запуске `./gradlew`.
@@ -39,15 +37,15 @@
 - **`HttpTemplate` package-private**: снаружи пакета `ru.jrestly.http` класс недоступен; запуск конвейера всегда идет через `HttpTemplateBuilder.execute()`.
 - **Path variables в jRestly**: в URL синтаксис `${param}`, в аннотации `@PathVariable(name = "param")` (без `${}`).
 - **Аннотации HTTP-методов**: `@Get(path = "...")`, `@Post(path = "...")`, `@RequestBody` (не `@Body`).
-- **Подсчёт тестов:** `grep -h -o 'tests="[0-9]*"' build/test-results/test/*.xml benchmarks/build/test-results/test/*.xml | awk -F'"' '{s+=$2} END{print s}'` (сейчас ровно 1000 в 129 классах).
+- **Подсчёт тестов:** `grep -h -o 'tests="[0-9]*"' build/test-results/test/*.xml benchmarks/build/test-results/test/*.xml | awk -F'"' '{s+=$2} END{print s}'` (сейчас ровно 1020 в 132 классах).
 - **Запуск JMH бенчмарков:** `./gradlew :benchmarks:jmh -PjmhArgs="..."`.
 - **Mailbox-гигиена:** решённый обмен удаляем; живые нитки и последние 2–3 сообщения оставляем.
 - **Коммит-субъект: краткий, без дублирования ченджлога** (Антон); body — гейты-факты.
 - **No git tags:** теги не создавать (релизы запаузены per maintainer agreement).
-- **Next free ADR number:** ADR-0052.
+- **Next free ADR number:** ADR-0053.
 
 ### Среда
 1. `GRADLE_USER_HOME=/tmp/opencode/gradle-home ./gradlew ...` (тёплый кэш).
 2. Ветка `agent-loop`.
-3. Версия в `build.gradle`: **0.9.0**. Тесты: **1000/1000** (129 классов).
+3. Версия в `build.gradle`: **0.9.0**. Тесты: **1020/1020** (132 класса).
 4. Warnings: main 0, test 0, javadoc 0 (под `-Werror`).

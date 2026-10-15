@@ -16,12 +16,19 @@ import java.util.function.Supplier;
 /**
  * Streaming RFC 7578 multipart/form-data body publisher.
  */
-final class MultipartBodyPublisher {
+public final class MultipartBodyPublisher {
 
     private MultipartBodyPublisher() {
     }
 
-    static HttpRequest.BodyPublisher of(String boundary, List<MultipartPart> parts) {
+    /**
+     * Creates an {@link HttpRequest.BodyPublisher} for the given boundary and multipart parts.
+     *
+     * @param boundary the multipart boundary string
+     * @param parts the list of multipart parts
+     * @return the composite streaming body publisher
+     */
+    public static HttpRequest.BodyPublisher of(String boundary, List<MultipartPart> parts) {
         byte[] crlf = "\r\n".getBytes(StandardCharsets.UTF_8);
 
         List<HttpRequest.BodyPublisher> sequences = new ArrayList<>();

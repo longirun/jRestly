@@ -10,12 +10,18 @@ import java.util.concurrent.atomic.AtomicLong;
  * Decorating {@link HttpRequest.BodyPublisher} that notifies an {@link UploadProgressListener}
  * as byte buffers are consumed and transmitted to the underlying transport.
  */
-final class ProgressBodyPublisher implements HttpRequest.BodyPublisher {
+public final class ProgressBodyPublisher implements HttpRequest.BodyPublisher {
 
     private final HttpRequest.BodyPublisher delegate;
     private final UploadProgressListener listener;
 
-    ProgressBodyPublisher(HttpRequest.BodyPublisher delegate, UploadProgressListener listener) {
+    /**
+     * Constructs a progress tracking body publisher wrapping the given delegate.
+     *
+     * @param delegate the underlying body publisher, must not be {@code null}
+     * @param listener the upload progress listener, must not be {@code null}
+     */
+    public ProgressBodyPublisher(HttpRequest.BodyPublisher delegate, UploadProgressListener listener) {
         this.delegate = Objects.requireNonNull(delegate, "delegate");
         this.listener = Objects.requireNonNull(listener, "listener");
     }

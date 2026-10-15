@@ -111,7 +111,7 @@ class HttpTemplate {
 
     private System.Logger logger;
 
-    private HttpClient httpClient;
+    private ru.jrestly.engine.HttpEngine httpEngine;
     private ModuleInfo moduleInfo;
     private JsonCodec jsonCodec;
 
@@ -1363,56 +1363,39 @@ class HttpTemplate {
     // private seam — the unit tests exercise the branch directly.
     WireResponse send(WireRequest request) throws IOException, InterruptedException {
         long start = System.nanoTime();
-        if (streamBody) {
-            HttpResponse.BodyHandler<InputStream> bodyHandler = HttpResponse.BodyHandlers.ofInputStream();
-            if (downloadProgressListener != null) {
-                bodyHandler = new ProgressBodyHandler<>(bodyHandler, downloadProgressListener);
-            }
-            HttpResponse<InputStream> response =
-                    httpClient.send(toHttpRequest(request), bodyHandler);
-            logPerHop(request, response.statusCode(), start);
-            return handleDecompression(toWireResponse(response));
-        }
-        HttpResponse.BodyHandler<byte[]> bodyHandler = HttpResponse.BodyHandlers.ofByteArray();
-        if (downloadProgressListener != null) {
-            bodyHandler = new ProgressBodyHandler<>(bodyHandler, downloadProgressListener);
-        }
-        HttpResponse<byte[]> response =
-                httpClient.send(toHttpRequest(request), bodyHandler);
+        Duration effectiveTimeout = timeout != null
+                ? timeout
+                : Duration.ofMillis(moduleInfo.getSocketTimeout());
+        ru.jrestly.engine.HttpEngineOptions options = new ru.jrestly.engine.HttpEngineOptions(
+                effectiveTimeout,
+                httpVersion,
+                streamBody,
+                uploadProgressListener,
+                downloadProgressListener
+        );
+        WireResponse response = httpEngine.send(request, options);
         logPerHop(request, response.statusCode(), start);
-        return handleDecompression(toWireResponse(response));
+        return handleDecompression(response);
     }
 
     // Async twin of send(): the same branch, chained over sendAsync
     private CompletableFuture<WireResponse> sendAsync(WireRequest request) {
         long start = System.nanoTime();
-        if (streamBody) {
-            HttpResponse.BodyHandler<InputStream> bodyHandler = HttpResponse.BodyHandlers.ofInputStream();
-            if (downloadProgressListener != null) {
-                bodyHandler = new ProgressBodyHandler<>(bodyHandler, downloadProgressListener);
-            }
-            CompletableFuture<HttpResponse<InputStream>> raw =
-                    httpClient.sendAsync(toHttpRequest(request), bodyHandler);
-            java.util.function.Function<HttpResponse<InputStream>, WireResponse> mapper = response -> {
-                logPerHop(request, response.statusCode(), start);
-                try {
-                    return handleDecompression(toWireResponse(response));
-                } catch (IOException e) {
-                    throw new CompletionException(e);
-                }
-            };
-            return executor != null ? raw.thenApplyAsync(mapper, executor) : raw.thenApply(mapper);
-        }
-        HttpResponse.BodyHandler<byte[]> bodyHandler = HttpResponse.BodyHandlers.ofByteArray();
-        if (downloadProgressListener != null) {
-            bodyHandler = new ProgressBodyHandler<>(bodyHandler, downloadProgressListener);
-        }
-        CompletableFuture<HttpResponse<byte[]>> raw =
-                httpClient.sendAsync(toHttpRequest(request), bodyHandler);
-        java.util.function.Function<HttpResponse<byte[]>, WireResponse> mapper = response -> {
+        Duration effectiveTimeout = timeout != null
+                ? timeout
+                : Duration.ofMillis(moduleInfo.getSocketTimeout());
+        ru.jrestly.engine.HttpEngineOptions options = new ru.jrestly.engine.HttpEngineOptions(
+                effectiveTimeout,
+                httpVersion,
+                streamBody,
+                uploadProgressListener,
+                downloadProgressListener
+        );
+        CompletableFuture<WireResponse> raw = httpEngine.sendAsync(request, options);
+        java.util.function.Function<WireResponse, WireResponse> mapper = response -> {
             logPerHop(request, response.statusCode(), start);
             try {
-                return handleDecompression(toWireResponse(response));
+                return handleDecompression(response);
             } catch (IOException e) {
                 throw new CompletionException(e);
             }
@@ -1508,35 +1491,6 @@ class HttpTemplate {
         }
     }
 
-    private HttpRequest toHttpRequest(WireRequest request) {
-        Duration effectiveTimeout = timeout != null
-                ? timeout
-                : Duration.ofMillis(moduleInfo.getSocketTimeout());
-
-        HttpRequest.Builder builder = HttpRequest.newBuilder(request.uri())
-                .timeout(effectiveTimeout);
-
-        if (httpVersion != null) {
-            builder.version(httpVersion);
-        }
-
-        if (request.headers() != null) {
-            for (Header header : request.headers()) {
-                builder.header(header.name(), header.value());
-            }
-        }
-        if (request.contentType() != null) {
-            builder.setHeader("Content-Type", request.contentType());
-        }
-
-        if (request.method() == HttpMethod.GET && request.body() == null) {
-            builder.GET();
-        } else {
-            builder.method(request.method().name(), bodyPublisher(request));
-        }
-
-        return builder.build();
-    }
 
     private void logPerHop(WireRequest request, int statusCode, long startNanos) {
         long elapsedMs = (System.nanoTime() - startNanos) / 1_000_000;
@@ -1545,25 +1499,7 @@ class HttpTemplate {
                 request.method() + " " + request.uri() + " -> " + statusCode + " in " + elapsedMs + " ms");
     }
 
-    // The body arrives as byte[] (ofByteArray) or as a live InputStream
-    // (ofInputStream) — exactly one slot of the wire model is filled
-    @SuppressWarnings("unchecked") // the else branch: the body is the ofByteArray path's byte[]
-    private static WireResponse toWireResponse(HttpResponse<?> response) {
-        Object body = response.body();
-        List<Header> headers = toHeaders(response);
-        HttpClient.Version version = response.version();
-        if (body instanceof InputStream stream) {
-            return new WireResponse(response.statusCode(), headers, null, stream, version);
-        }
-        return new WireResponse(response.statusCode(), headers, (byte[]) body, null, version);
-    }
 
-    private static List<Header> toHeaders(HttpResponse<?> response) {
-        return response.headers().map().entrySet().stream()
-                .flatMap(entry -> entry.getValue().stream()
-                        .map(value -> new Header(entry.getKey(), value)))
-                .toList();
-    }
 
     // ADR-0015 Aspect 2: an intermediate hop's stream (a redirect hop, a
     // retried attempt) is single-use — closed before the next send, so the
@@ -1576,27 +1512,6 @@ class HttpTemplate {
         }
     }
 
-    // a fresh publisher per send: stream suppliers are single-use, a redirect re-send must get a live body
-    private HttpRequest.BodyPublisher bodyPublisher(WireRequest request) {
-        HttpRequest.BodyPublisher publisher;
-        if (request.parts() != null) {
-            publisher = MultipartBodyPublisher.of(request.boundary(), request.parts());
-        } else if (request.bodyPublisherSupplier() != null) {
-            publisher = request.bodyPublisherSupplier().get();
-            if (publisher == null) {
-                publisher = HttpRequest.BodyPublishers.noBody();
-            }
-        } else if (request.body() == null) {
-            publisher = HttpRequest.BodyPublishers.noBody();
-        } else {
-            publisher = HttpRequest.BodyPublishers.ofByteArray(request.body());
-        }
-
-        if (uploadProgressListener != null) {
-            publisher = new ProgressBodyPublisher(publisher, uploadProgressListener);
-        }
-        return publisher;
-    }
 
     private String redirectLocation(WireResponse response) {
         int statusCode = response.statusCode();
@@ -1785,13 +1700,43 @@ class HttpTemplate {
     }
 
     /**
+     * The HTTP transport engine the call is dispatched through (ADR-0052).
+     *
+     * @param httpEngine the HTTP engine
+     */
+    void setHttpEngine(ru.jrestly.engine.HttpEngine httpEngine) {
+        this.httpEngine = httpEngine;
+    }
+
+    /**
+     * Returns the configured {@link ru.jrestly.engine.HttpEngine}.
+     *
+     * @return the HTTP engine
+     */
+    ru.jrestly.engine.HttpEngine getHttpEngine() {
+        return httpEngine;
+    }
+
+    /**
      * The HTTP client the call is dispatched through (sync send or
      * {@code sendAsync}).
      *
-     * @param httpClient the client (always set by the builder)
+     * @param httpClient the client
      */
     void setHttpClient(HttpClient httpClient) {
-        this.httpClient = httpClient;
+        this.httpEngine = httpClient != null ? ru.jrestly.engine.JdkHttpEngine.from(httpClient) : null;
+    }
+
+    /**
+     * Returns the underlying JDK HTTP client, or {@code null} if using a non-JDK engine.
+     *
+     * @return the JDK HTTP client, or {@code null}
+     */
+    HttpClient getHttpClient() {
+        if (httpEngine instanceof ru.jrestly.engine.JdkHttpEngine jdk) {
+            return jdk.getHttpClient();
+        }
+        return null;
     }
 
     /**

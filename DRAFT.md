@@ -1,22 +1,24 @@
-# DRAFT: активная зона после закрытия эпика MethodMetadata Caching & Dispatch Optimization (ADR-0051)
+# DRAFT: активная зона после закрытия эпика Pluggable HttpEngine SPI & JdkHttpEngine (ADR-0052)
 
-> Эпик MethodMetadata Caching and Proxy Dispatch Hot-Path Optimization (ADR-0051, `docs/0.10.0/`) закрыт (сессия #131):
-> - Устранено узкое место горячего пути: создан package-private класс `MethodMetadata` с потокобезопасным кэшем `ConcurrentHashMap<MethodKey, MethodMetadata>`, инкапсулирующий все иммутабельные метаданные метода и иерархии интерфейсов.
-> - Оптимизация `HttpTemplateBuilder`: метод `build()` и резолверы параметров/заголовков переведены на чтение из `MethodMetadata` без рефлексивного сканирования `Method.getAnnotation()`, `Class.getAnnotationsByType()`, `getParameters()`.
-> - Результаты JMH бенчмарков: in-memory mock dispatch ускорился с **29.5 µs/op до 7.89 µs/op** (в 3.7 раза быстрее!), а ping — с **6.3 µs/op до 2.95 µs/op** (в 2.1 раза быстрее!).
-> - Исторический рубеж тестов: добавлено 7 тестов (`MethodMetadataTest`), достигнута круглая отметка **1000/1000 тестов** (129 классов), 0 warnings under `-Werror`, POM строго zero-dep.
+> Эпик Pluggable HttpEngine SPI and JdkHttpEngine Architecture (ADR-0052, `docs/0.10.0/`) закрыт (сессия #132):
+> - Выделен открытый интерфейс сетевого транспорта `HttpEngine` (`ru.jrestly.engine`) с методами `send(WireRequest, HttpEngineOptions)` и `sendAsync(WireRequest, HttpEngineOptions)`.
+> - Создан неизменяемый record `HttpEngineOptions` (инкапсулирует `timeout`, `version`, `streamResponse`, `uploadProgressListener`, `downloadProgressListener`).
+> - Реализован дефолтный `JdkHttpEngine` на базе Java 21 `HttpClient` (100% zero-dependency) с фабриками `from(HttpClient)` и `create(ModuleInfo)`.
+> - Реализован SPI механизм обнаружения `HttpEngineProvider` через `java.util.ServiceLoader` и `HttpEngineResolver`.
+> - `AbstractHttpClient`, `HttpTemplateBuilder` и `HttpTemplate` переведены на работу через `HttpEngine` при сохранении 100% обратной совместимости.
+> - Написаны `JdkHttpEngineTest`, `HttpEngineResolverTest`, `CustomHttpEngineIntegrationTest` (+20 тестов, достигнута отметка **1020/1020 тестов** в 132 классах, 0 warnings под `-Werror`, POM строго zero-dep).
 > Следующий ход — свободный, выбор из активной зоны.
 
 ## Активная зона (кандидаты на следующий эпик)
 
-- **Кандидат №1 — HttpEngine SPI & JdkHttpEngine (ADR-0052)**:
-  Выделение сетевого транспорта за абстракцию `HttpEngine` с дефолтным zero-dependency `JdkHttpEngine` и SPI точкой подключения внешних высокоскоростных движков (OkHttp, Apache 5).
-
-- **Кандидат №2 — test-javadoc** (ADR-0013 Non-goals):
+- **Кандидат №1 — test-javadoc** (ADR-0013 Non-goals):
   Наведение лоска и лаконичного javadoc в тестовых классах.
 
-- **Кандидат №3 — HTTP Trailers & Advanced Streaming ergonomics**:
+- **Кандидат №2 — HTTP Trailers & Advanced Streaming ergonomics**:
   Расширенные сценарии работы с трейлерами и чанками в стриминге данных (LLM / SSE).
+
+- **Кандидат №3 — OkHttpEngine / ApacheHttpEngine external modules**:
+  Вынос внешних коннекторов в отдельные субмодули для максимальной скорости под нагрузкой.
 
 
 ---
