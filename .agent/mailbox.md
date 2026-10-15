@@ -40,32 +40,26 @@
 * я думаю еще в реалном исползовании есть миллион важных вещей?
 Это не приказ бросаться сразу все делать, просто можно учесть и разобрать в будущем. 
 
-[2026-10-15 08:47] Агент (сессия #116): Реализован эпик HTTP/2 Protocol Negotiation & Response Inspection (ADR-0038):
-1. **Zero-Dep Protocol Version & Trailers Propagation:**
-   - `WireResponse`: расширен полями `HttpClient.Version version` и `List<Header> trailers` с сохранением полной обратной совместимости 3-, 4- и 5-аргументных конструкторов.
-   - `HttpTemplate.toWireResponse`: фиксация реальной согласованной версии ответа `response.version()`.
-   - `HttpTemplate.handleDecompression`: сохранение `version` и `trailers` при прозрачной декомпрессии GZIP/Deflate.
-   - `HttpTemplate.logResponse`: логирование согласованного протокола (`Response: HTTP/2 200 in 15 ms` vs `HTTP/1.1`).
-   - `HttpTemplateBuilder.getHttpVersion`: иерархический обход интерфейсов контроллера (Method > Sub-interface > Super-interface > Client default).
-2. **Эргономика метаданных ответа (`ResponseHeaders`):**
-   - Методы `version()`, `isHttp2()`, `isHttp1()`.
-   - Поддержка трейлеров `trailers()`, `firstTrailer(name)`, `trailerValues(name)` (регистронезависимо).
-   - Парсер объявленных трейлеров RFC 7230 / RFC 9110: `declaredTrailers()` извлекает имена полей из заголовка `Trailer`.
-   - Полная интеграция с `ResponseHeaders.capture(...)` и `captureCallable(...)`.
-3. **Наблюдаемость и телеметрия (`CallMetrics`):**
-   - Default-метод `version()` в интерфейсе `CallMetrics` (возвращает `HTTP_2` или `HTTP_1_1` fallback).
-4. **Тестирование (21 новый тест, итого 810/810 в 94 классах):**
-   - `HttpVersionHierarchyTest` (6 unit тестов), `ResponseHeadersHttp2Test` (8 unit тестов), `Http2NegotiationWireMockTest` (7 WireMock интеграционных тестов).
-0 warnings под постоянными флагами `-Xlint:all -Werror` и `-Xdoclint:all -Werror`, zero-dep core строго сохранен.
-
 [2026-10-15 09:11] Агент (сессия #117): Реализован эпик Cookie Store Persistence & Management SPI (ADR-0039):
 1. **Zero-Dep Cookie Persistence SPI & Storage:**
    - `CookiePersister`: SPI интерфейс (`loadAll()`, `saveAll(Collection<HttpCookie>)`, `clear()`).
    - `FileCookiePersister`: атомарное сохранение кук в файлы (RFC 6265, UTF-8, временный файл + atomic rename).
    - `CookieCodec`: утилита потоковой сериализации/десериализации кук в `Reader`/`Writer` и парсинга строк RFC 6265 с автоматической фильтрацией истекших кук.
-   - `PersistentCookieStore`: потокобезопасная реализация `java.net.CookieStore` с поддержкой режимов `AUTO` (мгновенное сохранение изменений) и `MANUAL` (явный `sync()` / `persist()`), предзагрузкой при старте и алиасингом хостов/доменов (включая локальные хосты без точек).
+   - `PersistentCookieStore`: потокобезопасная реализация `java.net.CookieStore` с поддержкой режимов `AUTO` и `MANUAL`.
 2. **Эргономика клиентских билдеров:**
    - `SimpleModuleInfo.Builder` & `JRestlyClient.Builder`: fluent-методы `cookieStore(CookieStore)`, `cookieStore(CookieStore, CookiePolicy)` и `persistentCookieStore(Path)` для сохранения сессий между перезапусками приложения в одну строчку.
-3. **Тестирование (18 новых тестов, итого 828/828 в 96 классах):**
-   - `CookiePersistenceUnitTest` (13 unit тестов), `PersistentCookieWireMockTest` (5 WireMock интеграционных тестов). 0 warnings под постоянными флагами `-Xlint:all -Werror` и `-Xdoclint:all -Werror`, zero-dep core строго сохранен. Следующий свободный ADR — **0040**.
+3. **Тестирование (18 новых тестов, итого 828/828 в 96 классах).**
 
+[2026-10-15 09:32] Агент (сессия #118): Реализован эпик Advanced Exponential Backoff, Jitter Strategies & Retry-After Bounds (ADR-0040):
+1. **Zero-Dep Jitter Algorithms (рекомендации AWS Architecture):**
+   - `ru.jrestly.http.Jitter`: перечисление `FULL` (дефолт), `EQUAL` (50% детерминированный пол + 50% джиттер), `DECORRELATED` (адаптивный шаг `[initialBackoff, prevSleep * 3]`), `NONE` (детерминированный бэкофф).
+   - Устраняет эффект thundering herd и retry storm при синхронных сбоях множества клиентов.
+2. **Гибкость и защита RetryPolicy:**
+   - `backoffMultiplier(double)` (дефолт 2.0, валидация `>= 1.0`) — плавный (1.5) или форсированный (3.0) рост.
+   - `respectRetryAfter(boolean)` (дефолт `true`) — возможность отключения учета серверного `Retry-After` при наличии недоверенных прокси.
+   - `maxRetryAfter(Duration)` — ограничение серверной задержки для предотвращения зависания потоков на дни при зловредных или некорректных серверных заголовках (например, `Retry-After: 86400`).
+3. **Декларативная эргономика в `@Retry`:**
+   - Атрибуты `jitter()`, `multiplier()`, `respectRetryAfter()`, `maxRetryAfterMs()`.
+   - Проброс `previousDelayMillis` между шагами в синхронном цикле и асинхронном пайплайне `CompletableFuture` в `HttpTemplate`.
+4. **Тестирование (15 новых тестов, итого 843/843 в 98 классах):**
+   - `RetryPolicyJitterTest` (10 unit тестов), `RetryJitterWireMockTest` (5 WireMock интеграционных тестов). 0 warnings под постоянными флагами `-Xlint:all -Werror` и `-Xdoclint:all -Werror`, zero-dep core строго сохранен. Следующий свободный ADR — **0041**.

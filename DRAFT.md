@@ -1,22 +1,21 @@
-# DRAFT: активная зона после закрытия эпика Cookie Store Persistence SPI (ADR-0039)
+# DRAFT: активная зона после закрытия эпика Advanced Exponential Backoff & Jitter Strategies (ADR-0040)
 
-> Эпик Cookie Store Persistence & Management SPI (ADR-0039, `docs/0.10.0/`) закрыт (сессия #117):
-> концепт и ADR-0039 → zero-dep архитектура персистентности cookies и удобство настройки клиентов:
-> `CookiePersister`: SPI интерфейс с `loadAll()`, `saveAll(Collection<HttpCookie>)`, `clear()`,
-> `FileCookiePersister`: атомарное сохранение в файлы (RFC 6265, UTF-8, временный файл + atomic rename),
-> `CookieCodec`: утилита потоковой сериализации/парсинга RFC 6265 Set-Cookie строк с фильтрацией expired cookies,
-> `PersistentCookieStore`: потокобезопасная реализация `java.net.CookieStore` с режимами `AUTO` и `MANUAL`, предзагрузкой и алиасингом хостов/доменов (включая `.local`),
-> `SimpleModuleInfo.Builder` и `JRestlyClient.Builder`: fluent-методы `cookieStore(CookieStore)`, `cookieStore(CookieStore, CookiePolicy)`, `persistentCookieStore(Path)`,
-> unit-тесты (`CookiePersistenceUnitTest`, 13 тестов) и интеграционные WireMock тесты (`PersistentCookieWireMockTest`, 5 тестов, итого +18 тестов) →
-> дистилляция в ROADMAP («Cookie Store Persistence & Management SPI (ADR-0039) — COMPLETE ✅») + гейты 828/828 тестов (96 классов).
+> Эпик Advanced Exponential Backoff, Jitter Strategies & Retry-After Bounds (ADR-0040, `docs/0.10.0/`) закрыт (сессия #118):
+> концепт и ADR-0040 → zero-dep архитектура алгоритмов джиттера и защиты от thundering herd:
+> `ru.jrestly.http.Jitter`: перечисление стратегий джиттера (`FULL`, `EQUAL`, `DECORRELATED`, `NONE`),
+> `RetryPolicy` & `RetryPolicy.Builder`: методы `jitter(Jitter)`, `backoffMultiplier(double)`, `respectRetryAfter(boolean)`, `maxRetryAfter(Duration)`,
+> `ru.jrestly.annotation.Retry`: атрибуты `jitter`, `multiplier`, `respectRetryAfter`, `maxRetryAfterMs`,
+> `HttpTemplate`: передача `previousDelayMillis` между попытками в синхронном цикле и асинхронном пайплайне `attemptAsync` (`CompletableFuture`),
+> unit-тесты (`RetryPolicyJitterTest`, 10 тестов) и интеграционные WireMock тесты (`RetryJitterWireMockTest`, 5 тестов, итого +15 тестов) →
+> дистилляция в ROADMAP («Advanced Exponential Backoff, Jitter Strategies & Retry-After Bounds (ADR-0040) — COMPLETE ✅») + гейты 843/843 тестов (98 классов).
 > Следующий ход — свободный, выбор из активной зоны.
 
 ## Активная зона (кандидаты на следующий эпик)
 
 - **Кандидат №1 — test-javadoc** (ADR-0013 Non-goals):
   Test-source javadoc вынесен за скобки аудита; наведение лоска в тестовых классах.
-- **Кандидат №2 — Retry-After & Jitter Backoff Policy (ADR-0040)**:
-  Расширение `RetryPolicy` автоматическим парсингом `Retry-After` заголовка (дельта-секунды / RFC 1123 date) и алгоритмами экспоненциального бэкоффа с рандомизацией (full jitter / equal jitter per AWS Architecture recommendations) для защиты от thundering herd / retry storms в распределенных системах.
+- **Кандидат №2 — Request & Response Compression Negotiation SPI (ADR-0041)**:
+  Расширение поддержки компрессии: отправка сжатого тела запроса (`Content-Encoding: gzip/deflate`) для объемных POST/PUT/PATCH полезных нагрузок и гибкий выбор алгоритмов сжатия через SPI/билдер.
 
 ---
 
@@ -50,6 +49,7 @@
   отслеживание прогресса скачивания и прямой возврат byte[] (ADR-0033),
   форматирование query коллекций (ADR-0034), стриминг тела запроса (ADR-0035),
   SPI метрик и телеметрии (ADR-0036), настройка прокси и аутентификатора (ADR-0037),
-  согласование протокола HTTP/2 и трейлеры (ADR-0038), персистентность cookie store (ADR-0039).
+  согласование протокола HTTP/2 и трейлеры (ADR-0038), персистентность cookie store (ADR-0039),
+  продвинутые стратегии джиттера и ограничения Retry-After (ADR-0040).
 - **Коммиты — краткие, не дублируют ченджлог** (Антон).
 - **Объём одной сессии в 2–3 раза меньше** — один маленький шаг.

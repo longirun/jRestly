@@ -1,12 +1,14 @@
 package ru.jrestly.annotation;
 
+import ru.jrestly.http.Jitter;
+
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 /**
- * Declares a self-contained retry policy for this method (ADR-0008).
+ * Declares a self-contained retry policy for this method (ADR-0008, ADR-0040).
  *
  * <p>The annotation is a complete retry policy: when present it replaces
  * the client-level policy entirely — there is no field-by-field merging
@@ -40,14 +42,12 @@ import java.lang.annotation.Target;
  * {@link #transport() transport} says: the caller's thread was
  * interrupted, so failing fast is the preserved semantics.
  *
- * <p>The wait between attempts is exponential with a cap and full jitter:
- * after the {@code n}-th failed attempt the bound grows as
- * {@code min(maxBackoffMs, initialBackoffMs · 2^(n-1))} and the actual
- * wait is a uniform draw in {@code [0, bound]}. A parseable
- * {@code Retry-After} header on a failed response (delta-seconds or
- * HTTP-date) sets a deterministic lower bound on that wait — a
- * transport failure has no response, so the header can only come from
- * a status-retried attempt.
+ * <p>The wait between attempts is exponential with a cap and configurable
+ * {@link #jitter() jitter} (ADR-0040): after the {@code n}-th failed attempt the bound grows as
+ * {@code min(maxBackoffMs, initialBackoffMs · multiplier^(n-1))}. By default, full jitter
+ * draws in {@code [0, bound]}. A parseable {@code Retry-After} header on a failed
+ * response (delta-seconds or HTTP-date) sets a deterministic lower bound on that wait,
+ * capped by {@link #maxRetryAfterMs()} when {@link #respectRetryAfter()} is true.
  *
  * <p>The declared policy applies to synchronous and
  * {@code CompletableFuture}-returning methods alike: the same retry
@@ -140,4 +140,33 @@ public @interface Retry {
      * @return {@code true} to retry non-idempotent methods (POST, PATCH)
      */
     boolean nonIdempotent() default false;
+
+    /**
+     * The jitter strategy to apply between retry attempts (ADR-0040).
+     *
+     * @return the jitter strategy; default {@link Jitter#FULL}
+     */
+    Jitter jitter() default Jitter.FULL;
+
+    /**
+     * The backoff multiplier factor for exponential growth (ADR-0040).
+     *
+     * @return the backoff multiplier; default 2.0
+     */
+    double multiplier() default 2.0;
+
+    /**
+     * Whether server {@code Retry-After} response headers are respected (ADR-0040).
+     *
+     * @return {@code true} to respect Retry-After; default {@code true}
+     */
+    boolean respectRetryAfter() default true;
+
+    /**
+     * The maximum duration in milliseconds to wait for a server {@code Retry-After} header (ADR-0040).
+     * A value of {@code -1} means the cap is bounded by {@link #maxBackoffMs()}.
+     *
+     * @return the maximum Retry-After wait duration in milliseconds, or -1 for maxBackoffMs cap
+     */
+    long maxRetryAfterMs() default -1;
 }

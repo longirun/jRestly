@@ -1176,7 +1176,7 @@ public class HttpTemplateBuilder {
     private RetryPolicy resolveRetryPolicy() {
         if (method.isAnnotationPresent(Retry.class)) {
             Retry retry = method.getAnnotation(Retry.class);
-            return RetryPolicy.builder()
+            RetryPolicy.Builder builder = RetryPolicy.builder()
                     .maxAttempts(retry.times())
                     .initialBackoff(Duration.ofMillis(retry.initialBackoffMs()))
                     .maxBackoff(Duration.ofMillis(retry.maxBackoffMs()))
@@ -1185,7 +1185,13 @@ public class HttpTemplateBuilder {
                     .retryOnErrorStatuses(retry.onErrorStatuses())
                     .retryNonIdempotent(retry.nonIdempotent())
                     .retryDecodeFailures(retry.retryDecodeFailures())
-                    .build();
+                    .jitter(retry.jitter())
+                    .backoffMultiplier(retry.multiplier())
+                    .respectRetryAfter(retry.respectRetryAfter());
+            if (retry.maxRetryAfterMs() >= 0) {
+                builder.maxRetryAfter(Duration.ofMillis(retry.maxRetryAfterMs()));
+            }
+            return builder.build();
         }
 
         return moduleInfo.getRetryPolicy();

@@ -10,7 +10,7 @@ import java.util.Set;
 
 /**
  * How many times a failed call is repeated and how long to wait between
- * attempts (ADR-0008).
+ * attempts (ADR-0008, ADR-0040).
  *
  * <p>A policy is a pure value: immutable and thread-safe, created through
  * the {@link Builder builder} (or one of the statics). A client carries at
@@ -50,17 +50,15 @@ import java.util.Set;
  * say: the caller's thread was interrupted, so failing fast is the
  * preserved semantics.
  *
- * <p>Backoff between attempts is exponential with a cap and <em>full
- * jitter</em>: after the {@code n}-th failed attempt the deterministic bound
- * is {@code min(maxBackoff, initialBackoff · 2^(n-1))} and the actual wait
- * is a uniform draw in {@code [0, bound]} (the AWS architecture-blog
- * recipe — without jitter, all clients of a flapping server retry on the
- * same beat and re-break it). A fixed wait is expressible as
- * {@code initialBackoff == maxBackoff}, not as a separate mode. When the
- * failed response carries a parseable {@code Retry-After} header
- * (delta-seconds or HTTP-date, ADR-0009 candidate 3), the server's explicit
- * signal wins: the wait is exactly {@code max(bound, retryAfter)}
- * (deterministic, no jitter).
+ * <p>Backoff between attempts is exponential with a cap and configurable
+ * {@link Jitter jitter} (ADR-0040): after the {@code n}-th failed attempt the
+ * deterministic bound is {@code min(maxBackoff, initialBackoff · multiplier^(n-1))}.
+ * By default, {@link Jitter#FULL} draws a uniform random value in {@code [0, bound]}
+ * (the AWS architecture-blog recipe — without jitter, all clients of a flapping server
+ * retry on the same beat and re-break it). When the failed response carries a parseable
+ * {@code Retry-After} header (delta-seconds or HTTP-date, ADR-0009 candidate 3), the
+ * server's explicit signal wins: the wait is exactly {@code max(bound, min(maxRetryAfter, retryAfter))}
+ * (deterministic, capped to prevent indefinite hangs, ADR-0040).
  *
  * <p>One policy covers both call styles: it applies identically to
  * synchronous methods and to {@code CompletableFuture}-returning methods
@@ -93,6 +91,10 @@ public final class RetryPolicy {
     private final boolean retryDecodeFailures;
     private final boolean retryOnErrorStatuses;
     private final boolean retryNonIdempotent;
+    private final Jitter jitter;
+    private final double backoffMultiplier;
+    private final boolean respectRetryAfter;
+    private final Duration maxRetryAfter;
 
     private RetryPolicy(Builder builder) {
         this.maxAttempts = builder.maxAttempts;
@@ -105,11 +107,16 @@ public final class RetryPolicy {
         this.retryDecodeFailures = builder.retryDecodeFailures;
         this.retryOnErrorStatuses = builder.retryOnErrorStatuses;
         this.retryNonIdempotent = builder.retryNonIdempotent;
+        this.jitter = builder.jitter;
+        this.backoffMultiplier = builder.backoffMultiplier;
+        this.respectRetryAfter = builder.respectRetryAfter;
+        this.maxRetryAfter = builder.maxRetryAfter;
     }
 
     /**
      * A policy that retries with the ADR defaults: 3 attempts, 200 ms
-     * initial backoff capped at 5 s, the default retryable statuses,
+     * initial backoff capped at 5 s, multiplier 2.0, FULL jitter,
+     * respect Retry-After on, the default retryable statuses,
      * transport failures retried, {@code @OnError} statuses and
      * non-idempotent methods not.
      *
@@ -136,8 +143,8 @@ public final class RetryPolicy {
 
     /**
      * A new builder for a {@link RetryPolicy}, pre-set to the ADR
-     * defaults (3 attempts, 200 ms / 5 s backoff, the default retryable
-     * statuses, transport failures retried).
+     * defaults (3 attempts, 200 ms / 5 s backoff, multiplier 2.0, FULL jitter,
+     * respect Retry-After on, the default retryable statuses, transport failures retried).
      *
      * @return a new builder; call {@link Builder#build()} to obtain the
      *         policy
@@ -231,6 +238,43 @@ public final class RetryPolicy {
     }
 
     /**
+     * The jitter strategy used for backoff calculations (ADR-0040).
+     *
+     * @return the jitter strategy; default {@link Jitter#FULL}
+     */
+    public Jitter getJitter() {
+        return jitter;
+    }
+
+    /**
+     * The backoff multiplier factor (ADR-0040).
+     *
+     * @return the backoff multiplier; default 2.0
+     */
+    public double getBackoffMultiplier() {
+        return backoffMultiplier;
+    }
+
+    /**
+     * Whether the {@code Retry-After} response header is respected (ADR-0040).
+     *
+     * @return {@code true} if Retry-After is respected; default {@code true}
+     */
+    public boolean isRespectRetryAfter() {
+        return respectRetryAfter;
+    }
+
+    /**
+     * The maximum allowed duration for server-provided {@code Retry-After} waits (ADR-0040).
+     * If not explicitly configured, returns {@code null} (no cap applied).
+     *
+     * @return the maximum allowed Retry-After wait duration, or null if uncapped
+     */
+    public Duration getMaxRetryAfter() {
+        return maxRetryAfter;
+    }
+
+    /**
      * Whether this policy waits and retries at all.
      *
      * @return {@code true} when this policy waits and retries at all
@@ -243,32 +287,72 @@ public final class RetryPolicy {
     /**
      * The wait before the next attempt after the {@code failedAttempt}-th
      * failure (1-based; the attempt that just failed). Pure on the policy
-     * and the given {@code random}; the production call site supplies a
-     * shared generator, tests inject a deterministic one (the seam is
-     * package-private on purpose).
+     * and the given {@code random}. Retains backwards compatibility with
+     * existing callers and delegates with zero previous delay.
      *
-     * @param failedAttempt   the 1-based number of the attempt that just
-     *                        failed, {@code >= 1}
+     * @param failedAttempt    the 1-based number of the attempt that just
+     *                         failed, {@code >= 1}
      * @param retryAfterMillis the failed response's {@code Retry-After}
-     *                        header as a wait lower bound in milliseconds —
-     *                        delta-seconds times 1000, or the HTTP-date form
-     *                        as {@code max(0, date - now)} (ADR-0009
-     *                        candidate 3) — or {@code null} when the header
-     *                        is absent or unparseable
-     * @param random          the generator for the full-jitter draw; never
-     *                        {@code null}
+     *                         header as a wait lower bound in milliseconds —
+     *                         delta-seconds times 1000, or the HTTP-date form
+     *                         as {@code max(0, date - now)} (ADR-0009
+     *                         candidate 3) — or {@code null} when the header
+     *                         is absent or unparseable
+     * @param random           the generator for the jitter draw; never
+     *                         {@code null}
      * @return the wait in milliseconds, {@code >= 0}
      */
     long nextDelayMillis(long failedAttempt, Long retryAfterMillis, Random random) {
+        return nextDelayMillis(failedAttempt, 0L, retryAfterMillis, random);
+    }
+
+    /**
+     * The wait before the next attempt after the {@code failedAttempt}-th
+     * failure, taking previous backoff into account for decorrelated jitter (ADR-0040).
+     *
+     * @param failedAttempt       the 1-based number of the attempt that just failed, {@code >= 1}
+     * @param previousDelayMillis the duration of the previous backoff wait in milliseconds
+     * @param retryAfterMillis    the server's {@code Retry-After} header in milliseconds, or null
+     * @param random              the random generator; never {@code null}
+     * @return the wait in milliseconds, {@code >= 0}
+     */
+    long nextDelayMillis(long failedAttempt, long previousDelayMillis, Long retryAfterMillis, Random random) {
         Objects.requireNonNull(random, "random");
         long bound = initialBackoff.toMillis();
         for (long attempt = 2; attempt <= failedAttempt; attempt++) {
-            bound = Math.min(maxBackoff.toMillis(), bound * 2);
+            bound = Math.min(maxBackoff.toMillis(), Math.round(bound * backoffMultiplier));
         }
-        if (retryAfterMillis != null) {
-            return Math.max(bound, retryAfterMillis);
+
+        if (respectRetryAfter && retryAfterMillis != null) {
+            long effectiveRetryAfter = Math.max(0L, retryAfterMillis);
+            if (maxRetryAfter != null) {
+                effectiveRetryAfter = Math.min(maxRetryAfter.toMillis(), effectiveRetryAfter);
+            }
+            return Math.max(bound, effectiveRetryAfter);
         }
-        return random.nextLong(bound + 1);
+
+        if (bound <= 0) {
+            return 0;
+        }
+
+        return switch (jitter) {
+            case NONE -> bound;
+            case EQUAL -> {
+                long half = bound / 2;
+                long diff = bound - half;
+                yield half + (diff > 0 ? random.nextLong(diff + 1) : 0);
+            }
+            case DECORRELATED -> {
+                long min = initialBackoff.toMillis();
+                long max = maxBackoff.toMillis();
+                long prev = previousDelayMillis <= 0 ? min : previousDelayMillis;
+                long ceiling = Math.min(max, Math.max(min, Math.round(prev * 3.0)));
+                long range = ceiling - min;
+                long draw = range > 0 ? random.nextLong(range + 1) : 0;
+                yield Math.min(max, min + draw);
+            }
+            case FULL -> random.nextLong(bound + 1);
+        };
     }
 
     /**
@@ -285,14 +369,18 @@ public final class RetryPolicy {
                 + ", retryTransport=" + retryTransport
                 + ", retryDecodeFailures=" + retryDecodeFailures
                 + ", retryOnErrorStatuses=" + retryOnErrorStatuses
-                + ", retryNonIdempotent=" + retryNonIdempotent + "]";
+                + ", retryNonIdempotent=" + retryNonIdempotent
+                + ", jitter=" + jitter
+                + ", backoffMultiplier=" + backoffMultiplier
+                + ", respectRetryAfter=" + respectRetryAfter
+                + ", maxRetryAfter=" + getMaxRetryAfter() + "]";
     }
 
     /**
      * A builder for {@link RetryPolicy}, pre-set to the ADR defaults:
-     * 3 attempts, 200 ms initial backoff capped at 5 s, the default
-     * retryable statuses, transport failures retried, decode failures /
-     * {@code @OnError} statuses / non-idempotent methods not.
+     * 3 attempts, 200 ms initial backoff capped at 5 s, multiplier 2.0, FULL jitter,
+     * respect Retry-After on, the default retryable statuses, transport failures retried,
+     * decode failures / {@code @OnError} statuses / non-idempotent methods not.
      *
      * <p>Each setter replaces one field; {@link #build()} validates the
      * combination and returns the immutable policy.
@@ -306,6 +394,10 @@ public final class RetryPolicy {
         private boolean retryDecodeFailures = false;
         private boolean retryOnErrorStatuses = false;
         private boolean retryNonIdempotent = false;
+        private Jitter jitter = Jitter.FULL;
+        private double backoffMultiplier = 2.0;
+        private boolean respectRetryAfter = true;
+        private Duration maxRetryAfter = null;
 
         private Builder() {
         }
@@ -434,13 +526,59 @@ public final class RetryPolicy {
         }
 
         /**
+         * Configures the jitter strategy (ADR-0040).
+         *
+         * @param jitter the jitter strategy; must not be {@code null}
+         * @return this builder, for chaining
+         */
+        public Builder jitter(Jitter jitter) {
+            this.jitter = Objects.requireNonNull(jitter, "jitter");
+            return this;
+        }
+
+        /**
+         * Configures the exponential backoff multiplier (ADR-0040).
+         *
+         * @param backoffMultiplier the backoff multiplier; must be {@code >= 1.0}
+         * @return this builder, for chaining
+         */
+        public Builder backoffMultiplier(double backoffMultiplier) {
+            this.backoffMultiplier = backoffMultiplier;
+            return this;
+        }
+
+        /**
+         * Configures whether the {@code Retry-After} response header is respected (ADR-0040).
+         *
+         * @param respectRetryAfter {@code true} to respect Retry-After; default {@code true}
+         * @return this builder, for chaining
+         */
+        public Builder respectRetryAfter(boolean respectRetryAfter) {
+            this.respectRetryAfter = respectRetryAfter;
+            return this;
+        }
+
+        /**
+         * Configures a cap for server-provided {@code Retry-After} wait durations (ADR-0040).
+         * If {@code null}, {@link #maxBackoff} is used as the cap.
+         *
+         * @param maxRetryAfter the maximum duration to wait for Retry-After, or null to cap at maxBackoff
+         * @return this builder, for chaining
+         */
+        public Builder maxRetryAfter(Duration maxRetryAfter) {
+            this.maxRetryAfter = maxRetryAfter;
+            return this;
+        }
+
+        /**
          * Validates the combination and returns the immutable policy.
          *
          * @return the built policy
          * @throws IllegalStateException when a field is out of range:
          *         {@code maxAttempts < 1}, a negative backoff,
-         *         {@code initialBackoff > maxBackoff}, or a retryable
-         *         status outside {@code [100, 599]}
+         *         {@code initialBackoff > maxBackoff}, a retryable
+         *         status outside {@code [100, 599]}, {@code backoffMultiplier < 1.0},
+         *         or a negative {@code maxRetryAfter}
          */
         public RetryPolicy build() {
             if (maxAttempts < 1) {
@@ -456,6 +594,12 @@ public final class RetryPolicy {
                 throw new IllegalStateException(
                         "initialBackoff must not exceed maxBackoff, got "
                                 + initialBackoff + " > " + maxBackoff);
+            }
+            if (Double.isNaN(backoffMultiplier) || backoffMultiplier < 1.0) {
+                throw new IllegalStateException("backoffMultiplier must be >= 1.0, got " + backoffMultiplier);
+            }
+            if (maxRetryAfter != null && maxRetryAfter.isNegative()) {
+                throw new IllegalStateException("maxRetryAfter must not be negative, got " + maxRetryAfter);
             }
             for (Integer status : retryableStatuses) {
                 if (status < 100 || status > 599) {

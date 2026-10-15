@@ -1354,7 +1354,45 @@ Gates (session #117, clean rebuild):
 - `javadoc` 0 warnings under permanent `-Xdoclint:all -Werror`.
 - Zero external runtime dependencies preserved (0 dependencies in Maven POM).
 
-After the epic: candidate #1 — test-javadoc (ADR-0013 Non-goals); candidate #2 — Retry-After exponential backoff & jitter policy (ADR-0040). ADR number **0040** free.
+After the epic: candidate #1 — test-javadoc (ADR-0013 Non-goals); candidate #2 — Retry-After exponential backoff & jitter policy (ADR-0040) — done, section below. ADR number **0040** — retry jitter epic, **0041** free.
+
+## Advanced Exponential Backoff, Jitter Strategies & Retry-After Bounds (ADR-0040) — COMPLETE ✅ (2026-10-15, unreleased)
+
+> Source of truth (concept, architecture decisions, jitter strategies, bounds math, test strategy, status):
+> [`docs/0.10.0/ADR-0040-exponential-backoff-jitter-and-retry-after-bounds.md`](docs/0.10.0/ADR-0040-exponential-backoff-jitter-and-retry-after-bounds.md).
+> Session #118 (agent-loop). Advanced jitter strategies (FULL, EQUAL, DECORRELATED, NONE per AWS Architecture recommendations),
+> configurable exponential backoff multiplier, and Retry-After bounding & opt-out controls.
+> Introduces `ru.jrestly.http.Jitter` enum (`FULL`, `EQUAL`, `DECORRELATED`, `NONE`),
+> expands `RetryPolicy` and `RetryPolicy.Builder` with `jitter(Jitter)`, `backoffMultiplier(double)`, `respectRetryAfter(boolean)`, and `maxRetryAfter(Duration)`,
+> updates `@Retry` annotation with `jitter`, `multiplier`, `respectRetryAfter`, and `maxRetryAfterMs`,
+> and integrates `previousDelayMillis` propagation across synchronous loop and asynchronous `CompletableFuture` pipelines in `HttpTemplate`.
+> 100% backward compatible and zero-dependency (Java 21 standard library only).
+
+Key decisions (ADR-0040):
+- **Jitter Strategy Enum (`ru.jrestly.http.Jitter`):**
+  - `FULL` (default, backward-compatible): uniform random draw in `[0, bound]`, minimizing total competing load.
+  - `EQUAL`: guarantees 50% deterministic bound floor with 50% random jitter (`bound / 2 + random[0, bound / 2]`), preventing too-early retries while avoiding thundering herds.
+  - `DECORRELATED`: adaptive sleep scaling from previous delay (`min(maxBackoff, random[initialBackoff, previousSleep * 3])`), breaking attempt-number lockstep.
+  - `NONE`: strictly deterministic `bound` without randomness (ideal for deterministic tests, background queues, and batch jobs).
+- **Configurable Backoff Multiplier:**
+  - `backoffMultiplier` (default `2.0`, validated `>= 1.0` and not NaN) enables smooth (e.g. 1.5) or aggressive (e.g. 3.0) exponential backoff curves.
+- **Retry-After Bounding & Opt-Out:**
+  - `respectRetryAfter` (default `true`) allows opting out of server-provided `Retry-After` headers when behind misconfigured or untrusted reverse proxies.
+  - `maxRetryAfter` (default `null`, uncapped by default to preserve ADR-0008 wall-clock semantics) allows capping excessively long server delays (e.g. 24 hours) to prevent thread/resource exhaustion.
+- **Pipeline Integration (`HttpTemplate`):**
+  - Sync retry loop tracks `lastDelayMillis` and forwards it to `nextDelayMillis`.
+  - Async `attemptAsync` pipeline threads `previousDelayMillis` across `delayedExecutor` schedules.
+- **Full test coverage:** 15 new tests (+15 cases, total suite 843/843 across 98 classes) spanning:
+  - `RetryPolicyJitterTest` (10 unit tests: defaults reflection, builder configuration, builder validation for multiplier/maxRetryAfter/jitter, Jitter.NONE deterministic math, Jitter.EQUAL bound checks, Jitter.DECORRELATED adaptive scaling and bounds, backoffMultiplier custom curve, respectRetryAfter opt-out, maxRetryAfter cap, toString representation);
+  - `RetryJitterWireMockTest` (5 WireMock integration tests: declarative @Retry with Jitter.NONE 503 -> 503 -> 200, Jitter.EQUAL recovery, respectRetryAfter = false ignoring server 10s delay, maxRetryAfterMs capping 1-hour delay to 40 ms, async CompletableFuture twin with Jitter.DECORRELATED).
+
+Gates (session #118, clean rebuild):
+- `./gradlew test` **843/843** (98 classes, 0 failures/errors; +15 tests in ADR-0040).
+- `compileJava` and `compileTestJava` 0 warnings under permanent `-Xlint:all -Werror`.
+- `javadoc` 0 warnings under permanent `-Xdoclint:all -Werror`.
+- Zero external runtime dependencies preserved (0 dependencies in Maven POM).
+
+After the epic: candidate #1 — test-javadoc (ADR-0013 Non-goals); candidate #2 — Request & Response Compression Negotiation SPI (ADR-0041). ADR number **0041** free.
 
 ## Post-0.5.0 shortlist (not scheduled — see ADR-0003)
 

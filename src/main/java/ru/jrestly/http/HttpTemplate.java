@@ -790,6 +790,7 @@ public class HttpTemplate {
         }
 
         int maxAttempts = retryPolicy.maxAttempts();
+        long lastDelayMillis = 0L;
 
         for (int attempt = 1; ; attempt++) {
             attemptsHolder[0] = attempt;
@@ -837,41 +838,43 @@ public class HttpTemplate {
                     try {
                         probePayloadDecode(response);
                     } catch (RuntimeException e) {
-                        scheduleRetry(attempt, maxAttempts, "decode (" + e.getClass().getSimpleName() + ")", response, requestContext, request, e);
+                        lastDelayMillis = scheduleRetry(attempt, maxAttempts, "decode (" + e.getClass().getSimpleName() + ")", response, requestContext, request, e, lastDelayMillis);
                         continue;
                     }
                 }
                 return response;
             }
 
-            scheduleRetry(attempt, maxAttempts, failure, response, requestContext, request, failureThrowable);
+            lastDelayMillis = scheduleRetry(attempt, maxAttempts, failure, response, requestContext, request, failureThrowable, lastDelayMillis);
         }
     }
 
     // One DEBUG line per failed attempt, then the wait: full jitter over
     // [0, bound], or the deterministic max(bound, Retry-After) when the
     // failed response carries a parseable Retry-After header, delta-seconds
-    // or HTTP-date (ADR-0008 Aspect 4, ADR-0009 candidate 3)
-    private void scheduleRetry(
+    // or HTTP-date (ADR-0008 Aspect 4, ADR-0009 candidate 3, ADR-0040)
+    private long scheduleRetry(
             int attempt,
             int maxAttempts,
             String failure,
             WireResponse response,
             RequestContext requestContext,
             WireRequest request,
-            Throwable failureThrowable
+            Throwable failureThrowable,
+            long previousDelayMillis
     ) throws InterruptedException {
         // ADR-0015 Aspect 2: every scheduled retry discards the failed
         // attempt — its stream (if any) is closed before the wait; a
         // transport failure carries no response and is a no-op
         closeIntermediateStream(response);
-        long delayMillis = retryPolicy.nextDelayMillis(attempt, retryAfterDelayMillis(response), ThreadLocalRandom.current());
+        long delayMillis = retryPolicy.nextDelayMillis(attempt, previousDelayMillis, retryAfterDelayMillis(response), ThreadLocalRandom.current());
         logger.log(System.Logger.Level.DEBUG,
                 "Attempt " + attempt + "/" + maxAttempts + " failed: " + failure + " — retrying in " + delayMillis + " ms");
         notifyRetry(requestContext, request, attempt, failureThrowable, delayMillis);
         if (delayMillis > 0) {
             Thread.sleep(delayMillis);
         }
+        return delayMillis;
     }
 
     // The loop's failure predicate — the exact decisions processResponse makes,
@@ -1062,7 +1065,7 @@ public class HttpTemplate {
                 notifyAttemptComplete(requestContext, request, 1, response, unwrapped, attemptStart);
             });
         }
-        return attemptAsync(request, 1, retryPolicy.maxAttempts(), hopsLeft, requestContext, attemptsRef);
+        return attemptAsync(request, 1, retryPolicy.maxAttempts(), hopsLeft, requestContext, attemptsRef, 0L);
     }
 
     // One attempt, or the next one after the wait: the exact sync decisions —
@@ -1077,7 +1080,8 @@ public class HttpTemplate {
             int maxAttempts,
             int hopsLeft,
             RequestContext requestContext,
-            AtomicInteger attemptsRef
+            AtomicInteger attemptsRef,
+            long previousDelayMillis
     ) {
         attemptsRef.set(attempt);
         boolean last = attempt == maxAttempts;
@@ -1090,7 +1094,7 @@ public class HttpTemplate {
                         if (!(cause instanceof IOException) || last || !retryPolicy.isRetryTransport()) {
                             return CompletableFuture.<WireResponse>failedFuture(cause);
                         }
-                        return scheduleAsyncRetry(request, attempt, maxAttempts, cause.getClass().getSimpleName(), null, hopsLeft, requestContext, cause, attemptsRef);
+                        return scheduleAsyncRetry(request, attempt, maxAttempts, cause.getClass().getSimpleName(), null, hopsLeft, requestContext, cause, attemptsRef, previousDelayMillis);
                     }
                     Throwable statusFailure = !isExpectedStatus(response.statusCode())
                             ? createUnexpectedStatusException(response.statusCode(), extractResponseBodyString(response), response.headers())
@@ -1113,12 +1117,12 @@ public class HttpTemplate {
                                 probePayloadDecode(response);
                             } catch (RuntimeException e) {
                                 return scheduleAsyncRetry(request, attempt, maxAttempts,
-                                        "decode (" + e.getClass().getSimpleName() + ")", response, hopsLeft, requestContext, e, attemptsRef);
+                                        "decode (" + e.getClass().getSimpleName() + ")", response, hopsLeft, requestContext, e, attemptsRef, previousDelayMillis);
                             }
                         }
                         return CompletableFuture.<WireResponse>completedFuture(response);
                     }
-                    return scheduleAsyncRetry(request, attempt, maxAttempts, "HTTP " + response.statusCode(), response, hopsLeft, requestContext, statusFailure, attemptsRef);
+                    return scheduleAsyncRetry(request, attempt, maxAttempts, "HTTP " + response.statusCode(), response, hopsLeft, requestContext, statusFailure, attemptsRef, previousDelayMillis);
                 })
                 .thenCompose(Function.identity());
     }
@@ -1135,24 +1139,25 @@ public class HttpTemplate {
             int hopsLeft,
             RequestContext requestContext,
             Throwable failureThrowable,
-            AtomicInteger attemptsRef
+            AtomicInteger attemptsRef,
+            long previousDelayMillis
     ) {
         // ADR-0015 Aspect 2, async twin: the same discard — the failed
         // attempt's stream (if any) is closed before the deferred wait
         closeIntermediateStream(response);
-        long delayMillis = retryPolicy.nextDelayMillis(attempt, retryAfterDelayMillis(response), ThreadLocalRandom.current());
+        long delayMillis = retryPolicy.nextDelayMillis(attempt, previousDelayMillis, retryAfterDelayMillis(response), ThreadLocalRandom.current());
         logger.log(System.Logger.Level.DEBUG,
                 "Attempt " + attempt + "/" + maxAttempts + " failed: " + failure + " — retrying in " + delayMillis + " ms");
         notifyRetry(requestContext, request, attempt, failureThrowable, delayMillis);
         if (delayMillis <= 0) {
-            return attemptAsync(request, attempt + 1, maxAttempts, hopsLeft, requestContext, attemptsRef);
+            return attemptAsync(request, attempt + 1, maxAttempts, hopsLeft, requestContext, attemptsRef, 0L);
         }
         Executor scheduler = executor != null
                 ? CompletableFuture.delayedExecutor(delayMillis, TimeUnit.MILLISECONDS, executor)
                 : CompletableFuture.delayedExecutor(delayMillis, TimeUnit.MILLISECONDS);
         return CompletableFuture.runAsync(() -> {
         }, scheduler)
-                .thenCompose(ignored -> attemptAsync(request, attempt + 1, maxAttempts, hopsLeft, requestContext, attemptsRef));
+                .thenCompose(ignored -> attemptAsync(request, attempt + 1, maxAttempts, hopsLeft, requestContext, attemptsRef, delayMillis));
     }
 
     // The next redirect hop, or null if the chain stops here
