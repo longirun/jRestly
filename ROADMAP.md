@@ -1062,7 +1062,47 @@ Gates (session #110, clean rebuild):
 - `javadoc` 0 warnings under permanent `-Xdoclint:all -Werror`.
 - Zero external runtime dependencies preserved (0 dependencies in Maven POM).
 
-After the epic: candidate #1 — test-javadoc (ADR-0013 Non-goals); candidate #2 — Response download progress tracking (`DownloadProgressListener`, symmetric to ADR-0030 for streaming downloads). ADR number **0033** free.
+After the epic: candidate #1 — test-javadoc (ADR-0013 Non-goals); candidate #2 — Response download progress tracking (`DownloadProgressListener`, symmetric to ADR-0030 for streaming downloads) — done, section below. ADR number **0033** — download progress listener epic, **0034** free.
+
+## Response Download Progress Tracking & Direct Byte Array Returns (ADR-0033) — COMPLETE ✅ (2026-10-15, unreleased)
+
+> Source of truth (concept, architecture decisions, reactive BodySubscriber interception, validation, test strategy, status):
+> [`docs/0.10.0/ADR-0033-download-progress-listener.md`](docs/0.10.0/ADR-0033-download-progress-listener.md).
+> Session #111 (agent-loop). Real-world REST download observability & binary ergonomics (candidate #1 from DRAFT.md).
+> Symmetrical companion to `UploadProgressListener` (ADR-0030): unannotated intrinsic method parameter
+> `DownloadProgressListener` (`void onProgress(long bytesRead, long totalBytes)`), reactive `ProgressBodyHandler` &
+> `ProgressBodySubscriber` decorators for Java 21 `java.net.http.HttpResponse.BodySubscriber<List<ByteBuffer>>`,
+> automatic `Content-Length` extraction or `-1` for chunked streams, independent counter reset across `@Retry` loops,
+> zero-overhead null safety, upfront fail-fast `ControllerValidator` rules (`ControllerValidationException`),
+> and direct `byte[]` return type support bypassing `JsonCodec` for high-performance raw binary downloads.
+> 100% zero-dependency on standard Java 21 platform classes.
+
+Key decisions (ADR-0033):
+- **Functional Interface (`ru.jrestly.http.DownloadProgressListener`):**
+  - Declares `@FunctionalInterface` with method `void onProgress(long bytesRead, long totalBytes)`.
+  - May be placed as an unannotated parameter on any controller method without interfering with query parameters or request headers.
+- **Reactive Streams Interception (`ProgressBodyHandler` & `ProgressBodySubscriber`):**
+  - Package-private decorating `BodyHandler<T>` that inspects `ResponseInfo.headers()` for `Content-Length`.
+  - Nested `ProgressBodySubscriber<T>` decorates `Flow.Subscriber<List<ByteBuffer>>`, accumulating `remaining()` bytes without mutating buffer positions before delegating to downstream.
+  - Zero-byte body support: emits `onProgress(0, 0)` on completion if body was empty.
+  - Symmetrical to ADR-0030: independent counter state reset per attempt during `@Retry` or redirect resends.
+- **Direct `byte[]` & `Optional<byte[]>` Returns:**
+  - `HttpTemplate.processResponse()` recognizes `byte[].class.equals(returnType)` and returns `response.body()` directly as `byte[]` (or `Optional.of(bytes)`), removing unwanted JSON deserialization overhead on binary endpoints.
+- **Upfront fail-fast validation (`ControllerValidator`):**
+  - Forbids HTTP parameter annotations (`@RequestParam`, `@PathVariable`, `@RequestHeader`, `@Cookie`, `@MultipartFormFile`) on `DownloadProgressListener` parameters (`ControllerValidationException`).
+  - Excludes `DownloadProgressListener` parameters from multipart/form-urlencoded body payload calculations.
+- **Full test coverage:** 28 new tests (+28 cases, total suite 703/703 across 83 classes) spanning:
+  - `ProgressBodySubscriberTest` (7 unit tests: constructor/apply fail-fast NPE checks, sequential buffer interception, chunked unknown length `-1`, empty body handling with total 0, onError delegation, buffer position preservation, ResponseInfo length extraction);
+  - `DownloadProgressValidationTest` (9 unit tests: rejection of @RequestParam, @PathVariable, @RequestHeader, @Cookie, @MultipartFormFile annotations on listener, rejection of only-listener multipart methods, valid contract passing, client proxy creation exception, HttpTemplateBuilder resolution & null safety);
+  - `DownloadProgressWireMockTest` (12 WireMock integration tests: byte[] download progress, text String download progress, JSON DTO download progress, live streaming InputStream download, chunked transfer encoding with total -1, async CompletableFuture download, retry attempt counter reset, simultaneous UploadProgressListener + DownloadProgressListener on single method, null listener safety, parameterless method regression freedom, large download > 128 KiB with multiple progress chunks, transparent decompression wire bytes tracking).
+
+Gates (session #111, clean rebuild):
+- `./gradlew test` **703/703** (83 classes, 0 failures/errors; +28 tests in ADR-0033).
+- `compileJava` and `compileTestJava` 0 warnings under permanent `-Xlint:all -Werror`.
+- `javadoc` 0 warnings under permanent `-Xdoclint:all -Werror`.
+- Zero external runtime dependencies preserved (0 dependencies in Maven POM).
+
+After the epic: candidate #1 — test-javadoc (ADR-0013 Non-goals); candidate #2 — Query parameter multi-value formats (`explode`, comma-separated `tag=a,b`, pipe-separated `tag=a|b`, RFC 6570 style expansion). ADR number **0034** free.
 
 ## Post-0.5.0 shortlist (not scheduled — see ADR-0003)
 

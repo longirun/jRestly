@@ -133,6 +133,7 @@ public class HttpTemplate {
     private Object[] args;
     private ResponseHeaders responseHeadersHolder;
     private UploadProgressListener uploadProgressListener;
+    private DownloadProgressListener downloadProgressListener;
     private Executor executor;
     private Duration timeout;
 
@@ -438,9 +439,13 @@ public class HttpTemplate {
         }
 
         if (optional) {
-            if (statusCode == 404 || statusCode == 304 || statusCode == 204 || payload == null) {
+            if (statusCode == 404 || statusCode == 304 || statusCode == 204 || bytes == null || bytes.length == 0) {
                 logger.log(System.Logger.Level.INFO, "No response or empty/status for Optional return.");
                 return (T) Optional.empty();
+            }
+            if (byte[].class.equals(returnType)) {
+                logger.log(System.Logger.Level.INFO, "Response size: " + bytes.length + " bytes");
+                return (T) Optional.of(bytes);
             }
             if (String.class.equals(returnType)) {
                 logger.log(System.Logger.Level.INFO, "Response size: " + payload.length() + " bytes\n" + payload);
@@ -454,9 +459,14 @@ public class HttpTemplate {
             return (T) Optional.ofNullable(deserialized);
         }
 
-        if (payload == null) {
+        if (bytes == null || bytes.length == 0) {
             logger.log(System.Logger.Level.INFO, "No response.");
             return null;
+        }
+
+        if (byte[].class.equals(returnType)) {
+            logger.log(System.Logger.Level.INFO, "Response size: " + bytes.length + " bytes");
+            return (T) bytes;
         }
 
         if (String.class.equals(returnType)) {
@@ -958,13 +968,21 @@ public class HttpTemplate {
     WireResponse send(WireRequest request) throws IOException, InterruptedException {
         long start = System.nanoTime();
         if (streamBody) {
+            HttpResponse.BodyHandler<InputStream> bodyHandler = HttpResponse.BodyHandlers.ofInputStream();
+            if (downloadProgressListener != null) {
+                bodyHandler = new ProgressBodyHandler<>(bodyHandler, downloadProgressListener);
+            }
             HttpResponse<InputStream> response =
-                    httpClient.send(toHttpRequest(request), HttpResponse.BodyHandlers.ofInputStream());
+                    httpClient.send(toHttpRequest(request), bodyHandler);
             logPerHop(request, response.statusCode(), start);
             return handleDecompression(toWireResponse(response));
         }
+        HttpResponse.BodyHandler<byte[]> bodyHandler = HttpResponse.BodyHandlers.ofByteArray();
+        if (downloadProgressListener != null) {
+            bodyHandler = new ProgressBodyHandler<>(bodyHandler, downloadProgressListener);
+        }
         HttpResponse<byte[]> response =
-                httpClient.send(toHttpRequest(request), HttpResponse.BodyHandlers.ofByteArray());
+                httpClient.send(toHttpRequest(request), bodyHandler);
         logPerHop(request, response.statusCode(), start);
         return handleDecompression(toWireResponse(response));
     }
@@ -973,8 +991,12 @@ public class HttpTemplate {
     private CompletableFuture<WireResponse> sendAsync(WireRequest request) {
         long start = System.nanoTime();
         if (streamBody) {
+            HttpResponse.BodyHandler<InputStream> bodyHandler = HttpResponse.BodyHandlers.ofInputStream();
+            if (downloadProgressListener != null) {
+                bodyHandler = new ProgressBodyHandler<>(bodyHandler, downloadProgressListener);
+            }
             CompletableFuture<HttpResponse<InputStream>> raw =
-                    httpClient.sendAsync(toHttpRequest(request), HttpResponse.BodyHandlers.ofInputStream());
+                    httpClient.sendAsync(toHttpRequest(request), bodyHandler);
             java.util.function.Function<HttpResponse<InputStream>, WireResponse> mapper = response -> {
                 logPerHop(request, response.statusCode(), start);
                 try {
@@ -985,8 +1007,12 @@ public class HttpTemplate {
             };
             return executor != null ? raw.thenApplyAsync(mapper, executor) : raw.thenApply(mapper);
         }
+        HttpResponse.BodyHandler<byte[]> bodyHandler = HttpResponse.BodyHandlers.ofByteArray();
+        if (downloadProgressListener != null) {
+            bodyHandler = new ProgressBodyHandler<>(bodyHandler, downloadProgressListener);
+        }
         CompletableFuture<HttpResponse<byte[]>> raw =
-                httpClient.sendAsync(toHttpRequest(request), HttpResponse.BodyHandlers.ofByteArray());
+                httpClient.sendAsync(toHttpRequest(request), bodyHandler);
         java.util.function.Function<HttpResponse<byte[]>, WireResponse> mapper = response -> {
             logPerHop(request, response.statusCode(), start);
             try {
@@ -1770,6 +1796,24 @@ public class HttpTemplate {
      */
     public UploadProgressListener getUploadProgressListener() {
         return uploadProgressListener;
+    }
+
+    /**
+     * Sets the download progress listener (ADR-0033).
+     *
+     * @param downloadProgressListener the listener, or {@code null}
+     */
+    public void setDownloadProgressListener(DownloadProgressListener downloadProgressListener) {
+        this.downloadProgressListener = downloadProgressListener;
+    }
+
+    /**
+     * The download progress listener (ADR-0033).
+     *
+     * @return the listener, or {@code null}
+     */
+    public DownloadProgressListener getDownloadProgressListener() {
+        return downloadProgressListener;
     }
 
     private void handleOnError(int statusCode, String payload, List<Header> responseHeaders) {

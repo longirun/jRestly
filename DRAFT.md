@@ -1,24 +1,22 @@
-# DRAFT: активная зона после закрытия эпика Cookie Handling, Session Management & Declarative @Cookie (ADR-0032)
+# DRAFT: активная зона после закрытия эпика Response Download Progress Tracking & Direct byte[] Returns (ADR-0033)
 
-> Эпик Cookie Handling, Session Management and Declarative @Cookie Annotations (ADR-0032, `docs/0.10.0/`) закрыт (сессия #110):
-> концепт и ADR-0032 → интеграция `CookieHandler` в `ModuleInfo`, `SimpleModuleInfo`, `JRestlyClient` и `AbstractHttpClient` +
-> шорткаты `cookieManager()` и `cookiePolicy()` для сохранения сессий между запросами +
-> инспекция `client.getCookieStore()` для сброса состояния сессии в тестах +
-> аннотации `ru.jrestly.annotation.Cookie` и контейнер `ru.jrestly.annotation.Cookies` +
-> строгая иерархия приоритетов (Parameter > Method > Sub-interface > Super-interface) +
-> динамические параметры `@Cookie`: строки, объекты, `Map<String, ?>`, прямые `HttpCookie`, null-safety удаление/подавление +
-> первокллассный доступ к cookies в `ResponseHeaders` (`cookies()`, `cookie(name)`, `cookieValue(name)`, `cookieMap()`) +
-> fail-fast upfront валидация в `ControllerValidator` (`ControllerValidationException`) против blank и CRLF значений +
-> unit тесты (`CookieConfigAndResponseTest`, 13 тестов; `CookieValidationTest`, 7 тестов) и WireMock интеграционные тесты (`CookieSessionWireMockTest`, 9 тестов, итого +29 тестов) →
-> дистилляция в ROADMAP («Cookie Handling, Session Management and Declarative @Cookie (ADR-0032) — COMPLETE ✅») + гейты 675/675 тестов (80 классов).
+> Эпик Response Download Progress Tracking and Direct Byte Array Returns (ADR-0033, `docs/0.10.0/`) закрыт (сессия #111):
+> концепт и ADR-0033 → функциональный интерфейс `DownloadProgressListener` (`void onProgress(long bytesRead, long totalBytes)`) +
+> реактивный декоратор `ProgressBodyHandler` и `ProgressBodySubscriber` для перехвата `Flow.Subscriber<List<ByteBuffer>>` +
+> извлечение `Content-Length` из `ResponseInfo.headers()` и fallback на `-1` для chunked/потоковых ответов +
+> независимый сброс счетчика прогресса при повторных попытках `@Retry` или редиректах +
+> прямая передача `byte[]` и `Optional<byte[]>` в `HttpTemplate.processResponse` без лишней JSON-десериализации (Zero-Allocation Binary) +
+> fail-fast upfront валидация в `ControllerValidator` (`ControllerValidationException`) против аннотаций параметров +
+> unit тесты (`ProgressBodySubscriberTest`, 7 тестов; `DownloadProgressValidationTest`, 9 тестов) и WireMock интеграционные тесты (`DownloadProgressWireMockTest`, 12 тестов, итого +28 тестов) →
+> дистилляция в ROADMAP («Response Download Progress Tracking & Direct Byte Array Returns (ADR-0033) — COMPLETE ✅») + гейты 703/703 тестов (83 класса).
 > Следующий ход — свободный, выбор из активной зоны.
 
 ## Активная зона (кандидаты на следующий эпик)
 
-- **Кандидат №1 — Response download progress tracking (`DownloadProgressListener`)**:
-  Симметричный к ADR-0030 механизм отслеживания прогресса скачивания тел ответов для больших потоковых файлов (по аналогии с UploadProgressListener).
-- **Кандидат №2 — Query parameter multi-value formats (`explode`, comma-separated `tag=a,b`, pipe-separated `tag=a|b`, RFC 6570 style expansion)**:
+- **Кандидат №1 — Query parameter multi-value formats (`explode`, comma-separated `tag=a,b`, pipe-separated `tag=a|b`, RFC 6570 style expansion)**:
   Гибкое форматирование коллекций и массивов в URL query параметрах per-method или per-parameter.
+- **Кандидат №2 — Request body streaming from `Flow.Publisher<ByteBuffer>`**:
+  Симметричная поддержка реактивной передачи исходящего тела из реактивного источника данных.
 - **Кандидат №3 — test-javadoc** (ADR-0013 Non-goals):
   Test-source javadoc вынесен за скобки аудита; наведение лоска в тестовых классах.
 
@@ -50,6 +48,7 @@
   условные запросы & Optional (ADR-0023), гибкость form-data/multipart (ADR-0024),
   шаблоны URI и массивы параметров (ADR-0025), виртуальные потоки (ADR-0026),
   декларативные таймауты (ADR-0027), декларативные интерцепторы (ADR-0029),
-  отслеживание прогресса загрузки (ADR-0030).
+  отслеживание прогресса загрузки (ADR-0030), куки и управление сессиями (ADR-0032),
+  отслеживание прогресса скачивания и прямой возврат byte[] (ADR-0033).
 - **Коммиты — краткие, не дублируют ченджлог** (Антон).
 - **Объём одной сессии в 2–3 раза меньше** — один маленький шаг.

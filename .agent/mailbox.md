@@ -40,23 +40,16 @@
 * я думаю еще в реалном исползовании есть миллион важных вещей?
 Это не приказ бросаться сразу все делать, просто можно учесть и разобрать в будущем. 
 
-[2026-10-15 05:20] Агент (сессия #108): Реализован эпик отслеживания прогресса отправки тела запросов и multipart-файлов (ADR-0030): интерфейс `UploadProgressListener`, реактивный `ProgressBodyPublisher`, интринсик параметр в сигнатурах методов, сброс отсчета при повторных попытках `@Retry`. 620/620 тестов зелёные.
+[2026-10-15 05:48] Агент (сессия #109): Реализован эпик декларативных аннотаций `@Accept` и `@ContentType`, а также стандартных констант `MediaType` (ADR-0031): 646/646 тестов зелёные.
 
-[2026-10-15 05:48] Агент (сессия #109): Реализован эпик декларативных аннотаций `@Accept` и `@ContentType`, а также стандартных констант `MediaType` (ADR-0031):
-1. **Аннотации `@Accept` и `@ContentType`:** аннотации для контроллеров и методов (`ElementType.TYPE`, `ElementType.METHOD`). `@Accept` поддерживает одиночные и множественные media types (склейка через запятую по RFC 9110), `@ContentType` лаконично переопределяет тип тела без раздувания `@RequestHeader`.
-2. **Константы `MediaType`:** утилитный класс `ru.jrestly.http.MediaType` со стандартными константами (`APPLICATION_JSON`, `APPLICATION_XML`, `APPLICATION_OCTET_STREAM`, `TEXT_PLAIN`, `ALL` и др.) для устранения опечаток в строках.
-3. **Строгая иерархия и устранение дубликатов:** детерминированный приоритет `Method > Sub-interface > Super-interface > Client default`, с приоритетным runtime переопределением через аргументы `@RequestHeader`. В `HttpTemplate` заголовок `Content-Type` устанавливается через `builder.setHeader()`, исключая случайное дублирование заголовка.
-4. **Сырые байты и кодировки текста:** `byte[]` в `@RequestBody` отправляется напрямую без сериализации в JSON; `String` кодируется с учетом `charset` из `ContentType` (например, `windows-1251`).
-5. **Fail-fast валидация:** `ControllerValidator` проверяет непустые, non-blank и безопасные от CRLF-инъекций значения (`ControllerValidationException`).
-Написано 25 новых тестов (12 в `AcceptContentTypeValidationTest`, 13 в `AcceptContentTypeWireMockTest`).
-Гейты: **646/646** тестов (77 классов) зелёные, 0 warnings под `-Werror`, zero-dep core строго сохранен.
+[2026-10-15 06:15] Агент (сессия #110): Реализован эпик Cookie Handling, Session Management & Declarative @Cookie (ADR-0032): Zero-dep управление сессиями через CookieHandler/CookieManager, инспекция client.getCookieStore(), декларативные @Cookie и @Cookies с приоритетами, инспекция cookies в ResponseHeaders. 675/675 тестов зелёные.
 
-[2026-10-15 06:15] Агент (сессия #110): Реализован эпик Cookie Handling, Session Management & Declarative @Cookie (ADR-0032):
-1. **Управление сессиями и CookieHandler:** Zero-dep поддержка `java.net.CookieHandler` через `ModuleInfo` и fluent-шорткаты `cookieManager()` и `cookiePolicy()` в `SimpleModuleInfo.Builder` и `JRestlyClient.Builder`. Автоматическое сохранение `Set-Cookie` ответов и отправка `Cookie` заголовков в последующих запросах. Доступ к хранилищу сессии `client.getCookieStore()` для мгновенного сброса `removeAll()` между тестами.
-2. **Декларативные аннотации `@Cookie` и `@Cookies`:** `@Cookie` для интерфейсов, методов и параметров (`@Repeatable(Cookies.class)`). Сериализация в валидный RFC 6265 `Cookie: name1=value1; name2=value2` заголовок.
-3. **Иерархия приоритетов и null-safety:** `Parameter > Method > Sub-interface > Super-interface`. Передача `null` в параметр отменяет/удаляет куку. Поддержка `Map<String, ?>` и прямых объектов `java.net.HttpCookie`.
-4. **Инспекция Cookies в `ResponseHeaders`:** методы `cookies()`, `cookie(name)`, `cookieValue(name)` (с case-insensitive поиском), и `cookieMap()` для первоклассного доступа к сессионным и auth cookies без ручного парсинга.
-5. **Fail-fast валидация:** `ControllerValidator` проверяет непустые, non-blank и безопасные от CRLF-инъекций значения (`ControllerValidationException`).
-Написано 29 новых тестов (13 в `CookieConfigAndResponseTest`, 7 в `CookieValidationTest`, 9 в `CookieSessionWireMockTest`).
-Гейты: **675/675** тестов (80 классов) зелёные, 0 warnings под `-Werror`, zero-dep core строго сохранен.
+[2026-10-15 06:43] Агент (сессия #111): Реализован эпик Response Download Progress Tracking & Direct byte[] Returns (ADR-0033):
+1. **Интерфейс `DownloadProgressListener`:** функциональный интерфейс `void onProgress(long bytesRead, long totalBytes)` для отслеживания входящего трафика ответов. Интринсик параметр в методах контроллеров (по аналогии с ADR-0022 и ADR-0030), zero-allocation при передаче null.
+2. **Реактивный перехват потока (`ProgressBodyHandler` & `ProgressBodySubscriber`):** пакетно-приватные декораторы для Java 21 `HttpResponse.BodySubscriber<List<ByteBuffer>>`. Извлечение `Content-Length` из `ResponseInfo.headers()` с fallback на `-1` для chunked transfer encoding. Накопление прогресса без изменения позиций буферов `ByteBuffer`.
+3. **Прямой возврат `byte[]` и `Optional<byte[]>`:** `HttpTemplate.processResponse` напрямую отдает `response.body()` как сырые байты, устраняя лишнюю десериализацию через `JsonCodec` и ошибки парсинга не-JSON бинарных данных.
+4. **Независимость попыток `@Retry`:** счетчик прогресса автоматически сбрасывается в 0 при каждой новой попытке повтора или редиректа.
+5. **Fail-fast валидация:** `ControllerValidator` запрещает параметры `DownloadProgressListener` с HTTP-аннотациями (`ControllerValidationException`) и исключает их из подсчета payload-параметров.
+Написано 28 новых тестов (7 в `ProgressBodySubscriberTest`, 9 в `DownloadProgressValidationTest`, 12 в `DownloadProgressWireMockTest`).
+Гейты: **703/703** тестов (83 класса) зелёные, 0 warnings под `-Werror`, zero-dep core строго сохранен. Преодолен рубеж в 700 тестов!
 
