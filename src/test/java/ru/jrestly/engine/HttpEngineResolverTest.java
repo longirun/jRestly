@@ -122,6 +122,126 @@ class HttpEngineResolverTest {
         assertTrue(resolved instanceof JdkHttpEngine);
     }
 
+    @Test
+    @DisplayName("Higher-priority provider wins regardless of iteration order (ADR-0058)")
+    void higherPriorityProviderWinsOverIterationOrder() {
+        HttpEngine lowPriorityEngine = new DummyHttpEngine();
+        HttpEngine highPriorityEngine = new DummyHttpEngine();
+
+        SimpleModuleInfo moduleInfo = SimpleModuleInfo.builder()
+                .baseUrl("https://example.com")
+                .build();
+
+        HttpEngine resolved = HttpEngineResolver.resolveFromSpi(moduleInfo, List.of(
+                new TestProvider(true, 10, lowPriorityEngine),
+                new TestProvider(true, 50, highPriorityEngine)));
+        assertSame(highPriorityEngine, resolved);
+    }
+
+    @Test
+    @DisplayName("Equal priority keeps the ServiceLoader iteration order")
+    void equalPriorityKeepsIterationOrder() {
+        HttpEngine firstEngine = new DummyHttpEngine();
+        HttpEngine secondEngine = new DummyHttpEngine();
+
+        SimpleModuleInfo moduleInfo = SimpleModuleInfo.builder()
+                .baseUrl("https://example.com")
+                .build();
+
+        HttpEngine resolved = HttpEngineResolver.resolveFromSpi(moduleInfo, List.of(
+                new TestProvider(true, 50, firstEngine),
+                new TestProvider(true, 50, secondEngine)));
+        assertSame(firstEngine, resolved);
+    }
+
+    @Test
+    @DisplayName("Unavailable high-priority provider is skipped, lower-priority available wins")
+    void unavailableHighPriorityProviderSkipped() {
+        HttpEngine lowPriorityEngine = new DummyHttpEngine();
+        HttpEngine unavailableEngine = new DummyHttpEngine();
+
+        SimpleModuleInfo moduleInfo = SimpleModuleInfo.builder()
+                .baseUrl("https://example.com")
+                .build();
+
+        HttpEngine resolved = HttpEngineResolver.resolveFromSpi(moduleInfo, List.of(
+                new TestProvider(false, 50, unavailableEngine),
+                new TestProvider(true, 10, lowPriorityEngine)));
+        assertSame(lowPriorityEngine, resolved);
+    }
+
+    @Test
+    @DisplayName("High-priority provider returning a null engine falls through to lower priority")
+    void highPriorityNullEngineFallsThrough() {
+        HttpEngine lowPriorityEngine = new DummyHttpEngine();
+
+        SimpleModuleInfo moduleInfo = SimpleModuleInfo.builder()
+                .baseUrl("https://example.com")
+                .build();
+
+        HttpEngine resolved = HttpEngineResolver.resolveFromSpi(moduleInfo, List.of(
+                new TestProvider(true, 50, null),
+                new TestProvider(true, 10, lowPriorityEngine)));
+        assertSame(lowPriorityEngine, resolved);
+    }
+
+    @Test
+    @DisplayName("Legacy provider without explicit priority() (default 0) loses to explicit priority")
+    void legacyDefaultPriorityLosesToExplicitPriority() {
+        HttpEngine explicitEngine = new DummyHttpEngine();
+        HttpEngineProvider legacyProvider = new HttpEngineProvider() {
+            @Override
+            public boolean isAvailable() {
+                return true;
+            }
+
+            @Override
+            public HttpEngine createEngine(ModuleInfo moduleInfo) {
+                return new DummyHttpEngine();
+            }
+        };
+
+        SimpleModuleInfo moduleInfo = SimpleModuleInfo.builder()
+                .baseUrl("https://example.com")
+                .build();
+
+        HttpEngine resolved = HttpEngineResolver.resolveFromSpi(moduleInfo, List.of(
+                legacyProvider,
+                new TestProvider(true, 1, explicitEngine)));
+        assertSame(explicitEngine, resolved);
+    }
+
+    /**
+     * Fixed SPI provider for priority scenarios. {@code priority()} is declared
+     * without {@code @Override} so the test compiles both before and after the
+     * default method is added to the SPI (red-first, TDD).
+     */
+    private static final class TestProvider implements HttpEngineProvider {
+        private final boolean available;
+        private final int priority;
+        private final HttpEngine engine;
+
+        TestProvider(boolean available, int priority, HttpEngine engine) {
+            this.available = available;
+            this.priority = priority;
+            this.engine = engine;
+        }
+
+        @Override
+        public boolean isAvailable() {
+            return available;
+        }
+
+        public int priority() {
+            return priority;
+        }
+
+        @Override
+        public HttpEngine createEngine(ModuleInfo moduleInfo) {
+            return engine;
+        }
+    }
+
     private static final class DummyHttpEngine implements HttpEngine {
         @Override
         public WireResponse send(WireRequest request, HttpEngineOptions options) {

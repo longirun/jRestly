@@ -1,5 +1,16 @@
 # DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
+> **Сессия #149 (ADR-0058 — фаза 1, ядро):** добавлен `default int priority()`
+> в `HttpEngineProvider` (бинарно-совместимое расширение, дефолт 0) и
+> стабильная сортировка в `HttpEngineResolver.resolveFromSpi` (убывающий
+> приоритет; равенство сохраняет порядок `ServiceLoader` — `List.sort`
+> гарантированно стабильный). TDD red-first: 2 красных ассерта в
+> `HttpEngineResolverTest` (приоритет побеждает порядок итерации; legacy
+> провайдер с дефолтным 0 проигрывает явному 1) + 3 регрессионных
+> предохранителя (стабильность при равенстве, пропуск недоступного
+> высокоприоритетного, fallthrough null-движка). **1063/1063** (ядро 1048
+> + bench 15), 0 warnings. Фаза 1 закрыта; дальше — фаза 2 (субмодули).
+
 > **Сессия #148 (ADR-0058 — концепт):** оформлен ADR
 > `docs/0.10.0/ADR-0058-external-http-engine-submodules-okhttp-apache5.md`
 > (Status: Proposed). Двухфазное исполнение: (1) ядро — `priority()` в
@@ -140,6 +151,8 @@
   proxy, authenticator, virtual threads), адаптер выкачивания JDK
   `BodyPublisher` → `InputStream` (единый для стриминга и multipart).
   benchmarks переключаются на `project(':engine-*')`, копии прототипов удаляются.
+  **Сессия #149: фаза 1 (ядро) закрыта** — `priority()` + стабильная сортировка,
+  1063/1063. Осталась фаза 2: субмодули `engine-okhttp`/`engine-apache5`.
 
 
 ---
