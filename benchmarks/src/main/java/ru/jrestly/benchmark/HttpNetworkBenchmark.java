@@ -14,6 +14,7 @@ import org.openjdk.jmh.annotations.Warmup;
 import ru.jrestly.benchmark.client.ApacheHttpClientBenchmarkClient;
 import ru.jrestly.benchmark.client.FeignBenchmarkClient;
 import ru.jrestly.benchmark.client.JRestlyBenchmarkClient;
+import ru.jrestly.benchmark.client.OkHttpBenchmarkClient;
 import ru.jrestly.benchmark.client.RawHttpClientBenchmarkClient;
 import ru.jrestly.benchmark.client.RetrofitBenchmarkClient;
 import ru.jrestly.benchmark.client.SpringRestClientBenchmarkClient;
@@ -25,9 +26,10 @@ import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 /**
- * End-to-end HTTP network benchmark comparing jRestly against raw JDK HttpClient,
- * Spring 6 RestClient, Apache HttpClient 5, Square Retrofit 2, and OpenFeign
- * over loopback TCP sockets.
+ * End-to-end single-threaded HTTP network benchmark comparing jRestly against raw JDK HttpClient,
+ * raw OkHttp, Spring 6 RestClient, Apache HttpClient 5, Square Retrofit 2, and OpenFeign
+ * over loopback TCP sockets. Also profiles jRestly over pluggable engines
+ * (OkHttp, Apache HttpClient 5, pinned HTTP/1.1).
  */
 @State(Scope.Benchmark)
 @BenchmarkMode(Mode.AverageTime)
@@ -39,7 +41,11 @@ public class HttpNetworkBenchmark {
 
     private BenchmarkHttpServer server;
     private JRestlyBenchmarkClient jrestlyClient;
+    private JRestlyBenchmarkClient jrestlyOkHttpClient;
+    private JRestlyBenchmarkClient jrestlyApache5Client;
+    private JRestlyBenchmarkClient jrestlyHttp11Client;
     private RawHttpClientBenchmarkClient rawHttpClient;
+    private OkHttpBenchmarkClient okHttpClient;
     private SpringRestClientBenchmarkClient springClient;
     private ApacheHttpClientBenchmarkClient apacheClient;
     private RetrofitBenchmarkClient retrofitClient;
@@ -54,7 +60,11 @@ public class HttpNetworkBenchmark {
         String baseUrl = server.baseUrl();
 
         jrestlyClient = new JRestlyBenchmarkClient(baseUrl);
+        jrestlyOkHttpClient = new JRestlyBenchmarkClient(baseUrl, new ru.jrestly.benchmark.engine.OkHttpEngine());
+        jrestlyApache5Client = new JRestlyBenchmarkClient(baseUrl, new ru.jrestly.benchmark.engine.Apache5HttpEngine());
+        jrestlyHttp11Client = new JRestlyBenchmarkClient(baseUrl, java.net.http.HttpClient.Version.HTTP_1_1);
         rawHttpClient = new RawHttpClientBenchmarkClient(baseUrl);
+        okHttpClient = new OkHttpBenchmarkClient(baseUrl);
         springClient = new SpringRestClientBenchmarkClient(baseUrl);
         apacheClient = new ApacheHttpClientBenchmarkClient(baseUrl);
         retrofitClient = new RetrofitBenchmarkClient(baseUrl);
@@ -68,8 +78,20 @@ public class HttpNetworkBenchmark {
         if (jrestlyClient != null) {
             jrestlyClient.close();
         }
+        if (jrestlyOkHttpClient != null) {
+            jrestlyOkHttpClient.close();
+        }
+        if (jrestlyApache5Client != null) {
+            jrestlyApache5Client.close();
+        }
+        if (jrestlyHttp11Client != null) {
+            jrestlyHttp11Client.close();
+        }
         if (rawHttpClient != null) {
             rawHttpClient.close();
+        }
+        if (okHttpClient != null) {
+            okHttpClient.close();
         }
         if (springClient != null) {
             springClient.close();
@@ -93,6 +115,26 @@ public class HttpNetworkBenchmark {
     @Benchmark
     public UserDto jrestly_getUser() {
         return jrestlyClient.getUser(42L);
+    }
+
+    @Benchmark
+    public UserDto jrestlyOkHttp_getUser() {
+        return jrestlyOkHttpClient.getUser(42L);
+    }
+
+    @Benchmark
+    public UserDto jrestlyApache5_getUser() {
+        return jrestlyApache5Client.getUser(42L);
+    }
+
+    @Benchmark
+    public UserDto jrestlyHttp11_getUser() {
+        return jrestlyHttp11Client.getUser(42L);
+    }
+
+    @Benchmark
+    public UserDto okHttp_getUser() {
+        return okHttpClient.getUser(42L);
     }
 
     @Benchmark
@@ -125,6 +167,26 @@ public class HttpNetworkBenchmark {
     @Benchmark
     public String jrestly_ping_zeroDepRaw() {
         return jrestlyClient.ping();
+    }
+
+    @Benchmark
+    public String jrestlyOkHttp_ping() {
+        return jrestlyOkHttpClient.ping();
+    }
+
+    @Benchmark
+    public String jrestlyApache5_ping() {
+        return jrestlyApache5Client.ping();
+    }
+
+    @Benchmark
+    public String jrestlyHttp11_ping() {
+        return jrestlyHttp11Client.ping();
+    }
+
+    @Benchmark
+    public String okHttp_ping() {
+        return okHttpClient.ping();
     }
 
     @Benchmark
