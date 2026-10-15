@@ -57,6 +57,7 @@ public class SimpleModuleInfo implements ModuleInfo {
     private final Executor executor;
     private final boolean virtualThreads;
     private final CookieHandler cookieHandler;
+    private final ru.jrestly.metrics.ClientMetricsListener metricsListener;
 
     private SimpleModuleInfo(Builder builder) {
         this.name = builder.name;
@@ -78,6 +79,7 @@ public class SimpleModuleInfo implements ModuleInfo {
         this.executor = builder.executor;
         this.virtualThreads = builder.virtualThreads;
         this.cookieHandler = builder.cookieHandler;
+        this.metricsListener = builder.metricsListener;
     }
 
     /**
@@ -175,6 +177,11 @@ public class SimpleModuleInfo implements ModuleInfo {
         return cookieHandler;
     }
 
+    @Override
+    public ru.jrestly.metrics.ClientMetricsListener getMetricsListener() {
+        return metricsListener;
+    }
+
     /**
      * A builder for {@link SimpleModuleInfo}, pre-set to the defaults:
      * name {@code "default"}, 5 s connect timeout, 30 s socket timeout,
@@ -202,6 +209,7 @@ public class SimpleModuleInfo implements ModuleInfo {
         private Executor executor;
         private boolean virtualThreads = false;
         private CookieHandler cookieHandler;
+        private ru.jrestly.metrics.ClientMetricsListener metricsListener;
 
         /**
          * A builder pre-set to the defaults; {@code baseUrl} must still
@@ -511,6 +519,25 @@ public class SimpleModuleInfo implements ModuleInfo {
         public Builder cookiePolicy(CookiePolicy cookiePolicy) {
             Objects.requireNonNull(cookiePolicy, "cookiePolicy");
             this.cookieHandler = new CookieManager(null, cookiePolicy);
+            return this;
+        }
+
+        /**
+         * Sets the metrics and telemetry listener (ADR-0036).
+         * If a metrics listener was already configured on this builder, the listeners are
+         * combined using {@link ru.jrestly.metrics.ClientMetricsListener#composite(ru.jrestly.metrics.ClientMetricsListener...)}.
+         *
+         * @param metricsListener the metrics listener, must not be {@code null}
+         * @return this builder, for chaining
+         * @throws NullPointerException if {@code metricsListener} is {@code null}
+         */
+        public Builder metricsListener(ru.jrestly.metrics.ClientMetricsListener metricsListener) {
+            Objects.requireNonNull(metricsListener, "metricsListener");
+            if (this.metricsListener == null) {
+                this.metricsListener = metricsListener;
+            } else {
+                this.metricsListener = ru.jrestly.metrics.ClientMetricsListener.composite(this.metricsListener, metricsListener);
+            }
             return this;
         }
 

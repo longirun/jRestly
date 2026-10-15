@@ -1,67 +1,63 @@
-# Handover Note: Сессия 113 (Завершение эпика Outgoing Request Body Streaming & Validation ADR-0035; тесты выросли до 749/749 в 87 классах; следующий ход — кандидат №1 test-javadoc или кандидат №2 Client Metrics & Observability SPI)
+# Handover Note: Сессия 114 (Завершение эпика Client Metrics & Observability SPI ADR-0036; тесты выросли до 767/767 в 89 классах; следующий ход — кандидат №1 test-javadoc, кандидат №2 HTTP/2 Server Push / Custom Headers Frame Inspection, кандидат №3 Resilience Circuit Breaker / Rate Limiting)
 
-## Что сделано в этой сессии (#113)
-- **Ход:** полное проектирование (ADR-0035), реализация и верификация эпика Outgoing Request Body Streaming & Request Body Validation.
-- **Архитектура и реализация (ADR-0035):**
-  - **Потоковые типы `@RequestBody`:**
-    - `Flow.Publisher<ByteBuffer>` / `Flow.Publisher<? extends ByteBuffer>`: реактивная передача чанков через `HttpRequest.BodyPublishers.fromPublisher(...)`.
-    - `Flow.Publisher<String>`: автоматическая адаптация строковых элементов к `ByteBuffer` через внутренний адаптер с UTF-8 кодированием.
-    - `HttpRequest.BodyPublisher`: прямая передача нативного JDK body publisher.
-    - `InputStream`: потоковая передача через `HttpRequest.BodyPublishers.ofInputStream(() -> stream)`.
-    - `Supplier<? extends InputStream>`: переоткрываемый поставщик входного потока, безопасный для политик ретраев (`@Retry`) и редиректов (307/308).
-    - `Supplier<? extends HttpRequest.BodyPublisher>` / `Supplier<? extends Flow.Publisher<ByteBuffer>>`.
-    - `Path` и `File`: передача файлов напрямую через `HttpRequest.BodyPublishers.ofFile(path)` с точным вычислением `Content-Length`.
-  - **Дефолтный Content-Type и Media Type эргономика:**
-    - Для потоковых типов по умолчанию устанавливается `application/octet-stream`, если не задан явный заголовок или `@ContentType` / `@Post(contentType = ...)`.
-    - Для обычных POJO, `String` и `byte[]` сохраняется дефолт `application/json`.
-  - **Интеграция с Wire Model (`WireRequest`) и пайплайном:**
-    - В `WireRequest` добавлено поле `Supplier<? extends HttpRequest.BodyPublisher> bodyPublisherSupplier` с сохранением обратной совместимости 7-параметрического конструктора и методов `toBuilder()`, `builder()`, `withBodyPublisher`, `withBodyPublisherSupplier`.
-    - В `HttpTemplate.bodyPublisher(WireRequest)` поддержано извлечение publisher из supplier.
-    - В `HttpTemplate.logRequest` вывод потокового тела заменен на безопасный `<streaming body>` без истощения потока.
-    - Бесшовная интеграция с `UploadProgressListener` через `ProgressBodyPublisher` для чанкованных потоков.
-  - **Расширение `@HttpVersion`:**
-    - Аннотация `@HttpVersion` расширена на `ElementType.TYPE` для декларативного указания версии протокола (например `HTTP_1_1`) на уровне интерфейса контроллера.
+## Что сделано в этой сессии (#114)
+- **Ход:** полное проектирование (ADR-0036), реализация и верификация эпика Client Metrics & Observability SPI (Micrometer / OpenTelemetry Readiness).
+- **Архитектура и реализация (ADR-0036):**
+  - **Zero-Dep Observability SPI (`ru.jrestly.metrics`):**
+    - `CallMetrics`: интерфейс метрик завершенного HTTP-вызова (`context()`, `request()`, `response()`, `failure()`, `duration()`, `attempts()`, `requestBytes()`, `responseBytes()`, `statusCode()`, `isSuccess()`, `isRetried()`, `method()`, `uri()`).
+    - `SimpleCallMetrics`: канонический record, реализующий `CallMetrics`, с проверкой обязательных полей (`Objects.requireNonNull`) и неотрицательности числовых метрик.
+    - `@FunctionalInterface ClientMetricsListener`: обязательный метод `onCallComplete(CallMetrics)` и дефолтные хуки жизненного цикла `onCallStart`, `onRetry`, `onAttemptComplete` (для in-flight gauges и retry counters).
+    - `CompositeClientMetricsListener` и фабричный метод `ClientMetricsListener.composite(...)` с автоматическим flattening вложенных композитов и отсевом `null`.
+    - Изоляция сбоев: исключения в listener оборачиваются и логируются на уровне `WARNING`; падение слушателя не прерывает и не искажает результат вызова пользователя.
+  - **Конфигурация (программная и декларативная):**
+    - `ModuleInfo`: метод `default ClientMetricsListener getMetricsListener() { return null; }`.
+    - `SimpleModuleInfo` & `SimpleModuleInfo.Builder`: поле, геттер и fluent-метод `metricsListener(ClientMetricsListener)` с автоматическим объединением в композит при множественных регистрациях.
+    - `JRestlyClient.Builder`: fluent-метод `metricsListener(ClientMetricsListener)`.
+    - `@WithMetrics`: декларативная аннотация на контроллерах (`ElementType.TYPE`) и методах (`ElementType.METHOD`) с повторяемым контейнером `@WithMetrics.List`.
+    - `HttpTemplateBuilder`: метод `resolveMetricsListener()`, объединяющий слушатель уровня клиента и аннотации интерфейса/метода с кэшированием экземпляров.
   - **Fail-Fast upfront валидация (`ControllerValidator`):**
-    - Запрещен метод `@Get` с параметром `@RequestBody` (`@Get method must not declare @RequestBody parameter`).
-    - Запрещено объявление более 1 параметра `@RequestBody` на методе (`multiple parameters annotated with @RequestBody, at most one is allowed`).
-    - Запрещено комбинирование `@RequestBody` с `@RequestParam`, `@PathVariable`, `@RequestHeader`, `@Cookie`, `@MultipartFormFile`.
-- **Тесты (+20 тестов, итого 749/749 тестов в 87 классах):**
-  - `RequestBodyValidationTest` (8 unit тестов): запрет @Get с @RequestBody, запрет multiple @RequestBody, запрет смешивания @RequestBody с другими аннотациями (@RequestParam, @PathVariable, @RequestHeader, @Cookie), успешная валидация интерфейса со всеми типами стриминга, успешное создание прокси-клиента.
-  - `RequestBodyStreamingWireMockTest` (10 WireMock интеграционных тестов): Flow.Publisher<ByteBuffer> chunked streaming, Flow.Publisher<String> авто-адаптация к UTF-8, кастомный @ContentType("application/x-ndjson"), InputStream streaming, Supplier<InputStream> с 503 retry и переоткрытием потока, Path upload с точным Content-Length, direct HttpRequest.BodyPublisher, UploadProgressListener отслеживание прогресса стриминга, async CompletableFuture twin, null stream handling.
-  - `WireRequestTest` (2 unit теста): withBodyPublisher/withBodyPublisherSupplier withers и builder preservation.
+    - Валидация классов `@WithMetrics` при создании прокси-контроллера: запрет интерфейсов, абстрактных классов, классов без публичного accessible no-arg конструктора, и классов, не реализующих `ClientMetricsListener`.
+  - **Интеграция в пайплайн запросов (`HttpTemplate`):**
+    - Полная поддержка синхронного (`exchange()`, `executeWithRetries()`) и асинхронного (`exchangeAsync()`, `executeAsyncWithRetries()`, `attemptAsync()`) выполнения.
+    - Точный наносекундный замер длительности через `System.nanoTime()`.
+    - Подсчет переданных байтов (`requestBytes`) для `byte[]`, `String`, и файлов/потоков с известным `Content-Length`.
+    - Подсчет принятых байтов (`responseBytes`) из сырого тела или распакованного потока.
+- **Тесты (+18 тестов, итого 767/767 тестов в 89 классах):**
+  - `ClientMetricsValidationTest` (8 unit тестов): дефолты в конфигурациях, геттеры и инварианты `SimpleCallMetrics`, делегирование в `CompositeClientMetricsListener`, фабрика `ClientMetricsListener.composite(...)`, upfront fail-fast валидация абстрактных классов, несовместимых типов, приватных конструкторов и успешное создание прокси.
+  - `ClientMetricsWireMockTest` (10 WireMock интеграционных тестов): синхронный GET, POST с точными байтами, ретраи с multiple attempts и хуками `onRetry`/`onAttemptComplete`, HTTP 500 error metrics, handled exception 422 в `@OnError`, in-flight active requests gauge, async CompletableFuture twin, декларативный `@WithMetrics`, fault tolerance при сбоях слушателя, transport failure на несуществующем порту.
 - **Гейты:**
-  - `./gradlew test`: **749/749** тестов (87 классов, +20 тестов к 729) зелёные.
+  - `./gradlew test`: **767/767** тестов (89 классов, +18 тестов к 749) зелёные.
   - `./gradlew compileJava compileTestJava javadoc`: 0 warnings под постоянными флагами `-Xlint:all -Werror` и `-Xdoclint:all -Werror`.
   - Zero-dep инвариант в ядре строго сохранен (0 dependencies в Maven POM).
 - **Память и координация:**
-  - `docs/0.10.0/ADR-0035-request-body-streaming.md`: статус **Accepted**, зафиксированы решения и тесты.
-  - `ROADMAP.md`: добавлена секция `## Outgoing Request Body Streaming & Validation (ADR-0035) — COMPLETE ✅`, следующий свободный ADR — **0036**.
+  - `docs/0.10.0/ADR-0036-client-metrics-and-observability-spi.md`: статус **Accepted**, зафиксированы решения и тесты.
+  - `ROADMAP.md`: добавлена секция `## Client Metrics & Observability SPI (ADR-0036) — COMPLETE ✅`, следующий свободный ADR — **0037**.
   - `DRAFT.md`: эпик закрыт, активная зона обновлена.
-  - `mailbox.md`: Антону отправлен статус о реализации эпика ADR-0035, соблюдена гигиена сообщений.
-  - `days/2026-10-15.md`: оформлена запись сессии #113.
+  - `mailbox.md`: Антону отправлен статус о реализации эпика ADR-0036, соблюдена гигиена сообщений.
+  - `days/2026-10-15.md`: оформлена запись сессии #114.
 
-## Контекст для следующей сессии (#114)
+## Контекст для следующей сессии (#115)
 
 ### Активная зона DRAFT.md (выбор следующего эпика)
 - **Кандидат №1: test-javadoc** (ADR-0013 Non-goals):
   - Test-source javadoc вынесен за скобки аудита; наведение лоска в тестовых классах.
-- **Кандидат №2: Client Metrics & Observability SPI (Micrometer / OpenTelemetry readiness)**:
-  - Исследование zero-dep SPI для экспорта метрик задержек, попыток retry и объемов переданных/полученных байт.
-- **Кандидат №3: HTTP/2 Server Push / Custom Headers Frame Inspection**:
+- **Кандидат №2: HTTP/2 Server Push / Custom Headers Frame Inspection**:
   - Исследование возможностей и ограничений протокола HTTP/2 на базе JDK HttpClient.
+- **Кандидат №3: Resilience Circuit Breaker / Rate Limiting**:
+  - Исследование zero-dep клиентского предохранителя (Circuit Breaker / sliding window failure rate) для защиты от каскадных сбоев downstream сервисов.
 
 ### Грабли (актуальный набор)
 - **`GRADLE_USER_HOME=/tmp/opencode/gradle-home`**: всегда указывать при запуске `./gradlew`.
 - **`AbstractHttpClient` намеренно не `AutoCloseable`**: в тестах регистрировать и закрывать через `.close()` в `@AfterEach` (или try/finally).
 - **Path variables в jRestly**: в URL синтаксис `${param}`, в аннотации `@PathVariable(name = "param")` (без `${}`).
-- **Подсчёт тестов:** `grep -h -o 'tests="[0-9]*"' build/test-results/test/*.xml | awk -F'"' '{s+=$2} END{print s}'` (сейчас 749).
+- **Подсчёт тестов:** `grep -h -o 'tests="[0-9]*"' build/test-results/test/*.xml | awk -F'"' '{s+=$2} END{print s}'` (сейчас 767).
 - **Mailbox-гигиена:** решённый обмен удаляем; живые нитки и последние 2–3 сообщения оставляем.
 - **Коммит-субъект: краткий, без дублирования ченджлога** (Антон); body — гейты-факты.
 - **No git tags:** теги не создавать (релизы запаузены per maintainer agreement).
-- **Next free ADR number:** ADR-0036.
+- **Next free ADR number:** ADR-0037.
 
 ### Среда
 1. `GRADLE_USER_HOME=/tmp/opencode/gradle-home ./gradlew ...` (тёплый кэш).
 2. Ветка `agent-loop`.
-3. Версия в `build.gradle`: **0.9.0**. Тесты: **749/749** (87 классов).
+3. Версия в `build.gradle`: **0.9.0**. Тесты: **767/767** (89 классов).
 4. Warnings: main 0, test 0, javadoc 0 (под `-Werror`).

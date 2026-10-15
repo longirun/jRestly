@@ -40,8 +40,6 @@
 * я думаю еще в реалном исползовании есть миллион важных вещей?
 Это не приказ бросаться сразу все делать, просто можно учесть и разобрать в будущем. 
 
-[2026-10-15 06:43] Агент (сессия #111): Реализован эпик Response Download Progress Tracking & Direct byte[] Returns (ADR-0033): функциональный интерфейс DownloadProgressListener (void onProgress(long bytesRead, long totalBytes)), реактивные ProgressBodyHandler/ProgressBodySubscriber, прямой возврат byte[] без JSON-десериализации. 703/703 тестов зелёные.
-
 [2026-10-15 07:07] Агент (сессия #112): Реализован эпик Query Parameter Collection Formatting Styles & OpenAPI Compatibility (ADR-0034): `CollectionFormat`, `@QueryCollectionFormat`, `@RequestParam.format`, иерархия приоритетов, симметрия form/multipart, null-safety. 729/729 тестов (85 классов) зелёные.
 
 [2026-10-15 07:33] Агент (сессия #113): Реализован эпик Outgoing Request Body Streaming & Validation (ADR-0035):
@@ -62,4 +60,18 @@
    - Запрет `@Get` с `@RequestBody`;
    - Запрет нескольких `@RequestBody` на методе;
    - Запрет смешивания `@RequestBody` с `@RequestParam`, `@PathVariable`, `@RequestHeader`, `@Cookie`, `@MultipartFormFile`.
-20 новых тестов (+20 тестов, итого 749/749 в 87 классах). 0 warnings под `-Werror`, zero-dep core сохранен. Следующий свободный ADR — **0036**.
+20 новых тестов (+20 тестов, итого 749/749 в 87 классах). 0 warnings под `-Werror`, zero-dep core сохранен.
+
+[2026-10-15 08:00] Агент (сессия #114): Реализован эпик Client Metrics & Observability SPI (ADR-0036):
+1. **Zero-Dep Observability SPI (`ru.jrestly.metrics`):**
+   - `@FunctionalInterface ClientMetricsListener`: хук агрегации `onCallComplete(CallMetrics)` и дефолтные хуки жизненного цикла `onCallStart`, `onRetry`, `onAttemptComplete` (для in-flight gauges и счетчиков попыток).
+   - Неизменяемый контракт `CallMetrics` и record `SimpleCallMetrics` с фиксацией длительности (`duration`), попыток (`attempts`), байтов передачи/приема (`requestBytes`, `responseBytes`), целевого URI, HTTP-метода, статус-кода, контекста (`RequestContext`), wire моделей (`WireRequest`, `WireResponse`) и ошибок (`failure`).
+   - Композитный слушатель `CompositeClientMetricsListener` и `ClientMetricsListener.composite(...)` с автоматическим flattening и отсевом null.
+   - Изоляция сбоев: исключения в listener логируются на уровне WARNING и никогда не ломают пользовательские HTTP запросы.
+2. **Конфигурация (программная и декларативная):**
+   - Fluent-метод `metricsListener(ClientMetricsListener)` в `JRestlyClient.Builder` и геттер в `ModuleInfo`.
+   - Декларативная аннотация `@WithMetrics` для классов контроллеров и отдельных методов (с поддержкой повторяемости `@WithMetrics.List`).
+   - Автоматическое объединение клиентских и декларативных слушателей.
+3. **Fail-Fast upfront валидация (`ControllerValidator`):**
+   - Проверка наличия доступного no-arg конструктора у классов слушателей, запрет интерфейсов, абстрактных классов и несовместимых типов.
+18 новых тестов (+18 тестов, итого 767/767 в 89 классах). 0 warnings под `-Werror`, zero-dep core сохранен. Следующий свободный ADR — **0037**.

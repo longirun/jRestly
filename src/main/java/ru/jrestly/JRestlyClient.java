@@ -369,6 +369,20 @@ public class JRestlyClient extends AbstractHttpClient {
         }
 
         /**
+         * Sets the metrics and telemetry listener (ADR-0036).
+         * If a metrics listener was already configured on this builder, the listeners are
+         * combined using {@link ru.jrestly.metrics.ClientMetricsListener#composite(ru.jrestly.metrics.ClientMetricsListener...)}.
+         *
+         * @param metricsListener the metrics listener, must not be {@code null}
+         * @return this builder, for chaining
+         * @throws NullPointerException if {@code metricsListener} is {@code null}
+         */
+        public Builder metricsListener(ru.jrestly.metrics.ClientMetricsListener metricsListener) {
+            moduleInfoBuilder.metricsListener(metricsListener);
+            return this;
+        }
+
+        /**
          * Validates the settings (baseUrl must be set) and creates the
          * client for the resulting {@link SimpleModuleInfo}; an unset
          * {@code jsonCodec} is resolved from the classpath.

@@ -214,5 +214,15 @@ public interface ModuleInfo {
     default CookieHandler getCookieHandler() {
         return null;
     }
+
+    /**
+     * The metrics and telemetry listener (ADR-0036).
+     * When {@code null} (the default), no metrics listener is invoked.
+     *
+     * @return the metrics listener, or {@code null} if none configured
+     */
+    default ru.jrestly.metrics.ClientMetricsListener getMetricsListener() {
+        return null;
+    }
 }
 

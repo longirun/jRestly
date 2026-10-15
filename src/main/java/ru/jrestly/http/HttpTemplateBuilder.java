@@ -26,8 +26,10 @@ import ru.jrestly.annotation.Retry;
 import ru.jrestly.annotation.SetAuthDetails;
 import ru.jrestly.annotation.Timeout;
 import ru.jrestly.annotation.WithInterceptor;
+import ru.jrestly.annotation.WithMetrics;
 import ru.jrestly.interceptor.RequestInterceptor;
 import ru.jrestly.interceptor.ResponseInterceptor;
+import ru.jrestly.metrics.ClientMetricsListener;
 
 import java.io.File;
 import java.io.FileNotFoundException;
@@ -248,6 +250,7 @@ public class HttpTemplateBuilder {
         result.setResponseHeadersHolder(resolveResponseHeadersHolder());
         result.setUploadProgressListener(resolveUploadProgressListener());
         result.setDownloadProgressListener(resolveDownloadProgressListener());
+        result.setMetricsListener(resolveMetricsListener());
         result.setExecutor(executor != null ? executor : moduleInfo.getExecutor());
         result.setTimeout(resolveTimeout());
         result.setControllerClass(controller);
@@ -1406,6 +1409,52 @@ public class HttpTemplateBuilder {
         } catch (Exception e) {
             throw new IllegalStateException("Failed to instantiate interceptor " + clazz.getName()
                     + ". Ensure it has an accessible no-arg constructor.", e);
+        }
+    }
+
+    private ClientMetricsListener resolveMetricsListener() {
+        List<ClientMetricsListener> listeners = new ArrayList<>();
+        if (moduleInfo.getMetricsListener() != null) {
+            listeners.add(moduleInfo.getMetricsListener());
+        }
+        Set<Class<?>> seen = new HashSet<>();
+        List<Class<?>> hierarchy = collectInterfaceHierarchy(controller);
+        for (Class<?> iface : hierarchy) {
+            WithMetrics[] annotations = iface.getAnnotationsByType(WithMetrics.class);
+            for (WithMetrics ann : annotations) {
+                for (Class<?> clazz : ann.value()) {
+                    addDeclarativeMetricsListener(clazz, seen, listeners);
+                }
+            }
+        }
+        if (method != null) {
+            WithMetrics[] methodAnnotations = method.getAnnotationsByType(WithMetrics.class);
+            for (WithMetrics ann : methodAnnotations) {
+                for (Class<?> clazz : ann.value()) {
+                    addDeclarativeMetricsListener(clazz, seen, listeners);
+                }
+            }
+        }
+        if (listeners.isEmpty()) {
+            return null;
+        }
+        if (listeners.size() == 1) {
+            return listeners.getFirst();
+        }
+        return ClientMetricsListener.composite(listeners.toArray(new ClientMetricsListener[0]));
+    }
+
+    private void addDeclarativeMetricsListener(
+            Class<?> clazz,
+            Set<Class<?>> seen,
+            List<ClientMetricsListener> listeners
+    ) {
+        if (clazz == null || !seen.add(clazz)) {
+            return;
+        }
+        Object instance = getOrCreateInterceptor(clazz);
+        if (instance instanceof ClientMetricsListener listener) {
+            listeners.add(listener);
         }
     }
 }

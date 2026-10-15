@@ -15,6 +15,7 @@ import ru.jrestly.annotation.RequestDefaultParam;
 import ru.jrestly.annotation.RequestHeader;
 import ru.jrestly.annotation.Timeout;
 import ru.jrestly.annotation.WithInterceptor;
+import ru.jrestly.annotation.WithMetrics;
 import ru.jrestly.annotation.MultipartFormFile;
 import ru.jrestly.annotation.PathVariable;
 import ru.jrestly.annotation.RequestBody;
@@ -25,6 +26,7 @@ import ru.jrestly.http.DownloadProgressListener;
 import ru.jrestly.http.UploadProgressListener;
 import ru.jrestly.interceptor.RequestInterceptor;
 import ru.jrestly.interceptor.ResponseInterceptor;
+import ru.jrestly.metrics.ClientMetricsListener;
 
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
@@ -154,6 +156,11 @@ public final class ControllerValidator {
         for (WithInterceptor withInterceptor : current.getAnnotationsByType(WithInterceptor.class)) {
             for (Class<?> interceptorClass : withInterceptor.value()) {
                 validateInterceptorClass(interceptorClass, current.getSimpleName(), problems);
+            }
+        }
+        for (WithMetrics withMetrics : current.getAnnotationsByType(WithMetrics.class)) {
+            for (Class<?> metricsClass : withMetrics.value()) {
+                validateMetricsClass(metricsClass, current.getSimpleName(), problems);
             }
         }
         for (Class<?> parent : current.getInterfaces()) {
@@ -371,6 +378,11 @@ public final class ControllerValidator {
                 validateInterceptorClass(interceptorClass, method.getName() + "()", problems);
             }
         }
+        for (WithMetrics withMetrics : method.getAnnotationsByType(WithMetrics.class)) {
+            for (Class<?> metricsClass : withMetrics.value()) {
+                validateMetricsClass(metricsClass, method.getName() + "()", problems);
+            }
+        }
         return problems;
     }
 
@@ -391,6 +403,26 @@ public final class ControllerValidator {
             clazz.getDeclaredConstructor();
         } catch (NoSuchMethodException e) {
             problems.add(prefix + ": @WithInterceptor class " + clazz.getSimpleName() + " must declare a no-arg constructor");
+        }
+    }
+
+    private static void validateMetricsClass(Class<?> clazz, String prefix, List<String> problems) {
+        if (clazz == null) {
+            problems.add(prefix + ": @WithMetrics class must not be null");
+            return;
+        }
+        if (clazz.isInterface() || Modifier.isAbstract(clazz.getModifiers())) {
+            problems.add(prefix + ": @WithMetrics class " + clazz.getSimpleName() + " must not be abstract or an interface");
+            return;
+        }
+        if (!ClientMetricsListener.class.isAssignableFrom(clazz)) {
+            problems.add(prefix + ": @WithMetrics class " + clazz.getSimpleName() + " must implement ClientMetricsListener");
+            return;
+        }
+        try {
+            clazz.getDeclaredConstructor();
+        } catch (NoSuchMethodException e) {
+            problems.add(prefix + ": @WithMetrics class " + clazz.getSimpleName() + " must declare a no-arg constructor");
         }
     }
 

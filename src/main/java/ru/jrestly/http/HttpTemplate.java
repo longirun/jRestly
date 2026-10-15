@@ -40,9 +40,12 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.Executor;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
+import ru.jrestly.metrics.ClientMetricsListener;
+import ru.jrestly.metrics.SimpleCallMetrics;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
@@ -138,6 +141,7 @@ public class HttpTemplate {
     private DownloadProgressListener downloadProgressListener;
     private Executor executor;
     private Duration timeout;
+    private ClientMetricsListener metricsListener;
 
     /**
      * Creates an empty template. Not intended for direct use: instances
@@ -167,7 +171,8 @@ public class HttpTemplate {
 
         long start = System.nanoTime();
         boolean hasInterceptors = !requestInterceptors.isEmpty() || !responseInterceptors.isEmpty();
-        RequestContext requestContext = hasInterceptors ? createRequestContext() : null;
+        boolean hasMetrics = metricsListener != null;
+        RequestContext requestContext = (hasInterceptors || hasMetrics) ? createRequestContext() : null;
         WireRequest effectiveRequest = request;
 
         if (hasInterceptors) {
@@ -181,6 +186,9 @@ public class HttpTemplate {
                 }
             } catch (Throwable t) {
                 invokeResponseInterceptors(requestContext, effectiveRequest, null, t, start);
+                if (hasMetrics) {
+                    notifyCallComplete(requestContext, effectiveRequest, null, t, start, 1);
+                }
                 if (async) {
                     CompletableFuture<Object> failed = new CompletableFuture<>();
                     failed.completeExceptionally(t);
@@ -197,6 +205,7 @@ public class HttpTemplate {
         }
 
         logRequest(effectiveRequest);
+        notifyCallStart(requestContext, effectiveRequest);
 
         if (async) {
             return (T) exchangeAsync(effectiveRequest, start, requestContext);
@@ -204,8 +213,9 @@ public class HttpTemplate {
 
         WireResponse response = null;
         Throwable failure = null;
+        int[] attemptsHolder = new int[] {1};
         try {
-            response = executeWithRetries(effectiveRequest);
+            response = executeWithRetries(effectiveRequest, requestContext, attemptsHolder);
             return processResponse(effectiveRequest, response, start);
         } catch (IOException e) {
             failure = e;
@@ -224,6 +234,9 @@ public class HttpTemplate {
             if (hasInterceptors) {
                 invokeResponseInterceptors(requestContext, effectiveRequest, response, failure, start);
             }
+            if (hasMetrics) {
+                notifyCallComplete(requestContext, effectiveRequest, response, failure, start, attemptsHolder[0]);
+            }
         }
     }
 
@@ -238,10 +251,12 @@ public class HttpTemplate {
             RequestContext requestContext
     ) {
         AtomicReference<WireResponse> responseRef = new AtomicReference<>();
+        AtomicInteger attemptsRef = new AtomicInteger(1);
         boolean hasResponseInterceptors = !responseInterceptors.isEmpty() && requestContext != null;
+        boolean hasMetrics = metricsListener != null && requestContext != null;
 
         java.util.function.Function<WireResponse, Object> processor = response -> {
-            if (hasResponseInterceptors) {
+            if (hasResponseInterceptors || hasMetrics) {
                 responseRef.set(response);
             }
             try {
@@ -256,7 +271,7 @@ public class HttpTemplate {
             }
         };
 
-        CompletableFuture<WireResponse> retriesFuture = executeAsyncWithRetries(request);
+        CompletableFuture<WireResponse> retriesFuture = executeAsyncWithRetries(request, requestContext, attemptsRef);
         CompletableFuture<Object> stage = executor != null
                 ? retriesFuture.thenApplyAsync(processor, executor)
                 : retriesFuture.thenApply(processor);
@@ -282,16 +297,28 @@ public class HttpTemplate {
             throw new RuntimeException(cause);
         });
 
-        if (hasResponseInterceptors) {
+        if (hasResponseInterceptors || hasMetrics) {
             java.util.function.BiConsumer<Object, Throwable> interceptorAction = (res, ex) -> {
                 Throwable failure = ex != null ? unwrapCause(ex) : null;
-                invokeResponseInterceptors(
-                        requestContext,
-                        request,
-                        responseRef.get(),
-                        failure,
-                        startNanos
-                );
+                if (hasResponseInterceptors) {
+                    invokeResponseInterceptors(
+                            requestContext,
+                            request,
+                            responseRef.get(),
+                            failure,
+                            startNanos
+                    );
+                }
+                if (hasMetrics) {
+                    notifyCallComplete(
+                            requestContext,
+                            request,
+                            responseRef.get(),
+                            failure,
+                            startNanos,
+                            attemptsRef.get()
+                    );
+                }
             };
             return executor != null
                     ? future.whenCompleteAsync(interceptorAction, executor)
@@ -353,6 +380,145 @@ public class HttpTemplate {
             throwable = completion.getCause();
         }
         return throwable;
+    }
+
+    private void notifyCallStart(RequestContext context, WireRequest request) {
+        if (metricsListener != null && context != null) {
+            try {
+                metricsListener.onCallStart(context, request);
+            } catch (Throwable t) {
+                if (logger != null) {
+                    logger.log(System.Logger.Level.WARNING, "ClientMetricsListener.onCallStart failed", t);
+                }
+            }
+        }
+    }
+
+    private void notifyAttemptComplete(
+            RequestContext context,
+            WireRequest request,
+            int attempt,
+            WireResponse response,
+            Throwable failure,
+            long attemptStartNanos
+    ) {
+        if (metricsListener != null && context != null) {
+            Duration attemptDuration = Duration.ofNanos(System.nanoTime() - attemptStartNanos);
+            try {
+                metricsListener.onAttemptComplete(
+                        context,
+                        request,
+                        attempt,
+                        Optional.ofNullable(response),
+                        Optional.ofNullable(failure),
+                        attemptDuration
+                );
+            } catch (Throwable t) {
+                if (logger != null) {
+                    logger.log(System.Logger.Level.WARNING, "ClientMetricsListener.onAttemptComplete failed", t);
+                }
+            }
+        }
+    }
+
+    private void notifyRetry(
+            RequestContext context,
+            WireRequest request,
+            int attempt,
+            Throwable reason,
+            long delayMillis
+    ) {
+        if (metricsListener != null && context != null) {
+            Duration delay = Duration.ofMillis(Math.max(0, delayMillis));
+            try {
+                metricsListener.onRetry(context, request, attempt, reason, delay);
+            } catch (Throwable t) {
+                if (logger != null) {
+                    logger.log(System.Logger.Level.WARNING, "ClientMetricsListener.onRetry failed", t);
+                }
+            }
+        }
+    }
+
+    private void notifyCallComplete(
+            RequestContext context,
+            WireRequest request,
+            WireResponse response,
+            Throwable failure,
+            long startNanos,
+            int attempts
+    ) {
+        if (metricsListener != null && context != null) {
+            Duration duration = Duration.ofNanos(System.nanoTime() - startNanos);
+            long reqBytes = computeRequestBytes(request);
+            long respBytes = computeResponseBytes(response);
+            SimpleCallMetrics metrics = new SimpleCallMetrics(
+                    context,
+                    request,
+                    Optional.ofNullable(response),
+                    Optional.ofNullable(failure),
+                    duration,
+                    Math.max(1, attempts),
+                    reqBytes,
+                    respBytes
+            );
+            try {
+                metricsListener.onCallComplete(metrics);
+            } catch (Throwable t) {
+                if (logger != null) {
+                    logger.log(System.Logger.Level.WARNING, "ClientMetricsListener.onCallComplete failed", t);
+                }
+            }
+        }
+    }
+
+    private static long computeRequestBytes(WireRequest request) {
+        if (request == null) {
+            return -1;
+        }
+        if (request.body() != null) {
+            return request.body().length;
+        }
+        if (request.bodyPublisherSupplier() != null) {
+            try {
+                HttpRequest.BodyPublisher publisher = request.bodyPublisherSupplier().get();
+                if (publisher != null) {
+                    return publisher.contentLength();
+                }
+            } catch (Throwable ignored) {
+            }
+        }
+        return -1;
+    }
+
+    private static long computeResponseBytes(WireResponse response) {
+        if (response == null) {
+            return -1;
+        }
+        if (response.body() != null) {
+            return response.body().length;
+        }
+        if (response.headers() != null) {
+            for (Header h : response.headers()) {
+                if ("content-length".equalsIgnoreCase(h.name())) {
+                    try {
+                        long val = Long.parseLong(h.value().trim());
+                        if (val >= 0) {
+                            return val;
+                        }
+                    } catch (NumberFormatException ignored) {
+                    }
+                }
+            }
+        }
+        return -1;
+    }
+
+    private static String extractResponseBodyString(WireResponse response) {
+        if (response == null || response.body() == null) {
+            return "";
+        }
+        return new String(response.body(), StandardCharsets.UTF_8);
     }
 
     // Shared tail of both exchange paths: auth-details capture, response
@@ -603,30 +769,59 @@ public class HttpTemplate {
     // status-acceptable response is additionally checked by the side-effect-
     // free decode probe — the third failure-kind (transport / status /
     // decode) — without breaking the "classified exactly once" property.
-    private WireResponse executeWithRetries(WireRequest request) throws IOException, InterruptedException {
+    private WireResponse executeWithRetries(
+            WireRequest request,
+            RequestContext requestContext,
+            int[] attemptsHolder
+    ) throws IOException, InterruptedException {
         if (!retryPolicy.isEnabled()) {
-            return executeWithRedirects(request);
+            long attemptStart = System.nanoTime();
+            WireResponse response = null;
+            Throwable failure = null;
+            try {
+                response = executeWithRedirects(request);
+                return response;
+            } catch (Throwable t) {
+                failure = t;
+                throw t;
+            } finally {
+                notifyAttemptComplete(requestContext, request, 1, response, failure, attemptStart);
+            }
         }
 
         int maxAttempts = retryPolicy.maxAttempts();
 
         for (int attempt = 1; ; attempt++) {
+            attemptsHolder[0] = attempt;
             boolean last = attempt == maxAttempts;
 
+            long attemptStart = System.nanoTime();
             WireResponse response;
             String failure;
+            Throwable failureThrowable = null;
             try {
                 response = executeWithRedirects(request);
                 failure = "HTTP " + response.statusCode();
+                if (!isExpectedStatus(response.statusCode())) {
+                    failureThrowable = createUnexpectedStatusException(response.statusCode(), extractResponseBodyString(response), response.headers());
+                }
             } catch (InterruptedException e) {
                 // the caller's thread was interrupted — fail fast, never retried
+                failureThrowable = e;
+                notifyAttemptComplete(requestContext, request, attempt, null, failureThrowable, attemptStart);
                 throw e;
             } catch (IOException e) {
+                failureThrowable = e;
+                notifyAttemptComplete(requestContext, request, attempt, null, failureThrowable, attemptStart);
                 if (last || !retryPolicy.isRetryTransport()) {
                     throw e;
                 }
                 response = null;
                 failure = e.getClass().getSimpleName();
+            }
+
+            if (response != null) {
+                notifyAttemptComplete(requestContext, request, attempt, response, failureThrowable, attemptStart);
             }
 
             if (response != null && (last || !isRetryableStatus(response))) {
@@ -642,14 +837,14 @@ public class HttpTemplate {
                     try {
                         probePayloadDecode(response);
                     } catch (RuntimeException e) {
-                        scheduleRetry(attempt, maxAttempts, "decode (" + e.getClass().getSimpleName() + ")", response);
+                        scheduleRetry(attempt, maxAttempts, "decode (" + e.getClass().getSimpleName() + ")", response, requestContext, request, e);
                         continue;
                     }
                 }
                 return response;
             }
 
-            scheduleRetry(attempt, maxAttempts, failure, response);
+            scheduleRetry(attempt, maxAttempts, failure, response, requestContext, request, failureThrowable);
         }
     }
 
@@ -657,7 +852,15 @@ public class HttpTemplate {
     // [0, bound], or the deterministic max(bound, Retry-After) when the
     // failed response carries a parseable Retry-After header, delta-seconds
     // or HTTP-date (ADR-0008 Aspect 4, ADR-0009 candidate 3)
-    private void scheduleRetry(int attempt, int maxAttempts, String failure, WireResponse response) throws InterruptedException {
+    private void scheduleRetry(
+            int attempt,
+            int maxAttempts,
+            String failure,
+            WireResponse response,
+            RequestContext requestContext,
+            WireRequest request,
+            Throwable failureThrowable
+    ) throws InterruptedException {
         // ADR-0015 Aspect 2: every scheduled retry discards the failed
         // attempt — its stream (if any) is closed before the wait; a
         // transport failure carries no response and is a no-op
@@ -665,6 +868,7 @@ public class HttpTemplate {
         long delayMillis = retryPolicy.nextDelayMillis(attempt, retryAfterDelayMillis(response), ThreadLocalRandom.current());
         logger.log(System.Logger.Level.DEBUG,
                 "Attempt " + attempt + "/" + maxAttempts + " failed: " + failure + " — retrying in " + delayMillis + " ms");
+        notifyRetry(requestContext, request, attempt, failureThrowable, delayMillis);
         if (delayMillis > 0) {
             Thread.sleep(delayMillis);
         }
@@ -845,12 +1049,20 @@ public class HttpTemplate {
     // mapping stays untouched. The decode axis (ADR-0011 Aspect 2) is mirrored
     // verbatim: a status-acceptable response is additionally probe-checked
     // under the distinct opt-in, exactly as the sync twin does.
-    private CompletableFuture<WireResponse> executeAsyncWithRetries(WireRequest request) {
+    private CompletableFuture<WireResponse> executeAsyncWithRetries(
+            WireRequest request,
+            RequestContext requestContext,
+            AtomicInteger attemptsRef
+    ) {
         int hopsLeft = followRedirectsNumber == null ? 0 : followRedirectsNumber;
         if (!retryPolicy.isEnabled()) {
-            return executeAsyncWithRedirects(request, hopsLeft);
+            long attemptStart = System.nanoTime();
+            return executeAsyncWithRedirects(request, hopsLeft).whenComplete((response, failure) -> {
+                Throwable unwrapped = failure != null ? unwrapCause(failure) : null;
+                notifyAttemptComplete(requestContext, request, 1, response, unwrapped, attemptStart);
+            });
         }
-        return attemptAsync(request, 1, retryPolicy.maxAttempts(), hopsLeft);
+        return attemptAsync(request, 1, retryPolicy.maxAttempts(), hopsLeft, requestContext, attemptsRef);
     }
 
     // One attempt, or the next one after the wait: the exact sync decisions —
@@ -859,17 +1071,31 @@ public class HttpTemplate {
     // pass through to exchangeAsync's mapping. The handle step yields the
     // next stage (handle unwraps a returned CompletionStage at runtime); the
     // identity compose only fixes the static type.
-    private CompletableFuture<WireResponse> attemptAsync(WireRequest request, int attempt, int maxAttempts, int hopsLeft) {
+    private CompletableFuture<WireResponse> attemptAsync(
+            WireRequest request,
+            int attempt,
+            int maxAttempts,
+            int hopsLeft,
+            RequestContext requestContext,
+            AtomicInteger attemptsRef
+    ) {
+        attemptsRef.set(attempt);
         boolean last = attempt == maxAttempts;
+        long attemptStart = System.nanoTime();
         return executeAsyncWithRedirects(request, hopsLeft)
                 .<CompletableFuture<WireResponse>>handle((response, failure) -> {
-                    if (failure != null) {
-                        Throwable cause = unwrapCause(failure);
+                    Throwable cause = failure != null ? unwrapCause(failure) : null;
+                    if (cause != null) {
+                        notifyAttemptComplete(requestContext, request, attempt, null, cause, attemptStart);
                         if (!(cause instanceof IOException) || last || !retryPolicy.isRetryTransport()) {
                             return CompletableFuture.<WireResponse>failedFuture(cause);
                         }
-                        return scheduleAsyncRetry(request, attempt, maxAttempts, cause.getClass().getSimpleName(), null, hopsLeft);
+                        return scheduleAsyncRetry(request, attempt, maxAttempts, cause.getClass().getSimpleName(), null, hopsLeft, requestContext, cause, attemptsRef);
                     }
+                    Throwable statusFailure = !isExpectedStatus(response.statusCode())
+                            ? createUnexpectedStatusException(response.statusCode(), extractResponseBodyString(response), response.headers())
+                            : null;
+                    notifyAttemptComplete(requestContext, request, attempt, response, statusFailure, attemptStart);
                     if (last || !isRetryableStatus(response)) {
                         // ADR-0011 Aspect 2, async twin: the status logic accepted
                         // the response, but a complete body the codec cannot bind
@@ -887,12 +1113,12 @@ public class HttpTemplate {
                                 probePayloadDecode(response);
                             } catch (RuntimeException e) {
                                 return scheduleAsyncRetry(request, attempt, maxAttempts,
-                                        "decode (" + e.getClass().getSimpleName() + ")", response, hopsLeft);
+                                        "decode (" + e.getClass().getSimpleName() + ")", response, hopsLeft, requestContext, e, attemptsRef);
                             }
                         }
                         return CompletableFuture.<WireResponse>completedFuture(response);
                     }
-                    return scheduleAsyncRetry(request, attempt, maxAttempts, "HTTP " + response.statusCode(), response, hopsLeft);
+                    return scheduleAsyncRetry(request, attempt, maxAttempts, "HTTP " + response.statusCode(), response, hopsLeft, requestContext, statusFailure, attemptsRef);
                 })
                 .thenCompose(Function.identity());
     }
@@ -900,23 +1126,33 @@ public class HttpTemplate {
     // The async wait: the sync twin's exact DEBUG line, then the next attempt
     // after the delay on CompletableFuture.delayedExecutor; a zero jitter draw
     // skips the scheduler call, as the sync twin skips Thread.sleep(0)
-    private CompletableFuture<WireResponse> scheduleAsyncRetry(WireRequest request, int attempt, int maxAttempts,
-                                                               String failure, WireResponse response, int hopsLeft) {
+    private CompletableFuture<WireResponse> scheduleAsyncRetry(
+            WireRequest request,
+            int attempt,
+            int maxAttempts,
+            String failure,
+            WireResponse response,
+            int hopsLeft,
+            RequestContext requestContext,
+            Throwable failureThrowable,
+            AtomicInteger attemptsRef
+    ) {
         // ADR-0015 Aspect 2, async twin: the same discard — the failed
         // attempt's stream (if any) is closed before the deferred wait
         closeIntermediateStream(response);
         long delayMillis = retryPolicy.nextDelayMillis(attempt, retryAfterDelayMillis(response), ThreadLocalRandom.current());
         logger.log(System.Logger.Level.DEBUG,
                 "Attempt " + attempt + "/" + maxAttempts + " failed: " + failure + " — retrying in " + delayMillis + " ms");
+        notifyRetry(requestContext, request, attempt, failureThrowable, delayMillis);
         if (delayMillis <= 0) {
-            return attemptAsync(request, attempt + 1, maxAttempts, hopsLeft);
+            return attemptAsync(request, attempt + 1, maxAttempts, hopsLeft, requestContext, attemptsRef);
         }
         Executor scheduler = executor != null
                 ? CompletableFuture.delayedExecutor(delayMillis, TimeUnit.MILLISECONDS, executor)
                 : CompletableFuture.delayedExecutor(delayMillis, TimeUnit.MILLISECONDS);
         return CompletableFuture.runAsync(() -> {
         }, scheduler)
-                .thenCompose(ignored -> attemptAsync(request, attempt + 1, maxAttempts, hopsLeft));
+                .thenCompose(ignored -> attemptAsync(request, attempt + 1, maxAttempts, hopsLeft, requestContext, attemptsRef));
     }
 
     // The next redirect hop, or null if the chain stops here
@@ -1865,6 +2101,24 @@ public class HttpTemplate {
      */
     public DownloadProgressListener getDownloadProgressListener() {
         return downloadProgressListener;
+    }
+
+    /**
+     * Sets the metrics and telemetry listener (ADR-0036).
+     *
+     * @param metricsListener the listener, or {@code null}
+     */
+    public void setMetricsListener(ClientMetricsListener metricsListener) {
+        this.metricsListener = metricsListener;
+    }
+
+    /**
+     * The metrics and telemetry listener (ADR-0036).
+     *
+     * @return the listener, or {@code null}
+     */
+    public ClientMetricsListener getMetricsListener() {
+        return metricsListener;
     }
 
     private void handleOnError(int statusCode, String payload, List<Header> responseHeaders) {

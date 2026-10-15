@@ -1189,7 +1189,47 @@ Gates (session #113, clean rebuild):
 - `javadoc` 0 warnings under permanent `-Xdoclint:all -Werror`.
 - Zero external runtime dependencies preserved (0 dependencies in Maven POM).
 
-After the epic: candidate #1 — test-javadoc (ADR-0013 Non-goals); candidate #2 — Client Metrics & Observability SPI (Micrometer / OpenTelemetry readiness). ADR number **0036** free.
+After the epic: candidate #1 — test-javadoc (ADR-0013 Non-goals); candidate #2 — Client Metrics & Observability SPI (Micrometer / OpenTelemetry readiness) — done, section below. ADR number **0036** — client metrics epic, **0037** free.
+
+## Client Metrics & Observability SPI (ADR-0036) — COMPLETE ✅ (2026-10-15, unreleased)
+
+> Source of truth (concept, architecture decisions, metrics contract, lifecycle hooks, validation, test strategy, status):
+> [`docs/0.10.0/ADR-0036-client-metrics-and-observability-spi.md`](docs/0.10.0/ADR-0036-client-metrics-and-observability-spi.md).
+> Session #114 (agent-loop). Zero-dependency metrics & observability SPI for seamless integration with Micrometer, OpenTelemetry, Dropwizard, or custom in-house monitoring (candidate #2 from DRAFT.md).
+> Introduces `@FunctionalInterface ClientMetricsListener` with lifecycle callbacks (`onCallStart`, `onRetry`, `onAttemptComplete`, and mandatory `onCallComplete(CallMetrics)`),
+> immutable `CallMetrics` record / contract exposing timing (`duration`), attempt count (`attempts`), wire sizes (`requestBytes`, `responseBytes`), target (`method`, `uri`), context (`RequestContext`), wire models (`WireRequest`, `WireResponse`), and failures (`failure`),
+> `@WithMetrics` declarative annotation for controller interfaces and methods,
+> client-level configuration via `JRestlyClient.Builder.metricsListener(...)` and `ModuleInfo`,
+> composite listener support via `ClientMetricsListener.composite(...)` and upfront fail-fast controller validation.
+> 100% backward compatible and zero-dependency (Java 21 stdlib only).
+
+Key decisions (ADR-0036):
+- **Zero-Dependency SPI Design (`ru.jrestly.metrics`):**
+  - Standard Java 21 core with no external dependencies (zero micrometer/opentelemetry compile/runtime deps). Third-party monitoring libraries integrate by implementing `ClientMetricsListener`.
+  - Immutable `CallMetrics` interface and `SimpleCallMetrics` canonical record with validation.
+  - `@FunctionalInterface ClientMetricsListener` provides `onCallComplete(CallMetrics)` as the core aggregation hook, plus default lifecycle hooks `onCallStart`, `onRetry`, and `onAttemptComplete` for active in-flight request gauges and retry counters.
+  - Safe failure isolation: listener errors are caught and logged at `WARNING` level; listener exceptions never fail or abort user HTTP calls.
+- **Declarative & Programmatic Configuration:**
+  - Programmatic: `JRestlyClient.Builder.metricsListener(ClientMetricsListener)` and `ModuleInfo.getMetricsListener()`.
+  - Declarative: `@WithMetrics(MyMetricsListener.class)` on controller interfaces (`ElementType.TYPE`) and individual methods (`ElementType.METHOD`), with repeatable `@WithMetrics.List`.
+  - Automatic composition: client-level listener, class-level listener, and method-level listener are automatically merged via `ClientMetricsListener.composite(...)`.
+- **Fail-Fast Upfront Validation (`ControllerValidator`):**
+  - Rejects listener classes without accessible public no-arg constructors, interfaces, abstract classes, or types not implementing `ClientMetricsListener`.
+- **Precise Timing and Byte Tracking:**
+  - High-precision duration tracking (`System.nanoTime()`).
+  - Wire request bytes computed from `byte[]` payload, string charset encoding, or `Content-Length` header on streaming bodies (`Path`, `File`).
+  - Wire response bytes computed from raw received payload or decompressed bytes.
+- **Full test coverage:** 18 new tests (+18 cases, total suite 767/767 across 89 classes) spanning:
+  - `ClientMetricsValidationTest` (8 unit tests: default null metrics listener in ModuleInfo/SimpleModuleInfo/JRestlyClient, SimpleCallMetrics getters and immutability invariants, CompositeClientMetricsListener delegation, ClientMetricsListener.composite() flattening/null-filtering, ControllerValidator upfront rejection of abstract classes / non-listener classes / private constructor classes, upfront pass for valid @WithMetrics);
+  - `ClientMetricsWireMockTest` (10 WireMock integration tests: synchronous GET call metrics and duration, POST call metrics with exact request/response bytes, retry metrics with multiple attempts and onRetry/onAttemptComplete verification, 500 server error metrics with wire response, handled exception with status code 422, in-flight gauge tracking via onCallStart/onCallComplete, asynchronous twin CompletableFuture call metrics, declarative @WithMetrics controller method, fault tolerance when listener throws RuntimeException, transport failure on dead port).
+
+Gates (session #114, clean rebuild):
+- `./gradlew test` **767/767** (89 classes, 0 failures/errors; +18 tests in ADR-0036).
+- `compileJava` and `compileTestJava` 0 warnings under permanent `-Xlint:all -Werror`.
+- `javadoc` 0 warnings under permanent `-Xdoclint:all -Werror`.
+- Zero external runtime dependencies preserved (0 dependencies in Maven POM).
+
+After the epic: candidate #1 — test-javadoc (ADR-0013 Non-goals); candidate #2 — HTTP/2 Server Push / Custom Headers Frame Inspection; candidate #3 — Resilience Circuit Breaker / Rate Limiting. ADR number **0037** free.
 
 ## Post-0.5.0 shortlist (not scheduled — see ADR-0003)
 
