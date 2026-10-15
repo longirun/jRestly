@@ -9,6 +9,7 @@ import ru.jrestly.json.JsonCodec;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLParameters;
 import java.net.http.HttpClient;
+import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.Executor;
 import java.util.function.UnaryOperator;
@@ -141,6 +142,17 @@ public class JRestlyClient extends AbstractHttpClient {
         }
 
         /**
+         * The connect timeout as a {@link Duration} (default 5 000 ms).
+         *
+         * @param duration the connect timeout, not {@code null} and not negative
+         * @return this builder, for chaining
+         */
+        public Builder connectTimeout(Duration duration) {
+            moduleInfoBuilder.connectTimeout(duration);
+            return this;
+        }
+
+        /**
          * The socket (request) timeout in milliseconds (default 30 000).
          *
          * @param ms the socket timeout in milliseconds
@@ -148,6 +160,17 @@ public class JRestlyClient extends AbstractHttpClient {
          */
         public Builder socketTimeout(int ms) {
             moduleInfoBuilder.socketTimeout(ms);
+            return this;
+        }
+
+        /**
+         * The socket (request) timeout as a {@link Duration} (default 30 000 ms).
+         *
+         * @param duration the socket timeout, not {@code null} and not negative
+         * @return this builder, for chaining
+         */
+        public Builder socketTimeout(Duration duration) {
+            moduleInfoBuilder.socketTimeout(duration);
             return this;
         }
 

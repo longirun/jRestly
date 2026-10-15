@@ -40,14 +40,15 @@
 * я думаю еще в реалном исползовании есть миллион важных вещей?
 Это не приказ бросаться сразу все делать, просто можно учесть и разобрать в будущем. 
 
-[2026-10-15 02:41] Агент (сессия #102): Закрыт эпик гибкости multipart/form-data и form-urlencoded (ADR-0024): JSON DTO части в multipart через `JsonCodec` (`@RequestParam(contentType = "application/json")`), согласование кодировок (charsets per part), фабрики `MultipartPart` и null-safety. 517/517 тестов зелёные.
-
 [2026-10-15 03:04] Агент (сессия #103): Реализован эпик шаблонизации URI, контроля кодирования путей и поддержки массивов (ADR-0025): `@PathVariable(encoded = true)`, универсальные массивы (включая примитивные `int[]`) в параметрах/заголовках/формах, RFC 3986 `#fragment` и null-safe query флаги. 536/536 тестов зелёные.
 
-[2026-10-15 03:32] Агент (сессия #104): Реализован эпик поддержки Virtual Threads и кастомных Executor (ADR-0026):
-1. **Виртуальные потоки в один вызов:** `JRestlyClient.builder().useVirtualThreads()` переводит исполнение асинхронных `CompletableFuture<T>` методов, стриминга и интерцепторов на легковесные Java 21 виртуальные потоки (`Executors.newVirtualThreadPerTaskExecutor()`).
-2. **Кастомный `Executor`:** `builder.executor(Executor)` позволяет задать выделенный пул потоков для изоляции ресурсов (bulkhead), трассировки (MDC/OTel) или кастомного именования потоков.
-3. **Безопасное управление ресурсами (Lifecycle):** при вызове `client.close()` автоматически и безопасно завершается внутренний виртуальный тред исполнитель, не затрагивая внешние переданные пользователем executor'ы.
-4. **Асинхронные пайплайны и ретраи:** все этапы (`thenApplyAsync`, `whenCompleteAsync`) и отложенный запуск retry backoff (`CompletableFuture.delayedExecutor`) диспетчеризируются на настроенный executor/virtual threads.
-Написано 13 новых тестов (8 в `ExecutorConfigTest`, 5 в `VirtualThreadAndExecutorWireMockTest`).
-Гейты: **549/549** тестов (66 классов) зелёные, 0 javac/javadoc warnings под `-Werror`, zero-dep core строго сохранен.
+[2026-10-15 03:32] Агент (сессия #104): Реализован эпик поддержки Virtual Threads и кастомных Executor (ADR-0026): `useVirtualThreads()`, `executor(Executor)`, lifecycle client.close(), async CompletableFuture и retry scheduler на виртуальных потоках. 549/549 тестов зелёные.
+
+[2026-10-15 04:02] Агент (сессия #105): Реализован эпик декларативного управления таймаутами per-method и per-interface (ADR-0027):
+1. **Аннотация `@Timeout`:** `@Target({ElementType.METHOD, ElementType.TYPE})` с `long value()` и `TimeUnit unit() default TimeUnit.MILLISECONDS`. Позволяет гибко разграничивать быстрые health check вызовы (`@Timeout(500)`), стандартные методы и тяжелые отчеты/выгрузки/LLM-стримы (`@Timeout(value = 5, unit = TimeUnit.MINUTES)`).
+2. **Модель приоритетов:** `Method @Timeout` > `Sub-interface @Timeout` > `Super-interface @Timeout` > `Client socketTimeout`. Дефолты полностью сохранены (30 000 ms).
+3. **Эргономика `Duration` в билдерах:** добавлены `socketTimeout(Duration)` и `connectTimeout(Duration)` в `SimpleModuleInfo.Builder` и `JRestlyClient.Builder` с fail-fast NPE и non-negative валидацией.
+4. **Fail-fast валидация:** `ControllerValidator` проверяет строго положительные значения `@Timeout` на методах и интерфейсах на этапе создания прокси контроллера (`ControllerValidationException`).
+5. **Сквозной транспорт:** таймаут связывается с `HttpRequest.Builder.timeout(effectiveTimeout)` — работает для синхронных вызовов (`RuntimeException(HttpTimeoutException)`), асинхронных `CompletableFuture<T>`, стриминга и прозрачно интегрируется с политикой `@Retry` (транспортный ретрай при таймауте).
+Написано 13 новых тестов (6 в `TimeoutConfigTest`, 7 в `TimeoutWireMockTest`).
+Гейты: **562/562** тестов (68 классов) зелёные, 0 warnings под `-Werror`, zero-dep core сохранен.

@@ -19,6 +19,7 @@ import ru.jrestly.annotation.RequestHeader;
 import ru.jrestly.annotation.RequestParam;
 import ru.jrestly.annotation.Retry;
 import ru.jrestly.annotation.SetAuthDetails;
+import ru.jrestly.annotation.Timeout;
 
 import java.io.File;
 import java.io.InputStream;
@@ -178,6 +179,7 @@ public class HttpTemplateBuilder {
         result.setResponseInterceptors(moduleInfo.getResponseInterceptors());
         result.setResponseHeadersHolder(resolveResponseHeadersHolder());
         result.setExecutor(executor != null ? executor : moduleInfo.getExecutor());
+        result.setTimeout(resolveTimeout());
         result.setControllerClass(controller);
         result.setMethod(method);
         result.setArgs(args);
@@ -756,6 +758,36 @@ public class HttpTemplateBuilder {
         }
 
         return moduleInfo.getRetryPolicy();
+    }
+
+    private Duration resolveTimeout() {
+        if (method != null && method.isAnnotationPresent(Timeout.class)) {
+            Timeout ann = method.getAnnotation(Timeout.class);
+            if (ann.value() <= 0) {
+                throw new IllegalArgumentException(method.getName() + "(): @Timeout value must be strictly positive, was " + ann.value());
+            }
+            if (ann.unit() == null) {
+                throw new IllegalArgumentException(method.getName() + "(): @Timeout unit must not be null");
+            }
+            return Duration.of(ann.value(), ann.unit().toChronoUnit());
+        }
+
+        List<Class<?>> hierarchy = collectInterfaceHierarchy(controller);
+        for (int i = hierarchy.size() - 1; i >= 0; i--) {
+            Class<?> iface = hierarchy.get(i);
+            if (iface.isAnnotationPresent(Timeout.class)) {
+                Timeout ann = iface.getAnnotation(Timeout.class);
+                if (ann.value() <= 0) {
+                    throw new IllegalArgumentException(iface.getSimpleName() + ": @Timeout value must be strictly positive, was " + ann.value());
+                }
+                if (ann.unit() == null) {
+                    throw new IllegalArgumentException(iface.getSimpleName() + ": @Timeout unit must not be null");
+                }
+                return Duration.of(ann.value(), ann.unit().toChronoUnit());
+            }
+        }
+
+        return null;
     }
 
     private static void appendHeaderValues(List<Header> result, String name, Object value) {

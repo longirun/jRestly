@@ -1,20 +1,20 @@
-# DRAFT: активная зона после закрытия эпика Virtual Threads & Executor Customization (ADR-0026)
+# DRAFT: активная зона после закрытия эпика Per-Method & Interface Timeout Controls (ADR-0027)
 
-> Эпик Virtual Threads & Executor Customization (ADR-0026, `docs/0.10.0/`) закрыт 5/5 (сессия #104):
-> концепт и ADR-0026 → `default Executor getExecutor()` и `default boolean isVirtualThreads()` в `ModuleInfo` +
-> fluent `executor(Executor)`, `virtualThreads(boolean)`, `useVirtualThreads()` в `SimpleModuleInfo.Builder` и `JRestlyClient.Builder` +
-> wiring `builder.executor(...)` в `AbstractHttpClient.createConnection()` с управлением жизненным циклом `managedExecutorService.close()` +
-> асинхронный пайплайн (`sendAsync`, `exchangeAsync` thenApplyAsync/whenCompleteAsync) и scheduler retry backoff (`CompletableFuture.delayedExecutor`) на настроенном executor/virtual threads в `HttpTemplate` +
-> unit тесты (`ExecutorConfigTest`, 8 тестов) и WireMock интеграционные тесты (`VirtualThreadAndExecutorWireMockTest`, 5 тестов, итого +13 тестов) →
-> дистилляция в ROADMAP («Virtual Threads & Executor Customization (ADR-0026) — COMPLETE ✅») + гейты 549/549 тестов (66 классов).
+> Эпик Per-Method & Interface-Level Timeout Controls (ADR-0027, `docs/0.10.0/`) закрыт 5/5 (сессия #105):
+> концепт и ADR-0027 → `@Timeout` аннотация (`ElementType.METHOD`, `ElementType.TYPE`) с `long value()` и `TimeUnit unit()` +
+> fluent `connectTimeout(Duration)` и `socketTimeout(Duration)` в `SimpleModuleInfo.Builder` и `JRestlyClient.Builder` +
+> валидация положительных таймаутов в `ControllerValidator` (`ControllerValidationException`) и backstop в `HttpTemplateBuilder` +
+> wiring таймаута в `HttpTemplate.toHttpRequest(WireRequest)` с поддержкой переопределений method > sub-interface > super-interface > client +
+> unit тесты (`TimeoutConfigTest`, 6 тестов) и WireMock интеграционные тесты (`TimeoutWireMockTest`, 7 тестов, итого +13 тестов) →
+> дистилляция в ROADMAP («Per-Method & Interface-Level Timeout Controls (@Timeout, ADR-0027) — COMPLETE ✅») + гейты 562/562 тестов (68 классов).
 > Следующий ход — свободный, выбор из активной зоны.
 
 ## Активная зона (кандидаты на следующий эпик)
 
 - **Кандидат №1 — test-javadoc** (ADR-0013 Non-goals):
   Test-source javadoc вынесен за скобки аудита; наведение лоска в тестовых классах.
-- **Кандидат №2 — Per-method timeout controls (`@Timeout`)**:
-  Декларативная перегрузка socket timeout per-method для медленных отчетов или быстрых health check вызовов.
+- **Кандидат №2 — Custom error decoders / typed error hierarchy refinement**:
+  Декларативное сопоставление подклассов ошибок по телу или статусам, расширение типобезопасной обработки ошибок без комбайнов.
 
 ---
 
@@ -42,6 +42,7 @@
   все направления зрелости последовательно реализуются: SSL/mTLS (ADR-0020),
   прозрачный GZIP/Deflate (ADR-0021), доступ к метаданным заголовков (ADR-0022),
   условные запросы & Optional (ADR-0023), гибкость form-data/multipart (ADR-0024),
-  шаблоны URI и массивы параметров (ADR-0025).
+  шаблоны URI и массивы параметров (ADR-0025), виртуальные потоки (ADR-0026),
+  декларативные таймауты (ADR-0027).
 - **Коммиты — краткие, не дублируют ченджлог** (Антон).
 - **Объём одной сессии в 2–3 раза меньше** — один маленький шаг.

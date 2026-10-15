@@ -1,0 +1,182 @@
+package ru.jrestly;
+
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import ru.jrestly.annotation.Get;
+import ru.jrestly.annotation.Timeout;
+import ru.jrestly.fixtures.TestModuleInfo;
+import ru.jrestly.http.HttpTemplate;
+import ru.jrestly.http.HttpTemplateBuilder;
+
+import java.lang.reflect.Method;
+import java.net.http.HttpClient;
+import java.time.Duration;
+import java.util.List;
+import java.util.concurrent.TimeUnit;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+class TimeoutConfigTest {
+
+    interface SuperApi {
+        @Get(path = "/super")
+        String superMethod();
+    }
+
+    @Timeout(value = 10, unit = TimeUnit.SECONDS)
+    interface InterfaceTimeoutApi {
+        @Get(path = "/inherited")
+        String inherited();
+
+        @Timeout(500)
+        @Get(path = "/override")
+        String overridden();
+    }
+
+    @Timeout(2000)
+    interface ParentApi {
+        @Get(path = "/parent")
+        String parentMethod();
+    }
+
+    @Timeout(500)
+    interface ChildApi extends ParentApi {
+        @Get(path = "/child")
+        String childMethod();
+    }
+
+    interface InvalidMethodTimeoutApi {
+        @Timeout(0)
+        @Get(path = "/invalid-method-zero")
+        String zeroTimeout();
+
+        @Timeout(-100)
+        @Get(path = "/invalid-method-negative")
+        String negativeTimeout();
+    }
+
+    @Timeout(0)
+    interface InvalidInterfaceTimeoutApi {
+        @Get(path = "/ping")
+        String ping();
+    }
+
+    @Test
+    @DisplayName("ModuleInfo and SimpleModuleInfo provide default 30s socket timeout")
+    void defaultSocketTimeout() {
+        TestModuleInfo defaultInfo = new TestModuleInfo("http://localhost");
+        assertEquals(30_000, defaultInfo.getSocketTimeout());
+
+        SimpleModuleInfo info = SimpleModuleInfo.builder()
+                .baseUrl("http://localhost")
+                .build();
+        assertEquals(30_000, info.getSocketTimeout());
+        assertEquals(5_000, info.getConnectTimeout());
+    }
+
+    @Test
+    @DisplayName("SimpleModuleInfo.Builder Duration overloads configure socket and connect timeouts")
+    void simpleModuleInfoDurationOverloads() {
+        SimpleModuleInfo info = SimpleModuleInfo.builder()
+                .baseUrl("http://localhost")
+                .connectTimeout(Duration.ofSeconds(2))
+                .socketTimeout(Duration.ofSeconds(45))
+                .build();
+
+        assertEquals(2_000, info.getConnectTimeout());
+        assertEquals(45_000, info.getSocketTimeout());
+    }
+
+    @Test
+    @DisplayName("SimpleModuleInfo.Builder rejects null and negative durations")
+    void simpleModuleInfoDurationValidation() {
+        SimpleModuleInfo.Builder builder = SimpleModuleInfo.builder()
+                .baseUrl("http://localhost");
+
+        assertThrows(NullPointerException.class, () -> builder.connectTimeout((Duration) null));
+        IllegalArgumentException e1 = assertThrows(IllegalArgumentException.class,
+                () -> builder.connectTimeout(Duration.ofMillis(-1)));
+        assertTrue(e1.getMessage().contains("connectTimeout duration must not be negative"));
+
+        assertThrows(NullPointerException.class, () -> builder.socketTimeout((Duration) null));
+        IllegalArgumentException e2 = assertThrows(IllegalArgumentException.class,
+                () -> builder.socketTimeout(Duration.ofSeconds(-5)));
+        assertTrue(e2.getMessage().contains("socketTimeout duration must not be negative"));
+    }
+
+    @Test
+    @DisplayName("JRestlyClient.Builder Duration overloads configure timeouts and validate inputs")
+    void jRestlyClientDurationOverloads() {
+        JRestlyClient client = JRestlyClient.builder()
+                .baseUrl("http://localhost")
+                .connectTimeout(Duration.ofMillis(1500))
+                .socketTimeout(Duration.ofSeconds(12))
+                .build();
+
+        assertEquals(1500, client.getModuleInfo().getConnectTimeout());
+        assertEquals(12_000, client.getModuleInfo().getSocketTimeout());
+
+        JRestlyClient.Builder builder = JRestlyClient.builder();
+        assertThrows(NullPointerException.class, () -> builder.connectTimeout((Duration) null));
+        assertThrows(NullPointerException.class, () -> builder.socketTimeout((Duration) null));
+        assertThrows(IllegalArgumentException.class, () -> builder.connectTimeout(Duration.ofMillis(-1)));
+        assertThrows(IllegalArgumentException.class, () -> builder.socketTimeout(Duration.ofMillis(-1)));
+    }
+
+    @Test
+    @DisplayName("ControllerValidator detects non-positive @Timeout on methods and interfaces")
+    void controllerValidatorRejectsNonPositiveTimeouts() {
+        List<String> methodProblems = ControllerValidator.validate(InvalidMethodTimeoutApi.class);
+        assertTrue(methodProblems.stream().anyMatch(p -> p.contains("zeroTimeout(): @Timeout value must be strictly positive, was 0")));
+        assertTrue(methodProblems.stream().anyMatch(p -> p.contains("negativeTimeout(): @Timeout value must be strictly positive, was -100")));
+
+        List<String> ifaceProblems = ControllerValidator.validate(InvalidInterfaceTimeoutApi.class);
+        assertTrue(ifaceProblems.stream().anyMatch(p -> p.contains("InvalidInterfaceTimeoutApi: @Timeout value must be strictly positive, was 0")));
+
+        JRestlyClient client = JRestlyClient.builder()
+                .baseUrl("http://localhost")
+                .validateControllers(true)
+                .build();
+
+        ControllerValidationException ex1 = assertThrows(ControllerValidationException.class,
+                () -> client.createController(InvalidMethodTimeoutApi.class));
+        assertTrue(ex1.getMessage().contains("strictly positive"));
+
+        ControllerValidationException ex2 = assertThrows(ControllerValidationException.class,
+                () -> client.createController(InvalidInterfaceTimeoutApi.class));
+        assertTrue(ex2.getMessage().contains("strictly positive"));
+    }
+
+    @Test
+    @DisplayName("HttpTemplateBuilder resolves timeouts with correct precedence")
+    void timeoutPrecedenceResolution() throws NoSuchMethodException {
+        ModuleInfo moduleInfo = SimpleModuleInfo.builder()
+                .baseUrl("http://localhost")
+                .socketTimeout(25_000)
+                .build();
+        HttpClient httpClient = HttpClient.newHttpClient();
+
+        // 1. No annotation -> null template timeout (falls back to moduleInfo in toHttpRequest)
+        Method superMethod = SuperApi.class.getMethod("superMethod");
+        HttpTemplate template1 = new HttpTemplateBuilder(moduleInfo, httpClient, superMethod, new Object[0], SuperApi.class).build();
+        assertNull(template1.getTimeout());
+
+        // 2. Interface level timeout
+        Method inheritedMethod = InterfaceTimeoutApi.class.getMethod("inherited");
+        HttpTemplate template2 = new HttpTemplateBuilder(moduleInfo, httpClient, inheritedMethod, new Object[0], InterfaceTimeoutApi.class).build();
+        assertEquals(Duration.ofSeconds(10), template2.getTimeout());
+
+        // 3. Method level overrides interface level
+        Method overriddenMethod = InterfaceTimeoutApi.class.getMethod("overridden");
+        HttpTemplate template3 = new HttpTemplateBuilder(moduleInfo, httpClient, overriddenMethod, new Object[0], InterfaceTimeoutApi.class).build();
+        assertEquals(Duration.ofMillis(500), template3.getTimeout());
+
+        // 4. Sub-interface overrides super-interface
+        Method childMethod = ChildApi.class.getMethod("childMethod");
+        HttpTemplate template4 = new HttpTemplateBuilder(moduleInfo, httpClient, childMethod, new Object[0], ChildApi.class).build();
+        assertEquals(Duration.ofMillis(500), template4.getTimeout());
+    }
+}

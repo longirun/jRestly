@@ -7,6 +7,7 @@ import ru.jrestly.annotation.Post;
 import ru.jrestly.annotation.Put;
 import ru.jrestly.annotation.RequestDefaultParam;
 import ru.jrestly.annotation.RequestHeader;
+import ru.jrestly.annotation.Timeout;
 import ru.jrestly.http.RequestType;
 import ru.jrestly.http.ResponseHeaders;
 
@@ -79,6 +80,11 @@ public final class ControllerValidator {
                 problems.add(current.getSimpleName() + ": @RequestDefaultParam name must not be blank");
             }
         }
+        for (Timeout timeout : current.getAnnotationsByType(Timeout.class)) {
+            if (timeout.value() <= 0) {
+                problems.add(current.getSimpleName() + ": @Timeout value must be strictly positive, was " + timeout.value());
+            }
+        }
         for (Class<?> parent : current.getInterfaces()) {
             collectClassProblems(parent, problems, visited);
         }
@@ -148,6 +154,13 @@ public final class ControllerValidator {
         for (RequestDefaultParam param : resolveVerbDefaultParams(method)) {
             if (param.name().isBlank()) {
                 problems.add(method.getName() + "(): @RequestDefaultParam name must not be blank");
+            }
+        }
+
+        if (method.isAnnotationPresent(Timeout.class)) {
+            Timeout timeout = method.getAnnotation(Timeout.class);
+            if (timeout.value() <= 0) {
+                problems.add(method.getName() + "(): @Timeout value must be strictly positive, was " + timeout.value());
             }
         }
 

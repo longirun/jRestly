@@ -133,6 +133,7 @@ public class HttpTemplate {
     private Object[] args;
     private ResponseHeaders responseHeadersHolder;
     private Executor executor;
+    private Duration timeout;
 
     /**
      * Creates an empty template. Not intended for direct use: instances
@@ -1077,8 +1078,12 @@ public class HttpTemplate {
     }
 
     private HttpRequest toHttpRequest(WireRequest request) {
+        Duration effectiveTimeout = timeout != null
+                ? timeout
+                : Duration.ofMillis(moduleInfo.getSocketTimeout());
+
         HttpRequest.Builder builder = HttpRequest.newBuilder(request.uri())
-                .timeout(Duration.ofMillis(moduleInfo.getSocketTimeout()));
+                .timeout(effectiveTimeout);
 
         if (httpVersion != null) {
             builder.version(httpVersion);
@@ -1347,6 +1352,24 @@ public class HttpTemplate {
      */
     public Executor getExecutor() {
         return executor;
+    }
+
+    /**
+     * Sets the request timeout configured for this template (ADR-0027).
+     *
+     * @param timeout the timeout, or {@code null} to use client default
+     */
+    public void setTimeout(Duration timeout) {
+        this.timeout = timeout;
+    }
+
+    /**
+     * Returns the request timeout configured for this template, or {@code null} if default (ADR-0027).
+     *
+     * @return the timeout, or {@code null}
+     */
+    public Duration getTimeout() {
+        return timeout;
     }
 
     /**

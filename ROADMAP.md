@@ -861,9 +861,34 @@ Gates (session #104, clean rebuild):
 - `./gradlew test` **549/549** (66 classes, 0 failures/errors; +13 tests in ADR-0026).
 - `compileJava` and `compileTestJava` 0 warnings under permanent `-Xlint:all -Werror`.
 - `javadoc` 0 warnings under permanent `-Xdoclint:all -Werror`.
+- After the epic: candidate #1 — test-javadoc (ADR-0013 Non-goals); candidate #2 — per-method timeout controls (@Timeout) — done, section below. ADR number **0027** — timeout controls epic, **0028** free.
+
+## Per-Method & Interface-Level Timeout Controls (@Timeout, ADR-0027) — COMPLETE ✅ (2026-10-15, unreleased)
+
+> Source of truth (concept, architecture decisions, precedence model, test strategy, status):
+> [`docs/0.10.0/ADR-0027-per-method-and-interface-timeout-controls.md`](docs/0.10.0/ADR-0027-per-method-and-interface-timeout-controls.md).
+> Session #105 (agent-loop). Real-world REST API ergonomics and resilience (candidate #2 from DRAFT.md).
+> Declarative request (socket) timeout overrides at method and controller interface levels (`@Timeout`),
+> Duration overloads in client builders (`socketTimeout(Duration)` and `connectTimeout(Duration)`),
+> upfront validation in `ControllerValidator`, and full integration across synchronous, asynchronous
+> (`CompletableFuture<T>`), streaming, and `@Retry` transport pipelines.
+> 100% zero-dependency on standard Java 21 platform classes.
+
+Key decisions (ADR-0027):
+- **Declarative `@Timeout` annotation:** Added `@Target({ElementType.METHOD, ElementType.TYPE})` annotation `ru.jrestly.annotation.Timeout` with `long value()` and `TimeUnit unit() default TimeUnit.MILLISECONDS`. Supports `@Timeout(500)` (500 ms) and `@Timeout(value = 5, unit = TimeUnit.SECONDS)` (5 seconds).
+- **Precedence model:** Method-level `@Timeout` > Sub-interface `@Timeout` > Super-interface `@Timeout` > Client-level `socketTimeout`. Defaults preserve `moduleInfo.getSocketTimeout()` (30 000 ms).
+- **Builder ergonomics:** Added idiomatic `Duration` overloads `connectTimeout(Duration)` and `socketTimeout(Duration)` to `SimpleModuleInfo.Builder` and `JRestlyClient.Builder` with fail-fast `NullPointerException` and non-negative `IllegalArgumentException` validation.
+- **Fail-fast validation:** `ControllerValidator` validates that `@Timeout.value() > 0` on interfaces and methods at proxy creation time, raising `ControllerValidationException`. `HttpTemplateBuilder.resolveTimeout()` performs runtime validation as a backstop.
+- **Transport & pipeline wiring:** `HttpTemplate.toHttpRequest(WireRequest)` configures `HttpRequest.Builder.timeout(effectiveTimeout)`. Sync calls throw `RuntimeException(HttpTimeoutException)` on expiration; async calls complete exceptionally with nested `HttpTimeoutException`; `@Retry` transport retry recovers transparently from timeouts.
+- **Full test coverage:** 13 new tests (+13 cases, total suite 562/562 across 68 classes) spanning `TimeoutConfigTest` (6 unit tests: defaults, Duration builder overloads, null/negative guards, ControllerValidator rules, precedence resolution across method/interface hierarchy) and `TimeoutWireMockTest` (7 WireMock integration tests: 100ms timeout rejection on 500ms delay, 2s timeout success, interface-level inheritance, method-level override, async CompletableFuture exceptional completion, retry policy recovery from transport timeout, streaming response within budget).
+
+Gates (session #105, clean rebuild):
+- `./gradlew test` **562/562** (68 classes, 0 failures/errors; +13 tests in ADR-0027).
+- `compileJava` and `compileTestJava` 0 warnings under permanent `-Xlint:all -Werror`.
+- `javadoc` 0 warnings under permanent `-Xdoclint:all -Werror`.
 - Zero external runtime dependencies preserved (0 dependencies in Maven POM).
 
-After the epic: candidate #1 — test-javadoc (ADR-0013 Non-goals); candidate #2 — per-method timeout controls or custom error decoders. ADR number **0027** free.
+After the epic: candidate #1 — test-javadoc (ADR-0013 Non-goals); candidate #2 — custom error decoders / typed error hierarchy refinement. ADR number **0028** free.
 
 ## Post-0.5.0 shortlist (not scheduled — see ADR-0003)
 

@@ -12,6 +12,7 @@ import ru.jrestly.json.JsonCodecResolver;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLParameters;
 import java.net.http.HttpClient;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -262,6 +263,21 @@ public class SimpleModuleInfo implements ModuleInfo {
         }
 
         /**
+         * The connect timeout as a {@link Duration} (default 5 000 ms).
+         *
+         * @param duration the connect timeout, not {@code null} and not negative
+         * @return this builder, for chaining
+         */
+        public Builder connectTimeout(Duration duration) {
+            Objects.requireNonNull(duration, "duration");
+            if (duration.isNegative()) {
+                throw new IllegalArgumentException("connectTimeout duration must not be negative");
+            }
+            this.connectTimeout = Math.toIntExact(duration.toMillis());
+            return this;
+        }
+
+        /**
          * The socket (request) timeout in milliseconds (default 30 000).
          *
          * @param ms the socket timeout in milliseconds
@@ -269,6 +285,21 @@ public class SimpleModuleInfo implements ModuleInfo {
          */
         public Builder socketTimeout(int ms) {
             this.socketTimeout = ms;
+            return this;
+        }
+
+        /**
+         * The socket (request) timeout as a {@link Duration} (default 30 000 ms).
+         *
+         * @param duration the socket timeout, not {@code null} and not negative
+         * @return this builder, for chaining
+         */
+        public Builder socketTimeout(Duration duration) {
+            Objects.requireNonNull(duration, "duration");
+            if (duration.isNegative()) {
+                throw new IllegalArgumentException("socketTimeout duration must not be negative");
+            }
+            this.socketTimeout = Math.toIntExact(duration.toMillis());
             return this;
         }
 
