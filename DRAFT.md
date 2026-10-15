@@ -102,16 +102,25 @@
   *(Развилка Антона, 2026-10-15: добить бенчмаркинг с OkHttp/Apache, убедиться что jRestly
   на вершине возможной производительности, сравнить с другими библиотеками и оформить
   публичную документацию по результатам — после текущих задач.)*
-  **В работе (сессии #143, #145).** Стенд починен (сессия #145): `BenchmarkHttpServer`
+  **В работе (сессии #143, #145, #147).** Стенд починен (сессия #145): `BenchmarkHttpServer`
   переписан на zero-dep raw-TCP HTTP/1.1 (`ServerSocket` + виртуальные потоки,
   `setTcpNoDelay(true)`, ответ одним `write`, keep-alive) — артефакт Nagle+delayed-ACK
   (~42 мс/запрос) устранён. Регрессионный тест `BenchmarkHttpServerTest` (6 кейсов,
   латентностный гейт min < 25 мс) краснеет на старом сервере (`43.9 ms`) и зелёный на новом.
-  Первые честные цифры `getUser` (JMH, 3 итерации, предварительно): okHttp 324 µs,
-  Apache5 346 µs, Retrofit 372 µs, raw JDK 1384 µs, jrestly (JDK-движок) 1653 µs.
-  Немедленный шаг: полный прогон матрицы (10 клиентов × getUser/ping) с большим числом
-  итераций, разбор диспропорции jrestly vs OkHttp, затем ADR-0058 на внешние субмодули
-  и публичная документация по бенчмаркам.
+  **Сессия #147: полный прогон матрицы (10 клиентов × getUser/ping) + разбор диспропорции.**
+  Честные цифры (JMH, 1 fork, 2 wi + 3 iter, µs/op; variance высокая — машина загружена):
+  getUser: apache 341, retrofit 362, okHttp 428, **jrestly(JDK) 1524**, jrestly(OkHttp) 450,
+  jrestly(Apache5) 478, jrestly(HTTP/1.1) 1636, raw JDK 1364, feign 2223, spring 2591;
+  ping: okHttp 254, retrofit 312, jrestly(Apache5) 331, jrestly(OkHttp) 342, apache 363,
+  raw JDK 1191, jrestly(HTTP/1.1) 1221, **jrestly(JDK) 1359**, feign 1803, spring 2144.
+  `DispatchOverheadBenchmark`: диспетчеризация jRestly in-memory = **5–9 µs** (vs 1.3 µs raw Jackson)
+  → декларативный слой не источник разрыва. **Вывод: диспропорция jrestly vs okHttp — это
+  сам транспорт JDK HttpClient** (raw JDK 1364 vs okHttp 428 µs — те же 4× у «голого» клиента);
+  jRestly поверх OkHttp-движка (450 µs) — на уровне raw OkHttp (428 µs, +5%).
+  Гипотеза h2c-upgrade не подтвердилась: пинning HTTP/1.1 не ускорил (1636 vs 1524, шум).
+  Следующий шаг: ADR-0058 (внешние субмодули OkHttpEngine/ApacheHttpEngine) + публичная
+  документация по бенчмаркам; до неё — опционально повторный прогон с `-i 5 -f 2`
+  для снижения variance и зонд 160 µs overhead декларативного слоя на сетевом пути.
 
 
 ---
