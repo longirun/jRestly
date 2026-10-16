@@ -126,3 +126,31 @@ In `HttpTemplateBuilder`:
     - Avoidance of double compression when caller supplies explicit `Content-Encoding`.
     - Async twin via `CompletableFuture<T>`.
     - Custom `ContentCompressor` registration.
+
+---
+
+## Amendment #190
+
+2026-10-17 · Session #190 (audit: ADR vs code, slice ADR-0041).
+
+Section 4 (Controller Validation) declared two checks — `minSizeBytes >= 0`
+and `algorithm != null`. Since the original implementation (#119, commit
+`3a2c22f`) only the threshold check existed; the null-algorithm check was
+aspirational. It is also structurally hard to reach from source: because
+`algorithm()` is an enum member with a default, JLS 9.7.1 forbids
+`@Compress(algorithm = null)` at the call site ("an enum annotation value
+must be an enum constant"), so a null algorithm can only appear via
+reflection/bytecode. Until now a null algorithm was silently tolerated at
+runtime anyway — `MethodMetadata.parseCompression` records it and
+`HttpTemplateBuilder.resolveCompressor(null)` returns `null`, so compression
+became a **silent no-op** (no error, no `Content-Encoding` header) on a method
+that "declares" compression.
+
+Resolution: the `algorithm != null` check is now implemented at both levels
+(interface and method) through a shared package-private seam
+`ControllerValidator.validateCompress(prefix, compress, problems)`, which also
+carries the existing `minSizeBytes` check (messages unchanged). Gate: new
+seam-level test `ControllerValidationTest.rejectsNullCompressAlgorithmAtValidationSeam`
+exercises the null branch with a proxy annotation instance — the only
+null-algorithm expressible past `javac` — plus a positive guard. 1204/1204
+green, javadoc under `-Werror`, 0 warnings.

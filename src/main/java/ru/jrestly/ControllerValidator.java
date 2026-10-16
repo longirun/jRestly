@@ -105,9 +105,7 @@ public final class ControllerValidator {
             }
         }
         for (Compress compress : current.getAnnotationsByType(Compress.class)) {
-            if (compress.minSizeBytes() < 0) {
-                problems.add(current.getSimpleName() + ": @Compress minSizeBytes must not be negative, was " + compress.minSizeBytes());
-            }
+            validateCompress(current.getSimpleName(), compress, problems);
         }
         for (Trace trace : current.getAnnotationsByType(Trace.class)) {
             if (trace.header().isBlank()) {
@@ -261,10 +259,7 @@ public final class ControllerValidator {
         }
 
         if (method.isAnnotationPresent(Compress.class)) {
-            Compress compress = method.getAnnotation(Compress.class);
-            if (compress.minSizeBytes() < 0) {
-                problems.add(method.getName() + "(): @Compress minSizeBytes must not be negative, was " + compress.minSizeBytes());
-            }
+            validateCompress(method.getName() + "()", method.getAnnotation(Compress.class), problems);
         }
 
         if (method.isAnnotationPresent(Trace.class)) {
@@ -499,6 +494,15 @@ public final class ControllerValidator {
             return method.getAnnotation(Patch.class).requestType();
         }
         return method.getAnnotation(Delete.class).requestType();
+    }
+
+    static void validateCompress(String prefix, Compress compress, List<String> problems) {
+        if (compress.algorithm() == null) {
+            problems.add(prefix + ": @Compress algorithm must not be null");
+        }
+        if (compress.minSizeBytes() < 0) {
+            problems.add(prefix + ": @Compress minSizeBytes must not be negative, was " + compress.minSizeBytes());
+        }
     }
 
     private static void validateCircuitBreaker(String prefix, ru.jrestly.annotation.CircuitBreaker cb, List<String> problems) {

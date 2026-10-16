@@ -1,8 +1,14 @@
 package ru.jrestly;
 
 import org.junit.jupiter.api.Test;
+import ru.jrestly.annotation.Compress;
+import ru.jrestly.compression.CompressionAlgorithm;
 import ru.jrestly.fixtures.BrokenController;
 import ru.jrestly.fixtures.TestController;
+
+import java.lang.reflect.Proxy;
+import java.util.ArrayList;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -91,6 +97,35 @@ public class ControllerValidationTest {
         @ru.jrestly.annotation.Get(path = "/test-param")
         @ru.jrestly.annotation.RequestDefaultParam(name = "   ", value = "v")
         String blankParam();
+    }
+
+    @Test
+    void rejectsNullCompressAlgorithmAtValidationSeam() {
+        // A null enum member cannot be expressed at the call site (JLS 9.7.1: an enum
+        // annotation value must be an enum constant), so the guard is exercised through
+        // the validation seam with a proxy annotation instance (ADR-0041 §4).
+        List<String> problems = new ArrayList<>();
+        ControllerValidator.validateCompress("Api", compressAnnotation(null, 0), problems);
+        assertEquals(List.of("Api: @Compress algorithm must not be null"), problems);
+
+        List<String> valid = new ArrayList<>();
+        ControllerValidator.validateCompress("Api", compressAnnotation(CompressionAlgorithm.GZIP, 0), valid);
+        assertTrue(valid.isEmpty());
+    }
+
+    private static Compress compressAnnotation(CompressionAlgorithm algorithm, int minSizeBytes) {
+        return (Compress) Proxy.newProxyInstance(
+                Compress.class.getClassLoader(),
+                new Class<?>[]{Compress.class},
+                (proxy, method, args) -> switch (method.getName()) {
+                    case "algorithm" -> algorithm;
+                    case "minSizeBytes" -> minSizeBytes;
+                    case "enabled" -> true;
+                    case "annotationType" -> Compress.class;
+                    case "hashCode" -> System.identityHashCode(proxy);
+                    case "equals" -> proxy == args[0];
+                    default -> "proxy @Compress";
+                });
     }
 
     @Test
