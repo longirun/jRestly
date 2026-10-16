@@ -1,8 +1,11 @@
 # ADR-0058: External HTTP Engine Submodules (OkHttp / Apache HttpClient 5)
 
-> 2026-10-16 · Accepted · Status: Proposed · Next free ADR: 0059
-> Реализация: фаза 1 (ядро, `priority()` + стабильная сортировка, сессия #149) и
-> субмодуль `engine-okhttp` (сессия #152) — выполнены; `engine-apache5` — впереди.
+> 2026-10-16 · Accepted · Status: Complete, открыт Finding #158 · Next free ADR: 0059
+> Реализация: фаза 1 (ядро, `priority()` + стабильная сортировка, сессия #149),
+> субмодули `engine-okhttp` (сессии #150–#155; пассивный транспорт — #156) и
+> `engine-apache5` (#157). Публичные цифры и методология — `BENCHMARKS.md` (#158).
+> **Открыто:** `AbstractHttpClient` не вызывает `HttpEngineResolver` — автообнаружение
+> end-to-end не работает (Finding #158), фикс — #159. Финальный гейт: 1109/1109.
 
 ## Context
 
@@ -216,3 +219,43 @@ core-тесты `DownloadProgressWireMockTest`.
 
 *Amends ADR-0052: добавлен `HttpEngineProvider.priority()`, оформлены
 официальные адаптеры.*
+
+## Amendment (сессия #157): фаза 2b — `engine-apache5`
+
+Субмодуль закрыт по решению: `Apache5HttpEngine` (+ провайдер, priority 50,
+ServiceLoader) — полный контракт паритета (timeout, streaming через
+`executeOpen`, progress upload/download с `(0,0)` и `(total,total)`, trailers,
+выделенный executor для `sendAsync`, `close()` с уважением ownership,
+маппинг `ModuleInfo`: TLS/cookies/proxy/authenticator best-effort).
+Пассивный транспорт — `disableContentCompression()` (урок фазы 2a применён
+заранее): ни `Accept-Encoding`, ни прозрачной распаковки. 23/23 тестов.
+
+Находки под `-Werror` (HttpClient 5.4.1 пометил deprecated массу старого API):
+`SSLConnectionSocketFactory`/`setSSLSocketFactory` → `DefaultClientTlsStrategy`/
+`setTlsSocketStrategy`; `RequestConfig.setConnectTimeout` → `ConnectionConfig`
+на connection manager; Date-куки → Instant-варианты; per-request
+`setProxy(HttpHost)` — deprecated **без** замены (локальный
+`@SuppressWarnings("deprecation")`).
+
+С закрытием обоих субмодулей фаза 2 ADR-0058 завершена; benchmarks переведены
+на `project(':engine-*')`, прототипы удалены.
+
+## Finding (сессия #158): `HttpEngineResolver` не подключён к `AbstractHttpClient`
+
+При подготовке публичной бенчмарк-документации обнаружено (поведенчески и по коду):
+дефолтный клиент **не** проходит через `HttpEngineResolver` —
+`AbstractHttpClient.createConnection()` при `null`-движке строит JDK-клиент
+напрямую. Следствия:
+
+- ServiceLoader-автообнаружение `engine-okhttp`/`engine-apache5` end-to-end
+  не работает: одна строка зависимости не подхватывает движок (нарушен п. 2
+  Decision); работает только явный `builder.httpEngine(...)`;
+- javadoc `ModuleInfo.getHttpEngine()` («resolved via HttpEngineResolver») не
+  соответствует коду.
+
+Доказательства: у `HttpEngineResolver.resolve` нет ни одного call-site в
+`src/main` (grep); JMH-прогон #158 с обоими субмодулями на classpath показывает
+у дефолтного клиента цифры JDK-транспорта (1666 µs), а не быстрых движков
+(~400–540 µs). До фикса (#159: делегирование `createConnection()` резолверу +
+красный e2e-тест с провайдером из тестового classpath) статус автообнаружения —
+«declared, not wired».
