@@ -100,6 +100,53 @@ class InterceptorResolutionTest {
         String call();
     }
 
+    @WithInterceptor(SuperLevelInterceptor.class)
+    public interface OrderedSuperApi {
+    }
+
+    @WithInterceptor(SubLevelInterceptor.class)
+    public interface OrderedSubApi extends OrderedSuperApi {
+        @Get(path = "/ordered")
+        String call();
+    }
+
+    public static class SuperLevelInterceptor implements RequestInterceptor {
+        @Override
+        public WireRequest intercept(WireRequest request, RequestContext context) {
+            return request.withHeader("X-Level", "super");
+        }
+    }
+
+    @Order(-10)
+    public static class SubLevelInterceptor implements RequestInterceptor {
+        @Override
+        public WireRequest intercept(WireRequest request, RequestContext context) {
+            return request.withHeader("X-Level", "sub");
+        }
+    }
+
+    @WithInterceptor(FirstAnnotationInterceptor.class)
+    @WithInterceptor(SecondAnnotationInterceptor.class)
+    public interface CrossAnnotationApi {
+        @Get(path = "/cross")
+        String call();
+    }
+
+    public static class FirstAnnotationInterceptor implements RequestInterceptor {
+        @Override
+        public WireRequest intercept(WireRequest request, RequestContext context) {
+            return request.withHeader("X-Cross", "first");
+        }
+    }
+
+    @Order(-10)
+    public static class SecondAnnotationInterceptor implements RequestInterceptor {
+        @Override
+        public WireRequest intercept(WireRequest request, RequestContext context) {
+            return request.withHeader("X-Cross", "second");
+        }
+    }
+
     @Test
     @DisplayName("HttpTemplateBuilder populates HttpTemplate with interceptors and invocation metadata")
     void httpTemplateBuilderPopulatesInterceptorsAndMetadata() throws NoSuchMethodException {
@@ -241,5 +288,45 @@ class InterceptorResolutionTest {
 
         assertEquals(1, template.getRequestInterceptors().size());
         assertInstanceOf(ValidRequestInterceptor.class, template.getRequestInterceptors().get(0));
+    }
+
+    @Test
+    @DisplayName("@Order: scoped to a single declaration — scope levels keep the ADR-0029 pipeline order")
+    void orderAnnotationDoesNotCrossScopeLevels() throws Exception {
+        SimpleModuleInfo moduleInfo = SimpleModuleInfo.builder()
+                .baseUrl("http://localhost:8080")
+                .build();
+
+        HttpClient httpClient = HttpClient.newHttpClient();
+        Method method = OrderedSubApi.class.getMethod("call");
+
+        HttpTemplateBuilder builder = new HttpTemplateBuilder(moduleInfo, httpClient, method,
+                new Object[0], OrderedSubApi.class);
+        HttpTemplate template = builder.build();
+
+        List<RequestInterceptor> interceptors = template.getRequestInterceptors();
+        assertEquals(2, interceptors.size());
+        assertInstanceOf(SuperLevelInterceptor.class, interceptors.get(0));
+        assertInstanceOf(SubLevelInterceptor.class, interceptors.get(1));
+    }
+
+    @Test
+    @DisplayName("@Order: scoped to a single declaration — separate annotations keep declaration order")
+    void orderAnnotationDoesNotReorderAcrossAnnotations() throws Exception {
+        SimpleModuleInfo moduleInfo = SimpleModuleInfo.builder()
+                .baseUrl("http://localhost:8080")
+                .build();
+
+        HttpClient httpClient = HttpClient.newHttpClient();
+        Method method = CrossAnnotationApi.class.getMethod("call");
+
+        HttpTemplateBuilder builder = new HttpTemplateBuilder(moduleInfo, httpClient, method,
+                new Object[0], CrossAnnotationApi.class);
+        HttpTemplate template = builder.build();
+
+        List<RequestInterceptor> interceptors = template.getRequestInterceptors();
+        assertEquals(2, interceptors.size());
+        assertInstanceOf(FirstAnnotationInterceptor.class, interceptors.get(0));
+        assertInstanceOf(SecondAnnotationInterceptor.class, interceptors.get(1));
     }
 }

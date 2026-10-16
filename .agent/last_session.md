@@ -1,72 +1,76 @@
-# Last Session: #188 (2026-10-16)
+# Last Session: #189 (2026-10-17)
 
 ## Что сделано
 
-**Аудит «ADR против кода» (нить #184), срез ADR-0042 (tracing): седьмой
-«тихий» рассинхрон серии — `@Trace(enabled=false)` пропускал клиентский
-`TracePropagator`.**
+**Аудит «ADR против кода» (нить #184), срез ADR-0044 (interceptor @Order):
+восьмой «тихий» рассинхрон серии — утечка скопа сортировки.**
 
-1. *Подозрение.* ADR-0042 §6.4: «Если аннотации нет (или она не переопределяет
-   клиентский уровень), применяется глобальный TracePropagator из ModuleInfo».
-   Код `HttpTemplateBuilder.applyTracingHeaders` при неактивной аннотации
-   делал ранний `return` — пропигатор (`correlationId(...)`/`w3cTracing()`/
-   `tracePropagator(...)` из клиентского билдера) на методе
-   `@Trace(enabled=false)` **не применялся**: корреляция терялась целиком.
-   Асимметрия с ADR-0043: там `enabled=false` у `@CircuitBreaker`/`@RateLimiter`
-   корректно падает на клиентский уровень (`moduleInfo.getCircuitBreaker()` /
-   `getRateLimiter()`).
-2. *Fix.* `applyTracingHeaders` теперь применяет пропигатор при
-   **отсутствующей или неактивной** аннотации; логика пропигатора вынесена в
-   `applyTracePropagator(List<Header>)` (package-private, без роста API).
-   Активная аннотация по-прежнему перекрывает клиентский уровень и не даёт
-   двойной инъекции (пропигатор не вызывается). Поведение без глобального
-   пропигатора не изменилось (fallthrough на `null` = прежний `return`).
-3. *Red-first подтверждён:* 2 новых e2e-теста в `RequestTracingWireMockTest`
-   (12: клиент с `correlationId("X-App-Trace-ID", …)` + интерфейс `@Trace` +
-   метод `@Trace(enabled=false)` — красный ровно по `verify(X-App-Trace-ID)`;
-   13: клиент с `w3cTracing()` — красный по отсутствию `traceparent`) +
-   1 регрессионный предохранитель (14: активная аннотация побеждает пропигатор
-   — X-Request-ID есть, X-App-Trace-ID нет; зелёный до и после).
-4. *Javadoc/ADR:* `@Trace` (class-level + `enabled()`) — задокументирован
-   фолбэк; ADR-0042 дополнен `## Amendment #188`.
-5. *Гейты:* `./gradlew test javadoc` — **1201/1201** (core 1121 +
+1. *Факт.* ADR-0044: «Only sorts within a single `@WithInterceptor` value
+   array», «The inter-level ordering guarantee (Global → Super → Sub →
+   Method) is not affected», «Cross-annotation ordering still follows
+   declaration order». Код `MethodMetadata.parseInterceptors` делал
+   пер-декларационную `sortedByOrder` (правильно) **плюс** финальную
+   глобальную стабильную сортировку всего разрешённого списка по `@Order` —
+   поверх всех аннотаций и уровней. Git-история: глобальная сортировка
+   была уже в оригинальном #122 (тогда резортила и глобальные клиентские
+   интерцепторы); ADR-0051 (переезд в `MethodMetadata`) глобальные
+   исключил, но декларативную утечку сохранил.
+2. *Следствия (оба покрыты тестом):* sub/method-интерцептор с `@Order(-10)`
+   опережал super-интерцептор с `@Order(0)` (инверсия пирамиды ADR-0029);
+   второй `@WithInterceptor` с отрицательным `@Order` выдвигался перед
+   первым. Тихо: при всех нулевых значениях (без `@Order`) стаб-сортировка
+   — no-op.
+3. *Fix:* финальная глобальная сортировка удалена (2 строки + комментарий);
+   каждая декларация уже отсортирована `sortedByOrder()` внутри себя.
+   Публичный API не тронут. Javadoc `@WithInterceptor` уточнён:
+   «Within each `@WithInterceptor` declaration … Separate annotations and
+   scope levels keep the order above, so `@Order` never reorders across
+   them».
+4. *Red-first:* 2 новых теста в `InterceptorResolutionTest`
+   (`orderAnnotationDoesNotCrossScopeLevels` — OrderedSuperApi/
+   OrderedSubApi с `@Order(-10)` на sub; `orderAnnotationDoesNotReorderAcrossAnnotations`
+   — CrossAnnotationApi, две аннотации, вторая с `@Order(-10)`) — красные
+   ровно по позициям 0/1, зелёные после. Старые порядковые тесты
+   (ADR-0044 ×3, `pipelineOrderingHierarchy`, dedup) не тронуты.
+5. *Документы:* ADR-0044 → `## Amendment #189`.
+6. *Гейты:* `./gradlew test javadoc` — **1203/1203** (core 1123 +
    engine-okhttp 25 + engine-apache5 25 + codec-jackson-xml 15 + benchmarks 15),
-   зелёный под `-Werror`, 0 warnings. Публичный API не тронут.
+   зелёный под `-Werror`, 0 warnings.
 
 ## Технические заметки
 
-- ADR-0043 (resilience) в этой же сессии проверён по: дефолты
-  `CircuitBreakerConfig`/`RateLimiterConfig` (50/10/20/5s/3; 10/1s/ZERO) —
-  совпадают; аннотации-дефолты — совпадают; приоритет method > sub > super >
-  client (post-order DFS `collectInterfaces` + итерация с конца) — верный;
-  валидация `ControllerValidator` — совпадает с §5; `recordException`-предикат
-  применяется внутри `recordFailure` (`CircuitBreakers`) — §6 удовлетворён на
-  уровне реализации, а не транспорта. Чистый срез, без фикса.
-- Класс багов серии: «тихие» рассинхроны на стыке ADR/кода/дефолтов. Нить
-  #184 остаётся самой урожайной (4 из 7 находок).
-- Грабли: `./gradlew test --tests 'X'` (без `:`) фильтрует **все** субмодули и
-  падает на `:benchmarks:test` «No tests found for given includes» — для
-  прогона одного теста в корне использовать `:test --tests 'X'`.
+- Вывод по нити: класс «тихих» багов серии #181–#189 — это **скопы/границы
+  применения** механик: #184 — скоп дефолта (кап Retry-After), #188 — скоп
+  аннотации (пропигатор), #189 — скоп декларации (сортировка `@Order`).
+  При проверке ADR сверять именно граничные формулировки «где/в пределах
+  чего», а не основную механику.
+- `InterceptorResolutionTest` теперь покрывает: пирамиду уровней, дедуп,
+  внутри-массивную сортировку (3 ADR-0044 теста), пер-уровневую и
+  пер-аннотационную изоляцию (2 новых).
 - Кандидат №1 (test-javadoc) по-прежнему приостановлен: ~99 тест-классов без
   class-level javadoc; следующий батч — `cookie` (2), `codec` (4),
   `compression` (3), `tracing` (3), `interceptor` (4).
 
-## Контекст для следующей сессии (#189)
+## Контекст для следующей сессии (#190)
 
-1. **Свободный ход.** Варианты: (a) кандидат №1, батч №2 test-javadoc
-   (`cookie`/`codec`/`compression`, ~9 классов); (b) аудит «ADR против кода»
-   на ещё не проверенных ADR — ADR-0042 закрыт ✓, ADR-0043 закрыт ✓;
-   остаются ADR-0034 (query-коллекции), ADR-0035 (стриминг тела запроса),
-   ADR-0036 (метрики), ADR-0038 (HTTP/2/трейлеры), ADR-0041 (сжатие запроса),
-   ADR-0044 (interceptor @Order); (c) аудит «конкурентный жизненный цикл»
-   (#187) на `CircuitBreaker`/`RateLimiter` (ReentrantLock + volatile state,
-   checkAutoHalfOpenTransition из getState/tryAcquirePermission).
-2. **Обновлено:** `HttpTemplateBuilder` (fix + `applyTracePropagator`),
-   `Trace.java` (javadoc), `RequestTracingWireMockTest` (+3 теста),
-   `ADR-0042` (Amendment #188), `DRAFT.md` (запись #188),
-   `.agent/days/2026-10-16.md` (сессия #188 + строка в Итог дня),
+1. **Свободный ход.** Варианты: (a) аудит «ADR против кода» — ADR-0044
+   закрыт ✓; остаются ADR-0041 (сжатие запроса, `minSizeBytes`/алгоритмы/
+   SPI `ContentCompressor` — проверить дефолты против ADR), ADR-0034
+   (query-коллекции: дефолт формата, вложенные коллекции, fallback),
+   ADR-0036 (метрики: хуки, дефолты, жизненный цикл), ADR-0035 (стриминг
+   тела запроса: контракт `BodyPublisher`, progress, retry-совместимость),
+   ADR-0038 (HTTP/2/трейлеры: согласование, `followRedirects`, границы
+   движков); (b) кандидат №1, батч №2 test-javadoc; (c) аудит
+   «конкурентный жизненный цикл» (идея #187) на `CircuitBreaker`/
+   `RateLimiter` (ReentrantLock + volatile state, checkAutoHalfOpenTransition
+   из getState/tryAcquirePermission).
+2. **Обновлено:** `MethodMetadata` (удалена финальная глобальная
+   сортировка), `WithInterceptor.java` (javadoc), `InterceptorResolutionTest`
+   (+2 теста), `ADR-0044` (Amendment #189), `DRAFT.md` (запись #189),
+   `.agent/days/2026-10-17.md` (кофе + сессия #189),
    `.agent/last_session.md`.
-3. **Ветка** `agent-loop`; HEAD до этого коммита — #187 (`915f141`).
+3. **Ветка** `agent-loop`; HEAD до этого коммита — #188 (`f88fb79`).
 4. **Среда:** `GRADLE_USER_HOME=/tmp/opencode/gradle-home ./gradlew ...`;
-   счётчик сессий: `188`. Часовой пояс контейнера может «откатываться» между
-   запусками — писать реальный `date`.
+   счётчик сессий: `189`. Часовой пояс контейнера может «откатываться» между
+   запусками (в этой сессии системное время показывало 2026-10-16T20:30Z =
+   2026-10-17 00:30 +04) — писать реальный календарный день.

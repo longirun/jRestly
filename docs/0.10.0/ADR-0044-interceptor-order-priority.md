@@ -90,3 +90,25 @@ within the same `@WithInterceptor` value array.
 - **Neutral:** Only sorts within a single `@WithInterceptor` value array. Cross-annotation
   ordering still follows declaration order (consistent with existing behaviour).
 - **Next free ADR number:** 0045.
+
+## Amendment #189
+
+Аудит «ADR против кода» (сессия #189) выявил утечку скопа сортировки:
+`MethodMetadata.parseInterceptors` (переехавшая из `HttpTemplateBuilder` в ADR-0051)
+выполняла **финальную глобальную стабильную сортировку** всего разрешённого
+списка по `@Order` — поверх всех аннотаций и всех уровней скопа
+(super → sub → method). Это противоречило прямому тексту ADR-0044
+(«Only sorts within a single `@WithInterceptor` value array», «The inter-level
+ordering guarantee … is not affected») и пирамиде ADR-0029. Поведение:
+method/sub-интерцептор с `@Order(-10)` **опережал** super-интерцептор с
+`@Order(0)` — инверсия «Super → Sub → Method»; второй `@WithInterceptor` с
+отрицательным `@Order` выдвигался перед первым, вопреки «cross-annotation
+ordering follows declaration order». Тихий: при равных значениях (0,
+без `@Order`) стабильная сортировка — no-op, поэтому расхождение проявлялось
+только когда `@Order` реально использовался на разных уровнях. Фикс: финальная
+глобальная сортировка удалена — каждый value-массив уже отсортирован
+`sortedByOrder()` внутри декларации; публичный API не тронут. Javadoc
+`@WithInterceptor` уточнён («within each declaration», а не «within each
+scope level»). TDD red-first: 2 красных теста в `InterceptorResolutionTest`
+(cross-level и cross-annotation), зелёные после; все предсуществующие
+порядковые тесты (в т.ч. ADR-0044 и `pipelineOrderingHierarchy`) не тронуты.

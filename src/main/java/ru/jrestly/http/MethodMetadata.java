@@ -823,9 +823,10 @@ final class MethodMetadata {
             }
         }
 
-        reqs.sort(java.util.Comparator.comparingInt(MethodMetadata::orderOf));
-        resps.sort(java.util.Comparator.comparingInt(MethodMetadata::orderOf));
-
+        // ADR-0044: @Order is scoped to a single @WithInterceptor value array — each array is
+        // already sorted by sortedByOrder() above. No cross-array/cross-level sort here: the
+        // ADR-0029 pipeline order (Super -> Sub -> Method) and declaration order between
+        // separate annotations must stay intact.
         return new ResolvedInterceptors(
                 Collections.unmodifiableList(reqs),
                 Collections.unmodifiableList(resps)

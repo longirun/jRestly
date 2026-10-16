@@ -1,5 +1,38 @@
 # DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
+> **Сессия #189 (аудит: `@Order` резортировал интерцепторы сквозь уровни и аннотации
+> — ADR-0044 не соблюдён):** восьмой «тихий» рассинхрон серии, на этот раз —
+> «утечка скопа». ADR-0044 прямо говорит: «Only sorts within a single
+> `@WithInterceptor` value array», «The inter-level ordering guarantee
+> (Global → Super → Sub → Method) is not affected», «Cross-annotation
+> ordering still follows declaration order». Код `MethodMetadata.parseInterceptors`
+> (переехал из `HttpTemplateBuilder` в ADR-0051; глобальная сортировка была
+> ещё в оригинальном #122) делал пер-декларационную `sortedByOrder` (правильно)
+> **плюс** финальную глобальную стабильную сортировку всего разрешённого
+> списка по `@Order` — поверх всех аннотаций и всех уровней скопа. Следствия
+> (оба детерминированы): sub/method-интерцептор с `@Order(-10)` опережал
+> super-интерцептор с `@Order(0)` (инверсия пирамиды ADR-0029), а второй
+> `@WithInterceptor` с отрицательным `@Order` выдвигался перед первым. Тихо:
+> при всех нулевых значениях (обычный случай) стаб-сортировка — no-op,
+> расхождение видно только когда `@Order` реально используется на разных
+> уровнях/аннотациях. Fix: финальная глобальная сортировка удалена — каждая
+> декларация уже отсортирована внутри себя (`sortedByOrder`); публичный API
+> не тронут, Javadoc `@WithInterceptor` уточнён («within each declaration»).
+> TDD red-first: 2 красных теста в `InterceptorResolutionTest`
+> (`orderAnnotationDoesNotCrossScopeLevels`,
+> `orderAnnotationDoesNotReorderAcrossAnnotations`) — красные ровно по
+> целевым ассертам, зелёные после; все старые порядковые тесты
+> (ADR-0044 ×3, `pipelineOrderingHierarchy`, dedup) не тронуты. ADR-0044
+> дополнен `## Amendment #189`. +2 теста, гейт **1203/1203** (core 1123 +
+> engine-okhttp 25 + engine-apache5 25 + codec-jackson-xml 15 + benchmarks 15),
+> `./gradlew test javadoc` зелёный под `-Werror`, 0 warnings. Вывод по нити:
+> класс «тихих» багов серии — скопы/границы применения механик (кап
+> Retry-After — скоп дефолта, пропигатор — скоп аннотации, сортировка —
+> скоп декларации); ADR сверять по граничным формулировкам «где/в пределах
+> чего». ADR-0044 проверен и закрыт; следующие срезы — ADR-0041 (сжатие
+> запроса), ADR-0034 (query-коллекции), ADR-0036 (метрики), ADR-0035
+> (стриминг тела), ADR-0038 (HTTP/2/трейлеры).
+
 > **Сессия #188 (аудит: `@Trace(enabled=false)` пропускал клиентский
 > `TracePropagator` — ADR-0042 §6.4 не выполнена):** нить «ADR против кода»
 > (#184), срез ADR-0042 (tracing). Седьмой «тихий» рассинхрон серии:
