@@ -1,5 +1,21 @@
 # DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
+> **Сессия #177 (концепт ADR-0060 «Pluggable payload formats»):** оформлен
+> `docs/0.10.0/ADR-0060-pluggable-payload-formats-and-media-type-aware-codec-spi.md`
+> (Status: Proposed) — медиа-тип-осознанный SPI `PayloadCodec` + `CodecRegistry`
+> рядом с нетронутым `JsonCodec` (`JsonCodecAdapter` как мост). Корневой факт
+> уточнён **зондом** (правка к #176): `@ContentType("application/xml")` + DTO
+> **не** роняет тело — он сериализует DTO в **JSON и шлёт его под заголовком
+> `application/xml`** (проверено WireMock: header `application/xml`, body
+> `{"name":"Anton","age":42}`). Т.е. обещание javadoc `@ContentType` нарушено
+> на проводе (JSON-байты под XML-типом), а не отброшено. Response-путь тоже
+> игнорирует `Content-Type` ответа (5 call-site'ов `jsonCodec` в `HttpTemplate`).
+> Решение: селекция кодека по request/response `Content-Type`
+> (`resolveOrDefault` → JSON для обратной совместимости), fail-fast на запросе
+> при незарегистрированном media-типе вместо тихой подмены, zero-dep ядро,
+> XML — внешний адаптер (фаза 2). Фазы: Ф1 SPI ядра / Ф2 `jrestly-codec-jackson-xml`
+> / Ф3 ServiceLoader-автоподбор. Код не менялся — только ADR + память.
+
 > **Сессия #176 (мелкий аудит-фикс + новый стратегический кандидат №4 «XML & кастомные форматы»):**
 > (1) Аудит-фикс: запросный URI-энкодер `ApiKeyAuth` (query-размещение ключа) отставал
 > от остальной поверхности запроса — `URLEncoder` оставлял пробел как `+`
@@ -366,15 +382,22 @@
 - **Кандидат №4 — XML & pluggable payload formats (ADR-0060)** *(Антон, 2026-10-16:
   «надо не забыть про поддержку xml… хорошо бы вообще поддержать кастомный формат.
   Если пользователю нужно, он его реализует и продолжат пользоваться нашей библиотекой»).*
-  Пробел подтверждён по коду: формат payload захардкожен под JSON.
-  `RequestType` — enum из трёх значений, DTO-тело сериализуется только при
-  `APPLICATION_JSON`; `@ContentType("application/xml")` молча роняет DTO
-  (`HttpTemplateBuilder:289`), хотя javadoc `@ContentType` рекламирует XML;
-  SPI назван/сформован JSON-only (`JsonCodec`/`JsonCodecResolver`/`prettyPrint`).
-  Направление: обобщённый `Codec` (media-type ↔ значения) + выбор по
-  request/response `Content-Type`, с сохранением бинарной совместимости
-  `JsonCodec`; XML-адаптер (Jackson XML / JAXB) как SPI-адаптер, zero-dep ядро.
-  Нужен концепт-ADR-0060 с не-goals (парсер XML в ядре, XSD, etc.).
+  **Концепт оформлен в #177** —
+  `docs/0.10.0/ADR-0060-pluggable-payload-formats-and-media-type-aware-codec-spi.md`
+  (Proposed). Пробел подтверждён по коду + зондом: формат payload захардкожен
+  под JSON. `RequestType` — enum из трёх значений; DTO-тело идёт через
+  JSON-кодек только в ветке `APPLICATION_JSON`, при этом `@ContentType` лишь
+  подменяет заголовок → `@ContentType("application/xml")` + DTO шлёт **JSON под
+  XML-заголовком** (зонд #177). Response тоже декодируется только JSON-кодеком
+  (5 call-site'ов в `HttpTemplate`), `Content-Type` ответа игнорируется. SPI
+  назван/сформован JSON-only (`JsonCodec`/`JsonCodecResolver`/`prettyPrint`).
+  Решение ADR-0060: `ru.jrestly.codec.PayloadCodec` (media-type ↔ значения) +
+  `CodecRegistry` (`resolveOrDefault` → JSON-by-default для обратной
+  совместимости), `JsonCodecAdapter` мостит нетронутый `JsonCodec`,
+  fail-fast на запросе при незарегистрированном media-типе; XML-адаптер как
+  внешний субмодуль, zero-dep ядро. Non-goals: парсер XML/XSD в ядре, полный
+  content-negotiation, изменение raw-путей. Фазы: Ф1 SPI ядра / Ф2 XML-адаптер
+  / Ф3 ServiceLoader-автоподбор. Следующий ход — Ф1 (TDD, red-first).
 
 ---
 
