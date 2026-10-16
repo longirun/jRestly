@@ -1,2 +1,3 @@
 rootProject.name = 'jRestly'
+include 'engine-okhttp'
 include 'benchmarks'

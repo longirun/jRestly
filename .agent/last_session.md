@@ -1,74 +1,72 @@
-# Last Session: #149 (2026-10-16)
+# Last Session: #155 (2026-10-16)
 
 ## Что сделано
 
-**Кандидат №3 (развилка Антона №1) — ADR-0058, фаза 1 (ядро) закрыта.**
+**Восстановление после сессий #150–#154 + фикс дедлока `PublisherInputStream` (ADR-0058, фаза 2a закоммичена как WIP).**
 
-1. `HttpEngineProvider` (SPI, ADR-0052) получил `default int priority() { return 0; }`
-   — бинарно-совместимое расширение: провайдер без переопределения ведёт себя
-   как раньше (приоритет 0). Javadoc: «выше — раньше; равенство → порядок
-   ServiceLoader».
-2. `HttpEngineResolver.resolveFromSpi`: кандидаты собираются в `ArrayList`,
-   сортируются `Comparator.comparingInt(HttpEngineProvider::priority).reversed()`,
-   затем обход «первый available с не-null движком». `List.sort` гарантированно
-   стабилен (TimSort) → при равенстве приоритетов сохраняется порядок
-   `ServiceLoader`. Аллокации не греют горячий путь: резолвится один раз на
-   билд клиента, не на запрос.
-3. Class-Javadoc `HttpEngineResolver` обновлён (стратегия с приоритетами).
-4. TDD red-first в `HttpEngineResolverTest` (+5 тестов, всего 11):
-   - КРАСНЫЕ до фикса: `higherPriorityProviderWinsOverIterationOrder`
-     (приоритет 50 после 10 в итерации — раньше брался первый available),
-     `legacyDefaultPriorityLosesToExplicitPriority` (дефолтный 0 проигрывает 1).
-   - Зелёные предохранители: `equalPriorityKeepsIterationOrder` (стабильность),
-     `unavailableHighPriorityProviderSkipped` (availability выше приоритета),
-     `highPriorityNullEngineFallsThrough` (null-движок → следующий по приоритету).
-   - Хелпер `TestProvider` с `priority()` **без** `@Override` — класс тестов
-     компилируется и до появления default-метода (чистый assertion-red вместо
-     compile-red; при этом после фикса метод тихо переопределяет default).
+1. В рабочем дереве найдены незакоммиченные следы сессий #150–#154: субмодуль
+   `engine-okhttp` целиком (OkHttpEngine 1070 строк, OkHttpEngineProvider с
+   `priority()=50`, `META-INF/services`, `build.gradle` с maven-publish +
+   javadoc-гейтом, 2 тест-класса = 21 тест), миграция `benchmarks` на
+   `project(':engine-okhttp')` (прототип OkHttpEngine удалён, Apache5-прототип
+   пока на месте), `settings.gradle`, пометка в ADR-0058. Память эти сессии
+   не обновляли (коммита не было).
+2. **Причина смертей сессий**: `./gradlew test` вечно зависал на
+   `OkHttpEngineParityTest.streamingBodyPublisherIsDrained` (в прошлом прогоне
+   488 с → kill по лимиту сессии; поэтому #150–#154 не доходили до коммита).
+3. **Диагноз (jstack)**: `PublisherInputStream.nextChunk()` — маркер
+   `END_OF_STREAM` одноразовый: буферный `read(8192)` добирает остаток
+   последнего чанка, попутно съедает END из очереди и возвращает данные;
+   следующий `read` вечно поллит пустую очередь. Второй латентный баг там же:
+   `FailureHolder` обрабатывался `continue` без повторной проверки `failure` —
+   тоже вечное ожидание при ошибке публикатора.
+4. **Фикс**: липкий `volatile boolean eof` (END/ошибка/закрытие → EOF навсегда),
+   ошибка — немедленный `throw` через `toIOException`; `eof` проверяется в
+   начале `nextChunk()`.
+5. Ревью кода движка сделано (timeout/stream/progress/trailers/close/ModuleInfo —
+   всё на месте), warning-гейты в build.gradle субмодуля (−Werror, javadoc
+   Werror, как у ядра).
 
-## Грабли (новые, в дополнении к старому набору)
+## Гейты (честный статус)
 
-- **`@Override` на переопределении ещё не существующего default-метода** —
-  compile-red для всего класса тестов (все 11 тестов «красные» по компиляции,
-  не по ассертам). Для assertion-red в TDD-helper'ах SPI-метод объявлять
-  без `@Override` (и прокомментировать почему).
-- Семантика fallthrough сохранена: «available, но `createEngine` вернул null»
-  больше не останавливает обход — резолвер переходит к следующему по
-  приоритету (проверено тестом).
+- `:engine-okhttp:test`: **17/21 зелёных, 4 падения** (хэнг устранён — прогон
+  11 с вместо вечного). Коммит WIP-осознанный: главное — не терять работу снова.
+- Ядро не менялось: 1048 зелёных на #149; полный `./gradlew test` — за #156.
 
-## Гейты
+## 4 падения (первый приоритет #156)
 
-- **1063/1063** (ядро 1048 + benchmarks 15; +5 новых), 0 failures, 0 warnings.
-- Изменены: `HttpEngineProvider.java`, `HttpEngineResolver.java`,
-  `HttpEngineResolverTest.java`, DRAFT.md, дневник 2026-10-16 (сессия #149),
-  mailbox (+1 сообщение), last_session.md.
-- Ядро по-прежнему zero-dep (новые импорты — `java.util`).
+1. `Zero-length download fires exactly one (0,0) event` — событий 0 вместо 1.
+2. `Download progress ... Content-Length bodies` — `total == -1` вместо 100000.
+3. `Streaming download progress ends at (total,total)` — `total == -1` вместо 30000.
+4. `Multipart bodies are rendered per RFC 7578` — «text part missing» (другие
+   ассерты multipart-теста прошли).
 
-## Контекст для следующей сессии (#150)
+**Ведущая гипотеза для 1–3**: OkHttp прозрачно добавляет `Accept-Encoding: gzip`
+и после распаковки `body.contentLength() == -1`; в ядре декомпрессия — своя
+(ADR-0021, `ContentCompressor` SPI), т.е. это ещё и риск **двойной распаковки**.
+Фикс: выключить прозрачный gzip в OkHttpEngine (паритет с контрактом ядра) —
+например, интерцептором, фиксирующим `Accept-Encoding` так, как его ставит
+декларативный слой; проверить `toBufferedWireResponse`/`toStreamingWireResponse`
+на `contentLength()` после фикса. Пункт 4 — проверить сырое тело на WireMock
+(`findAll(...)`, hexdump) после фикса gzip: возможно, общий корень.
 
-### Следующий шаг — ADR-0058, фаза 2 (субмодули; крупный, можно 2 сессии)
-1. `settings.gradle`: `include 'engine-okhttp'`, `include 'engine-apache5'` +
-   их `build.gradle` (`api 'com.squareup.okhttp3:okhttp:4.12.0'` /
-   `api 'org.apache.httpcomponents.client5:httpclient5:5.4.1'`, maven-publish
-   как у ядра, версия 0.9.0/0.10.0-dev).
-2. Перенос прототипов `benchmarks/.../ru/jrestly/benchmark/engine/{OkHttpEngine,
-   Apache5HttpEngine}` → пакеты `ru.jrestly.engine.okhttp` /
-   `ru.jrestly.engine.apache` + провайдеры `OkHttpEngineProvider` /
-   `Apache5HttpEngineProvider` (`isAvailable()` через `Class.forName`,
-   `priority() = 50`) + `META-INF/services/ru.jrestly.engine.HttpEngineProvider`.
-3. Доведение до контракта паритета (чек-лист ADR-0058 §Decision.4): timeout,
-   streamResponse, version (best-effort), прогресс-листнеры (финал total/total,
-   нулевая 0/0), trailers, `close()` с уважением `ownsClient`.
-4. `benchmarks` → `implementation project(':engine-*')`, удаление локальных
-   копий прототипов. WireMock-тесты паритета в субмодулях.
-5. **Потом**: публичная документация по бенчмаркам (методология raw-TCP +
-   TCP_NODELAY, таблица #147, ограничения variance). Опционально перед ней —
-   повторный прогон JMH `-f 2 -i 5` для публичных цифр.
+## Контекст для следующей сессии (#156)
+
+### Порядок работ
+1. Починить 4 падения выше (TDD: они и есть красные тесты).
+2. `./gradlew test` целиком (ядро + engine-okhttp + benchmarks) — гейт зелёный.
+3. Дальше по ADR-0058: `engine-apache5` (build.gradle с `api httpclient5:5.4.1`,
+   перенос `benchmarks/.../engine/Apache5HttpEngine`, провайдер 50,
+   ServiceLoader, контракт паритета; `sendAsync` — не на общем ForkJoinPool),
+   затем `benchmarks` на `project(':engine-apache5')`.
+4. Потом — публичная бенчмарк-документация (методология raw-TCP + TCP_NODELAY,
+   таблица #147, ограничения variance); опционально JMH `-f 2 -i 5`.
 
 ### Среда
 1. `GRADLE_USER_HOME=/tmp/opencode/gradle-home ./gradlew ...` (тёплый кэш).
-2. Ветка `agent-loop`. Версия в `build.gradle`: **0.9.0**. Тесты: **1063/1063**.
-3. **Next free ADR: 0059.** Пропуски в нумерации сессий (144, 146) —
-   сверяться по `git log`.
-4. Часы контейнера — UTC; таймстампы mailbox вести локальным временем
-   (≈ UTC+9:30): 01:06 UTC ≈ 10:36 local.
+   **Всегда запускать тесты с внешним `timeout` (например `timeout 420`)** —
+   зависший тест маскирует остальные результаты (грабли #155).
+2. Ветка `agent-loop`. Версия ядра/субмодуля: **0.9.0**. Next free ADR: **0059**.
+3. Часы контейнера — UTC; таймстампы mailbox — локальное время (≈ UTC+9:30).
+4. `engine-okhttp` использует okhttp3.internal.tls.OkHostnameVerifier (внутренний
+   API OkHttp) — под наблюдением при апгрейде транспорта.

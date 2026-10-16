@@ -60,7 +60,7 @@ public class HttpNetworkBenchmark {
         String baseUrl = server.baseUrl();
 
         jrestlyClient = new JRestlyBenchmarkClient(baseUrl);
-        jrestlyOkHttpClient = new JRestlyBenchmarkClient(baseUrl, new ru.jrestly.benchmark.engine.OkHttpEngine());
+        jrestlyOkHttpClient = new JRestlyBenchmarkClient(baseUrl, new ru.jrestly.engine.okhttp.OkHttpEngine());
         jrestlyApache5Client = new JRestlyBenchmarkClient(baseUrl, new ru.jrestly.benchmark.engine.Apache5HttpEngine());
         jrestlyHttp11Client = new JRestlyBenchmarkClient(baseUrl, java.net.http.HttpClient.Version.HTTP_1_1);
         rawHttpClient = new RawHttpClientBenchmarkClient(baseUrl);

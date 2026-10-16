@@ -1,6 +1,8 @@
 # ADR-0058: External HTTP Engine Submodules (OkHttp / Apache HttpClient 5)
 
 > 2026-10-16 · Accepted · Status: Proposed · Next free ADR: 0059
+> Реализация: фаза 1 (ядро, `priority()` + стабильная сортировка, сессия #149) и
+> субмодуль `engine-okhttp` (сессия #152) — выполнены; `engine-apache5` — впереди.
 
 ## Context
 
