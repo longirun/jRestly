@@ -1,7 +1,8 @@
 # ADR-0059: SSE Stream Resilience & Streaming Trailer Completion
 
 > 2026-10-16 · Proposed · Status: Concept
-> Ф1 реализована в сессии #161, Ф2 реализована в сессии #163 (см. Amendments ниже); впереди Ф3.
+> Ф1 реализована в сессии #161, Ф2 — в #163, Ф3 — в #175 (спайк пройден,
+> guard оставлен; см. Amendments ниже). Все фазы закрыты.
 > Next free ADR: 0060
 > Эпик-кандидат №2 из активной зоны DRAFT («HTTP Trailers & Advanced Streaming
 > ergonomics»). Сессия #160: аудит зоны + концепт. Реализация — последующие
@@ -182,6 +183,7 @@
 2. **Ф2:** `WireResponse.trailersSupplier` + `populateTrailers` + терминальные
    хуки + engines parity (сессии ~#162–#163).
 3. **Ф3:** spike stall guard → решение keep/drop (сессия ~#164).
+   ✅ **Реализована в #175 (спайк пройден — keep).**
 
 ## Amendment #161 — Ф1 реализована
 
@@ -261,3 +263,46 @@ E2E (`SseReconnectWireMockTest`): обрыв смоделирован чисты
    - `Apache5HttpEngine.toStreamingWireResponse`: ленивый `() -> toTrailers(entity)`;
    - `JdkHttpEngine`: остаётся пустым (платформенное ограничение JDK `HttpClient`);
    - Добавлены parity-тесты с chunked HTTP/1.1 сервером для обоих внешних движков.
+
+## Amendment #175 — Ф3 реализована (спайк пройден, idle-stall guard оставлен)
+
+**Спайк (разлочивающий close).** Прогон доказал: закрытие стримингового тела
+из другого (виртуального) потока гарантированно будит потребителя,
+заблокированного в чтении, на **всех трёх** транспортах:
+
+- **JDK (дефолт):** `InputStream.close()` → заблокированный `read()`
+  выбрасывает `IOException: closed` (~41 мс, зонд `JdkCloseSpike` вне JMH).
+  Продовая цепочка закрытия — `Stream<ServerSentEvent>.close()` →
+  `lineStream.close()` → `JdkHttpEngine` InputStream (подтверждено:
+  `ServerSentEventParser.parse` делает `.onClose(lines::close)`). Гейт —
+  e2e-тест `JdkStreamingCloseUnblockedTest` (реальный `JRestlyClient` над
+  raw-TCP сервером: SSE-событие, затем пауза; блокирующий читатель
+  отпускается из `close()`).
+- **OkHttp / HC5:** parity-тесты
+  `closingStreamingInputStreamUnblocksBlockedReaderThread` в
+  `OkHttpEngineParityTest` и `Apache5HttpEngineParityTest`.
+
+**Решение: keep.** Реализация (spike-gated фаза из Decision раскрыта):
+
+1. **`ReconnectPolicy.stallTimeout(Duration)`** (`ru.jrestly.http`) — default
+   `null` (выключено), положительность валидируется в сеттере и `build()`
+   (`IllegalStateException`); `stallTimeout()` / `hasStallTimeout()`,
+   участие в `toString()`.
+2. **`ServerSentEventReconnector`** — сторожевой виртуальный поток
+   (`jrestly-sse-stall-guard`), стартует только при `hasStallTimeout()`.
+   `advance()` оборачивает блокирующий `currentIterator.hasNext()` в
+   `markWaitStart()` / `markWaitEnd()` (монитор). Watchdog, не дождавшись
+   данных за `stallTimeout`, ставит `stalled = true` и **вне монитора**
+   закрывает активный стрим (`abortStalled`), отпуская потребителя; затем
+   ждёт снятия `waitingForData`. Разбуженный потребитель видит
+   `UncheckedIOException` и переходит в обычный реконнект (фаза 1) с
+   причиной `SocketTimeoutException`; `stalled` сбрасывается на каждой
+   новой стоянке. Закрытие стрима идемпотентно (терминальные хуки ADR-0055/
+   ADR-0059-Ф2 безопасны к повторному close).
+3. **Границы:** guard активен только пока потребитель стоит в чтении стрима;
+   брошенный без `close()` стрим оставляет запаркованный watchdog (как и
+   любой ленивый ресурс) — режим opt-in; скрытых исполнителей в ядре нет.
+
+Гейты: **1152/1152** (core 1087 + engine-okhttp 25 + engine-apache5 25 +
+benchmarks 15), `./gradlew test javadoc` зелёный под `-Werror`, 0 warnings.
+

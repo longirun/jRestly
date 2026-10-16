@@ -1,57 +1,62 @@
-# Last Session: #163 (2026-10-16)
+# Last Session: #175 (2026-10-16)
 
 ## Что сделано
 
-**ADR-0059, Ф2 реализована: завершение трейлеров на стриминговом пути.**
-TDD red-first: compile-red на отсутствующие методы/конструкторы, затем
-14 новых тестов: 3 в `WireResponseTrailersTest`, 3 в `ResponseHeadersPopulateTrailersTest`,
-6 в `StreamingTrailersTest`, 1 в `OkHttpEngineParityTest`, 1 в `Apache5HttpEngineParityTest`.
+**ADR-0059, Ф3 реализована — idle-stall guard; спайк пройден, guard оставлен (keep).
+Эпик-кандидат №2 закрыт целиком (Ф1 #161 + Ф2 #163 + Ф3 #175).**
 
-1. **Ядро (`ru.jrestly.http`):**
-   - `WireResponse`: добавлен 7-й компонент `Supplier<List<Header>> trailersSupplier`
-     (нормализация `null` → `!trailers.isEmpty() ? () -> trailers : List::of`);
-     сохранён 6-аргументный конструктор для обратной совместимости;
-     `equals` и `hashCode` явно переопределены и игнорируют `trailersSupplier`
-     (транспортный хук, а не компонент значения); `Builder.trailersSupplier(...)`.
-   - `ResponseHeaders`: добавлен метод `public synchronized void populateTrailers(List<Header> trailers)`
-     (идемпотентный, потокобезопасный, обновляет `trailers()` и `trailerMap`);
-     в `capture(...)` и `captureCallable(...)` добавлен `attachTrailerForwarder`,
-     связывающий захваченный holder через listener и позволяющий видеть поздние трейлеры
-     после вычитывания стрима.
-   - `TrailerCompletingInputStream` (package-private): терминальный `FilterInputStream`
-     хук, перехватывающий `-1` из `read()` / `read(byte[], int, int)` и `close()`;
-     однократный CAS-запрос supplier (`AtomicBoolean`).
-   - `HttpTemplate.processResponse`: оборачивает `stream` хуком при наличии supplier и
-     получателей заголовков для всех типов возврата (`InputStream`, `Stream<String>`,
-     `Stream<ServerSentEvent>` и async `CompletableFuture`); стриминговая декомпрессия
-     (`handleDecompression`) прокидывает supplier.
-2. **Субмодули движков (`engine-okhttp`, `engine-apache5`):**
-   - `OkHttpEngine.toStreamingWireResponse`: ленивый `() -> toHeaders(response.trailers())`
-     после вычитывания тела (с перехватом исключений);
-   - `Apache5HttpEngine.toStreamingWireResponse`: ленивый `() -> toTrailers(entity)`;
-   - Добавлены parity-тесты с chunked HTTP/1.1 сервером для обоих движков;
-   - `JdkHttpEngine`: остаётся пустым (платформенная граница: обнаружено, что JDK `ChunkedBodyParser`
-     при получении chunked trailers с `-ea` падает с `AssertionError` в `tryConsumeBytes`).
-3. ADR-0059: обновлён header и добавлен Amendment #163;
-   DRAFT: блок сессии #163 + кандидат №2 обновлён (Ф1, Ф2 сделаны, следующий шаг Ф3).
+Сессия началась с находки: рабочее дерево пришло с **незакоммиченным WIP**
+прерванной сессии (после #163) — `stallTimeout` в `ReconnectPolicy`,
+watchdog в `ServerSentEventReconnector`, юниты и спайковые parity-тесты.
+WIP принят, проверен, доделан и зафиксирован.
+
+1. **Спайк (разлочивающий close) — ключевой вопрос Ф3.** Закрытие стримингового
+   тела из другого потока будит потребителя, стоящего в `read()`, на **всех трёх**
+   транспортах:
+   - JDK (дефолт): зонд `JdkCloseSpike` → `InputStream.close()` → `IOException: closed`
+     за ~41 мс; продевая цепочка `Stream<ServerSentEvent>.close()` →
+     `lineStream.close()` → JDK InputStream (см. `ServerSentEventParser.parse`:
+     `.onClose(lines::close)`).
+   - OkHttp / Apache5: parity-тесты `closingStreamingInputStreamUnblocksBlockedReaderThread`.
+
+2. **Доделано в #175:**
+   - **`JdkStreamingCloseUnblockedTest`** (новый, ядро) — JDK-нога спайка как e2e-гейт:
+     реальный `JRestlyClient` над raw-TCP сервером отдаёт SSE-событие и залипает;
+     блокирующий читатель отпускается из `close()`. Гейт живёт в ядре, т.к. у
+     JDK-движка нет субмодуля.
+   - **Рефактор watchdog:** `close()` чужого стрима вынесен **из-под монитора**
+     (`abortStalled` + `waitForConsumerToUnblock`); таймаут-логика на
+     `monitor.wait(ms, ns)` с переоценкой.
+
+3. **Реализация (в коде):**
+   - `ReconnectPolicy.stallTimeout(Duration)` — default `null` (выключено),
+     положительность валидируется в сеттере и `build()`; `stallTimeout()`,
+     `hasStallTimeout()`, участие в `toString()`.
+   - `ServerSentEventReconnector` — сторожевой виртуальный поток
+     `jrestly-sse-stall-guard` (стартует только при `hasStallTimeout()`);
+     `markWaitStart`/`markWaitEnd` обрамляют блокирующий `hasNext()`; при простое
+     > таймаута `stalled=true` + закрытие активного стрима → потребитель ловит
+     `UncheckedIOException(SocketTimeoutException)` → обычный реконнект Ф1;
+     `stalled` сбрасывается на каждой новой стоянке. Скрытых исполнителей нет.
+   - Публичный API: `ReconnectPolicy.stallTimeout(...)`.
 
 ## Гейты
 
-- **1145/1145** (core 1082 + engine-okhttp 24 + engine-apache5 24 + benchmarks 15),
-  полный `./gradlew test javadoc` (включая root и оба субмодуля) зелёный под `-Werror`,
-  0 warnings.
+- **1152/1152** (core 1087 + engine-okhttp 25 + engine-apache5 25 + benchmarks 15),
+  `/tmp/opencode/gradle-home ./gradlew test javadoc` (root + оба субмодуля)
+  зелёный под `-Werror`, 0 warnings.
 
-## Контекст для следующей сессии (#164)
+## Контекст для следующей сессии (#176)
 
-1. **Ф3 ADR-0059 — idle-stall guard (спайк):**
-   - Задача: `stallTimeout(Duration)` в `ReconnectPolicy` (default — выключен).
-     Если между порциями данных стрима проходит больше таймаута, соединение
-     принудительно закрывается и запускается переподключение.
-   - Сначала спайк: проверить разлочивающий эффект закрытия `stream.close()`
-     из другого (виртуального) потока для JDK `HttpClient` и `OkHttpClient`
-     (гарантирует ли платформа `IOException` на блокированном в `read()` потоке).
-   - Если спайк успешен — интеграция в `ServerSentEventReconnector` / policy.
-   - Если ненадёжен — аргументированный отказ (drop) с рекомендацией внешнего таймаута
-     в Javadoc, как предусмотрено в ADR-0059 (Phase 3 spike-gated).
-2. **Среда:** `GRADLE_USER_HOME=/tmp/opencode/gradle-home ./gradlew ...`,
-   внешний `timeout`; ветка `agent-loop`.
+1. **ADR-0059 полностью завершён** — все фазы (Ф1/Ф2/Ф3) закрыты, эпик-кандидат №2
+   исчерпан. Следующий ход — свободный, выбор из активной зоны DRAFT:
+   - **Кандидат №1 — test-javadoc** (ADR-0013 Non-goals): лоск javadoc в тестах.
+   - **Кандидат №3 — ADR-0058** — завершён; можно перенести ход на другие векторы.
+   - Либо новый ADR (next free: **0060**) — например, из «векторов зрелости»
+     (mailbox) или из вопроса Антона «какие проблемы не видны».
+2. **Возможные Follow-up по Ф3** (не обязательны): `stallTimeout` сейчас
+   стартует watchdog на каждый `reconnecting`-стрим с policy; опция «сторожевой
+   таймаут на первый байт» и метрика stall-events — кандидаты на будущее.
+3. **Среда:** `GRADLE_USER_HOME=/tmp/opencode/gradle-home ./gradlew ...`,
+   ветка `agent-loop`. В дереве на старте не было незакоммиченного WIP (после
+   коммита #175 — чисто).

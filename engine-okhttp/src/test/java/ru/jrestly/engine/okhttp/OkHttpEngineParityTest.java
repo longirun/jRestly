@@ -562,4 +562,58 @@ class OkHttpEngineParityTest {
             assertEquals("app;dur=30.0", trailers.get(0).value());
         }
     }
+
+    @Test
+    @DisplayName("Closing streaming InputStream unblocks a blocked reader thread with IOException")
+    void closingStreamingInputStreamUnblocksBlockedReaderThread() throws Exception {
+        try (ServerSocket serverSocket = new ServerSocket(0, 10, InetAddress.getByName("127.0.0.1"))) {
+            int port = serverSocket.getLocalPort();
+            Thread.ofVirtual().start(() -> {
+                try (Socket socket = serverSocket.accept();
+                     InputStream in = socket.getInputStream();
+                     OutputStream out = socket.getOutputStream()) {
+                    byte[] buf = new byte[1024];
+                    in.read(buf);
+                    String resp = "HTTP/1.1 200 OK\r\n"
+                            + "Content-Type: text/event-stream\r\n"
+                            + "Connection: close\r\n\r\n"
+                            + "data: hello\n\n";
+                    out.write(resp.getBytes(StandardCharsets.US_ASCII));
+                    out.flush();
+                    Thread.sleep(60_000);
+                } catch (Exception ignored) {}
+            });
+
+            WireRequest request = new WireRequest(HttpMethod.GET, URI.create("http://127.0.0.1:" + port + "/stream"), List.of(), null, null);
+            HttpEngineOptions streamOptions = new HttpEngineOptions(null, null, true, null, null);
+            WireResponse response = engine.send(request, streamOptions);
+            InputStream stream = response.stream();
+            assertNotNull(stream);
+
+            java.io.BufferedReader reader = new java.io.BufferedReader(new java.io.InputStreamReader(stream, StandardCharsets.UTF_8));
+            assertEquals("data: hello", reader.readLine());
+            assertEquals("", reader.readLine());
+
+            java.util.concurrent.atomic.AtomicReference<Throwable> thrown = new java.util.concurrent.atomic.AtomicReference<>();
+            java.util.concurrent.CountDownLatch readerBlocked = new java.util.concurrent.CountDownLatch(1);
+            Thread readThread = Thread.ofVirtual().start(() -> {
+                try {
+                    readerBlocked.countDown();
+                    reader.readLine();
+                } catch (Throwable t) {
+                    thrown.set(t);
+                }
+            });
+
+            readerBlocked.await();
+            Thread.sleep(200);
+
+            stream.close();
+
+            boolean finished = readThread.join(Duration.ofSeconds(2));
+            assertTrue(finished, "reader thread must unblock when stream is closed");
+            assertNotNull(thrown.get(), "reader must catch an IOException");
+            assertTrue(thrown.get() instanceof IOException, "exception must be IOException, got: " + thrown.get());
+        }
+    }
 }

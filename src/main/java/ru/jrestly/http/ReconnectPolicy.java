@@ -46,6 +46,7 @@ public final class ReconnectPolicy {
     private final Jitter jitter;
     private final boolean stopOnDone;
     private final Consumer<ReconnectInfo> onReconnect;
+    private final Duration stallTimeout;
 
     private ReconnectPolicy(Builder builder) {
         this.maxAttempts = builder.maxAttempts;
@@ -55,6 +56,7 @@ public final class ReconnectPolicy {
         this.jitter = builder.jitter;
         this.stopOnDone = builder.stopOnDone;
         this.onReconnect = builder.onReconnect;
+        this.stallTimeout = builder.stallTimeout;
     }
 
     private static final ReconnectPolicy DEFAULTS = builder().build();
@@ -145,6 +147,25 @@ public final class ReconnectPolicy {
     }
 
     /**
+     * The maximum duration to wait for data between events before treating
+     * the connection as stalled and forcing a reconnect (ADR-0059 phase 3).
+     *
+     * @return the idle-stall timeout, or {@code null} when disabled (the default)
+     */
+    public Duration stallTimeout() {
+        return stallTimeout;
+    }
+
+    /**
+     * Whether an idle-stall guard is enabled on this policy.
+     *
+     * @return {@code true} when {@link #stallTimeout()} is set and non-zero
+     */
+    public boolean hasStallTimeout() {
+        return stallTimeout != null;
+    }
+
+    /**
      * Whether this policy reconnects at all.
      *
      * @return {@code true} when the policy reconnects ({@code maxAttempts > 0})
@@ -210,7 +231,8 @@ public final class ReconnectPolicy {
                 + ", maxBackoff=" + maxBackoff
                 + ", backoffMultiplier=" + backoffMultiplier
                 + ", jitter=" + jitter
-                + ", stopOnDone=" + stopOnDone + "]";
+                + ", stopOnDone=" + stopOnDone
+                + ", stallTimeout=" + stallTimeout + "]";
     }
 
     /**
@@ -230,6 +252,7 @@ public final class ReconnectPolicy {
         private boolean stopOnDone = true;
         private Consumer<ReconnectInfo> onReconnect = info -> {
         };
+        private Duration stallTimeout = null;
 
         private Builder() {
         }
@@ -317,13 +340,33 @@ public final class ReconnectPolicy {
         }
 
         /**
+         * The maximum duration to wait for data between events before treating
+         * the connection as stalled and forcing a reconnect (ADR-0059 phase 3).
+         *
+         * <p>When set, a background watchdog monitors data delivery. If no event data
+         * is received within {@code stallTimeout}, the active stream is closed from the
+         * outside, unblocking the consumer with a {@link java.net.SocketTimeoutException}
+         * and triggering the next reconnect attempt.
+         *
+         * @param stallTimeout the idle timeout; must be positive, or {@code null} to disable
+         * @return this builder, for chaining
+         */
+        public Builder stallTimeout(Duration stallTimeout) {
+            if (stallTimeout != null && (stallTimeout.isNegative() || stallTimeout.isZero())) {
+                throw new IllegalStateException("stallTimeout must be positive, got " + stallTimeout);
+            }
+            this.stallTimeout = stallTimeout;
+            return this;
+        }
+
+        /**
          * Validates the combination and returns the immutable policy.
          *
          * @return the built policy
          * @throws IllegalStateException when a field is out of range:
          *         {@code maxAttempts < 0}, a negative backoff,
-         *         {@code initialBackoff > maxBackoff}, or
-         *         {@code backoffMultiplier < 1.0}
+         *         {@code initialBackoff > maxBackoff},
+         *         {@code backoffMultiplier < 1.0}, or a non-positive {@code stallTimeout}
          */
         public ReconnectPolicy build() {
             if (maxAttempts < 0) {
@@ -341,6 +384,9 @@ public final class ReconnectPolicy {
             }
             if (Double.isNaN(backoffMultiplier) || backoffMultiplier < 1.0) {
                 throw new IllegalStateException("backoffMultiplier must be >= 1.0, got " + backoffMultiplier);
+            }
+            if (stallTimeout != null && (stallTimeout.isNegative() || stallTimeout.isZero())) {
+                throw new IllegalStateException("stallTimeout must be positive, got " + stallTimeout);
             }
             return new ReconnectPolicy(this);
         }

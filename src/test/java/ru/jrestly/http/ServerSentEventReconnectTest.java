@@ -21,6 +21,7 @@ import java.util.stream.StreamSupport;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -450,5 +451,162 @@ class ServerSentEventReconnectTest {
                 () -> ServerSentEvent.reconnecting(null, ReconnectPolicy.defaults()));
         assertThrows(NullPointerException.class,
                 () -> ServerSentEvent.reconnecting(lastEventId -> Stream.empty(), null));
+    }
+
+    @Test
+    @DisplayName("policy stallTimeout getter, defaults, and validation")
+    void policyStallTimeoutConfiguration() {
+        ReconnectPolicy defaults = ReconnectPolicy.defaults();
+        assertNull(defaults.stallTimeout());
+        assertFalse(defaults.hasStallTimeout());
+
+        ReconnectPolicy policy = ReconnectPolicy.builder()
+                .stallTimeout(Duration.ofMillis(250))
+                .build();
+        assertEquals(Duration.ofMillis(250), policy.stallTimeout());
+        assertTrue(policy.hasStallTimeout());
+        assertTrue(policy.toString().contains("stallTimeout=PT0.25S"));
+
+        assertThrows(IllegalStateException.class, () -> ReconnectPolicy.builder().stallTimeout(Duration.ZERO).build());
+        assertThrows(IllegalStateException.class, () -> ReconnectPolicy.builder().stallTimeout(Duration.ofMillis(-50)).build());
+    }
+
+    @Test
+    @DisplayName("stalled SSE stream triggers stall guard and reconnects with SocketTimeoutException cause")
+    void stalledStreamTriggersReconnect() {
+        List<ReconnectInfo> infos = new ArrayList<>();
+        List<String> openedWith = new ArrayList<>();
+
+        BlockingInputStream blockingStream = new BlockingInputStream();
+        Stream<ServerSentEvent> firstStream = Stream.concat(
+                Stream.of(new ServerSentEvent("1", "message", "first", null)),
+                blockingEventStream(blockingStream)
+        );
+
+        Function<String, Stream<ServerSentEvent>> opener = lastId -> {
+            openedWith.add(lastId);
+            if (openedWith.size() == 1) {
+                return firstStream;
+            }
+            return Stream.of(new ServerSentEvent("2", "message", "second", null));
+        };
+
+        ReconnectPolicy policy = ReconnectPolicy.builder()
+                .maxAttempts(1)
+                .initialBackoff(Duration.ofMillis(1))
+                .maxBackoff(Duration.ofMillis(5))
+                .stallTimeout(Duration.ofMillis(80))
+                .onReconnect(infos::add)
+                .build();
+
+        List<ServerSentEvent> events;
+        try (Stream<ServerSentEvent> stream = ServerSentEvent.reconnecting(opener, policy)) {
+            events = stream.toList();
+        }
+
+        assertEquals(2, events.size());
+        assertEquals("first", events.get(0).data());
+        assertEquals("second", events.get(1).data());
+        assertTrue(blockingStream.closed, "blocking stream must be closed by watchdog");
+
+        assertEquals(Arrays.asList(null, "1"), openedWith);
+        assertEquals(1, infos.size());
+        ReconnectInfo info = infos.getFirst();
+        assertEquals(1, info.attempt());
+        assertEquals("1", info.lastEventId());
+        assertNotNull(info.cause());
+        assertTrue(info.cause() instanceof UncheckedIOException);
+        assertTrue(info.cause().getCause() instanceof java.net.SocketTimeoutException,
+                "cause must be SocketTimeoutException, got: " + info.cause().getCause());
+    }
+
+    @Test
+    @DisplayName("stalled SSE stream respects maxAttempts bound and rethrows UncheckedIOException(SocketTimeoutException)")
+    void stalledStreamExhaustsAttemptsAndRethrows() {
+        BlockingInputStream stream1 = new BlockingInputStream();
+        BlockingInputStream stream2 = new BlockingInputStream();
+        int[] calls = {0};
+
+        Function<String, Stream<ServerSentEvent>> opener = lastId ->
+                blockingEventStream(calls[0]++ == 0 ? stream1 : stream2);
+
+        ReconnectPolicy policy = ReconnectPolicy.builder()
+                .maxAttempts(1)
+                .initialBackoff(Duration.ofMillis(1))
+                .maxBackoff(Duration.ofMillis(5))
+                .stallTimeout(Duration.ofMillis(60))
+                .build();
+
+        try (Stream<ServerSentEvent> stream = ServerSentEvent.reconnecting(opener, policy)) {
+            Iterator<ServerSentEvent> iterator = stream.iterator();
+            UncheckedIOException ex = assertThrows(UncheckedIOException.class, iterator::hasNext);
+            assertTrue(ex.getCause() instanceof java.net.SocketTimeoutException,
+                    "terminal cause must be SocketTimeoutException, got: " + ex.getCause());
+        }
+        assertTrue(stream1.closed);
+        assertTrue(stream2.closed);
+    }
+
+    @Test
+    @DisplayName("healthy SSE stream faster than stallTimeout is never interrupted")
+    void healthyStreamDoesNotTriggerStallGuard() {
+        List<ReconnectInfo> infos = new ArrayList<>();
+        Function<String, Stream<ServerSentEvent>> opener = lastId -> Stream.of(
+                new ServerSentEvent("1", "message", "a", null),
+                new ServerSentEvent("2", "message", "b", null),
+                new ServerSentEvent(null, null, "[DONE]", null)
+        );
+
+        ReconnectPolicy policy = ReconnectPolicy.builder()
+                .maxAttempts(2)
+                .stallTimeout(Duration.ofMillis(200))
+                .onReconnect(infos::add)
+                .build();
+
+        List<ServerSentEvent> events;
+        try (Stream<ServerSentEvent> stream = ServerSentEvent.reconnecting(opener, policy)) {
+            events = stream.toList();
+        }
+
+        assertEquals(3, events.size());
+        assertEquals("a", events.get(0).data());
+        assertEquals("b", events.get(1).data());
+        assertTrue(events.get(2).isDone());
+        assertTrue(infos.isEmpty(), "no reconnects should happen for healthy stream");
+    }
+
+    /**
+     * Mirrors the production SSE close contract (see {@code HttpTemplate}):
+     * closing the returned stream closes the underlying input stream, not the
+     * {@link java.io.BufferedReader} — closing a reader from another thread
+     * while its owning thread is blocked in {@code read()} would deadlock on
+     * the decoder lock.
+     */
+    private static Stream<ServerSentEvent> blockingEventStream(BlockingInputStream in) {
+        return ServerSentEvent
+                .parse(new java.io.BufferedReader(new java.io.InputStreamReader(in)).lines())
+                .onClose(in::close);
+    }
+
+    private static class BlockingInputStream extends java.io.InputStream {
+        final java.util.concurrent.CountDownLatch closedLatch = new java.util.concurrent.CountDownLatch(1);
+        volatile boolean closed = false;
+
+        @Override
+        public int read() throws IOException {
+            try {
+                closedLatch.await();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new java.io.InterruptedIOException("interrupted");
+            }
+            throw new IOException("Stream closed by watchdog");
+        }
+
+        @Override
+        public void close() {
+            closed = true;
+            closedLatch.countDown();
+        }
     }
 }

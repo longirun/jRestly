@@ -1,5 +1,20 @@
 # DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
+> **Сессия #175 (ADR-0059 — Ф3 реализована, спайк пройден):** idle-stall guard
+> оставлен в коде после удачного спайка на всех трёх транспортах. Восстановлен
+> и доделан незакоммиченный WIP прерванной сессии: `ReconnectPolicy.stallTimeout(Duration)`
+> (default null/выключено, положительность валидируется, `hasStallTimeout()`),
+> сторожевой виртуальный поток `jrestly-sse-stall-guard` в `ServerSentEventReconnector`
+> (`markWaitStart`/`markWaitEnd` вокруг блокирующего `hasNext()`; при простое > таймаута
+> `stalled=true` + закрытие активного стрима **вне монитора** → потребитель отпускается
+> с `UncheckedIOException(SocketTimeoutException)` → обычный реконнект Ф1). Спайк:
+> JDK `InputStream.close()` будит блокированного читателя (`IOException: closed`, ~41 мс) —
+> новый e2e-гейт `JdkStreamingCloseUnblockedTest` (реальный клиент над raw-TCP сервером);
+> OkHttp/HC5 — parity-тесты `closingStreamingInputStreamUnblocksBlockedReaderThread`.
+> Рефактор watchdog: foreign `close()` вынесен из-под монитора. Все три фазы ADR-0059
+> закрыты. Гейты: **1152/1152** (core 1087 + okhttp 25 + apache5 25 + bench 15),
+> `./gradlew test javadoc` зелёный под `-Werror`, 0 warnings.
+
 > **Сессия #163 (ADR-0059 — Ф2 реализована):** завершение трейлеров на
 > стриминговом пути (`WireResponse.trailersSupplier` + `populateTrailers` +
 > терминальные хуки + engine parity) по TDD red-first (compile-red на
@@ -273,15 +288,16 @@
 
 - **Кандидат №2 — HTTP Trailers & Advanced Streaming ergonomics**:
   Расширенные сценарии работы с трейлерами и чанками в стриминге данных (LLM / SSE).
-  **В работе: ADR-0059** (`docs/0.10.0/ADR-0059-sse-stream-resilience-and-streaming-trailer-completion.md`,
-  Proposed). Фазы:
+  **Завершён: ADR-0059** (`docs/0.10.0/ADR-0059-sse-stream-resilience-and-streaming-trailer-completion.md`).
+  Фазы:
   - **Ф1 — сделана (#161)**: `ServerSentEvent.reconnecting` + `ReconnectPolicy`/`ReconnectInfo`
     (EventSource-семантика: `Last-Event-ID` replay, серверный `retry:`/`Jitter`, `stopOnDone`,
     bounded attempts, `onReconnect`);
   - **Ф2 — сделана (#163)**: ленивые трейлеры на стриминговом пути (`WireResponse.trailersSupplier`
     + `ResponseHeaders.populateTrailers` + терминальный `TrailerCompletingInputStream` + engine parity);
-  - **Ф3 (spike-gated)**: `stallTimeout` (idle-stall guard).
-  Следующий шаг: **Ф3 (спайк stall guard)**.
+  - **Ф3 — сделана (#175)**: `stallTimeout` (idle-stall guard), спайк пройден на всех трёх
+    транспортах → keep.
+  Следующий ход — свободный, выбор из активной зоны.
 
 - **Кандидат №3 — OkHttpEngine / ApacheHttpEngine external modules** (ADR-0058):
   Вынос внешних коннекторов в отдельные субмодули для максимальной скорости под нагрузкой.
