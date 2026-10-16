@@ -1,54 +1,54 @@
-# Last Session: #181 (2026-10-16)
+# Last Session: #182 (2026-10-16)
 
 ## Что сделано
 
-**Свободный ход-аудит: нашёл и починил реальную потоковую гонку в кэше
-прокси-контроллеров (`AbstractHttpClient.controllers`).**
+**Аудит (продолжение нити «общие мутабельные структуры»): нашёл и починил
+`ResponseHeaders` — холдер отдавал наружу живые внутренние списки.**
 
-1. Находка: поле `controllers` (кэш прокси, ключ — интерфейс контроллера) было
-   обычным `HashMap`, а `get()` (и в `AbstractHttpClient`, и в override
-   `JRestlyClient`) зовёт `controllers.computeIfAbsent(class, this::createController)`.
-   `HashMap.computeIfAbsent` выполняет mapping-функцию вне замка и затем сверяет
-   `modCount` → два одновременных `client.get(Api.class)` падают с
-   `ConcurrentModificationException` (в иных окнах — потеря/дубль прокси).
-2. Фикс: поле → `ConcurrentHashMap` (сосед `interceptorInstances` уже был CHM);
-   удалён осиротевший `import java.util.HashMap`.
-3. TDD red-first: новый `src/test/java/ru/jrestly/ProxyCacheConcurrencyTest.java`
-   — 2 нити синхронно зовут `get()`, а `createController` переопределён и
-   паркуется на `CyclicBarrier(2)` (детерминированное окно гонки; на CHM барьер
-   истекает по таймауту). Красный на HashMap ровно ожидаемым
-   `ConcurrentModificationException`, зелёный на CHM + `creations == 1` и
-   `assertSame`.
+1. Находка: в `ResponseHeaders.doPopulate` (и `populateTrailers`) строился
+   локальный `unmodifiableMap` с обёрнутыми `Collections.unmodifiableList`
+   значениями, но результат **выбрасывался** — в поле присваивался
+   `Collections.unmodifiableMap(map)` от `TreeMap` с **живыми `ArrayList`**.
+   `unmodifiableMap` защищает структуру, но не значения → `allValues("X").add(...)`
+   и `map().get("X").add(...)` мутировали состояние холдера, вопреки javadoc
+   («unmodifiable list of header values»). Плюс на каждый ответ впустую
+   аллоцировался `LinkedHashMap` + цикл (вразрез с zero-garbage ADR-0055).
+2. Фикс: `map.replaceAll((k, v) -> Collections.unmodifiableList(v))` перед
+   `Collections.unmodifiableMap(map)` — оборачивает ту же case-insensitive
+   `TreeMap` **in place** (замена на `LinkedHashMap` сделала бы lookup
+   регистрозависимым — тихая регрессия); мёртвый цикл удалён. Симметрично
+   в `populateTrailers`.
+3. TDD red-first: 2 новых теста в `src/test/java/ru/jrestly/http/ResponseHeadersTest.java`
+   (`headerValueListsAreUnmodifiable`, `trailerValueListsAreUnmodifiable`) —
+   красные на старом коде, зелёные после. `ResponseHeadersPopulateTrailersTest`
+   не тронут, зелёный.
 
 ## Гейты
 
-- `./gradlew test javadoc` — **1188/1188** (core 1108 + engine-okhttp 25 +
+- `./gradlew test javadoc` — **1190/1190** (core 1110 + engine-okhttp 25 +
   engine-apache5 25 + codec-jackson-xml 15 + benchmarks 15), всё зелёное.
 - javadoc корня и всех субмодулей зелёный под `-Werror`, 0 warnings.
-- +1 тест (core 1107 → 1108).
+- +2 теста (core 1108 → 1110).
 
 ## Технические заметки
 
-- Это тот же класс «тихих» багов, что #139 (`Map.copyOf` недетерминизм) и #176
-  (`+` в query): подсистема честна по отдельности, ломается на стыке — общий
-  мутабельный кэш + ленивая инициализация без синхронизации.
-- Тест намеренно детерминирован: барьер в `createController` гарантирует, что
-  на HashMap обе нити входят в mapping-функцию до вставки; на CHM часть
-  `await` просто завершается по таймауту (0.5 c), поэтому гейт не флакает.
-- `Map`-тип поля оставлен (`protected final Map<...>`), сменился только
-  рантайм-класс — источник-совместимо для подклассов.
+- Третья подряд «тихая» находка на стыке подсистем (#139 `Map.copyOf`
+  недетерминизм, #176 `+` в query, #181 гонка кэша прокси): `unmodifiableMap`
+  и `unmodifiableList` «выглядят как защита», но составлены неверно, и мёртвая
+  переменная это маскировала.
+- Проверял остальное: `AbstractHttpClient`-поля (set в конструкторе) и
+  `SimpleModuleInfo` (immutable) чисты; `interceptorInstances`, resilience
+  registry — уже CHM; `AuthHeaderProvider` — не-volatile пара строк (минорная
+  видимость, порчи состояния нет — можно тронуть отдельным ходом).
 
-## Контекст для следующей сессии (#182)
+## Контекст для следующей сессии (#183)
 
 1. **Эпики не двигал:** кандидат №4 (ADR-0060) закрыт в #180; активная зона —
    кандидат №1 (test-javadoc) либо свободный ход.
-2. **Возможные продолжения:** дописать аудит по другим общим мутабельным
-   структурам (например, `MethodMetadata`-кэш, `interceptorInstances` уже CHM);
-   либо test-javadoc; либо новый крупный вектор (следующий свободный ADR —
-   **0061**).
-3. **Обновлено:** `AbstractHttpClient.java`, новый `ProxyCacheConcurrencyTest`,
-   `DRAFT.md` (запись #181), `.agent/days/2026-10-16.md`, `.agent/mailbox.md`,
-   `.agent/last_session.md`.
-4. **Ветка** `agent-loop`; HEAD — будет коммит #181.
+2. **Возможные продолжения:** (а) `AuthHeaderProvider.headerName/headerValue`
+   → `volatile` (мелкая видимость); (б) test-javadoc; (в) новый ADR-0061.
+3. **Обновлено:** `ResponseHeaders.java`, `ResponseHeadersTest.java`,
+   `DRAFT.md` (запись #182), `.agent/days/2026-10-16.md`, `.agent/last_session.md`.
+4. **Ветка** `agent-loop`; HEAD — будет коммит #182.
 5. **Среда:** `GRADLE_USER_HOME=/tmp/opencode/gradle-home ./gradlew ...`;
-   счётчик сессии: `181`.
+   счётчик сессии: `182`.

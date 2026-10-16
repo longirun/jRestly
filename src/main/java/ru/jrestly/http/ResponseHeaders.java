@@ -165,10 +165,11 @@ public class ResponseHeaders {
                         .add(h.value() != null ? h.value() : "");
             }
         }
-        Map<String, List<String>> unmodifiableMap = new LinkedHashMap<>();
-        for (Map.Entry<String, List<String>> entry : map.entrySet()) {
-            unmodifiableMap.put(entry.getKey(), Collections.unmodifiableList(entry.getValue()));
-        }
+        // Wrap every value list: Collections.unmodifiableMap alone would still
+        // expose the backing ArrayLists, so a caller could mutate the holder's
+        // state through allValues()/map().get(...). Case-insensitive lookups are
+        // kept by wrapping the TreeMap in place.
+        map.replaceAll((name, values) -> Collections.unmodifiableList(values));
         this.headerMap = Collections.unmodifiableMap(map);
 
         Map<String, List<String>> tMap = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
@@ -178,6 +179,7 @@ public class ResponseHeaders {
                         .add(h.value() != null ? h.value() : "");
             }
         }
+        tMap.replaceAll((name, values) -> Collections.unmodifiableList(values));
         this.trailerMap = Collections.unmodifiableMap(tMap);
 
         this.linkMap = null; // parsed lazily
@@ -204,6 +206,7 @@ public class ResponseHeaders {
                         .add(h.value() != null ? h.value() : "");
             }
         }
+        tMap.replaceAll((name, values) -> Collections.unmodifiableList(values));
         this.trailerMap = Collections.unmodifiableMap(tMap);
         Consumer<List<Header>> forwarder = this.trailerForwarder;
         if (forwarder != null) {

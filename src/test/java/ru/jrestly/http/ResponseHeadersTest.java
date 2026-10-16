@@ -94,6 +94,37 @@ class ResponseHeadersTest {
     }
 
     @Test
+    @DisplayName("Header value lists are unmodifiable: a caller cannot corrupt the holder")
+    void headerValueListsAreUnmodifiable() {
+        ResponseHeaders headers = new ResponseHeaders(200, List.of(
+                new Header("Set-Cookie", "a=1"),
+                new Header("Set-Cookie", "b=2")), Duration.ZERO);
+
+        List<String> viaAccessor = headers.allValues("Set-Cookie");
+        assertThrows(UnsupportedOperationException.class, () -> viaAccessor.add("c=3"));
+
+        List<String> viaMap = headers.map().get("Set-Cookie");
+        assertThrows(UnsupportedOperationException.class, () -> viaMap.add("d=4"));
+
+        // the rejected mutations must not have leaked into the holder's state
+        assertEquals(List.of("a=1", "b=2"), headers.allValues("Set-Cookie"));
+    }
+
+    @Test
+    @DisplayName("Trailer value lists are unmodifiable: a caller cannot corrupt the holder")
+    void trailerValueListsAreUnmodifiable() {
+        ResponseHeaders headers = new ResponseHeaders();
+        headers.populateTrailers(List.of(
+                new Header("X-Checksum", "abc"),
+                new Header("X-Checksum", "def")));
+
+        List<String> viaAccessor = headers.trailerValues("X-Checksum");
+        assertThrows(UnsupportedOperationException.class, () -> viaAccessor.add("ghi"));
+
+        assertEquals(List.of("abc", "def"), headers.trailerValues("X-Checksum"));
+    }
+
+    @Test
     @DisplayName("Parses RFC 8288 Link headers with quoted and unquoted rel attributes")
     void rfc8288LinkParser() {
         List<Header> headerList = List.of(

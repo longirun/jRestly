@@ -1,5 +1,25 @@
 # DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
+> **Сессия #182 (аудит: `ResponseHeaders` отдавал мутабельные внутренние списки — мёртвый
+> код вместо защиты):** продолжение нити «общие мутабельные структуры». Под фонарём
+> оказался `ResponseHeaders.doPopulate`/`populateTrailers`: там строился локальный
+> `unmodifiableMap` (обёртка каждой `List<String>` в `Collections.unmodifiableList`),
+> но результат **выбрасывался** — в поле присваивался `Collections.unmodifiableMap(map)`
+> от исходной `TreeMap`, чьи значения — **живые `ArrayList`**. Итог: javadoc обещает
+> «unmodifiable map/list of header values», а `map().get("Set-Cookie").add(...)` /
+> `allValues(...).add(...)` **мутируют состояние холдера** (и видны другим читателям,
+> включая `firstValue`/`cookie()`), плюс на **каждый ответ** впустую аллоцировался
+> `LinkedHashMap` и прогонялся цикл копирования (вразрез с zero-garbage эпиком ADR-0055).
+> Fix: `map.replaceAll((k, v) -> Collections.unmodifiableList(v))` перед
+> `unmodifiableMap` (case-insensitive lookup сохранён — оборачиваем ту же `TreeMap` in
+> place; связка с `LinkedHashMap` дала бы case-sensitive регрессию) в обоих местах,
+> мёртвый цикл удалён. TDD red-first: 2 новых теста в `ResponseHeadersTest`
+> (`assertThrows(UnsupportedOperationException)` на `allValues(...).add(...)` и
+> `map().get(...).add(...)`; отдельный на `trailerValues(...)`) — **красные** на старом
+> коде (списки мутабельны), зелёные после. Гейт **1190/1190** (core 1110 + okhttp 25 +
+> apache5 25 + codec-jackson-xml 15 + benchmarks 15), `./gradlew test javadoc` зелёный
+> под `-Werror`, 0 warnings. Эпики не трогались — третья robustness-находка подряд.
+
 > **Сессия #181 (аудит: скрытая гонка в кэше прокси — `HashMap` + `computeIfAbsent`):**
 > свободный ход-аудит по нити Антона «что не запланировано и не видно». Найдена и
 > исправлена **реальная потоковая гонка** в `AbstractHttpClient.controllers`:
