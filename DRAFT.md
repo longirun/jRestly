@@ -1,5 +1,27 @@
 # DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
+> **Сессия #160 (кандидат №2 — аудит зоны + концепт ADR-0059):** оформлен
+> `docs/0.10.0/ADR-0059-sse-stream-resilience-and-streaming-trailer-completion.md`
+> (Status: Proposed) — три пробела, подтверждённых по коду: (A) у
+> установленного SSE-стрима нет жизненного цикла — `RetryPolicy` (ADR-0040)
+> работает только до тела, `Last-Event-ID` в `src/main` не упоминается вовсе,
+> обрыв прилетает потребителю как `UncheckedIOException`; (B) нет idle-stall
+> guard — JDK `HttpRequest.timeout()` не покрывает чтение тела, зависшая
+> SSE-сеть держит поток вечно; (C) трейлеры в стриминге теряются — все три
+> движка строят `WireResponse` с `List.of()` до EOF (буферные пути
+> OkHttp/Apache5 работают, JDK — платформенно не умеет; подтверждено `javap`:
+> trailer-методов нет ни у `HttpResponse`, ни у `BodySubscriber`, ни у
+> `ResponseInfo`). Решение: **Ф1** — `ServerSentEvent.reconnecting(opener,
+> ReconnectPolicy)` с EventSource-семантикой (opener получает nullable
+> `lastEventId`, серверный `retry:` + `Jitter` ADR-0040, `stopOnDone` для
+> LLM, bounded attempts, `onReconnect`-хук); **Ф2** — 7-й компонент
+> `WireResponse.trailersSupplier` (прецедент совместимых конструкторов
+> ADR-0038) + `ResponseHeaders.populateTrailers` + терминальные хуки на
+> стриминговых артефактах (EOF/close → однократный CAS-запрос);
+> **Ф3** (spike-gated) — `stallTimeout` в policy. Non-goals: request-side
+> трейлеры, трейлеры JDK-движка, бесконечный reconnect. Код не менялся —
+> только ADR + память.
+
 > **Сессия #159 (Finding #158 закрыт — движки подключаются сами):**
 > `AbstractHttpClient.createConnection()` целиком делегирует
 > `HttpEngineResolver.resolve(moduleInfo)`: явный движок → SPI-провайдеры по
@@ -207,6 +229,15 @@
 
 - **Кандидат №2 — HTTP Trailers & Advanced Streaming ergonomics**:
   Расширенные сценарии работы с трейлерами и чанками в стриминге данных (LLM / SSE).
+  **В работе: сессия #160 — аудит зоны + концепт ADR-0059**
+  (`docs/0.10.0/ADR-0059-sse-stream-resilience-and-streaming-trailer-completion.md`,
+  Proposed). План фаз: Ф1 — SSE-переподключение `ServerSentEvent.reconnecting`
+  (`Last-Event-ID` replay через opener-параметр, серверный `retry:`/`Jitter`,
+  `stopOnDone`, bounded attempts); Ф2 — ленивые трейлеры на стриминговом пути
+  (`WireResponse.trailersSupplier` + `ResponseHeaders.populateTrailers` +
+  терминальные EOF/close-хуки; JDK-движок остаётся пустым — платформенное
+  ограничение); Ф3 (spike-gated) — `stallTimeout` (idle-stall guard).
+  Следующий шаг: **Ф1 по TDD (red-first)**.
 
 - **Кандидат №3 — OkHttpEngine / ApacheHttpEngine external modules** (ADR-0058):
   Вынос внешних коннекторов в отдельные субмодули для максимальной скорости под нагрузкой.

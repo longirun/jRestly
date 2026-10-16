@@ -1,48 +1,59 @@
-# Last Session: #159 (2026-10-16)
+# Last Session: #160 (2026-10-16)
 
 ## Что сделано
 
-**Finding #158 закрыт: ServiceLoader-автообнаружение внешних движков работает end-to-end.**
+**Кандидат №2: аудит зоны «HTTP Trailers & Advanced Streaming ergonomics» +
+концепт ADR-0059 (Proposed).** Код не менялся — концепт-сессия (прецедент #148).
 
-1. **TDD red-first e2e-гейт:** `SpiEngineAutoDetectionTest` (3 теста) +
-   `TestSpiEngineProvider` в тестовом classpath
-   (`src/test/resources/META-INF/services/ru.jrestly.engine.HttpEngineProvider`).
-   Провайдер доступен только при взведённом статическом флаге
-   (по умолчанию false — другие тесты не затронуты). До фикса красный ровно
-   целевой кейс; предохранители (JDK-fallback без провайдера; явный движок
-   побеждает) зелёные до и после.
-2. **Фикс:** `AbstractHttpClient.createConnection()` целиком делегирует
-   `HttpEngineResolver.resolve(moduleInfo)` (явный → SPI по приоритету → JDK).
-   Дублирующая сборка JDK-клиента из клиента удалена. Единственный источник
-   правды — `JdkHttpEngine.create(moduleInfo)`.
-3. **ADR-0026 сохранён:** клиентский managed-executor (custom → virtual threads)
-   создаётся в `AbstractHttpClient` (для стадий пайплайна) и закрывается в
-   `close()`; `JdkHttpEngine.create` дополнительно сам honor-ит
-   `isVirtualThreads()` (собственный managed executor, закрывается в
-   `engine.close()`). `ExecutorConfigTest` не менялся.
-4. **Бенчмарки честные:** дефолтный клиент с обоими субмодулями на classpath
-   после фикса уходил бы на OkHttp/Apache5 → JDK-транспорт закреплён явным
-   `JdkHttpEngine.create` в `JRestlyBenchmarkClient(baseUrl)` и
-   `DispatchOverheadBenchmark`; примечание в `BENCHMARKS.md`; README уточнён.
-5. ADR-0058: Finding #158 → Resolution #159, header «Complete, Finding закрыт».
+1. **Аудит по коду — три подтверждённых пробела:**
+   - у установленного SSE-стрима нет жизненного цикла: `RetryPolicy` не
+     покрывает стрим, `Last-Event-ID` не упоминается в `src/main`, обрыв —
+     `UncheckedIOException` без восстановления;
+   - нет idle-stall guard (JDK `timeout()` не покрывает чтение тела);
+   - трейлеры в стриминге теряются: все движки строят `WireResponse` до EOF
+     (`JdkHttpEngine` — всегда `List.of()`), JDK-API трейлеров не отдаёт
+     вообще (`javap` подтверждён: нет ни у `HttpResponse`, ни у
+     `BodySubscriber`, ни у `ResponseInfo`).
+2. **Оформлен** `docs/0.10.0/ADR-0059-sse-stream-resilience-and-streaming-trailer-completion.md`
+   (Status: Proposed) с трёхфазным планом:
+   - **Ф1 (следующая сессия):** `ReconnectPolicy` +
+     `ServerSentEvent.reconnecting(opener, policy)` — EventSource-семантика:
+     opener получает nullable `lastEventId` (канонически →
+     `@RequestHeader("Last-Event-ID")`-параметр), серверный `retry:` → 3000 мс
+     WHATWG + `Jitter` (ADR-0040), `stopOnDone` (default true), bounded
+     `maxAttempts` (default 3), `onReconnect(Consumer<ReconnectInfo>)`, close
+     отменяет reconnect; ленивый итератор, Thread.sleep на потребителе.
+   - **Ф2:** `WireResponse` +7-й компонент `Supplier<List<Header>> trailersSupplier`
+     (явные конструкторы 3/4/5/6-арностей; `equals/hashCode` supplier не
+     учитывают) + `ResponseHeaders.populateTrailers` + терминальные
+     EOF/close-хуки на `InputStream`/`Stream<String>`/`Stream<ServerSentEvent>`;
+     OkHttp/Apache5 заполняют supplier в стриминге, JDK — пусто.
+   - **Ф3 (spike-gated):** `stallTimeout` — сторожевой поток + close;
+     сначала спайк на разлочивание read в JDK/OkHttp.
+3. DRAFT: кандидат №2 переведён в «В работе» с планом фаз; блок #160 добавлен
+   наверх; дневник дня дополнен.
 
 ## Гейты
 
-- **1112/1112** (core 1051 + engine-okhttp 23 + engine-apache5 23 + benchmarks 15),
-  полный `./gradlew test` зелёный; javadoc-гейты (root + оба субмодуля) зелёные;
-  0 warnings. Red-first подтверждён прогоном до фикса.
+- Код не менялся: гейт не перезапускался; состояние #159 — **1112/1112**
+  (core 1051 + engine-okhttp 23 + engine-apache5 23 + benchmarks 15),
+  javadoc-гейты зелёные, 0 warnings.
 
-## Контекст для следующей сессии (#160)
+## Контекст для следующей сессии (#161)
 
-1. **ADR-0058 полностью завершён** (фазы 1/2a/2b, публичные цифры, Finding).
-   Следующий свободный ADR — **0059**.
-2. **Активная зона (DRAFT.md):** кандидат №1 test-javadoc (лоск в тестах),
-   кандидат №2 HTTP Trailers & Advanced Streaming ergonomics
-   (LLM/SSE), кандидат №3 закрыт. Можно взять любой свободный ход или новый ADR.
-3. **Опциональный хвост по бенчмаркам:** повторный прогон `-f 2 -i 5` для
-   снижения variance (машина шумная); зонд overhead декларативного слоя на
-   сетевом пути (~160 µs гипотеза из #147) — по желанию, не обязателен.
-4. **Среда:** `GRADLE_USER_HOME=/tmp/opencode/gradle-home ./gradlew ...`,
-   внешний `timeout`; ветка agent-loop. WireMock без явного Content-Length в
-   стабе всегда отвечает chunked (урок #156). Запуск root-тестов с фильтром:
+1. **Старт Ф1 ADR-0059 по TDD (red-first):**
+   - нарисовать `ReconnectPolicy` (builder по образцу `RetryPolicy`,
+     переиспользовать `ru.jrestly.http.Jitter` из ADR-0040) и
+     `ServerSentEvent.reconnecting(Function<String, Stream<ServerSentEvent>>, ReconnectPolicy)`;
+   - юниты на фейковых opener'ах: последовательность `lastEventId`, чистый
+     EOF → reconnect (EventSource), `[DONE]` → стоп, `maxAttempts`,
+     close() отменяет reconnect, проброс последней ошибки, `onReconnect`;
+   - e2e WireMock: первый стаб SSE `retry: 50` + id 1..2 → FAULT, второй стаб
+     ждёт `Last-Event-ID: 2` → `[DONE]` (проверка через `findAll`);
+   - осторожно: WireMock FAULT роняет соединение (`Connection reset`/двух-
+     кратный `GET` матчится первым стабом — использовать scenario).
+2. Не забыть: `[DONE]`-хелпер `isDone()` уже есть; retry/id в событиях
+   персистятся (#142) — парсер трогать не нужно.
+3. **Среда:** `GRADLE_USER_HOME=/tmp/opencode/gradle-home ./gradlew ...`,
+   внешний `timeout`; ветка agent-loop; root-тесты с фильтром:
    `./gradlew :test --tests "..."` (без `:` фильтр падает на `:benchmarks:test`).
