@@ -203,6 +203,22 @@ class RetryPolicyJitterTest {
     }
 
     @Test
+    @DisplayName("maxRetryAfter unset: the effective cap falls back to maxBackoff (ADR-0040 default)")
+    void defaultRetryAfterCapFallsBackToMaxBackoff() {
+        RetryPolicy policy = RetryPolicy.builder()
+                .initialBackoff(Duration.ofMillis(100))
+                .maxBackoff(Duration.ofMillis(1000))
+                .build();
+
+        // Server sends 24 hours; the documented default cap is maxBackoff -> 1000 ms.
+        assertEquals(1000, policy.nextDelayMillis(1, 86_400_000L, maxDraw()));
+        assertEquals(1000, policy.nextDelayMillis(1, 86_400_000L, minDraw()));
+
+        // A Retry-After below the cap is still honored verbatim when it beats the bound.
+        assertEquals(700, policy.nextDelayMillis(1, 700L, maxDraw()));
+    }
+
+    @Test
     @DisplayName("toString includes all ADR-0040 properties")
     void toStringIncludesNewProperties() {
         RetryPolicy policy = RetryPolicy.builder()

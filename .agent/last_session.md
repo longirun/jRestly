@@ -1,61 +1,66 @@
-# Last Session: #183 (2026-10-16)
+# Last Session: #184 (2026-10-16)
 
 ## Что сделано
 
-**Аудит (4-й шаг нити «общие мутабельные структуры»): нашёл и починил
-`AuthHeaderProvider` — рассинхрон `isAuthorized()` с реально отправляемым и
-неатомарная публикация пары кредов.**
+**Аудит (5-й шаг нити «тихие рассинхроны контракта»): `RetryPolicy` —
+дефолтный потолок `Retry-After` не применялся вопреки ADR-0040.**
 
-1. *Находка 1 (детерминированная).* `isAuthorized()` возвращал
-   `initialHeaderName != null || headerValue != null`, а `getAuthHeaders()`
-   отправляет креды только при **обеих** непустых частях. Неполная пара
-   (имя без значения, `updateAuthHeader(null, v)`) → клиент «авторизован»,
-   `isLoginInBackgroundNeeded` не запускает логин, на провод уходит пусто.
-   Противоречит javadoc `Builder.authHeader`.
-2. *Находка 2 (потоковая).* `headerName`/`headerValue` — два не-`volatile`
-   поля, пишутся из `@SetAuthDetails`/`updateAuthHeader` неатомарно; читатель
-   мог увидеть рваную пару (имя из одного апдейта, значение из другого).
-3. *Fix.* Один неизменяемый `Header` в `volatile`-поле:
-   `private final Header initialHeader` + `private volatile Header capturedHeader`;
-   фабрика `complete(name,value)` хранит пару только если обе части != null.
-   `getAuthHeaders()` и `isAuthorized()` читают один снимок → инвариант
-   «authorized ⇔ есть что отправить». Побочно `getAuthHeaders()` перестал
-   аллоцировать `new Header` на каждый вызов.
-4. *TDD red-first.* Новый `src/test/java/ru/jrestly/http/AuthHeaderProviderTest.java`
-   (6 тестов) — на старом коде **4 красных** ровно ожидаемо (включая
-   стресс-тест на рваную пару), после фикса зелёные. Полные пары ведут себя
-   как раньше — `AuthTest`/`TestAuthProvider` не трогались.
+1. *Находка.* Принятое решение ADR-0040 говорит: `maxRetryAfter` (дефолт
+   `null`) при обращении падает на `maxBackoff`, а `@Retry.maxRetryAfterMs()
+   default -1` означает «дефолт `maxBackoffMs`»; пункт 3 ADR («Защита от
+   зависаний по `Retry-After`») ради этого и заведён. Код же применял потолок
+   **только** при явно заданном `maxRetryAfter` (`if (maxRetryAfter != null)`).
+   Следствие: при дефолте `Retry-After: 86400` парковал вызывающий поток на
+   **24 часа** — то самое зависание. Builder-javadoc и class-javadoc формула
+   **уже** описывали fallback; расходился только код (и производное «no cap
+   applied» в `getMaxRetryAfter()`).
+2. *Fix.* Эффективный потолок: `maxRetryAfter != null ? maxRetryAfter.toMillis()
+   : maxBackoff.toMillis()`, ожидание `max(bound, min(cap, retryAfter))`.
+   Поле-конфиг при незаданном остаётся `null` — `getMaxRetryAfter()` не тронут
+   (совместимо; `assertNull` в тесте дефолтов жив). Javadoc геттера/класса
+   уточнены.
+3. *TDD red-first.* Новый
+   `RetryPolicyJitterTest.defaultRetryAfterCapFallsBackToMaxBackoff` (24 ч →
+   1000 мс) — **красный** на старом коде (86 400 000), зелёный после.
+4. *Два старых wall-clock теста `RetryTest`* держали недокументированное «без
+   потолка» (`maxBackoff` 50 мс против `Retry-After` 1 с/3 с) — теперь явно
+   ставят `.maxRetryAfter(10 s)`, продолжая проверять, что заголовок поднимает
+   ожидание.
+5. *ADR-0040* дополнен `## Amendment #184` (решение ADR не менялось — код
+   приведён к нему).
 
 ## Гейты
 
-- `./gradlew test javadoc` — **1196/1196** (core 1116 + engine-okhttp 25 +
+- `./gradlew test javadoc` — **1197/1197** (core 1117 + engine-okhttp 25 +
   engine-apache5 25 + codec-jackson-xml 15 + benchmarks 15), всё зелёное.
 - javadoc корня и всех субмодулей зелёный под `-Werror`, 0 warnings.
-- +6 тестов (core 1110 → 1116).
+- +1 тест (core 1116 → 1117).
 
 ## Технические заметки
 
-- Четвёртая подряд «тихая» находка на стыке подсистем (#139 `Map.copyOf`
-  недетерминизм, #176 `+` в query, #181 гонка кэша прокси, #182 живые списки
-  `ResponseHeaders`). Общий знаменатель: холдер честен в happy-path и
-  расходится на неполном/конкурентном вводе.
-- `isAuthorized()` — производная от состояния; когда её формула не совпадает
-  с формулой `getAuthHeaders()`, появляется логический разлад. Держать их на
-  одном снимке.
-- `Header` — record (immutable), поэтому `volatile Header` даёт атомарную
-  публикацию пары без локов.
+- Это **первый** случай серии, когда расхождение не между подсистемами, а
+  между **принятым ADR и его реализацией**; документация (ADR + builder +
+  аннотация) была права в 3 местах из 4. Зелёные тесты, закрепившие баг,
+  делали его невидимым — «гейт без отрицательного теста не гейт».
+- Серия аудита за день: #181 кэш прокси (`HashMap`→CHM), #182 живые списки
+  `ResponseHeaders`, #183 `AuthHeaderProvider`, #184 `RetryPolicy` (все —
+  red-first).
+- Полезный фонарь на будущее: сверять **формулировки ADR** (в т.ч. дефолты
+  параметров) с фактическим кодом, а не только код с кодом.
 
-## Контекст для следующей сессии (#184)
+## Контекст для следующей сессии (#185)
 
 1. **Эпики не двигал:** кандидат №4 (ADR-0060) закрыт в #180; активная зона —
-   кандидат №1 (test-javadoc) либо свободный ход.
-2. **Возможные продолжения:** (а) кандидат №1 (test-javadoc в тестовых классах);
-   (б) новый ADR-0061; (в) продолжить аудит-нить — но общие мутабельные
-   структуры клиента, похоже, исчерпаны (`controllers`/`interceptorInstances`
-   CHM, `moduleInfo` immutable, `ResponseHeaders`/`AuthHeaderProvider` закрыты).
-3. **Обновлено:** `AuthHeaderProvider.java`, `AuthHeaderProviderTest.java` (new),
-   `DRAFT.md` (запись #183), `.agent/days/2026-10-16.md`, `.agent/mailbox.md`,
-   `.agent/last_session.md`.
-4. **Ветка** `agent-loop`; HEAD — будет коммит #183.
+   кандидат №1 (test-javadoc, многосессионный: 146 из 148 тест-классов без
+   class-level javadoc) либо свободный ход.
+2. **Возможные продолжения:** (а) кандидат №1 — начать javadoc-пасс по одному
+   тест-пакету; (б) новый ADR-0061 (свободный номер; следующая большая фича);
+   (в) продолжить аудит-нить новым фонарём — проверка ADR-формулировок/дефолтов
+   против кода (нить #184 показала, что там есть что ловить).
+3. **Обновлено:** `RetryPolicy.java`, `RetryPolicyJitterTest.java`,
+   `RetryTest.java`, `docs/0.10.0/ADR-0040-*.md` (Amendment #184), `DRAFT.md`
+   (запись #184), `.agent/days/2026-10-16.md` (сессия #184 + Итог дня),
+   `.agent/mailbox.md`, `.agent/last_session.md`.
+4. **Ветка** `agent-loop`; HEAD до этого коммита — #183.
 5. **Среда:** `GRADLE_USER_HOME=/tmp/opencode/gradle-home ./gradlew ...`;
-   счётчик сессии: `183`.
+   счётчик сессии: `184`.

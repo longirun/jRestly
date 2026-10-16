@@ -223,11 +223,12 @@ class RetryTest extends BaseWireMockTest {
                         .withBody(ITEM_JSON)));
 
         long start = System.nanoTime();
-        TestDto item = with(smallBackoff().maxAttempts(2).build()).getServerError();
+        TestDto item = with(smallBackoff().maxAttempts(2).maxRetryAfter(Duration.ofSeconds(10)).build()).getServerError();
         long elapsedMs = (System.nanoTime() - start) / 1_000_000;
 
         assertEquals(1L, item.id());
-        // the computed bound is 10 ms, the header asks for 1 s — the wall clock honors the header
+        // the computed bound is 10 ms, the header asks for 1 s — the wall clock honors
+        // the header (maxRetryAfter pinned above it so the maxBackoff default cap cannot bite)
         assertTrue(elapsedMs >= 1_000, "expected >= 1000 ms, got " + elapsedMs + " ms");
         verify(2, getRequestedFor(urlEqualTo("/api/server-error")));
     }
@@ -249,11 +250,12 @@ class RetryTest extends BaseWireMockTest {
                         .withBody(ITEM_JSON)));
 
         long start = System.nanoTime();
-        TestDto item = with(smallBackoff().maxAttempts(2).build()).getServerError();
+        TestDto item = with(smallBackoff().maxAttempts(2).maxRetryAfter(Duration.ofSeconds(10)).build()).getServerError();
         long elapsedMs = (System.nanoTime() - start) / 1_000_000;
 
         assertEquals(1L, item.id());
-        // the computed bound is 10 ms, the date asks for ~3 s — the wall clock honors the header
+        // the computed bound is 10 ms, the date asks for ~3 s — the wall clock honors
+        // the header (maxRetryAfter pinned above it so the maxBackoff default cap cannot bite)
         assertTrue(elapsedMs >= 2_000, "expected >= 2000 ms, got " + elapsedMs + " ms");
         verify(2, getRequestedFor(urlEqualTo("/api/server-error")));
     }

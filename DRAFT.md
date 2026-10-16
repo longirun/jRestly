@@ -1,5 +1,28 @@
 # DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
+> **Сессия #184 (аудит: `RetryPolicy` — дефолтный потолок `Retry-After` не применялся
+> вопреки ADR-0040):** пятый подряд «тихий» рассинхрон, на этот раз внутри уже
+> принятого ADR. Решение ADR-0040 прямо говорит: `maxRetryAfter` (дефолт `null`)
+> при обращении падает на `maxBackoff`, а `@Retry.maxRetryAfterMs() default -1`
+> означает «дефолт `maxBackoffMs`». Код же применял потолок **только** при явно
+> заданном `maxRetryAfter` (`if (maxRetryAfter != null) { … }`). Следствие: при
+> дефолте серверный `Retry-After: 86400` парковал вызывающий поток на **24 часа** —
+> ровно тот зависание, ради предотвращения которого пункт 3 ADR и писался. При
+> этом builder-javadoc и формула в class-javadoc **уже** описывали fallback;
+> расходился только код (и производная формулировка `getMaxRetryAfter()` «no cap
+> applied»). Fix: эффективный потолок `maxRetryAfter != null ? maxRetryAfter :
+> maxBackoff`, ожидание `max(bound, min(cap, retryAfter))` в обоих случаях;
+> поле-конфиг остаётся `null` при незаданном (публичный геттер не тронут —
+> совместимо), javadoc геттера/класса уточнены. TDD red-first: новый
+> `RetryPolicyJitterTest.defaultRetryAfterCapFallsBackToMaxBackoff` (24 ч → 1000 мс)
+> — красный на старом коде (возвращал 86 400 000), зелёный после. Два старых
+> wall-clock теста `RetryTest` держали недокументированное «без потолка»
+> (`maxBackoff` 50 мс против `Retry-After` 1 с/3 с) — теперь явно ставят
+> `maxRetryAfter(10 с)`, продолжая проверять, что заголовок поднимает ожидание.
+> ADR-0040 дополнен `## Amendment #184`. +1 тест, гейт **1197/1197** (core 1117 +
+> engine-okhttp 25 + engine-apache5 25 + codec-jackson-xml 15 + benchmarks 15),
+> `./gradlew test javadoc` зелёный под `-Werror`, 0 warnings.
+
 > **Сессия #183 (аудит: `AuthHeaderProvider` — рассинхрон `isAuthorized()` с реально
 > отправляемыми заголовками + неатомарная публикация пары):** четвёртый подряд шаг
 > нити «общие мутабельные структуры» (#181 гонка кэша прокси, #182 живые списки

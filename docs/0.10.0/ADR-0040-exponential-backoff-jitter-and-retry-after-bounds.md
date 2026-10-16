@@ -58,3 +58,30 @@ Accepted
 - **Zero-Dependency:** Реализация базируется исключительно на `java.time.Duration`, `java.util.Random`, `java.util.Objects`.
 - **Строгая обратная совместимость:** Все существующие тесты (828/828) продолжают проходить без изменений, дефолты полностью идентичны предыдущему поведению.
 - **Отказоустойчивость:** Защита от Thundering Herd, retry storms и защита клиентов от зависания из-за некорректных серверных значений `Retry-After`.
+
+## Amendment #184 (2026-10-16) — the default Retry-After cap was not applied
+
+The accepted decision above states the ensemble `maxRetryAfter` default:
+`(дефолт: null, при обращении fallback на maxBackoff)` and `@Retry.maxRetryAfterMs`
+default `-1` means `maxBackoffMs`. The implementation applied a cap **only**
+when `maxRetryAfter` was explicitly set (`if (maxRetryAfter != null) …`), so
+with the default the server's `Retry-After` was honored **unbounded** — a
+`Retry-After: 86400` parked the caller for 24 h, exactly the hang this ADR
+exists to prevent. The builder Javadoc and the class-level formula already
+described the fallback; only the code (and the derived
+`getMaxRetryAfter()` "no cap applied" wording) diverged.
+
+Fix: `RetryPolicy.nextDelayMillis` computes the effective cap as
+`maxRetryAfter != null ? maxRetryAfter : maxBackoff`, so the wait is
+`max(bound, min(cap, retryAfter))` in both the configured and default cases.
+The config field stays `null` when unset (`getMaxRetryAfter()` unchanged —
+source/binary compatible), the getter Javadoc was corrected, and the class
+Javadoc now names `cap` explicitly.
+
+Two pre-existing wall-clock integrations (`RetryTest`) had pinned the
+undocumented uncapped behavior by using a 50 ms `maxBackoff` against a 1 s /
+~3 s `Retry-After`; they now set an explicit `maxRetryAfter(10 s)` so they keep
+testing that the header raises the wait, while the new default-cap rule is
+pinned by the red-first unit
+`RetryPolicyJitterTest.defaultRetryAfterCapFallsBackToMaxBackoff` (24 h server
+header -> capped to `maxBackoff`).

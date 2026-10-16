@@ -57,8 +57,10 @@ import java.util.Set;
  * (the AWS architecture-blog recipe — without jitter, all clients of a flapping server
  * retry on the same beat and re-break it). When the failed response carries a parseable
  * {@code Retry-After} header (delta-seconds or HTTP-date, ADR-0009 candidate 3), the
- * server's explicit signal wins: the wait is exactly {@code max(bound, min(maxRetryAfter, retryAfter))}
- * (deterministic, capped to prevent indefinite hangs, ADR-0040).
+ * server's explicit signal wins: the wait is exactly {@code max(bound, min(cap, retryAfter))}
+ * where {@code cap} is {@link #getMaxRetryAfter() maxRetryAfter} when set and
+ * {@link #getMaxBackoff() maxBackoff} otherwise (deterministic, capped to
+ * prevent indefinite hangs, ADR-0040).
  *
  * <p>One policy covers both call styles: it applies identically to
  * synchronous methods and to {@code CompletableFuture}-returning methods
@@ -265,10 +267,12 @@ public final class RetryPolicy {
     }
 
     /**
-     * The maximum allowed duration for server-provided {@code Retry-After} waits (ADR-0040).
-     * If not explicitly configured, returns {@code null} (no cap applied).
+     * The configured maximum allowed duration for server-provided {@code Retry-After}
+     * waits (ADR-0040). When not explicitly configured this returns {@code null}
+     * (the config field is unset); the <em>effective</em> cap then falls back to
+     * {@link #getMaxBackoff() maxBackoff} — see {@link #nextDelayMillis(long, long, Long, java.util.Random)}.
      *
-     * @return the maximum allowed Retry-After wait duration, or null if uncapped
+     * @return the configured maximum Retry-After wait duration, or null when unset
      */
     public Duration getMaxRetryAfter() {
         return maxRetryAfter;
@@ -324,10 +328,10 @@ public final class RetryPolicy {
         }
 
         if (respectRetryAfter && retryAfterMillis != null) {
-            long effectiveRetryAfter = Math.max(0L, retryAfterMillis);
-            if (maxRetryAfter != null) {
-                effectiveRetryAfter = Math.min(maxRetryAfter.toMillis(), effectiveRetryAfter);
-            }
+            // ADR-0040: an unset maxRetryAfter falls back to maxBackoff, so an
+            // unbounded server Retry-After (e.g. 86400) never parks the caller.
+            long cap = maxRetryAfter != null ? maxRetryAfter.toMillis() : maxBackoff.toMillis();
+            long effectiveRetryAfter = Math.min(cap, Math.max(0L, retryAfterMillis));
             return Math.max(bound, effectiveRetryAfter);
         }
 
