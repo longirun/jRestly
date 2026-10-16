@@ -167,6 +167,27 @@ class AuthInterceptorsTest {
     }
 
     @Test
+    @DisplayName("ApiKeyAuth query placement uses RFC 3986 URI encoding (space is %20, not +)")
+    void apiKeyAuthQueryEncodesUriComponents() throws Exception {
+        Method regularMethod = TestLoginApi.class.getMethod("regularCall");
+        RequestContext context = mockContext(regularMethod);
+
+        // A space must become %20 (RFC 3986 query component), matching the
+        // rest of the request surface — not the form-urlencoded '+' that
+        // URLEncoder emits by default.
+        ApiKeyAuth queryAuth = ApiKeyAuth.query("api key", "my api/key+value");
+        WireRequest req = WireRequest.builder()
+                .method(HttpMethod.GET)
+                .uri(URI.create("https://example.com/api"))
+                .build();
+
+        WireRequest intercepted = queryAuth.intercept(req, context);
+
+        assertEquals("https://example.com/api?api%20key=my%20api%2Fkey%2Bvalue",
+                intercepted.uri().toString());
+    }
+
+    @Test
     @DisplayName("Auth interceptors declare @Order(-1000) for highest priority execution")
     void orderAnnotation() {
         Order bearerOrder = BearerAuth.class.getAnnotation(Order.class);

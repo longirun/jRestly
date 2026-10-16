@@ -121,8 +121,7 @@ public class ApiKeyAuth implements RequestInterceptor {
     private static WireRequest appendQueryParam(WireRequest request, String paramName, String paramValue) {
         URI originalUri = request.uri();
         String uriStr = originalUri.toString();
-        String encodedParam = URLEncoder.encode(paramName, StandardCharsets.UTF_8)
-                + "=" + URLEncoder.encode(paramValue, StandardCharsets.UTF_8);
+        String encodedParam = encodeQueryComponent(paramName) + "=" + encodeQueryComponent(paramValue);
 
         String fragment = originalUri.getRawFragment();
         String base = (fragment != null && uriStr.contains("#"))
@@ -132,5 +131,13 @@ public class ApiKeyAuth implements RequestInterceptor {
         String separator = base.contains("?") ? "&" : "?";
         String newUriStr = base + separator + encodedParam + (fragment != null ? "#" + fragment : "");
         return request.withUri(URI.create(newUriStr));
+    }
+
+    // URLEncoder emits application/x-www-form-urlencoded, which renders a space
+    // as '+'. In a URI query component '+' is a literal plus (RFC 3986), so
+    // normalize it to %20 — the encoding the rest of the request surface uses
+    // (HttpTemplate, HttpTemplateBuilder).
+    private static String encodeQueryComponent(String value) {
+        return URLEncoder.encode(value, StandardCharsets.UTF_8).replace("+", "%20");
     }
 }

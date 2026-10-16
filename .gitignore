@@ -38,3 +38,8 @@ bin/
 
 ### Mac OS ###
 .DS_Store
+
+### Editor swap files ###
+*.swp
+*.swo
+*~

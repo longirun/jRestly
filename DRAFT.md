@@ -1,5 +1,24 @@
 # DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
+> **Сессия #176 (мелкий аудит-фикс + новый стратегический кандидат №4 «XML & кастомные форматы»):**
+> (1) Аудит-фикс: запросный URI-энкодер `ApiKeyAuth` (query-размещение ключа) отставал
+> от остальной поверхности запроса — `URLEncoder` оставлял пробел как `+`
+> (form-encoding), тогда как `HttpTemplate.encode` и `HttpTemplateBuilder.createUrl`
+> нормализуют его в `%20` (RFC 3986: в query `+` — литеральный плюс). Вынес
+> `encodeQueryComponent` + red-first тест. **1153/1153** (core 1088 + okhttp 25 +
+> apache5 25 + bench 15), javadoc под `-Werror`, 0 warnings.
+> (2) Антон (mailbox, 2026-10-16) поднял новую нить: **поддержка XML и вообще
+> кастомных форматов** — «не JSON'ом единым». Аудит по коду подтвердил реальный,
+> незапланированный пробел: формат полезной нагрузки структурно захардкожен под JSON.
+> `RequestType` — enum ровно из трёх значений (`APPLICATION_JSON`,
+> `APPLICATION_FORM_URLENCODED`, `MULTIPART_FORM_DATA`), и DTO-тело сериализуется
+> **только** при `APPLICATION_JSON` (`HttpTemplateBuilder:289`): при
+> `@ContentType("application/xml")` DTO молча **выбрасывается** (body == null), при
+> этом сам javadoc `@ContentType` рекламирует `application/xml` как пример. SPI
+> назван и сформован JSON-only (`JsonCodec`, `JsonCodecResolver` пробует только
+> Jackson/Gson/Moshi, `prettyPrint`, `NoOpJsonCodec`). Заведён **Кандидат №4 —
+> ADR-0060: pluggable payload formats (Codec SPI общего вида)**, детали ниже.
+
 > **Сессия #175 (ADR-0059 — Ф3 реализована, спайк пройден):** idle-stall guard
 > оставлен в коде после удачного спайка на всех трёх транспортах. Восстановлен
 > и доделан незакоммиченный WIP прерванной сессии: `ReconnectPolicy.stallTimeout(Duration)`
@@ -344,6 +363,18 @@
   `SpiEngineAutoDetectionTest`; JDK-строка бенчей закреплена явно.
   **ADR-0058 полностью завершён.**
 
+- **Кандидат №4 — XML & pluggable payload formats (ADR-0060)** *(Антон, 2026-10-16:
+  «надо не забыть про поддержку xml… хорошо бы вообще поддержать кастомный формат.
+  Если пользователю нужно, он его реализует и продолжат пользоваться нашей библиотекой»).*
+  Пробел подтверждён по коду: формат payload захардкожен под JSON.
+  `RequestType` — enum из трёх значений, DTO-тело сериализуется только при
+  `APPLICATION_JSON`; `@ContentType("application/xml")` молча роняет DTO
+  (`HttpTemplateBuilder:289`), хотя javadoc `@ContentType` рекламирует XML;
+  SPI назван/сформован JSON-only (`JsonCodec`/`JsonCodecResolver`/`prettyPrint`).
+  Направление: обобщённый `Codec` (media-type ↔ значения) + выбор по
+  request/response `Content-Type`, с сохранением бинарной совместимости
+  `JsonCodec`; XML-адаптер (Jackson XML / JAXB) как SPI-адаптер, zero-dep ядро.
+  Нужен концепт-ADR-0060 с не-goals (парсер XML в ядре, XSD, etc.).
 
 ---
 
