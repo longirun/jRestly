@@ -1,5 +1,25 @@
 # DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
+> **Сессия #181 (аудит: скрытая гонка в кэше прокси — `HashMap` + `computeIfAbsent`):**
+> свободный ход-аудит по нити Антона «что не запланировано и не видно». Найдена и
+> исправлена **реальная потоковая гонка** в `AbstractHttpClient.controllers`:
+> кэш прокси-контроллеров был обычным `HashMap`, мутируемым через
+> `computeIfAbsent` без синхронизации. `HashMap.computeIfAbsent` выполняет
+> mapping-функцию **вне** какого-либо замка и после неё проверяет `modCount` —
+> две нити, одновременно зовущие `client.get(Api.class)` (ленивое
+> разыменование контроллера на общем клиенте в многопоточном сервере),
+> падают с `ConcurrentModificationException` (а в других окнах — теряют
+> созданный прокси/создают его дважды). Фикс: поле → `ConcurrentHashMap`
+> (сосед `interceptorInstances` уже был CHM; `JRestlyClient.get()` и
+> `AbstractHttpClient.get()` пользуются тем же полем). TDD red-first:
+> новый `ProxyCacheConcurrencyTest` с детерминированным барьером в
+> `createController` (расширяет окно гонки; на CHM барьер просто истекает по
+> таймауту) — **красный** на старом `HashMap` ровно ожидаемым
+> `ConcurrentModificationException`, зелёный на CHM. +1 тест, гейт
+> **1188/1188** (core 1108 + engine-okhttp 25 + engine-apache5 25 +
+> codec-jackson-xml 15 + benchmarks 15), `./gradlew test javadoc` зелёный
+> под `-Werror`, 0 warnings. Эпики не трогались — чистая robustness-находка.
+
 > **Сессия #180 (ADR-0060 — Ф3 реализована: ServiceLoader-автоподбор кодеков; ADR закрыт полностью):**
 > новый SPI `ru.jrestly.codec.PayloadCodecProvider` (`isAvailable()`/`createCodec()`/
 > `default priority()`) — точный аналог `HttpEngineProvider` (ADR-0058), плюс

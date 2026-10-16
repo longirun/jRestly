@@ -12,7 +12,6 @@ import java.net.CookieManager;
 import java.net.CookieStore;
 import java.net.ProxySelector;
 import java.net.http.HttpClient;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -31,8 +30,8 @@ public abstract class AbstractHttpClient {
     /** The per-subclass logger, named after the concrete class. */
     protected final System.Logger logger = System.getLogger(getClass().getName());
 
-    /** The created controller proxies, keyed by the controller interface. */
-    protected final Map<Class<?>, Proxy> controllers = new HashMap<>();
+    /** The created controller proxies, keyed by the controller interface; concurrent on purpose (thread-safe {@link java.util.concurrent.ConcurrentHashMap}). */
+    protected final Map<Class<?>, Proxy> controllers = new ConcurrentHashMap<>();
 
     /** Cached instances of declarative interceptors declared via @WithInterceptor. */
     protected final Map<Class<?>, Object> interceptorInstances = new ConcurrentHashMap<>();
