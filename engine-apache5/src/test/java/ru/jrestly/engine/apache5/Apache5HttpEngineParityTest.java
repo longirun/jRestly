@@ -16,6 +16,11 @@ import ru.jrestly.http.WireResponse;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.net.InetAddress;
+import java.net.ServerSocket;
+import java.net.Socket;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -518,5 +523,45 @@ class Apache5HttpEngineParityTest {
                 .mapToLong(h -> h.values().size())
                 .sum();
         assertEquals(1L, count, "exactly one Content-Type header on the wire");
+    }
+
+    @Test
+    @DisplayName("Streaming response populates trailersSupplier once body is read to completion")
+    void streamingResponsePopulatesTrailersSupplier() throws Exception {
+        try (ServerSocket serverSocket = new ServerSocket(0, 10, InetAddress.getByName("127.0.0.1"))) {
+            int port = serverSocket.getLocalPort();
+            Thread.ofVirtual().start(() -> {
+                try (Socket socket = serverSocket.accept();
+                     InputStream in = socket.getInputStream();
+                     OutputStream out = socket.getOutputStream()) {
+                    byte[] buf = new byte[1024];
+                    in.read(buf);
+                    String resp = "HTTP/1.1 200 OK\r\n"
+                            + "Transfer-Encoding: chunked\r\n"
+                            + "Trailer: Server-Timing\r\n"
+                            + "Connection: close\r\n\r\n"
+                            + "5\r\nhello\r\n"
+                            + "0\r\n"
+                            + "Server-Timing: app;dur=30.0\r\n\r\n";
+                    out.write(resp.getBytes(StandardCharsets.US_ASCII));
+                    out.flush();
+                } catch (IOException ignored) {}
+            });
+
+            WireRequest request = new WireRequest(HttpMethod.GET, URI.create("http://127.0.0.1:" + port + "/stream"), List.of(), null, null);
+            HttpEngineOptions streamOptions = new HttpEngineOptions(null, null, true, null, null);
+            WireResponse response = engine.send(request, streamOptions);
+
+            assertNotNull(response.stream());
+            assertTrue(response.trailersSupplier().get().isEmpty());
+
+            byte[] bytes = response.stream().readAllBytes();
+            assertEquals("hello", new String(bytes, StandardCharsets.UTF_8));
+
+            List<Header> trailers = response.trailersSupplier().get();
+            assertEquals(1, trailers.size());
+            assertEquals("Server-Timing", trailers.get(0).name());
+            assertEquals("app;dur=30.0", trailers.get(0).value());
+        }
     }
 }

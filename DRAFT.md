@@ -1,5 +1,27 @@
 # DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
+> **Сессия #163 (ADR-0059 — Ф2 реализована):** завершение трейлеров на
+> стриминговом пути (`WireResponse.trailersSupplier` + `populateTrailers` +
+> терминальные хуки + engine parity) по TDD red-first (compile-red на
+> отсутствующие методы → 14 новых тестов: 3 в WireResponseTrailersTest,
+> 3 в ResponseHeadersPopulateTrailersTest, 6 в StreamingTrailersTest,
+> 1 в OkHttpEngineParityTest, 1 в Apache5HttpEngineParityTest).
+> Добавлен 7-й компонент `Supplier<List<Header>> trailersSupplier` в
+> `WireResponse` (дефолт `List::of`/static copy; явный 6-аргументный конструктор
+> сохранён; `equals`/`hashCode` игнорируют supplier; `Builder.trailersSupplier`).
+> `ResponseHeaders.populateTrailers(trailers)` потокобезопасен и идемпотентен,
+> обновляет `trailers()` и `trailerMap`; поддержан `ResponseHeaders.capture` /
+> `captureCallable` через `attachTrailerForwarder`. Package-private
+> `TrailerCompletingInputStream` перехватывает EOF (-1) и `close()`, вызывая
+> однократный CAS-запрос supplier (`AtomicBoolean`). `HttpTemplate.processResponse`
+> оборачивает `stream` хуком при наличии supplier и получателей заголовков;
+> стриминговая декомпрессия (`handleDecompression`) сохраняет supplier.
+> Движки `engine-okhttp` и `engine-apache5` поставляют ленивые трейлеры после
+> вычитывания тела (`response.trailers()`, `entity.getTrailers()`); JDK движок
+> остаётся пустым (платформенная граница). **1145/1145** (core 1082 + okhttp 24 +
+> apache5 24 + bench 15), javadoc зелёный под `-Werror`, 0 warnings.
+> Впереди Ф3 (spike stall guard).
+
 > **Сессия #161 (ADR-0059 — Ф1 реализована):** `ServerSentEvent.reconnecting(
 > opener, ReconnectPolicy)` по TDD red-first (32 compile-errors → 18 юнитов +
 > 1 e2e). Новый публичный API: `ReconnectPolicy` (maxAttempts = реконнекты
@@ -252,14 +274,14 @@
 - **Кандидат №2 — HTTP Trailers & Advanced Streaming ergonomics**:
   Расширенные сценарии работы с трейлерами и чанками в стриминге данных (LLM / SSE).
   **В работе: ADR-0059** (`docs/0.10.0/ADR-0059-sse-stream-resilience-and-streaming-trailer-completion.md`,
-  Proposed). Фазы: **Ф1 — сделана (#161)**: `ServerSentEvent.reconnecting` +
-  `ReconnectPolicy`/`ReconnectInfo` (EventSource-семантика: `Last-Event-ID`
-  replay, серверный `retry:`/`Jitter`, `stopOnDone`, bounded attempts,
-  `onReconnect`); Ф2 — ленивые трейлеры на стриминговом пути
-  (`WireResponse.trailersSupplier` + `ResponseHeaders.populateTrailers` +
-  терминальные EOF/close-хуки; JDK-движок остаётся пустым — платформенное
-  ограничение); Ф3 (spike-gated) — `stallTimeout` (idle-stall guard).
-  Следующий шаг: **Ф2 по TDD (red-first)**.
+  Proposed). Фазы:
+  - **Ф1 — сделана (#161)**: `ServerSentEvent.reconnecting` + `ReconnectPolicy`/`ReconnectInfo`
+    (EventSource-семантика: `Last-Event-ID` replay, серверный `retry:`/`Jitter`, `stopOnDone`,
+    bounded attempts, `onReconnect`);
+  - **Ф2 — сделана (#163)**: ленивые трейлеры на стриминговом пути (`WireResponse.trailersSupplier`
+    + `ResponseHeaders.populateTrailers` + терминальный `TrailerCompletingInputStream` + engine parity);
+  - **Ф3 (spike-gated)**: `stallTimeout` (idle-stall guard).
+  Следующий шаг: **Ф3 (спайк stall guard)**.
 
 - **Кандидат №3 — OkHttpEngine / ApacheHttpEngine external modules** (ADR-0058):
   Вынос внешних коннекторов в отдельные субмодули для максимальной скорости под нагрузкой.

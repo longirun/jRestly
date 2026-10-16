@@ -5,14 +5,16 @@ import java.net.http.HttpClient;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.function.Supplier;
 
 /**
  * Internal wire model: the engine's view of a response — status, headers,
  * negotiated protocol version, optional trailers, and the payload (either
- * the raw bytes or a live body stream, ADR-0015, ADR-0038).
+ * the raw bytes or a live body stream, ADR-0015, ADR-0038, ADR-0059).
  *
  * <p>Exactly one of {@code body} and {@code stream} is non-null: the
  * {@code ofByteArray} send path carries {@code body}, the
@@ -25,6 +27,7 @@ import java.util.Optional;
  * @param stream the live body stream of a streaming response (the JDK's {@code ofInputStream} handler), or {@code null} for a byte-payload response
  * @param version the negotiated HTTP protocol version (ADR-0038)
  * @param trailers the trailing headers, or an empty list if none (ADR-0038)
+ * @param trailersSupplier lazy supplier for response trailers populated after stream completion (ADR-0059)
  */
 public record WireResponse(
         int statusCode,
@@ -32,16 +35,35 @@ public record WireResponse(
         byte[] body,
         InputStream stream,
         HttpClient.Version version,
-        List<Header> trailers
+        List<Header> trailers,
+        Supplier<List<Header>> trailersSupplier
 ) {
 
     /**
-     * Compact constructor normalizing collections and defaults.
+     * Compact constructor normalizing collections, defaults, and the trailer supplier.
      */
     public WireResponse {
         headers = headers != null ? List.copyOf(headers) : List.of();
         version = version != null ? version : HttpClient.Version.HTTP_1_1;
-        trailers = trailers != null ? List.copyOf(trailers) : List.of();
+        List<Header> effectiveTrailers = trailers != null ? List.copyOf(trailers) : List.of();
+        trailers = effectiveTrailers;
+        if (trailersSupplier == null) {
+            trailersSupplier = !effectiveTrailers.isEmpty() ? () -> effectiveTrailers : List::of;
+        }
+    }
+
+    /**
+     * The 6-component form with negotiated protocol version and trailers (source-compatible with ADR-0038).
+     *
+     * @param statusCode the HTTP status code
+     * @param headers the response headers
+     * @param body the raw payload bytes, or {@code null}
+     * @param stream the live body stream
+     * @param version the negotiated HTTP protocol version
+     * @param trailers the trailing headers
+     */
+    public WireResponse(int statusCode, List<Header> headers, byte[] body, InputStream stream, HttpClient.Version version, List<Header> trailers) {
+        this(statusCode, headers, body, stream, version, trailers, trailers != null && !trailers.isEmpty() ? () -> List.copyOf(trailers) : List::of);
     }
 
     /**
@@ -186,6 +208,7 @@ public record WireResponse(
         private InputStream stream;
         private HttpClient.Version version = HttpClient.Version.HTTP_1_1;
         private final List<Header> trailers = new ArrayList<>();
+        private Supplier<List<Header>> trailersSupplier;
 
         private Builder() {
         }
@@ -344,12 +367,52 @@ public record WireResponse(
         }
 
         /**
+         * Sets the lazy trailer supplier.
+         *
+         * @param trailersSupplier the supplier of trailers, or {@code null}
+         * @return this builder
+         */
+        public Builder trailersSupplier(Supplier<List<Header>> trailersSupplier) {
+            this.trailersSupplier = trailersSupplier;
+            return this;
+        }
+
+        /**
          * Builds the {@link WireResponse} instance.
          *
          * @return the newly constructed wire response
          */
         public WireResponse build() {
-            return new WireResponse(statusCode, headers, body, stream, version, trailers);
+            return new WireResponse(statusCode, headers, body, stream, version, trailers, trailersSupplier);
         }
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+        if (this == obj) return true;
+        if (!(obj instanceof WireResponse other)) return false;
+        return statusCode == other.statusCode
+                && Objects.equals(headers, other.headers)
+                && Arrays.equals(body, other.body)
+                && Objects.equals(stream, other.stream)
+                && version == other.version
+                && Objects.equals(trailers, other.trailers);
+    }
+
+    @Override
+    public int hashCode() {
+        int result = Objects.hash(statusCode, headers, stream, version, trailers);
+        result = 31 * result + Arrays.hashCode(body);
+        return result;
+    }
+
+    @Override
+    public String toString() {
+        return "WireResponse[statusCode=" + statusCode
+                + ", headers=" + headers
+                + ", body=" + (body != null ? "[" + body.length + " bytes]" : "null")
+                + ", stream=" + stream
+                + ", version=" + version
+                + ", trailers=" + trailers + "]";
     }
 }

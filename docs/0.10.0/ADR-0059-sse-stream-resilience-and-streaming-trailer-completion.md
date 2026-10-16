@@ -1,7 +1,7 @@
 # ADR-0059: SSE Stream Resilience & Streaming Trailer Completion
 
 > 2026-10-16 · Proposed · Status: Concept
-> Ф1 реализована в сессии #161 (см. Amendment ниже); впереди Ф2 и Ф3.
+> Ф1 реализована в сессии #161, Ф2 реализована в сессии #163 (см. Amendments ниже); впереди Ф3.
 > Next free ADR: 0060
 > Эпик-кандидат №2 из активной зоны DRAFT («HTTP Trailers & Advanced Streaming
 > ergonomics»). Сессия #160: аудит зоны + концепт. Реализация — последующие
@@ -227,3 +227,37 @@ E2E (`SseReconnectWireMockTest`): обрыв смоделирован чисты
 первого заголовка нет, у второго — `2`; серверный `retry: 50` дошёл до
 `ReconnectInfo.delay`. Полуразорванный транспорт (mid-stream
 `UncheckedIOException`) покрыт юнитами.
+
+## Amendment #163 — Ф2 реализована
+
+Реализовано по TDD (red-first: компиляция отсутствующих методов/конструкторов,
+затем unit-тесты ядра, сквозные тесты `StreamingTrailersTest` и parity-тесты
+обоих субмодулей; гейты **1145/1145**, javadoc зелёный под `-Werror`, 0 warnings):
+
+1. **`WireResponse`** (`ru.jrestly.http`):
+   - Добавлен 7-й компонент `Supplier<List<Header>> trailersSupplier` (default
+     `!trailers.isEmpty() ? () -> trailers : List::of` при `null`);
+   - Сохранён явный 6-аргументный конструктор (обратная совместимость);
+   - `equals` и `hashCode` явно переопределены без `trailersSupplier` (транспортный
+     хук не влияет на равенство ответов);
+   - `Builder.trailersSupplier(...)` и `build()`.
+2. **`ResponseHeaders`** (`ru.jrestly.http`):
+   - Добавлен `public synchronized void populateTrailers(List<Header> trailers)` —
+     потокобезопасный и идемпотентный метод обновления трейлеров и карты значений
+     на уже существующем объекте заголовков;
+   - Поддержка паттерна `ResponseHeaders.capture(...)` и `captureCallable(...)`:
+     `attachTrailerForwarder` связывает holder через listener, позволяя видеть
+     поздние трейлеры после вычитывания стрима.
+3. **`TrailerCompletingInputStream`** (package-private `ru.jrestly.http`):
+   - Терминальный `FilterInputStream` хук: перехватывает `-1` из `read()` /
+     `read(byte[], int, int)` и вызов `close()`;
+   - Однократный запрос `trailersSupplier.get()` через thread-safe CAS guard (`AtomicBoolean`);
+   - Подключен в `HttpTemplate.processResponse` для всех стриминговых типов
+     (`InputStream`, `Stream<String>`, `Stream<ServerSentEvent>` и async `CompletableFuture`);
+   - Сохраняется при стриминговой декомпрессии (`HttpTemplate.handleDecompression`).
+4. **Субмодули движков** (`engine-okhttp`, `engine-apache5`):
+   - `OkHttpEngine.toStreamingWireResponse`: ленивый `() -> toHeaders(response.trailers())`
+     после исчерпания тела;
+   - `Apache5HttpEngine.toStreamingWireResponse`: ленивый `() -> toTrailers(entity)`;
+   - `JdkHttpEngine`: остаётся пустым (платформенное ограничение JDK `HttpClient`);
+   - Добавлены parity-тесты с chunked HTTP/1.1 сервером для обоих внешних движков.

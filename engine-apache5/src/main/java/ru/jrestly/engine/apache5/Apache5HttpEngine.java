@@ -449,7 +449,8 @@ public final class Apache5HttpEngine implements HttpEngine {
             stream = new CountingInputStream(stream, total, download::onProgress);
         }
         // the response stays open: closing the returned stream releases the connection
-        return new WireResponse(response.getCode(), headers, null, stream, version, List.of());
+        return new WireResponse(response.getCode(), headers, null, stream, version, List.of(),
+                () -> toTrailers(entity));
     }
 
     private static byte[] drainWithProgress(InputStream in, long total, DownloadProgressListener listener) throws IOException {

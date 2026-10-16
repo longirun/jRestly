@@ -66,6 +66,11 @@ public class ResponseHeaders {
     private volatile Map<String, List<String>> trailerMap = Collections.emptyMap();
     private volatile Map<String, String> linkMap;
     private volatile List<HttpCookie> parsedCookies;
+    private volatile Consumer<List<Header>> trailerForwarder;
+
+    void attachTrailerForwarder(Consumer<List<Header>> forwarder) {
+        this.trailerForwarder = forwarder;
+    }
 
     /**
      * Creates an empty, unpopulated response headers holder.
@@ -178,6 +183,32 @@ public class ResponseHeaders {
         this.linkMap = null; // parsed lazily
         this.parsedCookies = null; // parsed lazily
         this.populated = true;
+    }
+
+    /**
+     * Populates this holder with late-arriving response trailers (ADR-0059).
+     *
+     * <p>Thread-safe and idempotent: invoked upon stream completion (EOF or close).
+     *
+     * @param trailers the trailing headers to populate, or {@code null}/empty to ignore
+     */
+    public synchronized void populateTrailers(List<Header> trailers) {
+        if (trailers == null || trailers.isEmpty()) {
+            return;
+        }
+        this.trailers = List.copyOf(trailers);
+        Map<String, List<String>> tMap = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+        for (Header h : this.trailers) {
+            if (h != null && h.name() != null) {
+                tMap.computeIfAbsent(h.name(), k -> new ArrayList<>())
+                        .add(h.value() != null ? h.value() : "");
+            }
+        }
+        this.trailerMap = Collections.unmodifiableMap(tMap);
+        Consumer<List<Header>> forwarder = this.trailerForwarder;
+        if (forwarder != null) {
+            forwarder.accept(this.trailers);
+        }
     }
 
     /**
@@ -647,13 +678,16 @@ public class ResponseHeaders {
         Objects.requireNonNull(call, "call must not be null");
         ResponseHeaders holder = new ResponseHeaders();
         Consumer<ResponseHeaders> previous = CURRENT_CAPTOR.get();
-        CURRENT_CAPTOR.set(captured -> holder.populate(
-                captured.statusCode(),
-                captured.headers(),
-                captured.duration(),
-                captured.version(),
-                captured.trailers()
-        ));
+        CURRENT_CAPTOR.set(captured -> {
+            holder.populate(
+                    captured.statusCode(),
+                    captured.headers(),
+                    captured.duration(),
+                    captured.version(),
+                    captured.trailers()
+            );
+            captured.attachTrailerForwarder(holder::populateTrailers);
+        });
         try {
             T result = call.get();
             return new CapturedResponse<>(result, holder);
@@ -679,13 +713,16 @@ public class ResponseHeaders {
         Objects.requireNonNull(call, "call must not be null");
         ResponseHeaders holder = new ResponseHeaders();
         Consumer<ResponseHeaders> previous = CURRENT_CAPTOR.get();
-        CURRENT_CAPTOR.set(captured -> holder.populate(
-                captured.statusCode(),
-                captured.headers(),
-                captured.duration(),
-                captured.version(),
-                captured.trailers()
-        ));
+        CURRENT_CAPTOR.set(captured -> {
+            holder.populate(
+                    captured.statusCode(),
+                    captured.headers(),
+                    captured.duration(),
+                    captured.version(),
+                    captured.trailers()
+            );
+            captured.attachTrailerForwarder(holder::populateTrailers);
+        });
         try {
             T result = call.call();
             return new CapturedResponse<>(result, holder);

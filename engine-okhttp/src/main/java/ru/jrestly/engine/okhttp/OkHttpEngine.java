@@ -467,7 +467,14 @@ public final class OkHttpEngine implements HttpEngine {
             in = new CountingInputStream(in, total, download);
         }
         // the response stays open: closing the returned stream releases the connection
-        return new WireResponse(response.code(), headers, null, in, version, List.of());
+        return new WireResponse(response.code(), headers, null, in, version, List.of(),
+                () -> {
+                    try {
+                        return toHeaders(response.trailers());
+                    } catch (IOException | IllegalStateException e) {
+                        return List.of();
+                    }
+                });
     }
 
     private static byte[] drainWithProgress(InputStream in, long total, DownloadProgressListener listener) throws IOException {

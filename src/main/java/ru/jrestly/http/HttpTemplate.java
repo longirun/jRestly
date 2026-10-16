@@ -672,13 +672,15 @@ class HttpTemplate {
 
         // ADR-0022 & ADR-0038: Populate response headers holder and thread-local captor (lazy duration allocation)
         Consumer<ResponseHeaders> captor = ResponseHeaders.CURRENT_CAPTOR.get();
+        ResponseHeaders capturedHeaderHolder = null;
         if (responseHeadersHolder != null || captor != null) {
             Duration callDuration = Duration.ofNanos(System.nanoTime() - startNanos);
             if (responseHeadersHolder != null) {
                 responseHeadersHolder.populate(statusCode, responseHeaders, callDuration, response.version(), response.trailers());
             }
             if (captor != null) {
-                captor.accept(new ResponseHeaders(statusCode, responseHeaders, callDuration, response.version(), response.trailers()));
+                capturedHeaderHolder = new ResponseHeaders(statusCode, responseHeaders, callDuration, response.version(), response.trailers());
+                captor.accept(capturedHeaderHolder);
             }
         }
 
@@ -694,12 +696,30 @@ class HttpTemplate {
         // (a payload cap is a revisit-on-demand, not a 0.x default)
         InputStream stream = response.stream();
         if (stream != null) {
+            // ADR-0059: Terminal streaming hook for late-arriving trailers
+            Supplier<List<Header>> trailersSupplier = response.trailersSupplier();
+            if (trailersSupplier != null && (responseHeadersHolder != null || capturedHeaderHolder != null)) {
+                final ResponseHeaders holderToNotify = responseHeadersHolder;
+                final ResponseHeaders capturedToNotify = capturedHeaderHolder;
+                Consumer<List<Header>> trailersConsumer = trailers -> {
+                    if (holderToNotify != null) {
+                        holderToNotify.populateTrailers(trailers);
+                    }
+                    if (capturedToNotify != null) {
+                        capturedToNotify.populateTrailers(trailers);
+                    }
+                };
+                stream = new TrailerCompletingInputStream(stream, trailersSupplier, trailersConsumer);
+            }
+
+            final InputStream effectiveStream = stream;
+
             if (onErrorParser != null && onErrorParser.canParse(statusCode)) {
-                String errorPayload = consumePayload(stream, payloadCharset);
+                String errorPayload = consumePayload(effectiveStream, payloadCharset);
                 handleOnError(statusCode, errorPayload, responseHeaders);
             }
             if (!isExpectedStatus(statusCode)) {
-                String rawPayload = consumePayload(stream, payloadCharset);
+                String rawPayload = consumePayload(effectiveStream, payloadCharset);
                 throw createUnexpectedStatusException(statusCode, rawPayload == null ? "" : rawPayload, responseHeaders);
             }
             // ADR-0016 Aspect 1 & 5: Stream<String> returns line stream;
@@ -708,18 +728,18 @@ class HttpTemplate {
                 if (logger.isLoggable(System.Logger.Level.INFO)) {
                     logger.log(System.Logger.Level.INFO, streamingPayloadLine("streaming lines", responseHeaders));
                 }
-                Stream<String> lineStream = new BufferedReader(new InputStreamReader(stream, payloadCharset))
+                Stream<String> lineStream = new BufferedReader(new InputStreamReader(effectiveStream, payloadCharset))
                         .lines()
-                        .onClose(() -> closeQuietly(stream));
+                        .onClose(() -> closeQuietly(effectiveStream));
                 return (T) lineStream;
             }
             if (isStreamType(returnType, ServerSentEvent.class)) {
                 if (logger.isLoggable(System.Logger.Level.INFO)) {
                     logger.log(System.Logger.Level.INFO, streamingPayloadLine("streaming events", responseHeaders));
                 }
-                Stream<String> lineStream = new BufferedReader(new InputStreamReader(stream, payloadCharset))
+                Stream<String> lineStream = new BufferedReader(new InputStreamReader(effectiveStream, payloadCharset))
                         .lines()
-                        .onClose(() -> closeQuietly(stream));
+                        .onClose(() -> closeQuietly(effectiveStream));
                 Stream<ServerSentEvent> eventStream = ServerSentEvent.parse(lineStream);
                 return (T) eventStream;
             }
@@ -730,14 +750,14 @@ class HttpTemplate {
             }
             if (optional) {
                 if (statusCode == 404 || statusCode == 304 || statusCode == 204) {
-                    closeQuietly(stream);
+                    closeQuietly(effectiveStream);
                     return (T) Optional.empty();
                 }
                 if (InputStream.class.equals(returnType)) {
-                    return (T) Optional.of(stream);
+                    return (T) Optional.of(effectiveStream);
                 }
             }
-            return (T) stream;
+            return (T) effectiveStream;
         }
 
         byte[] bytes = response.body();
@@ -1477,12 +1497,12 @@ class HttpTemplate {
             } else {
                 decompressedStream = new InflaterInputStream(response.stream());
             }
-            return new WireResponse(response.statusCode(), strippedHeaders, null, decompressedStream, response.version(), response.trailers());
+            return new WireResponse(response.statusCode(), strippedHeaders, null, decompressedStream, response.version(), response.trailers(), response.trailersSupplier());
         }
 
         byte[] rawBody = response.body();
         if (rawBody == null || rawBody.length == 0) {
-            return new WireResponse(response.statusCode(), strippedHeaders, rawBody, null, response.version(), response.trailers());
+            return new WireResponse(response.statusCode(), strippedHeaders, rawBody, null, response.version(), response.trailers(), response.trailersSupplier());
         }
 
         byte[] decompressedBytes;
@@ -1493,7 +1513,7 @@ class HttpTemplate {
         } else {
             decompressedBytes = decompressDeflate(rawBody);
         }
-        return new WireResponse(response.statusCode(), strippedHeaders, decompressedBytes, null, response.version(), response.trailers());
+        return new WireResponse(response.statusCode(), strippedHeaders, decompressedBytes, null, response.version(), response.trailers(), response.trailersSupplier());
     }
 
     private static byte[] decompressGzip(byte[] compressed) throws IOException {
