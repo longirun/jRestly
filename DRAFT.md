@@ -1,5 +1,19 @@
 # DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
+> **Сессия #157 (ADR-0058 — фаза 2b закрыта):** создан субмодуль
+> `engine-apache5` (провайдер 50, ServiceLoader, build.gradle с javadoc-гейтом);
+> `Apache5HttpEngine` реализует полный контракт паритета (timeout, streaming
+> через `executeOpen`, progress upload/download, trailers в буферном режиме,
+> свой executor для `sendAsync` — не общий ForkJoinPool, TLS/cookies/proxy/
+> authenticator из ModuleInfo). Пассивный транспорт с первой попытки:
+> `disableContentCompression()` (урок #156 применён заранее). Грабли: 5.4.1
+> пометил deprecated SSL/cookie/timeout API — миграция на
+> `DefaultClientTlsStrategy`, `ConnectionConfig`, Instant-куки; `setProxy(HttpHost)`
+> без замены → локальный `@SuppressWarnings`. benchmarks на
+> `project(':engine-apache5')`, прототип удалён. **1109/1109** (core 1048 +
+> engine-okhttp 23 + engine-apache5 23 + bench 15), 0 warnings, полный
+> `./gradlew test` зелёный. Осталась публичная бенчмарк-документация.
+
 > **Сессия #149 (ADR-0058 — фаза 1, ядро):** добавлен `default int priority()`
 > в `HttpEngineProvider` (бинарно-совместимое расширение, дефолт 0) и
 > стабильная сортировка в `HttpEngineResolver.resolveFromSpi` (убывающий
@@ -191,8 +205,10 @@
   benchmarks переключаются на `project(':engine-*')`, копии прототипов удаляются.
   **Сессия #149: фаза 1 (ядро) закрыта** — `priority()` + стабильная сортировка,
   1063/1063. **Сессия #156: фаза 2a закрыта** — `engine-okhttp` полностью зелёный
-  (23/23), пассивный транспорт (без прозрачного gzip). Осталась фаза 2b:
-  `engine-apache5`.
+  (23/23), пассивный транспорт (без прозрачного gzip). **Сессия #157: фаза 2b
+  закрыта** — `engine-apache5` зелёный (23/23), пассивный транспорт через
+  `disableContentCompression()`; оба субмодуля в строю. Осталась публичная
+  бенчмарк-документация и решение по статусу ADR-0058 (Proposed → Accepted).
 
 
 ---

@@ -8,9 +8,9 @@ repositories {
 
 dependencies {
     implementation project(':')
-    // ADR-0058 phase 2: the OkHttp transport engine is published as a submodule;
-    // the Apache5 prototype still lives locally until jrestly-engine-apache5 lands
+    // ADR-0058 phase 2: the external transports are published submodules
     implementation project(':engine-okhttp')
+    implementation project(':engine-apache5')
 
     implementation 'org.openjdk.jmh:jmh-core:1.37'
     annotationProcessor 'org.openjdk.jmh:jmh-generator-annprocess:1.37'
@@ -26,7 +26,6 @@ dependencies {
     implementation 'io.github.openfeign:feign-jackson:13.5'
     implementation 'io.github.openfeign:feign-java11:13.5'
 
-    implementation 'org.apache.httpcomponents.client5:httpclient5:5.4.1'
     implementation 'org.springframework:spring-web:6.2.2'
     implementation 'org.springframework:spring-context:6.2.2'
 

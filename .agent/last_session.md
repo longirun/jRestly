@@ -1,79 +1,65 @@
-# Last Session: #156 (2026-10-16)
+# Last Session: #157 (2026-10-16)
 
 ## Что сделано
 
-**ADR-0058, фаза 2a закрыта: `:engine-okhttp` полностью зелёный (23/23).**
+**ADR-0058, фаза 2b: субмодуль `:engine-apache5` создан и полностью зелёный (23/23).**
 
-1. Разобраны 4 WIP-падения из #155. Диагностика зондом (временный
-   `ProbeTest` с печатью сырых заголовков/тел через WireMock), корней два:
-   - **Прогресс (`total == -1`, 0 событий):** OkHttp `BridgeInterceptor`
-     без `Accept-Encoding` инжектит `Accept-Encoding: gzip` и **прозрачно
-     распаковывает** ответ (снимает `Content-Encoding`, теряет
-     `Content-Length`). Ломало `total` (ADR-0033) и
-     `isDecompressionEnabled()==false` (ADR-0021).
-   - **Multipart — баг теста:** канонический рендер text-части содержит
-     `Content-Type: text/plain; charset=UTF-8` (сверено с
-     `MultipartTest.expectedLegacyBody`), ассерт ждал его отсутствия.
-   - **Стенд-находка:** WireMock 3.12 (Jetty) без явного `Content-Length`
-     в стабе ВСЕГДА отвечает `Transfer-Encoding: chunked` (проверено curl
-     через wiremock-standalone). Core-тесты прогресса декларируют CL явно.
-2. **Фикс движка — пассивный транспорт:** `NoTransparentGzipInterceptor`
-   (application: при отсутствии AE подставляет `gzip` + tag-маркер
-   `SuppressedAcceptEncoding`) + `StripSuppressedAcceptEncodingInterceptor`
-   (network: снимает подставленный заголовок перед проводом, value-check
-   `"gzip"` щадит подмену другим интерцептором). Канонический конструктор
-   оборачивает ЛЮБОЙ клиент (включая внешний) через `newBuilder()`;
-   `getOkHttpClient()` возвращает обёртку (pool/dispatcher общие).
-3. Тесты: +2 (`noAcceptEncodingInjectedByTransport` — red-first,
-   `explicitAcceptEncodingIsPassedThroughCompressed` — предохранитель),
-   3 стаба прогресса получили явный `Content-Length`, multipart-ассерт
-   исправлен к канону. Итого engine-okhttp: **23 теста** (17+2+4).
-4. ADR-0058 дополнен секцией **Amendment (сессия #156)**; javadoc класса
-   движка и тест-класса обновлены (пассивность транспорта, framing-заметка
-   WireMock).
+1. Скаффолд по образцу `engine-okhttp`: `engine-apache5/build.gradle`
+   (`api httpclient5:5.4.1`, maven-publish, javadoc-гейт, `-Xlint:all -Werror`),
+   `Apache5HttpEngineProvider` (priority 50, ServiceLoader-регистрация),
+   `settings.gradle`, `benchmarks` на `project(':engine-apache5')`,
+   прототип `benchmarks/.../engine/Apache5HttpEngine` удалён.
+2. Движок `Apache5HttpEngine` — полный контракт паритета:
+   - timeout: per-request `RequestConfig.responseTimeout/connectionRequestTimeout`;
+   - version: репорт согласованного протокола через `HttpClientContext.getProtocolVersion()`
+     (classic API не умеет pinning — задокументировано);
+   - streaming: `executeOpen` + `ResponseReleasingInputStream` (close стрима →
+     response.close → соединение в пул);
+   - progress: общий `CountingInputStream` (upload + download), zero-length `(0,0)` ADR-0030/0033;
+   - trailers: буферный режим через `entity.getTrailers()` (best-effort try/catch);
+   - `sendAsync`: выделенный executor (virtual-thread per engine, или из ModuleInfo),
+     НЕ общий ForkJoinPool (грабля прототипа ADR-0058);
+   - `close()`: client — только если owned; executor — если создан движком.
+   - Маппинг ModuleInfo: TLS (`DefaultClientTlsStrategy`), cookies
+     (`JdkCookieStoreAdapter` → Apache CookieStore, best-effort), proxy
+     (`ProxySelector` → per-request HttpHost), authenticator
+     (`JdkAuthenticatorCredentialsProvider` → JDK Authenticator Basic best-effort).
+3. Пассивный транспорт: `disableContentCompression()` — ни `Accept-Encoding`, ни
+   прозрачной распаковки (урок #156 применён заранее). Тесты пассивности зелёные
+   с первого прогона.
+4. Тесты: `Apache5HttpEngineParityTest` — порт okhttp-сьюта (19 тестов, стабы
+   прогресса с явным Content-Length), `Apache5HttpEngineProviderTest` (4). Одно
+   падение в собственном тесте: после close owned-клиента Apache кидает
+   `IllegalStateException`, не `IOException` — тест поправлен.
+
+## Грабли (в копилку)
+
+- **HttpClient 5.4.1: массовые deprecations.** `-Werror` заставляет мигрировать:
+  `SSLConnectionSocketFactory`/`setSSLSocketFactory` → `DefaultClientTlsStrategy`/
+  `setTlsSocketStrategy`; `RequestConfig.setConnectTimeout` → `ConnectionConfig`
+  на connection manager (`setDefaultConnectionConfig`); Date-API куки →
+  Instant-варианты; `RequestConfig.setProxy(HttpHost)` — deprecated без замены,
+  локальный `@SuppressWarnings("deprecation")`.
+- `InputStreamEntity(InputStream, long)` в 5.4.1 НЕТ (только с `ContentType`):
+  `new InputStreamEntity(in, len, (ContentType) null)`.
 
 ## Гейты (честный статус)
 
-- Полный `./gradlew test`: **1086/1086** (core 1048 + engine-okhttp 23 +
-  benchmarks 15), 0 failures, ~18 с. Хэнг #155 не вернулся.
-- 0 warnings (`-Werror`), ядро не менялось, zero-dep POM.
+- Полный `./gradlew test`: **1109/1109** (core 1048 + engine-okhttp 23 +
+  engine-apache5 23 + benchmarks 15), 0 failures, ~9 с. 0 warnings.
+- javadoc-гейт субмодуля настроен; ADR-0058 фаза 2b закрыта по коду.
 
-## Контекст для следующей сессии (#157)
+## Контекст для следующей сессии (#158)
 
-### Порядок работ
-1. **Фаза 2b: `engine-apache5`** по ADR-0058 (сессия #155 подготовила обзор):
-   - `build.gradle` с `api httpclient5:5.4.1`, maven-publish + javadoc-гейт
-     (копия `engine-okhttp/build.gradle`), ServiceLoader-регистрация,
-     провайдер `priority()=50`.
-   - Перенос прототипа `benchmarks/.../engine/Apache5HttpEngine` (ещё на
-     месте!) + контракт паритета (timeout/version/stream/progress/trailers/
-     close/ModuleInfo). `sendAsync` — **не** на общем ForkJoinPool
-     (в прототипе `supplyAsync` без executor'а — истощение).
-   - **Учесть урок #156:** Apache5 тоже умеет прозрачно декодировать
-     (`Content-Encoding` handling в HttpClient5) — проверить пассивность
-     транспорта тем же зондом (прогресс/`total`, `Content-Encoding` сквозь
-     движок); при необходимости отключить автоматическую декомпрессию
-     (`disableContentCompression()`), а не полагаться на дефолт.
-   - WireMock-паритет по образцу `OkHttpEngineParityTest` (стабы прогресса —
-     с явным `Content-Length`!).
-2. `benchmarks` на `project(':engine-apache5')`, удалить Apache5-прототип.
-3. Полный `./gradlew test` + опционально публичные JMH `-f 2 -i 5`.
-4. Публичная бенчмарк-документация (методология raw-TCP + TCP_NODELAY,
-   таблица #147, ограничения variance).
-
-### Среда
-1. `GRADLE_USER_HOME=/tmp/opencode/gradle-home ./gradlew ...` (тёплый кэш).
-   **Всегда запускать тесты с внешним `timeout`** (грабли #155).
-2. Ветка `agent-loop`. Версия ядра/субмодуля: **0.9.0**. Next free ADR: **0059**.
-3. Часы контейнера — UTC; таймстампы mailbox — локальное время (≈ UTC+9:30).
-4. `engine-okhttp` использует okhttp3.internal.tls.OkHostnameVerifier
-   (внутренний API OkHttp) — под наблюдением при апгрейде транспорта.
-5. WireMock 3.12 без явного `Content-Length` в стабе отвечает chunked —
-   для assertions по `total`/CL всегда декларировать длину.
-
-### Техники, которые сработали
-- **Зонд вместо догадки:** временный JUnit-тест с печатью сырых
-  заголовков/тел (или `java -jar wiremock-standalone` + curl) — за один
-  прогон разделил «движок/стенд/тест» и убил неверную гипотезу одного корня.
-- Red-first: новый тест на пассивность транспорта краснел до фикса
-  (`containsHeader("Accept-Encoding") == true`).
+1. **Завершение ADR-0058 — публичная бенчмарк-документация** (развилка Антона):
+   - опционально перепрогон матрицы JMH `-f 2 -i 5` (снизить variance), или брать
+     честную таблицу #147;
+   - оформить `docs/` страницу: методология (raw-TCP стенд + TCP_NODELAY,
+     10 клиентов), таблица µs/op, честные ограничения (диспропорция JDK
+     транспорта — не декларативного слоя; DispatchOverhead 5–9 µs);
+   - сверить ADR-0058 (Status: Proposed → Accepted?) и DRAFT после закрытия.
+2. Возможные кандидаты дальше: test-javadoc (ADR-0013), Trailers & streaming
+   ergonomics.
+3. **Среда:** `GRADLE_USER_HOME=/tmp/opencode/gradle-home ./gradlew ...`,
+   всегда внешний `timeout`; ветка `agent-loop`; версии 0.9.0, next ADR — 0059.
+   WireMock без явного Content-Length отвечает chunked (урок #156).
