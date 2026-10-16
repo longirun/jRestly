@@ -15,14 +15,21 @@ import java.util.List;
  * {@link #updateAuthHeader(String, String)} (the credential capture driven
  * by a method's {@code @SetAuthDetails}) takes precedence while both of its
  * parts are set.
+ *
+ * <p>Only a <em>complete</em> name/value pair (both parts non-{@code null})
+ * counts as a credential: an incomplete pair is never sent and never
+ * reports the client as {@link #isAuthorized() authorized}. The captured
+ * pair is held as a single immutable {@link Header} published through a
+ * {@code volatile} field, so concurrent capture and reads observe an atomic
+ * pair rather than a torn name/value mix — the provider is meant to be
+ * shared by an app-lifetime client whose credential may be refreshed from a
+ * background thread.
  */
 public class AuthHeaderProvider implements AuthProvider {
 
-    private final String initialHeaderName;
-    private final String initialHeaderValue;
+    private final Header initialHeader;
 
-    private String headerName;
-    private String headerValue;
+    private volatile Header capturedHeader;
 
     /**
      * Creates a provider without an initial credential: it stays
@@ -41,31 +48,30 @@ public class AuthHeaderProvider implements AuthProvider {
      * @param headerValue the initial credential value, or {@code null}
      */
     public AuthHeaderProvider(String headerName, String headerValue) {
-        this.initialHeaderName = headerName;
-        this.initialHeaderValue = headerValue;
+        this.initialHeader = complete(headerName, headerValue);
     }
 
     @Override
     public List<Header> getAuthHeaders() {
-        if (headerName != null && headerValue != null) {
-            return List.of(new Header(headerName, headerValue));
+        Header captured = capturedHeader;
+        if (captured != null) {
+            return List.of(captured);
         }
 
-        if (initialHeaderName != null && initialHeaderValue != null) {
-            return List.of(new Header(initialHeaderName, initialHeaderValue));
-        }
-
-        return List.of();
+        return initialHeader != null ? List.of(initialHeader) : List.of();
     }
 
     @Override
     public void updateAuthHeader(String name, String value) {
-        this.headerName = name;
-        this.headerValue = value;
+        this.capturedHeader = complete(name, value);
     }
 
     @Override
     public boolean isAuthorized() {
-        return initialHeaderName != null || headerValue != null;
+        return capturedHeader != null || initialHeader != null;
+    }
+
+    private static Header complete(String name, String value) {
+        return name != null && value != null ? new Header(name, value) : null;
     }
 }

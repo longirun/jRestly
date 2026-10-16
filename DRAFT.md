@@ -1,5 +1,29 @@
 # DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
+> **Сессия #183 (аудит: `AuthHeaderProvider` — рассинхрон `isAuthorized()` с реально
+> отправляемыми заголовками + неатомарная публикация пары):** четвёртый подряд шаг
+> нити «общие мутабельные структуры» (#181 гонка кэша прокси, #182 живые списки
+> `ResponseHeaders`). Найден **детерминированный** разлад контракта:
+> `AuthHeaderProvider.isAuthorized()` возвращал `initialHeaderName != null ||
+> headerValue != null`, тогда как `getAuthHeaders()` отправляет креды только при
+> **обеих** непустых частях. Следствие: имя без значения (или
+> `updateAuthHeader(null, v)`) → клиент считает себя авторизованным,
+> `isLoginInBackgroundNeeded` не запускает логин, а на провод уходит **пусто** —
+> тихая «авторизация в никуда». Плюс пара `headerName`/`headerValue` хранилась
+> двумя не-`volatile` полями и писалась из `@SetAuthDetails`/`updateAuthHeader`
+> неатомарно → читатель мог увидеть **рваную** пару (имя одного обновления +
+> значение другого). Fix: пара хранится одним неизменяемым `Header` в
+> `volatile`-поле (`complete(name, value)` → пара или null),
+> `getAuthHeaders()`/`isAuthorized()` читают один и тот же снимок — инвариант
+> «authorized ⇔ есть что отправить». Поведение при полной паре не изменилось
+> (`AuthTest`/`TestAuthProvider` не тронуты). TDD red-first: новый
+> `AuthHeaderProviderTest` (6 тестов) — 4 красных на старом коде (неполная пара
+> авторизует; `isAuthorized` расходится в матрице состояний; стресс-тест поймал
+> рваную пару `(name, value)` из двух апдейтов), зелёные после. +6 тестов, гейт
+> **1196/1196** (core 1116 + engine-okhttp 25 + engine-apache5 25 +
+> codec-jackson-xml 15 + benchmarks 15), `./gradlew test javadoc` зелёный под
+> `-Werror`, 0 warnings. Эпики не трогались — чистая robustness-находка.
+
 > **Сессия #182 (аудит: `ResponseHeaders` отдавал мутабельные внутренние списки — мёртвый
 > код вместо защиты):** продолжение нити «общие мутабельные структуры». Под фонарём
 > оказался `ResponseHeaders.doPopulate`/`populateTrailers`: там строился локальный
