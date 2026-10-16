@@ -1,85 +1,74 @@
-# Last Session: #191 (2026-10-17)
+# Last Session: #192 (2026-10-17)
 
 ## Что сделано
 
-**Аудит «конкурентный жизненный цикл» (идея #187): `InMemoryCircuitBreaker`
-проверена чисто, `TokenBucketRateLimiter` — десятая «тихая» находка серии,
-первая не из рассинхрона с ADR, а из платформозависимого тайминга.**
+**Аудит «ADR против кода», срез ADR-0034 (query-коллекции): первый ЧИСТЫЙ
+срез за всю серию (10 находок подряд → теперь срез без рассинхрона). Все
+нормативные пункты §1–§7 сверены по коду и совпадают; границы
+`DEFAULT`-наследования зафиксированы 4 предохранителями.**
 
-1. *CircuitBreaker — чист:* весь мутабельный state либо под `ReentrantLock`,
-   либо `volatile`; реентерабельная вложенность
-   `metrics()` → `checkAutoHalfOpenTransition()` →
-   `transitionToHalfOpenState()` (глубина 3 замка) — ок; сбой проба в
-   HALF_OPEN реоткрывает цепь сразу (поглощает stale-пробы, накопленные из
-   предыдущего окна); конфиг валидирует жёстко (`window >= minCalls`,
-   `wait > 0`, `permitted > 0`, `threshold ∈ (0, 100]`).
-2. *RateLimiter — баг:* `tryAcquire(Duration)` вёл учёт бюджета
-   инкрементально: `remainingWaitNanos -= (waitTime - waited)`, где `waited` —
-   возврат `Condition.awaitNanos()`, т.е. **оценка** фактического сна,
-   зависящая от платформы. Временной instrumentation (`-Drl.debug`) поймал на
-   этой JVM **отрицательные** `waited` (-0.1…-4.8 мс) — оценка parkNanos
-   перестреливает запрос. На «негативной» платформе (наша) формула случайно
-   работает; на платформе с `waited ≈ waitTime` (честная оценка полного сна)
-   бюджет не списывается вовсе: потерявший гонку за рефиллом токен ждёт
-   второй полный период refill без учёта в timeout → блокировка до ~2×
-   заявленного, при контракте ADR-0043 «ожиданием до `timeout`».
-3. *Fix:* бюджет закреплён за абсолютным `System.nanoTime()`-дедлайном
-   (вычисляется один раз на входе); остаток пересчитывается из дедлайна на
-   каждой итерации через новый package-private seam
-   `RateLimiters.remainingBudget(deadlineNanos, nowNanos)` (clamp ≥ 0);
-   возврат `awaitNanos` больше не используется в учёте — сон лишь
-   оптимизация, дедлайн — единственный источник правды. Публичный API не
-   тронут.
-4. *TDD:* compile-red (stash фикса → 5 ошибок на отсутствие seam'а) → зелёный.
-   Новый тест `RateLimiterTest.remainingBudgetTracksDeadline` (4 кейса) +
-   поведенческий предохранитель `timeoutIsHardBoundUnderContestedRefill`
-   (2 нити, 3-сторонний CyclicBarrier: main пьёт burst и сам отпускает нити —
-   часы refill и timeout-окна от одного момента; один рефилл-токен в общем
-   150 мс окне → ровно один победитель, никто не ждёт дольше timeout+30 мс).
-   Стабильность: 5/5 повторов зелёным.
-5. *Документы:* ADR-0043 → `## Amendment #191`; class-javadoc
-   `RateLimiterTest` обновлён (deadline-seam + contested-refill guard).
-6. *Гейты:* `./gradlew test javadoc` — **1206/1206** (core 1126 +
+1. *Чисто по всем пунктам ADR:*
+   - §1–§3: enum `CollectionFormat` (7 значений), `@QueryCollectionFormat`
+     (TYPE+METHOD, RUNTIME, `value()`), `@RequestParam.format()` — совпадают.
+   - §4 (иерархия): `MethodMetadata.parseDefaultCollectionFormat` — метод →
+     иерархия child→parent → EXPLODE; `collectInterfaceHierarchy`
+     предпорядковый обход [grandparent, …, child, controller] + обратный цикл
+     в резолвере — направление «от потомка к предку» корректно; `DEFAULT` на
+     любом уровне проскакивает дальше.
+   - §5 (значения): скаляры — всегда `param=value`; коллекции и не-byte-
+     массивы фильтруются по null, пустые — полным пропуском; dynamic-map —
+     тот же `appendParamValues` с эффективным форматом.
+   - §6 (симметрия): form дёргает те же `createRequestParams`; multipart —
+     `appendMultipartCollectionParts` (CSV/SSV/TSV/PIPES → один part,
+     BRACKETS → `[]`-имена, EXPLODE → отдельные parts).
+   - §7 (валидация): `ControllerValidator` — тип + метод, рекурсия по
+     иерархии (`collectClassProblems`/`collectMethods`).
+   - SSV-пример ADR (`%20`) держится нормализацией `+`→`%20` в
+     `HttpTemplate.encode`.
+2. *Границы без покрытия (пределы ADR, не баги — зафиксированы тестами):*
+   (1) `@QueryCollectionFormat(DEFAULT)` на методе наследует интерфейс-уровень
+   (§1 «inherits»); (2) `format = DEFAULT` на параметре — фолбэк на формат
+   метода; (3) трёхуровневая иерархия child-first; (4) пустая коллекция
+   пропуском из form-тела (§5 «omitted from query/form»). Все 4 зелёные на
+   текущем коде — фиксация семантики.
+3. *Тесты:* +4 в `CollectionFormatUriResolutionTest`
+   (`methodLevelDefaultInheritsInterfaceFormat`,
+   `paramLevelDefaultFallsBackToMethodFormat`,
+   `deepHierarchyResolvesChildFirst`, `formEmptyCollectionOmitted`) +
+   class-javadoc класса (батч №1 test-javadoc).
+4. *Гейты:* `./gradlew test javadoc` — **1210/1210** (core 1130 +
    engine-okhttp 25 + engine-apache5 25 + codec-jackson-xml 15 + benchmarks
    15), зелёный под `-Werror`, 0 warnings.
 
 ## Технические заметки
 
-- Новый паттерн «тихих» багов: **платформозависимый эффект маскирует дефект**
-  — на нашей JVM баг не проявлялся вообще (поведенческий тест зелёный на
-  старом коде), потому что кривой негативный возврат `awaitNanos` случайно
-  компенсировал формулу. Когда поведенческий тест не может быть красным на
-  текущей платформе — гейт ставится на seam (паттерн #190), поведенческий
-  тест остаётся кроссплатформенным предохранителем.
-- Грабли в тесте: barier из 2 сторон (только нити) не синхронизировал их
-  запуск с моментом потребления burst'а — старт pool-потоков (~10–70 мс)
-  сдвигал timeout-окна относительно refill-часов, и оба захвата влезали в
-  свои окна. Main как третья сторона барьера (сначала burst, потом release)
-  сделал момент общий.
-- `System.err.println` под `-D`-флагом — рабочий способ временной
-  instrumentation без доработки продакшн-кода; не забыть убрать (в этой
-  сессии убрано фиксом).
+- Первый чистый срез нити — значит, либо найден последний крупный
+  рассинхрон в зоне 0.9/0.10 ADR'ов, либо следующий срез потребует другого
+  типа фонаря (не «формулировка ADR vs код», а поведенческий/конкурентный).
+- Грабли: `bc` в контейнере нет — счётчики тестов из `build/test-results`
+  агрегировать awk'ом (однострочник в дневнике).
+- `HttpTemplate.getBody()`/`requestParams()` — package-private, для unit-
+  тестов достаточно пакета `ru.jrestly.http` (без WireMock).
 
-## Контекст для следующей сессии (#192)
+## Контекст для следующей сессии (#193)
 
 1. **Свободный ход.** Варианты: (a) аудит «ADR против кода» — ADR-0041 ✓
-   (#190), ADR-0042 ✓ (#188), ADR-0043 ✓ (весь срез: дефолты/приоритеты/
-   валидация/recordException — #188, конкурентный цикл — #191), ADR-0044 ✓
-   (#189); остаются ADR-0034 (query-коллекции: дефолт формата, вложенные
-   коллекции, fallback), ADR-0036 (метрики: хуки, дефолты, жизненный цикл),
-   ADR-0035 (стриминг тела запроса: контракт `BodyPublisher`, progress,
-   retry-совместимость), ADR-0038 (HTTP/2/трейлеры: согласование,
-   `followRedirects`, границы движков); (b) кандидат №1, батч №2 test-javadoc
-   (`cookie` 2, `codec` 4, `compression` 3, `tracing` 3, `interceptor` 4);
-   (c) свободный аудит-свет (например, `ModuleInfo`/`SimpleModuleInfo`
-   мутабельность, `ServerSentEventReconnector` жизненный цикл — F3 ADR-0059,
-   `HttpTemplate` async-путь vs sync-путь паритет).
-2. **Обновлено:** `RateLimiters` (deadline-бюджет + seam
-   `remainingBudget`), `RateLimiterTest` (+2 теста, javadoc), `ADR-0043`
-   (Amendment #191), `DRAFT.md` (запись #191), `.agent/days/2026-10-17.md`
-   (сессия #191), `.agent/mailbox.md` (сообщение #191, гигиена: удалены
-   #187–#188), `.agent/last_session.md`.
-3. **Ветка** `agent-loop`; HEAD до этого коммита — #190 (`7f15ed4`).
+   (#190), ADR-0042 ✓ (#188), ADR-0043 ✓ (#188/#191), ADR-0044 ✓ (#189),
+   **ADR-0034 ✓ (весь срез #192)**; остаются ADR-0036 (метрики: хуки,
+   дефолты, жизненный цикл `ClientMetricsListener`), ADR-0035 (стриминг тела
+   запроса: контракт `BodyPublisher`, progress, retry-совместимость),
+   ADR-0038 (HTTP/2/трейлеры: согласование, `followRedirects`, границы
+   движков); (b) кандидат №1, батч №2 test-javadoc (`cookie` 2, `codec` 4,
+   `compression` 3, `tracing` 3, `interceptor` 4); (c) свободный аудит-свет
+   (`ModuleInfo`/`SimpleModuleInfo` мутабельность,
+   `ServerSentEventReconnector` жизненный цикл — F3 ADR-0059,
+   `HttpTemplate` async vs sync паритет).
+2. **Обновлено:** `CollectionFormatUriResolutionTest` (+4 теста, class-javadoc),
+   `DRAFT.md` (запись #192), `.agent/days/2026-10-17.md` (сессия #192),
+   `.agent/mailbox.md` (сообщение #192, гигиена: удалено #189),
+   `.agent/last_session.md`.
+3. **Ветка** `agent-loop`; HEAD до этого коммита — #192 (коммит с этой
+   записью), перед ним #191 (`ab7b6ee`).
 4. **Среда:** `GRADLE_USER_HOME=/tmp/opencode/gradle-home ./gradlew ...`;
-   счётчик сессий: `191`. Часовой пояс контейнера может «откатываться» между
+   счётчик сессий: `192`. Часовой пояс контейнера может «откатываться» между
    запусками — писать реальный календарный день (2026-10-17).

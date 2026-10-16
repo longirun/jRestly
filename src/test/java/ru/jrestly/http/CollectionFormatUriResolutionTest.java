@@ -6,6 +6,7 @@ import ru.jrestly.ModuleInfo;
 import ru.jrestly.SimpleModuleInfo;
 import ru.jrestly.annotation.CollectionFormat;
 import ru.jrestly.annotation.Get;
+import ru.jrestly.annotation.Post;
 import ru.jrestly.annotation.QueryCollectionFormat;
 import ru.jrestly.annotation.RequestParam;
 
@@ -14,14 +15,52 @@ import java.net.http.HttpClient;
 import java.util.Arrays;
 import java.util.List;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
+/**
+ * Unit-level tests for {@link CollectionFormat} resolution in the URI pipeline:
+ * interface-hierarchy order, method/parameter {@code DEFAULT} inheritance,
+ * scalar handling, null/empty filtering, and form-body omission.
+ */
 class CollectionFormatUriResolutionTest {
 
     interface SuperSearchApi {
         @Get(path = "/super")
         @QueryCollectionFormat(CollectionFormat.CSV)
         String searchSuper(@RequestParam(name = "tags") List<String> tags);
+    }
+
+    @QueryCollectionFormat(CollectionFormat.PIPES)
+    interface DefaultFallbackApi {
+        @Get(path = "/df/inherit")
+        @QueryCollectionFormat(CollectionFormat.DEFAULT)
+        String inheritInterfaceDefault(@RequestParam(name = "tags") List<String> tags);
+
+        @Get(path = "/df/param-default")
+        @QueryCollectionFormat(CollectionFormat.SSV)
+        String paramDefaultFallsBack(@RequestParam(name = "tags", format = CollectionFormat.DEFAULT) List<String> tags);
+
+        @Post(path = "/df/form-empty", requestType = RequestType.APPLICATION_FORM_URLENCODED)
+        @QueryCollectionFormat(CollectionFormat.CSV)
+        String formEmptyCollection(@RequestParam(name = "tags") List<String> tags);
+    }
+
+    @QueryCollectionFormat(CollectionFormat.CSV)
+    interface GrandSearchApi {
+        @Get(path = "/deep/grand")
+        String deepGrand(@RequestParam(name = "tags") List<String> tags);
+    }
+
+    @QueryCollectionFormat(CollectionFormat.TSV)
+    interface MidSearchApi extends GrandSearchApi {
+        @Get(path = "/deep/mid")
+        String deepMid(@RequestParam(name = "tags") List<String> tags);
+    }
+
+    interface LeafSearchApi extends MidSearchApi {
+        @Get(path = "/deep/leaf")
+        String deepLeaf(@RequestParam(name = "tags") List<String> tags);
     }
 
     @QueryCollectionFormat(CollectionFormat.PIPES)
@@ -130,5 +169,65 @@ class CollectionFormatUriResolutionTest {
 
         // PIPES format: first|second
         assertEquals("http://localhost:8080/sub/default?tags=first%7Csecond", template.createUri().toString());
+    }
+
+    @Test
+    @DisplayName("Method-level @QueryCollectionFormat(DEFAULT) inherits the interface-level format")
+    void methodLevelDefaultInheritsInterfaceFormat() throws NoSuchMethodException {
+        ModuleInfo module = SimpleModuleInfo.builder()
+                .baseUrl("http://localhost:8080")
+                .build();
+        HttpClient httpClient = HttpClient.newHttpClient();
+
+        Method method = DefaultFallbackApi.class.getMethod("inheritInterfaceDefault", List.class);
+        HttpTemplate template = new HttpTemplateBuilder(module, httpClient, method, new Object[]{List.of("alpha", "beta")}, DefaultFallbackApi.class).build();
+
+        // DEFAULT on the method must fall through to the interface-level PIPES
+        assertEquals("http://localhost:8080/df/inherit?tags=alpha%7Cbeta", template.createUri().toString());
+    }
+
+    @Test
+    @DisplayName("Parameter-level format=DEFAULT falls back to the method-level @QueryCollectionFormat")
+    void paramLevelDefaultFallsBackToMethodFormat() throws NoSuchMethodException {
+        ModuleInfo module = SimpleModuleInfo.builder()
+                .baseUrl("http://localhost:8080")
+                .build();
+        HttpClient httpClient = HttpClient.newHttpClient();
+
+        Method method = DefaultFallbackApi.class.getMethod("paramDefaultFallsBack", List.class);
+        HttpTemplate template = new HttpTemplateBuilder(module, httpClient, method, new Object[]{List.of("alpha", "beta")}, DefaultFallbackApi.class).build();
+
+        // Parameter DEFAULT must fall back to the method-level SSV
+        assertEquals("http://localhost:8080/df/param-default?tags=alpha%20beta", template.createUri().toString());
+    }
+
+    @Test
+    @DisplayName("Three-level hierarchy resolves child-first: unannotated leaf takes the nearest annotated ancestor")
+    void deepHierarchyResolvesChildFirst() throws NoSuchMethodException {
+        ModuleInfo module = SimpleModuleInfo.builder()
+                .baseUrl("http://localhost:8080")
+                .build();
+        HttpClient httpClient = HttpClient.newHttpClient();
+
+        Method method = LeafSearchApi.class.getMethod("deepLeaf", List.class);
+        HttpTemplate template = new HttpTemplateBuilder(module, httpClient, method, new Object[]{List.of("alpha", "beta")}, LeafSearchApi.class).build();
+
+        // LeafSearchApi has no annotation; nearest annotated ancestor is MidSearchApi (TSV), not GrandSearchApi (CSV)
+        assertEquals("http://localhost:8080/deep/leaf?tags=alpha%09beta", template.createUri().toString());
+    }
+
+    @Test
+    @DisplayName("Empty collection is omitted from the urlencoded form body entirely")
+    void formEmptyCollectionOmitted() throws NoSuchMethodException {
+        ModuleInfo module = SimpleModuleInfo.builder()
+                .baseUrl("http://localhost:8080")
+                .build();
+        HttpClient httpClient = HttpClient.newHttpClient();
+
+        Method method = DefaultFallbackApi.class.getMethod("formEmptyCollection", List.class);
+        HttpTemplate template = new HttpTemplateBuilder(module, httpClient, method, new Object[]{List.of()}, DefaultFallbackApi.class).build();
+
+        assertEquals("http://localhost:8080/df/form-empty", template.createUri().toString());
+        assertArrayEquals(new byte[0], template.getBody());
     }
 }

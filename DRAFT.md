@@ -1,5 +1,32 @@
 # DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
+> **Сессия #192 (аудит: ADR-0034 — query-коллекции: срез ЧИСТ, границы `DEFAULT`-наследования зафиксированы
+> предохранителями):** одиннадцатый срез нити «ADR против кода» — и впервые
+> **чистый** за всю серию. Все нормативные пункты ADR-0034 §1–§7 сверены по
+> коду: enum/аннотации/таргеты (§1–§3) совпадают; иерархия резолвинга
+> `parseDefaultCollectionFormat` (метод → иерархия child→parent → EXPLODE,
+> `collectInterfaceHierarchy` предпорядковый обход + обратный цикл — порядок
+> «от потомка к предку» корректен) совпадает с §4; значения (§5): скаляры —
+> всегда `param=value`, коллекции/не-byte-массивы фильтруются по null, пустые
+> пропуском, dynamic-map — через тот же `appendParamValues` с эффективным
+> форматом; form/multipart-симметрия (§6) — `createUrlEncodedBody` дёргает те
+> же `createRequestParams`, multipart BRACKETS/CSV/SSV/TSV/PIPES в
+> `appendMultipartCollectionParts` — один part или `[]`-имена; валидация
+> (`ControllerValidator`, тип + метод, рекурсия по иерархии) — §7; SSV
+> `+`→`%20` нормализацией `HttpTemplate.encode`. Границы, которые срез не
+> покрывал тестами: (1) `@QueryCollectionFormat(DEFAULT)` на методе — наследует
+> интерфейс (§1 «inherits»); (2) `format = DEFAULT` на параметре — фолбэк на
+> формат метода; (3) трёхуровневая иерархия child-first (раньше только
+> двухуровневая); (4) пустая коллекция пропуском **из form-тела** (§5
+> «omitted from query/form»). +4 предохранителя в
+> `CollectionFormatUriResolutionTest` (зелёные на текущем коде — фиксация
+> семантики, не фикс бага). Грабли: `bc` в контейнере нет — счётчики тестов
+> считать awk'ом. +4 теста, гейт **1210/1210** (core 1130 + engine-okhttp 25 +
+> engine-apache5 25 + codec-jackson-xml 15 + benchmarks 15), `./gradlew test
+> javadoc` зелёный под `-Werror`, 0 warnings. ADR-0034 проверен и закрыт;
+> следующие срезы — ADR-0036 (метрики), ADR-0035 (стриминг тела), ADR-0038
+> (HTTP/2/трейлеры).
+
 > **Сессия #191 (аудит «конкурентный жизненный цикл», идея #187: CircuitBreaker
 > чист, RateLimiter — платформозависимый тайминг бюджета ожидания):** десятая
 > «тихая» находка серии — но не рассинхрон с ADR, а скрытая
