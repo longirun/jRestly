@@ -17,6 +17,13 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+/**
+ * Unit tests for the in-memory {@link CircuitBreaker} (ADR-0043): state
+ * transitions, the sliding-window failure-rate trip, the default
+ * {@code recordException} classification (5xx/IO/timeout are failures, 4xx
+ * are remote successes), manual state transitions and the name-keyed
+ * {@link CircuitBreakerRegistry}. Pure unit tests, no HTTP.
+ */
 class CircuitBreakerTest {
 
     @Test

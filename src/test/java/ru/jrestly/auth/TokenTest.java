@@ -13,6 +13,12 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+/**
+ * Unit tests for the {@link Token} value type (ADR-0046): the perpetual,
+ * absolute-expiry and TTL-relative factories, the {@code isExpired} early
+ * renewal window driven by the refresh buffer, and null rejection. Pure unit
+ * tests, no HTTP.
+ */
 class TokenTest {
 
     @Test

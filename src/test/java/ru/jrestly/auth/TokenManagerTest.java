@@ -19,6 +19,12 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+/**
+ * Unit tests for {@link TokenManager} (ADR-0046): single-flight acquisition
+ * under a 50-thread stampede, cache reuse until expiration or invalidation,
+ * the refresh buffer, failure propagation with a subsequent retry, and the
+ * helper factories with their null validation. Pure unit tests, no HTTP.
+ */
 class TokenManagerTest {
 
     @Test

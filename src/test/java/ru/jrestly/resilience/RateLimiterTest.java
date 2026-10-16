@@ -11,6 +11,12 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+/**
+ * Unit tests for the token-bucket {@link RateLimiter} (ADR-0043): the burst
+ * limit per refresh period, refill over time, bounded waiting through
+ * {@code tryAcquire(timeout)}, fail-fast {@link RateLimitExceededException}
+ * and the name-keyed {@link RateLimiterRegistry}. Pure unit tests, no HTTP.
+ */
 class RateLimiterTest {
 
     @Test

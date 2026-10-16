@@ -16,6 +16,12 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+/**
+ * Configuration-surface tests for resilience (ADR-0043): the {@link ModuleInfo}
+ * default methods, the {@link SimpleModuleInfo} / {@link JRestlyClient} fluent
+ * builders, and {@link ControllerValidator} acceptance and rejection of
+ * {@code @CircuitBreaker} / {@code @RateLimiter}. Pure unit tests, no HTTP.
+ */
 class ResilienceConfigTest {
 
     @Test

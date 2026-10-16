@@ -25,6 +25,13 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+/**
+ * End-to-end WireMock tests for declarative authorization: the built-in
+ * {@code BearerAuth} / {@code BasicAuth} / {@code ApiKeyAuth} providers
+ * reaching the wire, transparent 401 retry with token invalidation on both
+ * the sync and {@code CompletableFuture} circuits capped at a single retry,
+ * and the {@code @Authorization} bypass. Real HTTP traffic against a stub.
+ */
 @WireMockTest
 class AuthorizationWireMockTest {
 

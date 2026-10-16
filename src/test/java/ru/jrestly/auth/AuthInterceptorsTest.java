@@ -20,6 +20,14 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+/**
+ * Unit tests for the built-in auth {@link ru.jrestly.interceptor.RequestInterceptor}s
+ * (ADR-0046): {@code BearerAuth} / {@code BasicAuth} header injection,
+ * {@code ApiKeyAuth} header and query placement (including RFC 3986 query
+ * encoding), the {@code @Authorization} bypass, the declared
+ * {@code @Order(-1000)} priority and null-argument rejection. Pure unit tests,
+ * no HTTP.
+ */
 class AuthInterceptorsTest {
 
     interface TestLoginApi {
