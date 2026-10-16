@@ -1,5 +1,26 @@
 # DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
+> **Сессия #179 (ADR-0060 — Ф2 реализована: XML-адаптер, ADR → Accepted):** новый
+> субмодуль `jrestly-codec-jackson-xml` (`codec-jackson-xml/`,
+> `Automatic-Module-Name: ru.jrestly.codec.jacksonxml`). Единственный публичный
+> тип `ru.jrestly.codec.jacksonxml.JacksonXmlCodec implements PayloadCodec` —
+> обёртка над Jackson `XmlMapper`: ctor от явного mapper'а либо `defaults()`
+> (`FAIL_ON_UNKNOWN_PROPERTIES=false`, `WRITE_XML_DECLARATION=false`,
+> `findAndRegisterModules()` → jsr310 из classpath через service-file, ядро не
+> тянет). `supports` claim'ит `application/xml` / `text/xml` / `*+xml`
+> (RFC 6839); побайтовый контракт (null/empty → null, null → empty, prettyPrint
+> с fallback). Зависимости субмодуля: `api project(':')` +
+> `api jackson-dataformat-xml:2.18.2` (транзитивно databind/core + woodstox),
+> `compileOnly` jsr310 — **ядро по-прежнему строго zero-dep**. +14 тестов
+> (`JacksonXmlCodecTest` 10, e2e `JacksonXmlWireMockTest` 4: DTO под
+> `@ContentType(application/xml)` уходит реальным XML, типизированный ответ по
+> `Content-Type: application/xml` связывается, JSON-дефолт цел, без кодека —
+> fail-fast). **1178/1178** (core 1099 + okhttp 25 + apache5 25 + codec-jackson-xml
+> 14 + bench 15), javadoc под `-Werror` зелёный, 0 warnings. Формат payload
+> теперь реально расширяемый: XML из коробки, любой свой формат — один
+> интерфейс `PayloadCodec`. Следующий ход — свободный (Ф3 ServiceLoader
+> опциональна; иначе другой кандидат активной зоны).
+
 > **Сессия #178 (ADR-0060 — Ф1 реализована: SPI ядра):** новый пакет
 > `ru.jrestly.codec` (`PayloadCodec`, `CodecRegistry`, `JsonCodecAdapter`) +
 > плумбинг (`ModuleInfo.getCodecRegistry()` default, `SimpleModuleInfo`
@@ -416,8 +437,11 @@
   content-negotiation, изменение raw-путей. Фазы: Ф1 SPI ядра / Ф2 XML-адаптер
   / Ф3 ServiceLoader-автоподбор.
   **Ф1 — сделана (#178):** SPI ядра + селекция запрос/ответ + fail-fast;
-  +11 тестов, **1164/1164**, javadoc зелёный, 0 warnings. Следующий ход — Ф2
-  (`jrestly-codec-jackson-xml`).
+  +11 тестов, **1164/1164**, javadoc зелёный, 0 warnings. **Ф2 — сделана (#179):**
+  субмодуль `jrestly-codec-jackson-xml` (`JacksonXmlCodec` над `XmlMapper`,
+  claim `application/xml`/`text/xml`/`*+xml`), +14 тестов, **1178/1178**,
+  javadoc зелёный, 0 warnings; **ADR-0060 → Accepted**. Следующий ход —
+  свободный (Ф3 ServiceLoader-автоподбор кодеков опциональна).
 
 ---
 

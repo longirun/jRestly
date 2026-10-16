@@ -1970,6 +1970,15 @@ Gates (session #141):
 
 After the audit fix: candidate №1 — test-javadoc, candidate №2 — HTTP Trailers & Advanced Streaming ergonomics, candidate №3 — OkHttpEngine / ApacheHttpEngine external modules (ADR-0058). ADR number **0058** free.
 
+> **Status update (2026-10-16).** Sections above stop at ADR-0057; the
+> subsequent work lives in `docs/0.10.0/` and the live `DRAFT.md` active zone:
+> ADR-0058 external engines (`engine-okhttp`, `engine-apache5`, `BENCHMARKS.md`),
+> ADR-0059 SSE resilience & streaming trailers, ADR-0060 pluggable payload
+> formats (`ru.jrestly.codec` SPI + `codec-jackson-xml`). Highest ADR issued:
+> **0060**; next free: **0061**. Gate as of session #179: **1178/1178**
+> (core 1099 + engine-okhttp 25 + engine-apache5 25 + codec-jackson-xml 14 +
+> benchmarks 15).
+
 
 
 

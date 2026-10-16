@@ -1,70 +1,60 @@
-# Last Session: #178 (2026-10-16)
+# Last Session: #179 (2026-10-16)
 
 ## Что сделано
 
-**ADR-0060, Фаза 1 — SPI ядра реализован** (сессия #177 была только концепт).
+**ADR-0060, Фаза 2 — XML-адаптер (`jrestly-codec-jackson-xml`) реализован;
+ADR переведён в Accepted.**
 
-1. Новый публичный пакет `ru.jrestly.codec`:
-   - `PayloadCodec` — media-type-aware SPI: `supports(normalizedMediaType)`,
-     `<T> T deserialize(byte[], Type, String mediaType)`,
-     `byte[] serialize(Object, String mediaType)`,
-     `default String prettyPrint(byte[], String, Charset)`. Побайтовый контракт
-     (zero-copy ADR-0054).
-   - `CodecRegistry` — упорядоченный неизменяемый список + дефолт; `resolve`
-     (первый подходящий), `resolveOrDefault` (иначе дефолт), `of(JsonCodec)`,
-     builder. Нормализация media-типа: срез `;`-параметров, trim, lower-case;
-     порядок регистрации = приоритет; дефолт добавляется в конец списка резолва.
-   - `JsonCodecAdapter` — мост к нетронутому `JsonCodec`; claim'ит
-     `application/json`, `text/json`, `*+json`.
-   - (Осознанно **не** заводил `NoOpPayloadCodec` — его роль покрывает
-     `JsonCodecAdapter(NoOpJsonCodec)`.)
-
-2. Плумбинг: `ModuleInfo.getCodecRegistry()` (default → `CodecRegistry.of(getJsonCodec())`),
-   `SimpleModuleInfo` (поле `codecRegistry`, `Builder.codec(...)`/`codecRegistry(...)`,
-   сборка реестра из `jsonCodec` + пользовательских кодеков),
-   `JRestlyClient.Builder.codec(PayloadCodec)` / `codecs(CodecRegistry)`.
-
-3. Селекция запроса — `HttpTemplateBuilder.build()` ставит реестр;
-   `createJsonBodyPayload` выбирает кодек по эффективному `Content-Type`
-   (явный заголовок → `@ContentType` → `requestType.mime()`); нет подходящего и
-   body — bindable DTO → **fail-fast** `IllegalStateException` с именем media-типа.
-   Raw-типы минуют кодек (как было).
-
-4. Селекция ответа — 5 call-site'ов `HttpTemplate` (вкл. `probePayloadDecode` и
-   `handleOnError`; сигнатура `handleOnError` получила `Charset` для re-encode)
-   выбирают кодек по `Content-Type` ответа через `resolveOrDefault` → JSON-дефолт
-   при неизвестном/отсутствующем типе (обратная совместимость). Multipart-части —
-   по media-типу части вместо `contains("json")`.
-
-5. **Грабли:** `setJsonCodec()` теперь обнуляет `codecRegistry` — иначе тесты,
-   которые строят шаблон через `HttpTemplateBuilder` и потом руками меняют
-   кодек, использовали реестр от старого кодека. Builder ставит реестр *после*
-   кодека, поэтому явный registry не теряется.
+1. Новый субмодуль `codec-jackson-xml/` (по образцу `engine-*`):
+   `build.gradle` (java-library, javadoc-гейт под `-Werror`, публикация
+   `jrestly-codec-jackson-xml`), `Automatic-Module-Name:
+   ru.jrestly.codec.jacksonxml`, `include` в `settings.gradle`.
+2. `ru.jrestly.codec.jacksonxml.JacksonXmlCodec implements PayloadCodec`:
+   - обёртка над Jackson `XmlMapper`; ctor от явного mapper'а (used as is) +
+     `defaults()` (`FAIL_ON_UNKNOWN_PROPERTIES=false`,
+     `WRITE_XML_DECLARATION=false`, `findAndRegisterModules()` — jsr310
+     подхватывается из classpath через service-file; ядро не тянет);
+   - `supports` claim'ит `application/xml`, `text/xml`, `*+xml` (RFC 6839);
+   - побайтовый контракт: `null`/empty payload → `null`, `null`-значение →
+     пустой массив, `prettyPrint` — indented XML с fallback на текст.
+   - `package-info.java` с описанием.
+3. Зависимости субмодуля: `api project(':')` +
+   `api 'com.fasterxml.jackson.dataformat:jackson-dataformat-xml:2.18.2'`
+   (транзитивно databind/core/annotations + woodstox/stax2) + `compileOnly`
+   jsr310. **Ядро остаётся строго zero-dep.**
 
 ## Гейты
 
-- `./gradlew test` — **1164/1164** (core 1099 + engine-okhttp 25 +
-  engine-apache5 25 + benchmarks 15), всё зелёное.
-- `./gradlew :javadoc` — зелёный под `-Werror`, 0 warnings.
-- zero-dep ядро сохранено (новые типы зависят только от `java.*` + `ru.jrestly.json`).
-- +11 тестов: `ru/jrestly/codec/CodecRegistryTest` (7) +
-  `ru/jrestly/PayloadCodecWireMockTest` (4, e2e zero-dep «pipe»-кодек).
+- `./gradlew test` — **1178/1178** (core 1099 + engine-okhttp 25 +
+  engine-apache5 25 + codec-jackson-xml 14 + benchmarks 15), всё зелёное.
+- `./gradlew :codec-jackson-xml:javadoc` (и корневой javadoc) — зелёный под
+  `-Werror`, 0 warnings.
+- +14 тестов: `JacksonXmlCodecTest` (10) + e2e `JacksonXmlWireMockTest` (4).
 
-## Контекст для следующей сессии (#179)
+## Технические заметки
 
-1. **Следующий ход — Фаза 2 ADR-0060: XML-адаптер.** Субмодуль
-   `jrestly-codec-jackson-xml` (Jackson `XmlMapper`; `api`-зависимость только у
-   субмодуля, ядро остаётся zero-dep). Реализовать `PayloadCodec` для
-   `application/xml` / `text/xml` / `*+xml`; проверить, что
-   `@ContentType(MediaType.APPLICATION_XML)` + DTO реально уходит XML, а
-   `Accept: application/xml` + типизированный возврат связывается. Плюс parity/
-   e2e-тесты субмодуля и запись в `settings.gradle`.
-   - Точка входа: `ru.jrestly.codec.PayloadCodec` / `CodecRegistry`,
-     регистрация `JRestlyClient.builder().codec(new XmlCodec(...))`.
-2. **Опционально:** Фаза 3 — ServiceLoader-автоподбор кодеков (прецедент
-   `HttpEngineProvider` + `priority()` ADR-0058).
-3. **Обновить ADR-0060:** отметить Ф1 как выполненную (+ Amendment #178 о
-   пропуске `NoOpPayloadCodec`); при Ф2 — перевод в Accepted.
-4. **Ветка** `agent-loop`; HEAD — коммит #178.
+- `XmlMapper extends ObjectMapper` → контракт `PayloadCodec` лёг 1:1
+  (`writeValueAsBytes` / `readValue(byte[], JavaType)` /
+  `writerWithDefaultPrettyPrinter`), никаких костылей.
+- e2e-тесты аннотируют DTO `@JacksonXmlRootElement(localName="person")` для
+  детерминированного корня; при чтении Jackson XML игнорирует имя корня POJO,
+  так что ответный путь от корня не зависит.
+- `@Accept`-fallback выбора ответного кодека (необязательный шаг ADR) **не
+  понадобился**: серверный `Content-Type` в норме есть, иначе JSON-дефолт.
+- Проверка «без XML-кодека»: клиент по умолчанию (`jsonCodec` только) →
+  `IllegalStateException` с именем `application/xml` — никакой тихой JSON-подмены.
+
+## Контекст для следующей сессии (#180)
+
+1. **Кандидат №4 (ADR-0060) практически закрыт.** Осталась опциональная
+   **Ф3** — ServiceLoader-автоподбор кодеков (прецедент `HttpEngineProvider`
+   + `priority()` ADR-0058) и каталог structured-suffix. Не блокирует.
+2. **Активная зона:** кандидат №1 — test-javadoc (лоск в тестовых классах);
+   свободный ход (исследование/рефактор/аудит). Возможно, стоит задуматься о
+   следующем крупном векторе.
+3. **Обновлено:** `docs/0.10.0/ADR-0060-...md` (Amendment #179, Accepted),
+   `DRAFT.md` (запись #179 + кандидат №4), `.agent/days/2026-10-16.md`,
+   `.agent/mailbox.md` (ответ Антону + гигиена).
+4. **Ветка** `agent-loop`; HEAD — будет коммит #179.
 5. **Среда:** `GRADLE_USER_HOME=/tmp/opencode/gradle-home ./gradlew ...`;
-   счётчик сессии: `178`.
+   счётчик сессии: `179`.

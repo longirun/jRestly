@@ -1,6 +1,6 @@
 # ADR-0060: Pluggable Payload Formats & Media-Type-Aware Codec SPI (XML and Beyond)
 
-> 2026-10-16 · Proposed · Status: Concept
+> 2026-10-16 · Accepted · Status: Ф1–Ф2 реализованы (Ф3 опциональна)
 > Next free ADR: 0061
 > Эпик-кандидат №4 из активной зоны DRAFT («XML & pluggable payload formats»).
 > Сессия #177: аудит зоны + концепт. Реализация — последующие сессии по фазам
@@ -230,3 +230,45 @@ public interface PayloadCodec {
 - **Гейт:** +11 тестов (`CodecRegistryTest`, e2e `PayloadCodecWireMockTest`),
   **1164/1164** (core 1099 + engine-okhttp 25 + engine-apache5 25 + benchmarks 15),
   javadoc под `-Werror` зелёный. Впереди Ф2 — субмодуль `jrestly-codec-jackson-xml`.
+
+## Amendment (#179, 2026-10-16) — Фаза 2 реализована (XML-адаптер)
+
+- **Ф2 закрыта.** Новый субмодуль `jrestly-codec-jackson-xml`
+  (`codec-jackson-xml/`), `Automatic-Module-Name: ru.jrestly.codec.jacksonxml`.
+  Единственный публичный тип — `ru.jrestly.codec.jacksonxml.JacksonXmlCodec`
+  (`implements PayloadCodec`): оборачивает Jackson `XmlMapper`; конструктор от
+  явного mapper'а либо `defaults()` (disable `FAIL_ON_UNKNOWN_PROPERTIES`,
+  `WRITE_XML_DECLARATION=false`, `findAndRegisterModules()` — jsr310 подхватывается
+  из classpath через service-file, ядро не тянет). `supports(...)` claim'ит
+  `application/xml`, `text/xml`, `*+xml` (RFC 6839). Побайтовый контракт
+  сохранён; `null`/пустой payload → `null`, `null`-значение → пустой массив;
+  `prettyPrint` — indented XML, для битого ввода — текст как есть.
+- **Зависимости:** `api project(':')` + `api jackson-dataformat-xml:2.18.2`
+  (транзитивно databind/core/annotations + woodstox/stax2), `compileOnly`
+  jsr310. Ядро остаётся строго zero-dep (ADR-0003/0009).
+- **Чего НЕ делали (осознанно):** `@Accept`-fallback для выбора ответного
+  кодека — не понадобился: серверный `Content-Type` в норме есть, а при
+  отсутствии работает JSON-дефолт (обратная совместимость). Оставляем на
+  будущее как необязательный шаг.
+- **Грабли/детали:** `XmlMapper` наследует `ObjectMapper`, поэтому весь
+  контракт `PayloadCodec` лёг 1:1 (`writeValueAsBytes`/`readValue(byte[],
+  JavaType)`/`writerWithDefaultPrettyPrinter`). Для детерминированного корня
+  e2e-тесты аннотируют DTO `@JacksonXmlRootElement(localName="person")`;
+  Jackson XML игнорирует разные имена корня при чтении POJO, так что
+  десериализация не зависит от корня.
+- **Тесты (+14):** `JacksonXmlCodecTest` (10: claim'ы XML/`+xml`/не-`json`,
+  сериализация реального XML без `{`, десериализация, null/empty → null,
+  null → empty, игнор неизвестных элементов, prettyPrint+fallback, явный
+  mapper, NPE, регистрация jsr310) и e2e `JacksonXmlWireMockTest` (4: DTO под
+  `@ContentType(application/xml)` уходит **реальным XML** (в т.ч. `verify`),
+  типизированный ответ по `Content-Type: application/xml` связывается,
+  JSON-дефолт байт-в-байт цел, без XML-кодека — fail-fast вместо JSON под
+  XML-заголовком).
+- **Гейт:** **1178/1178** (core 1099 + engine-okhttp 25 + engine-apache5 25 +
+  codec-jackson-xml 14 + benchmarks 15); `:codec-jackson-xml:javadoc` под
+  `-Werror` зелёный, 0 warnings. **Статус ADR → Accepted.**
+- **Ф3 (опциональна):** ServiceLoader-автоподбор кодеков по прецеденту
+  движков ADR-0058 (`priority()` + стабильная сортировка) и каталог
+  structured-suffix. Не блокирует: явная регистрация `builder.codec(...)`
+  уже полностью закрывает запрос Антона «реализовал свой формат — и
+  пользуешься».
