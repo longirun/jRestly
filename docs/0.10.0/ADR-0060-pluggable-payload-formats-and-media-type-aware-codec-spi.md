@@ -1,6 +1,6 @@
 # ADR-0060: Pluggable Payload Formats & Media-Type-Aware Codec SPI (XML and Beyond)
 
-> 2026-10-16 · Accepted · Status: Ф1–Ф2 реализованы (Ф3 опциональна)
+> 2026-10-16 · Accepted · Status: Ф1–Ф3 реализованы (полностью)
 > Next free ADR: 0061
 > Эпик-кандидат №4 из активной зоны DRAFT («XML & pluggable payload formats»).
 > Сессия #177: аудит зоны + концепт. Реализация — последующие сессии по фазам
@@ -272,3 +272,40 @@ public interface PayloadCodec {
   structured-suffix. Не блокирует: явная регистрация `builder.codec(...)`
   уже полностью закрывает запрос Антона «реализовал свой формат — и
   пользуешься».
+
+## Amendment (#180, 2026-10-16) — Фаза 3 реализована (ServiceLoader-автоподбор)
+
+- **Ф3 закрыта — ADR-0060 полностью реализован.** Новый SPI
+  `ru.jrestly.codec.PayloadCodecProvider` (`isAvailable()` / `createCodec()` /
+  `default priority()`) — точный аналог `HttpEngineProvider` (ADR-0058).
+- **Резолвер** `ru.jrestly.codec.PayloadCodecResolver`: `registry(jsonCodec)` /
+  `registry(jsonCodec, explicitCodecs)` собирает реестр в порядке
+  «явные → обнаруженные (по убыванию `priority()`, стабильно на равенстве) →
+  JSON-дефолт». `discover()`/`discoverFromSpi(...)` — `ServiceLoader`;
+  невалидные (`null`) провайдеры/кодеки пропускаются, недоступные — молча.
+- **Интеграция.** `SimpleModuleInfo.buildCodecRegistry` и default-метод
+  `ModuleInfo.getCodecRegistry()` теперь идут через резолвер: подхват работает
+  и для канонической фабрики `JRestlyClient`, и для кастомного `ModuleInfo`.
+  Явный `builder.codec(...)` по-прежнему впереди обнаруженных; **замена всего
+  реестра** `builder.codecs(...)` отключает автоподбор целиком (осознанно:
+  полная замена = явный контроль).
+- **Первый официальный провайдер.** `JacksonXmlCodecProvider`
+  (`codec-jackson-xml`, `priority = 50`) + `META-INF/services/...PayloadCodecProvider`:
+  субмодуль XML теперь подключается **без единого вызова** — `builder().baseUrl(...).build()`
+  уже умеет XML. Доступность провайдера зондируется по
+  `com.fasterxml.jackson.dataformat.xml.XmlMapper` (класс отсутствует → молча пропущен).
+- **Тесты (+9).** Ядро: `PayloadCodecResolverTest` (5: пропуск недоступных,
+  порядок по убыванию приоритета + стабильность на равенстве, толерантность к
+  `null`, сборка реестра «явные→обнаруженные→JSON», JSON-только без явных) и
+  e2e `PayloadCodecAutoDetectionTest` (3: дефолтный клиент подхватывает
+  зарегистрированный на classpath кодек без `codec(...)`; без провайдера —
+  fail-fast; `codecs(...)` выключает автоподбор). Тестовый
+  `TestSpiPayloadCodecProvider` зарегистрирован через service-file, но по
+  умолчанию `AVAILABLE = false` — прочие тесты не затронуты.
+  Субмодуль: `+1` — `dtoRequestIsSentAsXml`-близнец **без** `.codec(...)`
+  (автоподбор XML) и красный-до-провайдера opt-out через JSON-only `codecs(...)`.
+- **Гейт:** **1187/1187** (core 1107 + engine-okhttp 25 + engine-apache5 25 +
+  codec-jackson-xml 15 + benchmarks 15); `./gradlew test javadoc` зелёный под
+  `-Werror`, 0 warnings. README дополнен секцией «Payload codecs: JSON, XML &
+  custom formats».
+- **Ф3 больше не «опциональна» — реализована.** Кандидат №4 закрыт полностью.

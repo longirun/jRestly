@@ -12,7 +12,9 @@ import ru.jrestly.annotation.ContentType;
 import ru.jrestly.annotation.Get;
 import ru.jrestly.annotation.Post;
 import ru.jrestly.annotation.RequestBody;
+import ru.jrestly.codec.CodecRegistry;
 import ru.jrestly.http.MediaType;
+import ru.jrestly.json.JsonCodecResolver;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
 import static com.github.tomakehurst.wiremock.client.WireMock.equalTo;
@@ -109,10 +111,29 @@ class JacksonXmlWireMockTest {
     }
 
     @Test
-    @DisplayName("without an XML codec, @ContentType(application/xml) fails fast instead of sending JSON")
-    void withoutXmlCodecFailsFast(WireMockRuntimeInfo wm) {
+    @DisplayName("the XML codec is auto-detected when the submodule is on the classpath (no codec(...) call)")
+    void xmlCodecAutoDetectedWithoutRegistration(WireMockRuntimeInfo wm) {
+        stubFor(post(urlEqualTo("/person"))
+                .withHeader("Content-Type", equalTo("application/xml"))
+                .withRequestBody(equalToXml("<person><name>Anton</name><age>42</age></person>"))
+                .willReturn(ok("OK")));
+
+        // No .codec(...): the JacksonXmlCodecProvider service registration lights XML up by itself.
         client = JRestlyClient.builder()
                 .baseUrl(wm.getHttpBaseUrl())
+                .build();
+
+        assertEquals("OK", client.get(XmlApi.class).send(new Person("Anton", 42)));
+        verify(postRequestedFor(urlEqualTo("/person"))
+                .withRequestBody(equalToXml("<person><name>Anton</name><age>42</age></person>")));
+    }
+
+    @Test
+    @DisplayName("replacing the registry with JSON-only opts out, so @ContentType(application/xml) fails fast")
+    void jsonOnlyRegistryDisablesXmlCodec(WireMockRuntimeInfo wm) {
+        client = JRestlyClient.builder()
+                .baseUrl(wm.getHttpBaseUrl())
+                .codecs(CodecRegistry.of(JsonCodecResolver.resolve()))
                 .build();
 
         XmlApi api = client.get(XmlApi.class);

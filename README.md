@@ -127,6 +127,33 @@ Item fetched = api.getItem(created.id());
 List<Item> page = api.listItems(1);
 ```
 
+## Payload codecs: JSON, XML & custom formats
+
+The payload format is pluggable through the `ru.jrestly.codec.PayloadCodec` SPI. JSON is the built-in default (the `JsonCodec` adapter), and a codec chosen by the effective `Content-Type` binds request and response bodies — so `@ContentType(MediaType.APPLICATION_XML)` sends and receives real XML instead of JSON under a foreign header.
+
+XML ships as an opt-in submodule, published alongside the core as `jrestly-codec-jackson-xml`. With it on the classpath the codec auto-registers (ServiceLoader) and claims `application/xml` / `text/xml` / `*+xml` — no builder call is needed:
+
+```java
+interface PersonApi {
+    @Post(path = "/person")
+    @ContentType(MediaType.APPLICATION_XML)
+    String send(@RequestBody Person person);
+}
+
+JRestlyClient client = JRestlyClient.builder().baseUrl(url).build(); // XML codec picked up automatically
+```
+
+Any other format (protobuf, CBOR, MessagePack, a home-grown one) is one interface implementation:
+
+```java
+client = JRestlyClient.builder()
+        .baseUrl(url)
+        .codec(new MyProtobufCodec())   // claims its media type(s)
+        .build();
+```
+
+Selection rules: an explicit `codec(...)` wins over auto-discovered ones; the first registered codec that claims the media type wins; unknown **response** types fall back to JSON (backward compatibility); an unclaimed **request** media type with a bindable DTO fails fast instead of silently sending JSON. Replacing the whole registry with `codecs(CodecRegistry.of(jsonCodec))` disables auto-discovery.
+
 ## Response streaming
 
 Declare `InputStream` or `CompletableFuture<InputStream>` as the controller method return type to stream the response body directly without buffering it into memory:

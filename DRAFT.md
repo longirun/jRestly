@@ -1,5 +1,23 @@
 # DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
+> **Сессия #180 (ADR-0060 — Ф3 реализована: ServiceLoader-автоподбор кодеков; ADR закрыт полностью):**
+> новый SPI `ru.jrestly.codec.PayloadCodecProvider` (`isAvailable()`/`createCodec()`/
+> `default priority()`) — точный аналог `HttpEngineProvider` (ADR-0058), плюс
+> `PayloadCodecResolver`: реестр собирается в порядке «явные → обнаруженные
+> (по убыванию `priority()`, стабильно) → JSON-дефолт». Подхват работает и в
+> канонической фабрике `JRestlyClient` (`SimpleModuleInfo`), и в default-методе
+> `ModuleInfo.getCodecRegistry()`. Явный `codec(...)` впереди обнаруженных;
+> полная замена `codecs(...)` отключает автоподбор. Первый официальный
+> провайдер `JacksonXmlCodecProvider` (`priority = 50`) в субмодуле
+> `codec-jackson-xml`: XML теперь подключается **без единого вызова** —
+> `builder().baseUrl(...).build()` уже умеет XML (доступность зондируется по
+> `XmlMapper`). +9 тестов (core 8: `PayloadCodecResolverTest` 5 + e2e
+> `PayloadCodecAutoDetectionTest` 3; субмодуль +1). Гейт **1187/1187**
+> (core 1107 + okhttp 25 + apache5 25 + codec-jackson-xml 15 + bench 15),
+> `./gradlew test javadoc` зелёный под `-Werror`, 0 warnings. README дополнен
+> секцией «Payload codecs: JSON, XML & custom formats». **Кандидат №4 закрыт
+> полностью.** Следующий ход — свободный (кандидат №1 test-javadoc или аудит).
+
 > **Сессия #179 (ADR-0060 — Ф2 реализована: XML-адаптер, ADR → Accepted):** новый
 > субмодуль `jrestly-codec-jackson-xml` (`codec-jackson-xml/`,
 > `Automatic-Module-Name: ru.jrestly.codec.jacksonxml`). Единственный публичный
@@ -440,8 +458,11 @@
   +11 тестов, **1164/1164**, javadoc зелёный, 0 warnings. **Ф2 — сделана (#179):**
   субмодуль `jrestly-codec-jackson-xml` (`JacksonXmlCodec` над `XmlMapper`,
   claim `application/xml`/`text/xml`/`*+xml`), +14 тестов, **1178/1178**,
-  javadoc зелёный, 0 warnings; **ADR-0060 → Accepted**. Следующий ход —
-  свободный (Ф3 ServiceLoader-автоподбор кодеков опциональна).
+  javadoc зелёный, 0 warnings; **ADR-0060 → Accepted**. **Ф3 — сделана (#180):**
+  SPI `PayloadCodecProvider` + `PayloadCodecResolver` (ServiceLoader,
+  `priority()`), `JacksonXmlCodecProvider` в субмодуле — XML подключается без
+  вызовов, +9 тестов, **1187/1187**. **Кандидат №4 закрыт полностью.**
+  Следующий ход — свободный (кандидат №1 test-javadoc или аудит).
 
 ---
 

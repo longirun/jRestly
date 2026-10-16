@@ -12,8 +12,8 @@ import ru.jrestly.json.JsonCodecResolver;
 import ru.jrestly.compression.CompressionAlgorithm;
 import ru.jrestly.compression.ContentCompressor;
 import ru.jrestly.codec.CodecRegistry;
-import ru.jrestly.codec.JsonCodecAdapter;
 import ru.jrestly.codec.PayloadCodec;
+import ru.jrestly.codec.PayloadCodecResolver;
 import ru.jrestly.tracing.TraceContext;
 import ru.jrestly.tracing.TraceIdGenerator;
 import ru.jrestly.tracing.TracePropagator;
@@ -171,11 +171,8 @@ public class SimpleModuleInfo implements ModuleInfo {
     }
 
     private static CodecRegistry buildCodecRegistry(Builder builder) {
-        CodecRegistry.Builder registry = CodecRegistry.builder();
-        for (PayloadCodec codec : builder.codecs) {
-            registry.codec(codec);
-        }
-        return registry.defaultCodec(new JsonCodecAdapter(builder.jsonCodec)).build();
+        // Explicit codecs first, then ServiceLoader-discovered ones, JSON as the default (ADR-0060 phase 3).
+        return PayloadCodecResolver.registry(builder.jsonCodec, builder.codecs);
     }
 
     @Override
