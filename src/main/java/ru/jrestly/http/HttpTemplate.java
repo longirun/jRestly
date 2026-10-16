@@ -1,6 +1,8 @@
 package ru.jrestly.http;
 
 import ru.jrestly.ModuleInfo;
+import ru.jrestly.codec.CodecRegistry;
+import ru.jrestly.codec.PayloadCodec;
 import ru.jrestly.compression.ContentCompressor;
 import ru.jrestly.interceptor.RequestContext;
 import ru.jrestly.interceptor.RequestInterceptor;
@@ -114,6 +116,7 @@ class HttpTemplate {
     private ru.jrestly.engine.HttpEngine httpEngine;
     private ModuleInfo moduleInfo;
     private JsonCodec jsonCodec;
+    private CodecRegistry codecRegistry;
 
     private String url;
     private HttpMethod httpMethod;
@@ -716,7 +719,7 @@ class HttpTemplate {
 
             if (onErrorParser != null && onErrorParser.canParse(statusCode)) {
                 String errorPayload = consumePayload(effectiveStream, payloadCharset);
-                handleOnError(statusCode, errorPayload, responseHeaders);
+                handleOnError(statusCode, errorPayload, responseHeaders, payloadCharset);
             }
             if (!isExpectedStatus(statusCode)) {
                 String rawPayload = consumePayload(effectiveStream, payloadCharset);
@@ -764,7 +767,7 @@ class HttpTemplate {
 
         if (onErrorParser != null && onErrorParser.canParse(statusCode)) {
             String errorPayload = (bytes != null && bytes.length > 0) ? new String(bytes, payloadCharset) : null;
-            handleOnError(statusCode, errorPayload, responseHeaders);
+            handleOnError(statusCode, errorPayload, responseHeaders, payloadCharset);
         }
 
         if (!isExpectedStatus(statusCode)) {
@@ -797,9 +800,10 @@ class HttpTemplate {
             }
             if (logger.isLoggable(System.Logger.Level.INFO)) {
                 String payload = new String(bytes, StandardCharsets.UTF_8);
-                logger.log(System.Logger.Level.INFO, "Response size: " + payload.length() + " bytes\n" + jsonCodec.prettyPrint(payload));
+                logger.log(System.Logger.Level.INFO, "Response size: " + payload.length() + " bytes\n"
+                        + responseCodec(responseHeaders).prettyPrint(bytes, contentTypeOf(responseHeaders), payloadCharset));
             }
-            Object deserialized = jsonCodec.deserializeBytes(bytes, returnType);
+            Object deserialized = responseCodec(responseHeaders).deserialize(bytes, returnType, contentTypeOf(responseHeaders));
             return (T) Optional.ofNullable(deserialized);
         }
 
@@ -831,10 +835,11 @@ class HttpTemplate {
 
         if (logger.isLoggable(System.Logger.Level.INFO)) {
             String payload = new String(bytes, StandardCharsets.UTF_8);
-            logger.log(System.Logger.Level.INFO, "Response size: " + payload.length() + " bytes\n" + jsonCodec.prettyPrint(payload));
+            logger.log(System.Logger.Level.INFO, "Response size: " + payload.length() + " bytes\n"
+                    + responseCodec(responseHeaders).prettyPrint(bytes, contentTypeOf(responseHeaders), payloadCharset));
         }
 
-        return jsonCodec.deserializeBytes(bytes, returnType);
+        return responseCodec(responseHeaders).deserialize(bytes, returnType, contentTypeOf(responseHeaders));
     }
 
     // ADR-0015 Aspect 3: the error paths' consumption — the stream's
@@ -1120,7 +1125,7 @@ class HttpTemplate {
             if (String.class.equals(returnType) || byte[].class.equals(returnType) || Void.class.equals(returnType) || void.class.equals(returnType)) {
                 return true;
             }
-            jsonCodec.deserialize(payload, returnType);
+            responseCodec(response.headers()).deserialize(bytes, returnType, contentTypeOf(response.headers()));
             return true;
         }
         if (payload == null) {
@@ -1132,7 +1137,7 @@ class HttpTemplate {
         if (Void.class.equals(returnType) || void.class.equals(returnType)) {
             return true; // body discarded (ADR-0009 candidate 2)
         }
-        jsonCodec.deserialize(payload, returnType);
+        responseCodec(response.headers()).deserialize(bytes, returnType, contentTypeOf(response.headers()));
         return true;
     }
 
@@ -2141,6 +2146,45 @@ class HttpTemplate {
      */
     void setJsonCodec(JsonCodec jsonCodec) {
         this.jsonCodec = jsonCodec;
+        // A directly-set codec invalidates a registry the caller did not
+        // explicitly install; the derived registry is rebuilt lazily from this
+        // codec (ADR-0060). The builder sets the registry *after* the codec, so
+        // its explicit registry still wins.
+        this.codecRegistry = null;
+    }
+
+    /**
+     * The media-type-aware codec registry used to select the response codec by
+     * the response {@code Content-Type} (ADR-0060). When unset, a JSON-only
+     * registry is derived from {@link #setJsonCodec(JsonCodec)}.
+     *
+     * @param codecRegistry the registry (set by the builder)
+     */
+    void setCodecRegistry(CodecRegistry codecRegistry) {
+        this.codecRegistry = codecRegistry;
+    }
+
+    private CodecRegistry effectiveCodecRegistry() {
+        CodecRegistry registry = this.codecRegistry;
+        return registry != null ? registry : CodecRegistry.of(jsonCodec);
+    }
+
+    // ADR-0060: pick the response codec by the response Content-Type, falling
+    // back to the default (JSON) — a server without a Content-Type keeps working.
+    private PayloadCodec responseCodec(List<Header> responseHeaders) {
+        return effectiveCodecRegistry().resolveOrDefault(contentTypeOf(responseHeaders));
+    }
+
+    private static String contentTypeOf(List<Header> headers) {
+        if (headers == null) {
+            return null;
+        }
+        for (Header header : headers) {
+            if (header.name() != null && header.name().equalsIgnoreCase("Content-Type")) {
+                return header.value();
+            }
+        }
+        return null;
     }
 
     /**
@@ -2377,10 +2421,11 @@ class HttpTemplate {
         return retryOnUnauthorized;
     }
 
-    private void handleOnError(int statusCode, String payload, List<Header> responseHeaders) {
+    private void handleOnError(int statusCode, String payload, List<Header> responseHeaders, Charset payloadCharset) {
         Class<?> targetErrorClass = onErrorParser.getErrorClass(statusCode);
         Object errorObject = (payload != null && !payload.isEmpty() && targetErrorClass != Void.class)
-                ? jsonCodec.deserialize(payload, targetErrorClass)
+                ? responseCodec(responseHeaders).deserialize(
+                        payload.getBytes(payloadCharset), targetErrorClass, contentTypeOf(responseHeaders))
                 : null;
 
         if (Throwable.class.isAssignableFrom(targetErrorClass)) {

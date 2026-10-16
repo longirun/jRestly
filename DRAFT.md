@@ -1,5 +1,22 @@
 # DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
+> **Сессия #178 (ADR-0060 — Ф1 реализована: SPI ядра):** новый пакет
+> `ru.jrestly.codec` (`PayloadCodec`, `CodecRegistry`, `JsonCodecAdapter`) +
+> плумбинг (`ModuleInfo.getCodecRegistry()` default, `SimpleModuleInfo`
+> `codec(...)`/`codecRegistry(...)`, `JRestlyClient.Builder.codec(...)`/`codecs(...)`).
+> Селекция запроса по эффективному `Content-Type` (явный заголовок → `@ContentType`
+> → `requestType.mime()`): нет подходящего кодека и body — bindable DTO →
+> **fail-fast** вместо тихой JSON-подмены; raw-типы минуют кодек. Селекция ответа:
+> 5 call-site'ов `HttpTemplate` (вкл. `probePayloadDecode`/`@OnError`) берут кодек
+> по `Content-Type` ответа через `resolveOrDefault` → JSON-by-default (обратная
+> совместимость). Multipart — по media-типу части вместо `contains("json")`.
+> `setJsonCodec` обнуляет производный реестр (грабли: тесты строят шаблон
+> билдером, потом меняют кодек). `NoOpPayloadCodec` осознанно не заводил —
+> покрыт `JsonCodecAdapter(NoOpJsonCodec)`. +11 тестов (`CodecRegistryTest` 7,
+> e2e `PayloadCodecWireMockTest` 4). **1164/1164** (core 1099 + okhttp 25 +
+> apache5 25 + bench 15), javadoc под `-Werror` зелёный, 0 warnings. Следующий ход
+> — Ф2 (XML-адаптер `jrestly-codec-jackson-xml`).
+
 > **Сессия #177 (концепт ADR-0060 «Pluggable payload formats»):** оформлен
 > `docs/0.10.0/ADR-0060-pluggable-payload-formats-and-media-type-aware-codec-spi.md`
 > (Status: Proposed) — медиа-тип-осознанный SPI `PayloadCodec` + `CodecRegistry`
@@ -397,7 +414,10 @@
   fail-fast на запросе при незарегистрированном media-типе; XML-адаптер как
   внешний субмодуль, zero-dep ядро. Non-goals: парсер XML/XSD в ядре, полный
   content-negotiation, изменение raw-путей. Фазы: Ф1 SPI ядра / Ф2 XML-адаптер
-  / Ф3 ServiceLoader-автоподбор. Следующий ход — Ф1 (TDD, red-first).
+  / Ф3 ServiceLoader-автоподбор.
+  **Ф1 — сделана (#178):** SPI ядра + селекция запрос/ответ + fail-fast;
+  +11 тестов, **1164/1164**, javadoc зелёный, 0 warnings. Следующий ход — Ф2
+  (`jrestly-codec-jackson-xml`).
 
 ---
 

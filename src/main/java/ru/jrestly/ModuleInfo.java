@@ -1,5 +1,6 @@
 package ru.jrestly;
 
+import ru.jrestly.codec.CodecRegistry;
 import ru.jrestly.interceptor.RequestInterceptor;
 import ru.jrestly.interceptor.ResponseInterceptor;
 import ru.jrestly.json.JsonCodec;
@@ -74,6 +75,19 @@ public interface ModuleInfo {
      */
     default JsonCodec getJsonCodec() {
         return JsonCodecResolver.resolve();
+    }
+
+    /**
+     * The registry of media-type-aware {@link ru.jrestly.codec.PayloadCodec}s
+     * used to select a codec for request and response payloads (ADR-0060).
+     * The default builds a JSON-only registry from {@link #getJsonCodec()} via
+     * {@link ru.jrestly.codec.JsonCodecAdapter}, so existing JSON clients behave
+     * byte-for-byte.
+     *
+     * @return the payload codec registry, never {@code null}
+     */
+    default CodecRegistry getCodecRegistry() {
+        return CodecRegistry.of(getJsonCodec());
     }
 
     /**

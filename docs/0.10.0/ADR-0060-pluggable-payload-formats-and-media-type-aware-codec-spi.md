@@ -208,3 +208,25 @@ public interface PayloadCodec {
    ответного кодека.
 3. **Фаза 3 (опционально).** ServiceLoader-автоподбор кодеков
    (`priority()` по прецеденту ADR-0058) и каталог structured-suffix.
+
+## Amendment (#178, 2026-10-16) — Фаза 1 реализована
+
+- **Ф1 закрыта.** Пакет `ru.jrestly.codec` создан: `PayloadCodec`,
+  `CodecRegistry` (`resolve`/`resolveOrDefault`/`of`/builder, нормализация
+  media-типа), `JsonCodecAdapter`. Плумбинг: `ModuleInfo.getCodecRegistry()`
+  (default), `SimpleModuleInfo` (`codec(...)`/`codecRegistry(...)`),
+  `JRestlyClient.Builder.codec(...)`/`codecs(...)`.
+- **Селекция** запроса и ответа выполнена, как решено выше: request —
+  fail-fast на незарегистрированном media-типе при bindable DTO; response —
+  `resolveOrDefault` → JSON-дефолт; multipart — по media-типу части.
+- **Отклонение:** `NoOpPayloadCodec` **не** заведён — его роль полностью
+  покрывает `JsonCodecAdapter(NoOpJsonCodec)` (zero-dep standalone: тот же
+  fail-fast на complex DTO, raw-пути кодек-нейтральны). Меньше мёртвого
+  публичного API.
+- **Реализационная деталь:** `HttpTemplate.setJsonCodec(...)` обнуляет
+  производный `codecRegistry` — так тесты, собравшие шаблон билдером и затем
+  подменившие кодек, не удерживают реестр от старого кодека. Билдер ставит
+  явный реестр *после* кодека, поэтому пользовательский registry не теряется.
+- **Гейт:** +11 тестов (`CodecRegistryTest`, e2e `PayloadCodecWireMockTest`),
+  **1164/1164** (core 1099 + engine-okhttp 25 + engine-apache5 25 + benchmarks 15),
+  javadoc под `-Werror` зелёный. Впереди Ф2 — субмодуль `jrestly-codec-jackson-xml`.

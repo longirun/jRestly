@@ -11,6 +11,9 @@ import ru.jrestly.json.JsonCodecResolver;
 
 import ru.jrestly.compression.CompressionAlgorithm;
 import ru.jrestly.compression.ContentCompressor;
+import ru.jrestly.codec.CodecRegistry;
+import ru.jrestly.codec.JsonCodecAdapter;
+import ru.jrestly.codec.PayloadCodec;
 import ru.jrestly.tracing.TraceContext;
 import ru.jrestly.tracing.TraceIdGenerator;
 import ru.jrestly.tracing.TracePropagator;
@@ -58,6 +61,7 @@ public class SimpleModuleInfo implements ModuleInfo {
     private final String baseUrl;
     private final AuthProvider authProvider;
     private final JsonCodec jsonCodec;
+    private final CodecRegistry codecRegistry;
     private final int connectTimeout;
     private final int socketTimeout;
     private final HttpClient.Version httpVersion;
@@ -96,6 +100,9 @@ public class SimpleModuleInfo implements ModuleInfo {
                 : new AuthHeaderProvider();
         this.logger = builder.logger;
         this.jsonCodec = builder.jsonCodec;
+        this.codecRegistry = builder.codecRegistry != null
+                ? builder.codecRegistry
+                : buildCodecRegistry(builder);
         this.connectTimeout = builder.connectTimeout;
         this.socketTimeout = builder.socketTimeout;
         this.httpVersion = builder.httpVersion;
@@ -156,6 +163,19 @@ public class SimpleModuleInfo implements ModuleInfo {
     @Override
     public JsonCodec getJsonCodec() {
         return jsonCodec;
+    }
+
+    @Override
+    public CodecRegistry getCodecRegistry() {
+        return codecRegistry;
+    }
+
+    private static CodecRegistry buildCodecRegistry(Builder builder) {
+        CodecRegistry.Builder registry = CodecRegistry.builder();
+        for (PayloadCodec codec : builder.codecs) {
+            registry.codec(codec);
+        }
+        return registry.defaultCodec(new JsonCodecAdapter(builder.jsonCodec)).build();
     }
 
     @Override
@@ -321,6 +341,8 @@ public class SimpleModuleInfo implements ModuleInfo {
         private String authHeaderName;
         private String authHeaderValue;
         private JsonCodec jsonCodec;
+        private CodecRegistry codecRegistry;
+        private final List<PayloadCodec> codecs = new ArrayList<>();
         private int connectTimeout = 5_000;
         private int socketTimeout = 30_000;
         private HttpClient.Version httpVersion = HttpClient.Version.HTTP_2;
@@ -417,6 +439,33 @@ public class SimpleModuleInfo implements ModuleInfo {
          */
         public Builder jsonCodec(JsonCodec jsonCodec) {
             this.jsonCodec = jsonCodec;
+            return this;
+        }
+
+        /**
+         * Registers a media-type-aware {@link PayloadCodec} (ADR-0060),
+         * alongside the JSON codec. Registration order is resolution priority.
+         *
+         * @param codec the codec to register; {@code null} is ignored
+         * @return this builder, for chaining
+         */
+        public Builder codec(PayloadCodec codec) {
+            if (codec != null) {
+                this.codecs.add(codec);
+            }
+            return this;
+        }
+
+        /**
+         * Replaces the whole media-type codec registry (ADR-0060). When unset,
+         * a registry is built from {@link #jsonCodec(JsonCodec)} plus any
+         * {@link #codec(PayloadCodec)} registrations.
+         *
+         * @param codecRegistry the registry to use
+         * @return this builder, for chaining
+         */
+        public Builder codecRegistry(CodecRegistry codecRegistry) {
+            this.codecRegistry = codecRegistry;
             return this;
         }
 

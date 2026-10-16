@@ -2,6 +2,8 @@ package ru.jrestly;
 
 import ru.jrestly.compression.CompressionAlgorithm;
 import ru.jrestly.compression.ContentCompressor;
+import ru.jrestly.codec.CodecRegistry;
+import ru.jrestly.codec.PayloadCodec;
 import ru.jrestly.tracing.TracePropagator;
 import ru.jrestly.http.RetryPolicy;
 import ru.jrestly.http.WireRequest;
@@ -137,6 +139,33 @@ public class JRestlyClient extends AbstractHttpClient {
          */
         public Builder jsonCodec(JsonCodec jsonCodec) {
             moduleInfoBuilder.jsonCodec(jsonCodec);
+            return this;
+        }
+
+        /**
+         * Registers a media-type-aware {@link PayloadCodec} (ADR-0060) so
+         * requests and responses whose {@code Content-Type} matches it are
+         * bound with it instead of the JSON codec. Registration order is
+         * resolution priority; the JSON codec remains the default fallback.
+         *
+         * @param codec the codec to register; {@code null} is ignored
+         * @return this builder, for chaining
+         */
+        public Builder codec(PayloadCodec codec) {
+            moduleInfoBuilder.codec(codec);
+            return this;
+        }
+
+        /**
+         * Replaces the whole media-type codec registry (ADR-0060). When unset,
+         * a registry is derived from {@link #jsonCodec(JsonCodec)} plus any
+         * {@link #codec(PayloadCodec)} registrations.
+         *
+         * @param codecRegistry the registry to use
+         * @return this builder, for chaining
+         */
+        public Builder codecs(CodecRegistry codecRegistry) {
+            moduleInfoBuilder.codecRegistry(codecRegistry);
             return this;
         }
 

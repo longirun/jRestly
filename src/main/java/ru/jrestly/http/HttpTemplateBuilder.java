@@ -2,6 +2,7 @@ package ru.jrestly.http;
 
 import ru.jrestly.AuthProvider;
 import ru.jrestly.ModuleInfo;
+import ru.jrestly.codec.PayloadCodec;
 import ru.jrestly.annotation.Accept;
 import ru.jrestly.annotation.CollectionFormat;
 import ru.jrestly.annotation.Compress;
@@ -226,6 +227,7 @@ public class HttpTemplateBuilder {
         result.setLogger(customLogger != null ? customLogger : System.getLogger(controller.getName()));
         result.setModuleInfo(moduleInfo);
         result.setJsonCodec(moduleInfo.getJsonCodec());
+        result.setCodecRegistry(moduleInfo.getCodecRegistry());
 
         if (httpEngine != null) {
             result.setHttpEngine(httpEngine);
@@ -808,7 +810,14 @@ public class HttpTemplateBuilder {
             return new BodyPayload(stringBody.getBytes(charset), null, effectiveContentType);
         }
 
-        byte[] bodyBytes = moduleInfo.getJsonCodec().serializeToBytes(body);
+        PayloadCodec codec = moduleInfo.getCodecRegistry().resolve(effectiveContentType);
+        if (codec == null) {
+            throw new IllegalStateException("No PayloadCodec registered for Content-Type '"
+                    + effectiveContentType + "'. Register one via JRestlyClient.builder().codec(...) "
+                    + "or send a raw body type (String, byte[], InputStream, Path, File, Supplier, "
+                    + "Flow.Publisher, BodyPublisher).");
+        }
+        byte[] bodyBytes = codec.serialize(body, effectiveContentType);
         return new BodyPayload(bodyBytes, null, effectiveContentType);
     }
 
@@ -979,12 +988,12 @@ public class HttpTemplateBuilder {
         if (value instanceof byte[] bytes) {
             return MultipartPart.part(partName, explicitContentType, bytes);
         }
-        if (explicitContentType.toLowerCase(Locale.ROOT).contains("json")) {
+        PayloadCodec codec = moduleInfo.getCodecRegistry().resolve(explicitContentType);
+        if (codec != null) {
             if (value instanceof String str) {
                 return MultipartPart.part(partName, explicitContentType, str.getBytes(charset));
             }
-            String json = moduleInfo.getJsonCodec().serialize(value);
-            return MultipartPart.part(partName, explicitContentType, json.getBytes(charset));
+            return MultipartPart.part(partName, explicitContentType, codec.serialize(value, explicitContentType));
         }
         if (value instanceof String str) {
             return MultipartPart.part(partName, explicitContentType, str.getBytes(charset));
