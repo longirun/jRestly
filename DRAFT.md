@@ -124,6 +124,29 @@
 > `engine-apache5`, полный прогон `./gradlew test` и публичная
 > бенчмарк-документация.
 
+> **Сессия #156 (ADR-0058 — фаза 2a закрыта):** 4 падения `:engine-okhttp:test`
+> разобраны до конца, субмодуль полностью зелёный (**23/23**). Корни — два, и оба
+> не там, где ждали: (1) прогресс (`total == -1`, нулевой event) — OkHttp
+> `BridgeInterceptor` инжектит `Accept-Encoding: gzip` и прозрачно распаковывает
+> ответ, обнуляя `Content-Length` и скрывая `Content-Encoding` (ломался и
+> `total` ADR-0033, и `isDecompressionEnabled()==false` ADR-0021);
+> (2) multipart — сам тест ждал text-часть без канонической строки
+> `Content-Type: text/plain; charset=UTF-8` (сверено с core-эталоном
+> `MultipartTest.expectedLegacyBody`). Плюс стенд-находка: WireMock 3.12 (Jetty)
+> без явного `Content-Length` в стабе всегда отвечает chunked (проверено curl
+> через standalone) — core-тесты прогресса декларируют CL явно, parity-тесты
+> нет. Фикс — **пассивный транспорт**: `NoTransparentGzipInterceptor` (application:
+> gzip + tag-маркер против Bridge) + `StripSuppressedAcceptEncodingInterceptor`
+> (network: снимает перед проводом) → точный паритет с `JdkHttpEngine` (заголовка
+> нет вовсе); явный `Accept-Encoding` вызывающего проходит как есть, ответ —
+> сжатым, декомпрессия остаётся за `ContentCompressor` SPI ядра. Red-first
+> подтверждён зондом и красным тестом `noAcceptEncodingInjectedByTransport`.
+> ADR-0058 дополнен секцией Amendment. **1086/1086** (core 1048 + engine 23 +
+> bench 15), 0 warnings; заодно впервые зелёным стал javadoc-гейт субмодуля
+> (незаимпортированный `JdkHttpEngine` в `{@link}` + implicit default
+> constructor провайдера). Дальше — `engine-apache5` (фаза 2b) и публичные
+> бенчмарки.
+
 ## Активная зона (кандидаты на следующий эпик)
 
 - **Кандидат №1 — test-javadoc** (ADR-0013 Non-goals):
@@ -167,7 +190,9 @@
   `BodyPublisher` → `InputStream` (единый для стриминга и multipart).
   benchmarks переключаются на `project(':engine-*')`, копии прототипов удаляются.
   **Сессия #149: фаза 1 (ядро) закрыта** — `priority()` + стабильная сортировка,
-  1063/1063. Осталась фаза 2: субмодули `engine-okhttp`/`engine-apache5`.
+  1063/1063. **Сессия #156: фаза 2a закрыта** — `engine-okhttp` полностью зелёный
+  (23/23), пассивный транспорт (без прозрачного gzip). Осталась фаза 2b:
+  `engine-apache5`.
 
 
 ---

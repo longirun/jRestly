@@ -1,72 +1,79 @@
-# Last Session: #155 (2026-10-16)
+# Last Session: #156 (2026-10-16)
 
 ## Что сделано
 
-**Восстановление после сессий #150–#154 + фикс дедлока `PublisherInputStream` (ADR-0058, фаза 2a закоммичена как WIP).**
+**ADR-0058, фаза 2a закрыта: `:engine-okhttp` полностью зелёный (23/23).**
 
-1. В рабочем дереве найдены незакоммиченные следы сессий #150–#154: субмодуль
-   `engine-okhttp` целиком (OkHttpEngine 1070 строк, OkHttpEngineProvider с
-   `priority()=50`, `META-INF/services`, `build.gradle` с maven-publish +
-   javadoc-гейтом, 2 тест-класса = 21 тест), миграция `benchmarks` на
-   `project(':engine-okhttp')` (прототип OkHttpEngine удалён, Apache5-прототип
-   пока на месте), `settings.gradle`, пометка в ADR-0058. Память эти сессии
-   не обновляли (коммита не было).
-2. **Причина смертей сессий**: `./gradlew test` вечно зависал на
-   `OkHttpEngineParityTest.streamingBodyPublisherIsDrained` (в прошлом прогоне
-   488 с → kill по лимиту сессии; поэтому #150–#154 не доходили до коммита).
-3. **Диагноз (jstack)**: `PublisherInputStream.nextChunk()` — маркер
-   `END_OF_STREAM` одноразовый: буферный `read(8192)` добирает остаток
-   последнего чанка, попутно съедает END из очереди и возвращает данные;
-   следующий `read` вечно поллит пустую очередь. Второй латентный баг там же:
-   `FailureHolder` обрабатывался `continue` без повторной проверки `failure` —
-   тоже вечное ожидание при ошибке публикатора.
-4. **Фикс**: липкий `volatile boolean eof` (END/ошибка/закрытие → EOF навсегда),
-   ошибка — немедленный `throw` через `toIOException`; `eof` проверяется в
-   начале `nextChunk()`.
-5. Ревью кода движка сделано (timeout/stream/progress/trailers/close/ModuleInfo —
-   всё на месте), warning-гейты в build.gradle субмодуля (−Werror, javadoc
-   Werror, как у ядра).
+1. Разобраны 4 WIP-падения из #155. Диагностика зондом (временный
+   `ProbeTest` с печатью сырых заголовков/тел через WireMock), корней два:
+   - **Прогресс (`total == -1`, 0 событий):** OkHttp `BridgeInterceptor`
+     без `Accept-Encoding` инжектит `Accept-Encoding: gzip` и **прозрачно
+     распаковывает** ответ (снимает `Content-Encoding`, теряет
+     `Content-Length`). Ломало `total` (ADR-0033) и
+     `isDecompressionEnabled()==false` (ADR-0021).
+   - **Multipart — баг теста:** канонический рендер text-части содержит
+     `Content-Type: text/plain; charset=UTF-8` (сверено с
+     `MultipartTest.expectedLegacyBody`), ассерт ждал его отсутствия.
+   - **Стенд-находка:** WireMock 3.12 (Jetty) без явного `Content-Length`
+     в стабе ВСЕГДА отвечает `Transfer-Encoding: chunked` (проверено curl
+     через wiremock-standalone). Core-тесты прогресса декларируют CL явно.
+2. **Фикс движка — пассивный транспорт:** `NoTransparentGzipInterceptor`
+   (application: при отсутствии AE подставляет `gzip` + tag-маркер
+   `SuppressedAcceptEncoding`) + `StripSuppressedAcceptEncodingInterceptor`
+   (network: снимает подставленный заголовок перед проводом, value-check
+   `"gzip"` щадит подмену другим интерцептором). Канонический конструктор
+   оборачивает ЛЮБОЙ клиент (включая внешний) через `newBuilder()`;
+   `getOkHttpClient()` возвращает обёртку (pool/dispatcher общие).
+3. Тесты: +2 (`noAcceptEncodingInjectedByTransport` — red-first,
+   `explicitAcceptEncodingIsPassedThroughCompressed` — предохранитель),
+   3 стаба прогресса получили явный `Content-Length`, multipart-ассерт
+   исправлен к канону. Итого engine-okhttp: **23 теста** (17+2+4).
+4. ADR-0058 дополнен секцией **Amendment (сессия #156)**; javadoc класса
+   движка и тест-класса обновлены (пассивность транспорта, framing-заметка
+   WireMock).
 
 ## Гейты (честный статус)
 
-- `:engine-okhttp:test`: **17/21 зелёных, 4 падения** (хэнг устранён — прогон
-  11 с вместо вечного). Коммит WIP-осознанный: главное — не терять работу снова.
-- Ядро не менялось: 1048 зелёных на #149; полный `./gradlew test` — за #156.
+- Полный `./gradlew test`: **1086/1086** (core 1048 + engine-okhttp 23 +
+  benchmarks 15), 0 failures, ~18 с. Хэнг #155 не вернулся.
+- 0 warnings (`-Werror`), ядро не менялось, zero-dep POM.
 
-## 4 падения (первый приоритет #156)
-
-1. `Zero-length download fires exactly one (0,0) event` — событий 0 вместо 1.
-2. `Download progress ... Content-Length bodies` — `total == -1` вместо 100000.
-3. `Streaming download progress ends at (total,total)` — `total == -1` вместо 30000.
-4. `Multipart bodies are rendered per RFC 7578` — «text part missing» (другие
-   ассерты multipart-теста прошли).
-
-**Ведущая гипотеза для 1–3**: OkHttp прозрачно добавляет `Accept-Encoding: gzip`
-и после распаковки `body.contentLength() == -1`; в ядре декомпрессия — своя
-(ADR-0021, `ContentCompressor` SPI), т.е. это ещё и риск **двойной распаковки**.
-Фикс: выключить прозрачный gzip в OkHttpEngine (паритет с контрактом ядра) —
-например, интерцептором, фиксирующим `Accept-Encoding` так, как его ставит
-декларативный слой; проверить `toBufferedWireResponse`/`toStreamingWireResponse`
-на `contentLength()` после фикса. Пункт 4 — проверить сырое тело на WireMock
-(`findAll(...)`, hexdump) после фикса gzip: возможно, общий корень.
-
-## Контекст для следующей сессии (#156)
+## Контекст для следующей сессии (#157)
 
 ### Порядок работ
-1. Починить 4 падения выше (TDD: они и есть красные тесты).
-2. `./gradlew test` целиком (ядро + engine-okhttp + benchmarks) — гейт зелёный.
-3. Дальше по ADR-0058: `engine-apache5` (build.gradle с `api httpclient5:5.4.1`,
-   перенос `benchmarks/.../engine/Apache5HttpEngine`, провайдер 50,
-   ServiceLoader, контракт паритета; `sendAsync` — не на общем ForkJoinPool),
-   затем `benchmarks` на `project(':engine-apache5')`.
-4. Потом — публичная бенчмарк-документация (методология raw-TCP + TCP_NODELAY,
-   таблица #147, ограничения variance); опционально JMH `-f 2 -i 5`.
+1. **Фаза 2b: `engine-apache5`** по ADR-0058 (сессия #155 подготовила обзор):
+   - `build.gradle` с `api httpclient5:5.4.1`, maven-publish + javadoc-гейт
+     (копия `engine-okhttp/build.gradle`), ServiceLoader-регистрация,
+     провайдер `priority()=50`.
+   - Перенос прототипа `benchmarks/.../engine/Apache5HttpEngine` (ещё на
+     месте!) + контракт паритета (timeout/version/stream/progress/trailers/
+     close/ModuleInfo). `sendAsync` — **не** на общем ForkJoinPool
+     (в прототипе `supplyAsync` без executor'а — истощение).
+   - **Учесть урок #156:** Apache5 тоже умеет прозрачно декодировать
+     (`Content-Encoding` handling в HttpClient5) — проверить пассивность
+     транспорта тем же зондом (прогресс/`total`, `Content-Encoding` сквозь
+     движок); при необходимости отключить автоматическую декомпрессию
+     (`disableContentCompression()`), а не полагаться на дефолт.
+   - WireMock-паритет по образцу `OkHttpEngineParityTest` (стабы прогресса —
+     с явным `Content-Length`!).
+2. `benchmarks` на `project(':engine-apache5')`, удалить Apache5-прототип.
+3. Полный `./gradlew test` + опционально публичные JMH `-f 2 -i 5`.
+4. Публичная бенчмарк-документация (методология raw-TCP + TCP_NODELAY,
+   таблица #147, ограничения variance).
 
 ### Среда
 1. `GRADLE_USER_HOME=/tmp/opencode/gradle-home ./gradlew ...` (тёплый кэш).
-   **Всегда запускать тесты с внешним `timeout` (например `timeout 420`)** —
-   зависший тест маскирует остальные результаты (грабли #155).
+   **Всегда запускать тесты с внешним `timeout`** (грабли #155).
 2. Ветка `agent-loop`. Версия ядра/субмодуля: **0.9.0**. Next free ADR: **0059**.
 3. Часы контейнера — UTC; таймстампы mailbox — локальное время (≈ UTC+9:30).
-4. `engine-okhttp` использует okhttp3.internal.tls.OkHostnameVerifier (внутренний
-   API OkHttp) — под наблюдением при апгрейде транспорта.
+4. `engine-okhttp` использует okhttp3.internal.tls.OkHostnameVerifier
+   (внутренний API OkHttp) — под наблюдением при апгрейде транспорта.
+5. WireMock 3.12 без явного `Content-Length` в стабе отвечает chunked —
+   для assertions по `total`/CL всегда декларировать длину.
+
+### Техники, которые сработали
+- **Зонд вместо догадки:** временный JUnit-тест с печатью сырых
+  заголовков/тел (или `java -jar wiremock-standalone` + curl) — за один
+  прогон разделил «движок/стенд/тест» и убил неверную гипотезу одного корня.
+- Red-first: новый тест на пассивность транспорта краснел до фикса
+  (`containsHeader("Accept-Encoding") == true`).

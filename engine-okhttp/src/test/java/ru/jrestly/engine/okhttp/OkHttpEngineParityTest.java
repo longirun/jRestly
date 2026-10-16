@@ -25,12 +25,14 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.zip.GZIPInputStream;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
 import static com.github.tomakehurst.wiremock.client.WireMock.configureFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.equalTo;
 import static com.github.tomakehurst.wiremock.client.WireMock.findAll;
 import static com.github.tomakehurst.wiremock.client.WireMock.get;
+import static com.github.tomakehurst.wiremock.client.WireMock.getRequestedFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.post;
 import static com.github.tomakehurst.wiremock.client.WireMock.postRequestedFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.stubFor;
@@ -49,6 +51,12 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * directly (no declarative layer) against WireMock — headers, bodies, streaming,
  * progress listeners, timeouts, trailers-free buffered mode, and close semantics
  * must match the contract of the zero-dependency engine.
+ *
+ * <p>Stub framing notes: WireMock 3.x frames bodies as {@code Transfer-Encoding: chunked}
+ * unless the stub declares {@code Content-Length} explicitly, so the declared-length
+ * progress cases set it (as the core's {@code DownloadProgressWireMockTest} does). The
+ * transport stays passive on content coding (ADR-0021): it never injects
+ * {@code Accept-Encoding} and never transparently decompresses — both pinned below.
  */
 class OkHttpEngineParityTest {
 
@@ -160,7 +168,9 @@ class OkHttpEngineParityTest {
     void downloadProgressReportsChunksAndFinalTotal() throws Exception {
         byte[] payload = new byte[100_000];
         stubFor(get(urlEqualTo("/api/download"))
-                .willReturn(aResponse().withStatus(200).withBody(payload)));
+                .willReturn(aResponse().withStatus(200)
+                        .withHeader("Content-Length", String.valueOf(payload.length))
+                        .withBody(payload)));
 
         List<long[]> events = new ArrayList<>();
         HttpEngineOptions progressOptions = HttpEngineOptions.builder()
@@ -211,7 +221,9 @@ class OkHttpEngineParityTest {
     @DisplayName("Zero-length download fires exactly one (0, 0) event (ADR-0033)")
     void downloadProgressZeroLengthBodyFiresSingleEvent() throws Exception {
         stubFor(get(urlEqualTo("/api/empty"))
-                .willReturn(aResponse().withStatus(200).withBody("")));
+                .willReturn(aResponse().withStatus(200)
+                        .withHeader("Content-Length", "0")
+                        .withBody("")));
 
         List<long[]> events = new ArrayList<>();
         HttpEngineOptions progressOptions = HttpEngineOptions.builder()
@@ -232,7 +244,9 @@ class OkHttpEngineParityTest {
     void streamingDownloadProgressReportsTotal() throws Exception {
         byte[] payload = new byte[30_000];
         stubFor(get(urlEqualTo("/api/stream-progress"))
-                .willReturn(aResponse().withStatus(200).withBody(payload)));
+                .willReturn(aResponse().withStatus(200)
+                        .withHeader("Content-Length", String.valueOf(payload.length))
+                        .withBody(payload)));
 
         List<long[]> events = new ArrayList<>();
         HttpEngineOptions progressOptions = HttpEngineOptions.builder()
@@ -350,7 +364,8 @@ class OkHttpEngineParityTest {
         assertEquals(1, served.size());
         String body = served.get(0).getBodyAsString();
         assertTrue(body.contains("--" + boundary + "\r\n"), "opening boundary missing");
-        assertTrue(body.contains("Content-Disposition: form-data; name=\"field\"\r\n\r\nvalue\r\n"), "text part missing");
+        assertTrue(body.contains("Content-Disposition: form-data; name=\"field\"\r\n"
+                + "Content-Type: text/plain; charset=UTF-8\r\n\r\nvalue\r\n"), "text part missing");
         assertTrue(body.contains("filename=\"a.txt\""), "file name missing");
         assertTrue(body.contains(new String(fileBytes, StandardCharsets.UTF_8)), "file content missing");
         assertTrue(body.contains("--" + boundary + "--"), "closing boundary missing");
@@ -362,6 +377,47 @@ class OkHttpEngineParityTest {
         assertEquals(1L, contentTypeLines, "exactly one Content-Type header on the wire");
         assertEquals("multipart/form-data; boundary=" + boundary,
                 served.get(0).header("Content-Type").firstValue());
+    }
+
+    @Test
+    @DisplayName("The transport is passive: no Accept-Encoding is injected against the wire (ADR-0058 parity)")
+    void noAcceptEncodingInjectedByTransport() throws Exception {
+        stubFor(get(urlEqualTo("/api/passive"))
+                .willReturn(aResponse().withStatus(200).withBody("plain")));
+
+        engine.send(getWireRequest("/api/passive"), options());
+
+        List<LoggedRequest> served = findAll(getRequestedFor(urlEqualTo("/api/passive")));
+        assertEquals(1, served.size());
+        assertFalse(served.get(0).containsHeader("Accept-Encoding"),
+                "content-coding negotiation is the declarative layer's job (ADR-0021), "
+                        + "and OkHttp's transparent gzip would also hide Content-Length/Content-Encoding");
+    }
+
+    @Test
+    @DisplayName("An explicit Accept-Encoding passes through and the compressed body reaches the caller as-is (ADR-0021)")
+    void explicitAcceptEncodingIsPassedThroughCompressed() throws Exception {
+        byte[] payload = new byte[100_000];
+        for (int i = 0; i < payload.length; i++) {
+            payload[i] = (byte) (i % 251);
+        }
+        stubFor(get(urlEqualTo("/api/passive-gzip"))
+                .willReturn(aResponse().withStatus(200).withBody(payload)));
+
+        WireRequest request = new WireRequest(HttpMethod.GET, URI.create(baseUrl + "/api/passive-gzip"),
+                List.of(new Header("Accept-Encoding", "gzip, deflate")), null, null);
+        WireResponse response = engine.send(request, options());
+
+        assertEquals("gzip, deflate",
+                findAll(getRequestedFor(urlEqualTo("/api/passive-gzip"))).get(0).header("Accept-Encoding").firstValue());
+        assertTrue(response.headers().stream()
+                        .anyMatch(h -> h.name().equalsIgnoreCase("Content-Encoding") && h.value().equalsIgnoreCase("gzip")),
+                "Content-Encoding must survive to the caller instead of being transparently consumed");
+        byte[] decoded;
+        try (GZIPInputStream gzip = new GZIPInputStream(new ByteArrayInputStream(response.body()))) {
+            decoded = gzip.readAllBytes();
+        }
+        assertArrayEquals(payload, decoded);
     }
 
     @Test

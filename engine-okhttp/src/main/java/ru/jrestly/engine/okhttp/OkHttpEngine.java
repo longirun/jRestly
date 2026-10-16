@@ -23,6 +23,7 @@ import okio.Timeout;
 import ru.jrestly.ModuleInfo;
 import ru.jrestly.engine.HttpEngine;
 import ru.jrestly.engine.HttpEngineOptions;
+import ru.jrestly.engine.JdkHttpEngine;
 import ru.jrestly.http.DownloadProgressListener;
 import ru.jrestly.http.Header;
 import ru.jrestly.http.MultipartBodyPublisher;
@@ -93,6 +94,10 @@ import java.util.concurrent.atomic.AtomicReference;
  *   <li>upload/download progress listeners — counting wrappers over the request/response
  *       streams; the final {@code (total, total)} event and the zero-length {@code (0, 0)}
  *       semantics of ADR-0030/0033 are preserved;</li>
+ *   <li>compression — the transport stays passive: no {@code Accept-Encoding} is injected and
+ *       no response is decompressed behind the caller's back (OkHttp's transparent gzip is
+ *       suppressed), so the declarative layer's own negotiation and {@code ContentCompressor}
+ *       handling (ADR-0021) behaves exactly as on the zero-dependency engine;</li>
  *   <li>{@code close()} releases the dispatcher executor and the connection pool only when the
  *       engine owns the client.</li>
  * </ul>
@@ -163,7 +168,13 @@ public final class OkHttpEngine implements HttpEngine {
     }
 
     private OkHttpEngine(OkHttpClient client, boolean ownsClient, boolean ownsDispatcherExecutor) {
-        this.baseClient = Objects.requireNonNull(client, "client");
+        Objects.requireNonNull(client, "client");
+        // OkHttp's BridgeInterceptor silently adds "Accept-Encoding: gzip" and transparently
+        // decompresses the reply; the transport must stay passive, see NoTransparentGzipInterceptor
+        this.baseClient = client.newBuilder()
+                .addInterceptor(new NoTransparentGzipInterceptor())
+                .addNetworkInterceptor(new StripSuppressedAcceptEncodingInterceptor())
+                .build();
         this.ownsClient = ownsClient;
         this.ownsDispatcherExecutor = ownsDispatcherExecutor;
     }
@@ -247,7 +258,9 @@ public final class OkHttpEngine implements HttpEngine {
     }
 
     /**
-     * Returns the underlying base {@link OkHttpClient}.
+     * Returns the engine's effective base {@link OkHttpClient}: the supplied client wrapped with
+     * the transport-parity interceptors (passive content-coding, see
+     * {@link NoTransparentGzipInterceptor}), sharing its connection pool and dispatcher.
      *
      * @return the OkHttp client
      */
@@ -714,6 +727,53 @@ public final class OkHttpEngine implements HttpEngine {
 
         private record FailureHolder(Throwable error) {
         }
+    }
+
+    /**
+     * ADR-0058 parity: OkHttp's bridge interceptor adds {@code Accept-Encoding: gzip} to any
+     * request without one and then transparently decompresses the reply — {@code Content-Length}
+     * collapses to {@code -1}, {@code Content-Encoding} disappears, and a caller asking for
+     * decompression to stay off (or managing it itself, ADR-0021) cannot tell. The transport must
+     * stay passive like {@link JdkHttpEngine}: this interceptor seats {@code gzip} together with a
+     * {@link SuppressedAcceptEncoding} tag purely to keep the bridge away, and
+     * {@link StripSuppressedAcceptEncodingInterceptor} removes the header again before the wire.
+     */
+    static final class NoTransparentGzipInterceptor implements Interceptor {
+
+        @Override
+        public Response intercept(Chain chain) throws IOException {
+            Request request = chain.request();
+            if (request.header("Accept-Encoding") != null) {
+                return chain.proceed(request);
+            }
+            return chain.proceed(request.newBuilder()
+                    .header("Accept-Encoding", "gzip")
+                    .tag(SuppressedAcceptEncoding.class, SuppressedAcceptEncoding.INSTANCE)
+                    .build());
+        }
+    }
+
+    /**
+     * Strips the {@code Accept-Encoding} seated by {@link NoTransparentGzipInterceptor} right
+     * before the wire, restoring exact parity with the zero-dependency engine (no header when the
+     * caller did not set one). The value check keeps a header swapped in by a downstream network
+     * interceptor intact.
+     */
+    static final class StripSuppressedAcceptEncodingInterceptor implements Interceptor {
+
+        @Override
+        public Response intercept(Chain chain) throws IOException {
+            Request request = chain.request();
+            if (request.tag(SuppressedAcceptEncoding.class) != null
+                    && "gzip".equals(request.header("Accept-Encoding"))) {
+                request = request.newBuilder().removeHeader("Accept-Encoding").build();
+            }
+            return chain.proceed(request);
+        }
+    }
+
+    private enum SuppressedAcceptEncoding {
+        INSTANCE
     }
 
     /**

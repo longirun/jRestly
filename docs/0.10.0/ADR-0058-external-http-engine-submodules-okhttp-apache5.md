@@ -174,5 +174,45 @@
    поверх перенесённых классов; гейт паритета — jrestly+OkHttp в пределах
    ±10% от raw OkHttp (базовые 450/428 µs).
 
+## Amendment (сессия #156): пассивный транспорт — запрет прозрачного gzip
+
+Первая имплементация фазы 2а (сессия #155) оставляла OkHttp его
+`BridgeInterceptor`-поведение: запрос без `Accept-Encoding` получал
+инжектированный `Accept-Encoding: gzip`, а ответ OkHttp **прозрачно
+распаковывал** (снимая `Content-Encoding`, обнуляя `Content-Length` →
+`contentLength() == -1`). Это ломало контракт паритета сразу в трёх
+измерениях:
+
+1. `total` в download-прогрессе (ADR-0033) терял объявленный
+   `Content-Length`;
+2. `isDecompressionEnabled() == false` (ADR-0021) не соблюдался — движок
+   всё равно распаковывал ответ;
+3. метаданные `Content-Encoding` не доходили до ядра (двойная
+   распаковка не возникала лишь потому, что при явном заголовке от
+   декларативного слоя OkHttp отключает свою прозрачность сам).
+
+**Решение**: `OkHttpEngine` приводит любой переданный `OkHttpClient`
+(включая внешний) к пассивному транспорту двумя интерцепторами:
+
+- `NoTransparentGzipInterceptor` (application-level): при отсутствии
+  `Accept-Encoding` в запросе подставляет `gzip` + tag-маркер — только
+  чтобы `BridgeInterceptor` не включил прозрачный gzip;
+- `StripSuppressedAcceptEncodingInterceptor` (network-level): снимает
+  подставленный заголовок ровно перед проводом, восстанавливая точный
+  паритет с `JdkHttpEngine` (заголовка нет вовсе, когда его не задал
+  вызывающий).
+
+Явный `Accept-Encoding` вызывающего (в декларативном слое —
+`gzip, deflate`, ADR-0021) проходит как есть; ответ приходит **сжатым**,
+`Content-Encoding` сохраняется, распаковка остаётся за
+`ContentCompressor` SPI ядра. Гейт: `:engine-okhttp:test` 23/23 (в т.ч.
+новые тесты «no Accept-Encoding на проводе» и «явный Accept-Encoding
+проходит сжатым»), полный прогон 1086/1086.
+
+*Побочная находка*: WireMock 3.12 (Jetty) без явного заголовка отвечает
+`Transfer-Encoding: chunked` даже для известных тел — тесты прогресса
+обязаны декларировать `Content-Length` в стабе, как это делают
+core-тесты `DownloadProgressWireMockTest`.
+
 *Amends ADR-0052: добавлен `HttpEngineProvider.priority()`, оформлены
 официальные адаптеры.*

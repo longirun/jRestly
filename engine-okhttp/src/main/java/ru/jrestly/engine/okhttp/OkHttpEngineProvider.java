@@ -27,6 +27,13 @@ public final class OkHttpEngineProvider implements HttpEngineProvider {
     public static final int PRIORITY = 50;
 
     /**
+     * Creates the provider instance; {@link java.util.ServiceLoader} instantiates it
+     * through the {@code META-INF/services} registration (ADR-0058).
+     */
+    public OkHttpEngineProvider() {
+    }
+
+    /**
      * Returns whether this engine provider is available in the current runtime environment
      * (i.e. the OkHttp client classes are present on the classpath).
      *
