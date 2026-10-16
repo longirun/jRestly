@@ -57,6 +57,9 @@ class RequestBodyStreamingWireMockTest {
         @Retry(times = 2, nonIdempotent = true, initialBackoffMs = 10, maxBackoffMs = 50)
         String uploadSupplierRetry(@RequestBody Supplier<InputStream> streamSupplier);
 
+        @Post(path = "/upload/supplier-once")
+        String uploadSupplierOnce(@RequestBody Supplier<InputStream> streamSupplier);
+
         @Put(path = "/upload/path")
         String uploadPath(@RequestBody Path path);
 
@@ -229,6 +232,36 @@ class RequestBodyStreamingWireMockTest {
         assertEquals("OK_SUPPLIER", result);
         assertEquals(2, supplyCount.get(), "Supplier should have been called twice (1 initial + 1 retry)");
         wireMock.verify(2, postRequestedFor(urlEqualTo("/upload/supplier-retry")));
+    }
+
+    @Test
+    @DisplayName("Metrics listener does not materialize the Supplier body a second time (ADR-0036 Amendment #193)")
+    void testUploadSupplierWithMetricsListener() {
+        wireMock.stubFor(post(urlEqualTo("/upload/supplier-once"))
+                .withRequestBody(equalTo("supplier-once-payload"))
+                .willReturn(aResponse().withStatus(200).withBody("OK_SUPPLIER_ONCE")));
+
+        // a metrics listener activates the byte-accounting path of the call
+        JRestlyClient metricsClient = JRestlyClient.builder()
+                .baseUrl("http://localhost:" + wireMock.port())
+                .httpVersion(java.net.http.HttpClient.Version.HTTP_1_1)
+                .metricsListener(metrics -> { })
+                .build();
+        try {
+            StreamingClient metricsApi = metricsClient.get(StreamingClient.class);
+            AtomicInteger supplyCount = new AtomicInteger();
+            Supplier<InputStream> supplier = () -> {
+                supplyCount.incrementAndGet();
+                return new ByteArrayInputStream("supplier-once-payload".getBytes(StandardCharsets.UTF_8));
+            };
+
+            String result = metricsApi.uploadSupplierOnce(supplier);
+            assertEquals("OK_SUPPLIER_ONCE", result);
+            assertEquals(1, supplyCount.get(), "Supplier should be invoked once per transmission — the metrics probe must not add a second call");
+            wireMock.verify(postRequestedFor(urlEqualTo("/upload/supplier-once")));
+        } finally {
+            metricsClient.close();
+        }
     }
 
     @Test

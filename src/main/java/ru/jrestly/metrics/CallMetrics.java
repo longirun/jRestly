@@ -62,6 +62,9 @@ public interface CallMetrics {
 
     /**
      * Size in bytes of the request body sent across the wire, or {@code -1} if unknown or empty.
+     * <p>
+     * Per-send rendered bodies (streaming {@code Supplier} payloads, multipart form data)
+     * are reported as unknown ({@code -1}); only buffered {@code byte[]} bodies are measured.
      *
      * @return the request body size in bytes, or {@code -1}
      */

@@ -1,5 +1,35 @@
 # DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
+> **Сессия #193 (аудит: ADR-0036 × ADR-0035 — метрики материализовали
+> стриминг-тело лишний раз):** двенадцатый срез нити «ADR против кода» —
+> впервые не «формулировка ADR vs код», а стык двух ADR'ов. `@WithMetrics`-
+> слушатель активировал `computeRequestBytes`, который для замера
+> `requestBytes()` вызывал `bodyPublisherSupplier().get()` — для
+> ADR-0035 `Supplier`-тел это **лишний вызов продающего пользователя на
+> логический вызов** (после реальной отправки, в момент call-complete), с
+> `catch (Throwable ignored)`. Для `Supplier<InputStream>` замер всё равно
+> `-1` (`ofInputStream().contentLength()` по определению неизвестен) —
+> двойная материализация ради нуля, против контракта «supplier вызывается по
+> числу отправок» (держался только `testUploadSupplierAcrossRetry` без
+> метрик) и против ADR-0035 §3 (hot-путь не должен трогать живые стримы;
+> `logRequest` пишет `<streaming body>` без supplier'а). Fix: supplier-тела →
+> `-1` (unknown), как и multipart; `byte[]`-тела — точный замер; supplier не
+> трогаем. `computeRequestBytes`/`computeResponseBytes` — package-private
+> seam (паттерн #190/#191), Javadoc `CallMetrics.requestBytes()` уточнён,
+> ADR-0036 → Amendment #193 (non-goal задокументирован: Path/File-тела —
+> `-1` вместо размера файла; кандидат на engine-reported byte accounting).
+> TDD: compile-red (stash → 8 ошибок) → behavior-red (e2e: supplier 2×
+> вместо 1×; unit: 1 вызов вместо 0) → зелёный. +7 тестов (6 unit в новом
+> `HttpTemplateMetricsBytesTest` + e2e `testUploadSupplierWithMetricsListener`),
+> гейт **1217/1217** (core 1137 + engine-okhttp 25 + engine-apache5 25 +
+> codec-jackson-xml 15 + benchmarks 15), `./gradlew test javadoc` зелёный
+> под `-Werror`, 0 warnings. ADR-0036 проверен по §1–§6 (интерфейс/модель/
+> аннотация/конфигурация/валидация/fault-tolerance — чист); следующий свет —
+> ADR-0038 (HTTP/2/трейлеры) или ADR-0035 целиком (контракт BodyPublisher,
+> retry-совместимость, progress); мелкие кандидаты: `attempts()` в потоке
+> 401-refresh (второй `executeWithRetries` затирает счётчик первого — сумма
+> не считается), `onCallStart` при short-circuit (запрос на провод не уходил).
+
 > **Сессия #192 (аудит: ADR-0034 — query-коллекции: срез ЧИСТ, границы `DEFAULT`-наследования зафиксированы
 > предохранителями):** одиннадцатый срез нити «ADR против кода» — и впервые
 > **чистый** за всю серию. Все нормативные пункты ADR-0034 §1–§7 сверены по

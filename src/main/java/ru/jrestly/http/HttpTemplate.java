@@ -610,26 +610,23 @@ class HttpTemplate {
         }
     }
 
-    private static long computeRequestBytes(WireRequest request) {
+    // Package-private seam (ADR-0036 Amendment #193): a supplier-rendered
+    // body (ADR-0035 streaming payloads) is materialized per send, so the
+    // probe must not invoke the supplier — it would run the user's producer
+    // one extra time per call and swallow its exceptions. Like multipart
+    // bodies, a streaming body's size is unknown to the metrics layer (-1)
+    static long computeRequestBytes(WireRequest request) {
         if (request == null) {
             return -1;
         }
         if (request.body() != null) {
             return request.body().length;
         }
-        if (request.bodyPublisherSupplier() != null) {
-            try {
-                HttpRequest.BodyPublisher publisher = request.bodyPublisherSupplier().get();
-                if (publisher != null) {
-                    return publisher.contentLength();
-                }
-            } catch (Throwable ignored) {
-            }
-        }
         return -1;
     }
 
-    private static long computeResponseBytes(WireResponse response) {
+    // Package-private seam for the byte-accounting unit gate
+    static long computeResponseBytes(WireResponse response) {
         if (response == null) {
             return -1;
         }

@@ -62,3 +62,40 @@ Introduce a zero-dependency, high-performance Client Metrics & Observability SPI
 - Full production observability readiness for Micrometer, OpenTelemetry, Prometheus, and custom telemetry systems with zero external dependencies.
 - Precise monitoring of retries, in-flight gauges, and wire byte sizes.
 - 100% backward compatibility: existing configurations with no listener incur zero overhead.
+
+## Amendment #193
+
+2026-10-17 · Session #193 (audit slice: ADR-0036 × ADR-0035, streaming request
+bodies under an active metrics listener).
+
+Section 2 declares `requestBytes()` as «uploaded body byte size (-1 if
+unknown)». The original byte-accounting in `HttpTemplate.notifyCallComplete`
+probed a supplier-rendered body by invoking
+`request.bodyPublisherSupplier().get()` and reading the resulting publisher's
+`contentLength()`. For the ADR-0035 first-class streaming bodies
+(`Supplier<? extends InputStream>`, `Supplier<? extends Flow.Publisher>`,
+`Supplier<? extends BodyPublisher>`) the supplier wraps the **user's
+producer**, so the probe ran the user's code one extra time per logical call
+(at call completion, after the real send), swallowed its exceptions
+(`catch (Throwable ignored)`), and — for `Supplier<InputStream>` — still
+reported `-1`, since `BodyPublishers.ofInputStream(...).contentLength()` is
+unknown by definition. The established contract for such bodies is
+«invoked once per transmission» (guarded by
+`RequestBodyStreamingWireMockTest.testUploadSupplierAcrossRetry`), and
+ADR-0035 §3 already requires the hot path not to consume live streams
+(`logRequest` logs `<streaming body>` without touching the supplier).
+With a metrics listener active the Supplier body was thus materialized
+**twice** — a hidden side effect and double production cost, in tension with
+the «no listener → zero overhead» spirit of the SPI.
+
+Resolution: `computeRequestBytes` no longer invokes the supplier —
+supplier-rendered (streaming) bodies are reported as unknown (`-1`), the same
+treatment multipart bodies already had. Buffered `byte[]` bodies keep the
+exact measurement; response accounting is unchanged (buffered body length,
+then `Content-Length`, else `-1`). The seam is package-private and unit-gated
+(`HttpTemplateMetricsBytesTest`); the behavioral contract is e2e-gated
+(`RequestBodyStreamingWireMockTest.testUploadSupplierWithMetricsListener`).
+Known refinement (non-goal here): file-backed `Path`/`File` bodies report
+`-1` instead of the file size while a listener is active; the size is only
+known to the engine at send time (candidate for engine-reported byte
+accounting).
