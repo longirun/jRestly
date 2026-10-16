@@ -16,6 +16,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -136,5 +137,74 @@ class TokenManagerTest {
         assertThrows(NullPointerException.class, () -> TokenManager.of(null));
         assertThrows(NullPointerException.class, () -> TokenManager.of(null, Duration.ofMinutes(1)));
         assertThrows(NullPointerException.class, () -> TokenManager.of(() -> "val", null));
+    }
+
+    @Test
+    @DisplayName("A finishing leader clears only its own in-flight future, never a newer acquisition")
+    void finishingLeaderDoesNotClobberNewerInFlightAcquisition() throws Exception {
+        AtomicInteger invocations = new AtomicInteger();
+        CountDownLatch leaderEntered = new CountDownLatch(1);
+        CountDownLatch secondEntered = new CountDownLatch(1);
+        CountDownLatch thirdEntered = new CountDownLatch(1);
+        CountDownLatch releaseLeader = new CountDownLatch(1);
+        CountDownLatch releaseSecond = new CountDownLatch(1);
+
+        TokenManager tokenManager = TokenManager.of(() -> {
+            int n = invocations.incrementAndGet();
+            if (n == 1) {
+                leaderEntered.countDown();
+                await(releaseLeader);
+                // Already expired: forces later callers back through acquireToken().
+                return Token.of("tok-1", Duration.ofSeconds(-1));
+            }
+            if (n == 2) {
+                secondEntered.countDown();
+                await(releaseSecond);
+                return Token.of("tok-2", Duration.ofMinutes(10));
+            }
+            thirdEntered.countDown();
+            return Token.of("tok-3", Duration.ofMinutes(10));
+        });
+
+        ExecutorService executor = Executors.newFixedThreadPool(3);
+        try {
+            Future<String> leader = executor.submit(tokenManager::getToken);
+            assertTrue(leaderEntered.await(5, TimeUnit.SECONDS));
+
+            // Invalidate while the leader is acquiring, then let a second caller
+            // install a fresh in-flight future (the leader's future is orphaned).
+            tokenManager.invalidate();
+            Future<String> second = executor.submit(tokenManager::getToken);
+            assertTrue(secondEntered.await(5, TimeUnit.SECONDS));
+
+            // The leader finishes. It must clear only its own future, not the newer one.
+            releaseLeader.countDown();
+            assertEquals("tok-1", leader.get(5, TimeUnit.SECONDS));
+
+            // A third caller must join the still-in-flight second acquisition,
+            // not start a brand new supplier invocation.
+            Future<String> third = executor.submit(tokenManager::getToken);
+            assertFalse(thirdEntered.await(300, TimeUnit.MILLISECONDS),
+                    "single-flight broken: a third acquisition started while one was still in flight");
+
+            releaseSecond.countDown();
+            assertEquals("tok-2", second.get(5, TimeUnit.SECONDS));
+            assertEquals("tok-2", third.get(5, TimeUnit.SECONDS));
+            assertEquals(2, invocations.get());
+        } finally {
+            releaseSecond.countDown();
+            executor.shutdownNow();
+        }
+    }
+
+    private static void await(CountDownLatch latch) {
+        try {
+            if (!latch.await(5, TimeUnit.SECONDS)) {
+                throw new IllegalStateException("Timed out waiting on latch");
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException(e);
+        }
     }
 }

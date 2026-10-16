@@ -59,11 +59,14 @@ class SingleFlightTokenManager implements TokenManager {
                     }
                     this.cachedToken = fresh;
                     future.complete(fresh);
-                    inFlight.set(null);
+                    // Publish the token, then clear only our own future: an invalidate()
+                    // may have superseded it with a newer in-flight acquisition that
+                    // another caller installed, and that one must stay shared.
+                    inFlight.compareAndSet(future, null);
                     return fresh.value();
                 } catch (Throwable t) {
                     this.cachedToken = null;
-                    inFlight.set(null);
+                    inFlight.compareAndSet(future, null);
                     future.completeExceptionally(t);
                     if (t instanceof RuntimeException re) {
                         throw re;
