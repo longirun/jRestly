@@ -1,0 +1,454 @@
+package ru.jrestly.http;
+
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.time.Duration;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Iterator;
+import java.util.List;
+import java.util.NoSuchElementException;
+import java.util.Spliterator;
+import java.util.Spliterators;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Function;
+import java.util.stream.Stream;
+import java.util.stream.StreamSupport;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+/**
+ * Unit tests for {@link ServerSentEvent#reconnecting} and {@link ReconnectPolicy}
+ * (ADR-0059, phase 1): EventSource-style reconnection with Last-Event-ID replay.
+ */
+class ServerSentEventReconnectTest {
+
+    private static ReconnectPolicy quickPolicy(int maxAttempts) {
+        return quickPolicyBuilder(maxAttempts).build();
+    }
+
+    private static ReconnectPolicy.Builder quickPolicyBuilder(int maxAttempts) {
+        return ReconnectPolicy.builder()
+                .maxAttempts(maxAttempts)
+                .initialBackoff(Duration.ofMillis(1))
+                .maxBackoff(Duration.ofMillis(10));
+    }
+
+    /** A stream that fails mid-body: the transport is dead before a clean EOF. */
+    private static Stream<ServerSentEvent> failing(String message) {
+        Iterator<ServerSentEvent> failing = new Iterator<>() {
+            @Override
+            public boolean hasNext() {
+                throw new UncheckedIOException(new IOException(message));
+            }
+
+            @Override
+            public ServerSentEvent next() {
+                throw new NoSuchElementException();
+            }
+        };
+        return StreamSupport.stream(
+                Spliterators.spliteratorUnknownSize(failing, Spliterator.ORDERED | Spliterator.NONNULL), false);
+    }
+
+    /** A stream that delivers one event and then fails mid-body. */
+    private static Stream<ServerSentEvent> oneThenFail(ServerSentEvent event, String message) {
+        Iterator<ServerSentEvent> failing = new Iterator<>() {
+            private boolean delivered;
+
+            @Override
+            public boolean hasNext() {
+                if (!delivered) {
+                    return true;
+                }
+                throw new UncheckedIOException(new IOException(message));
+            }
+
+            @Override
+            public ServerSentEvent next() {
+                if (delivered) {
+                    throw new NoSuchElementException();
+                }
+                delivered = true;
+                return event;
+            }
+        };
+        return StreamSupport.stream(
+                Spliterators.spliteratorUnknownSize(failing, Spliterator.ORDERED | Spliterator.NONNULL), false);
+    }
+
+    private static List<String> dataOf(Stream<ServerSentEvent> stream) {
+        try (stream) {
+            return stream.map(ServerSentEvent::data).toList();
+        }
+    }
+
+    @Test
+    @DisplayName("single stream: events are forwarded in order, [DONE] stops without a reconnect")
+    void singleStreamForwardedInOrder() {
+        List<String> openedWith = new ArrayList<>();
+        AtomicInteger opens = new AtomicInteger();
+
+        Function<String, Stream<ServerSentEvent>> opener = lastEventId -> {
+            openedWith.add(lastEventId);
+            opens.incrementAndGet();
+            return Stream.of(
+                    new ServerSentEvent("1", "message", "one", null),
+                    new ServerSentEvent("2", "message", "two", null),
+                    ServerSentEvent.ofData("[DONE]"));
+        };
+
+        Stream<ServerSentEvent> stream = ServerSentEvent.reconnecting(opener, quickPolicy(3));
+
+        assertEquals(List.of("one", "two", "[DONE]"), dataOf(stream));
+        assertEquals(1, opens.get());
+        assertEquals(Arrays.asList((String) null), openedWith);
+    }
+
+    @Test
+    @DisplayName("lazy: the opener is not invoked before the first pull")
+    void lazyOpening() {
+        AtomicInteger opens = new AtomicInteger();
+        Function<String, Stream<ServerSentEvent>> opener = lastEventId -> {
+            opens.incrementAndGet();
+            return Stream.empty();
+        };
+
+        Stream<ServerSentEvent> stream = ServerSentEvent.reconnecting(opener, quickPolicy(0));
+        assertEquals(0, opens.get());
+
+        assertEquals(List.of(), dataOf(stream));
+        assertEquals(1, opens.get());
+    }
+
+    @Test
+    @DisplayName("clean EOF reconnects with Last-Event-ID and splices the events of both connections")
+    void cleanEofReconnectsWithLastEventId() {
+        List<String> openedWith = new ArrayList<>();
+        List<ReconnectInfo> infos = new ArrayList<>();
+        AtomicInteger opens = new AtomicInteger();
+
+        Function<String, Stream<ServerSentEvent>> opener = lastEventId -> {
+            openedWith.add(lastEventId);
+            if (opens.getAndIncrement() == 0) {
+                return Stream.of(
+                        new ServerSentEvent("1", "message", "one", null),
+                        new ServerSentEvent("2", "message", "two", null));
+            }
+            return Stream.of(ServerSentEvent.ofData("[DONE]"));
+        };
+
+        ReconnectPolicy policy = quickPolicyBuilder(2).onReconnect(infos::add).build();
+        List<String> data = dataOf(ServerSentEvent.reconnecting(opener, policy));
+
+        assertEquals(List.of("one", "two", "[DONE]"), data);
+        assertEquals(Arrays.asList(null, "2"), openedWith);
+        assertEquals(1, infos.size());
+        ReconnectInfo info = infos.getFirst();
+        assertEquals(1, info.attempt());
+        assertEquals("2", info.lastEventId());
+        assertEquals(Duration.ofMillis(1), info.delay());
+        assertNull(info.cause());
+    }
+
+    @Test
+    @DisplayName("mid-stream UncheckedIOException reconnects; the last event id is replayed")
+    void midStreamFailureReconnects() {
+        List<String> openedWith = new ArrayList<>();
+        List<ReconnectInfo> infos = new ArrayList<>();
+        AtomicInteger opens = new AtomicInteger();
+
+        Function<String, Stream<ServerSentEvent>> opener = lastEventId -> {
+            openedWith.add(lastEventId);
+            if (opens.getAndIncrement() == 0) {
+                return oneThenFail(new ServerSentEvent("5", "message", "half", null), "connection reset");
+            }
+            return Stream.of(ServerSentEvent.ofData("[DONE]"));
+        };
+
+        ReconnectPolicy policy = quickPolicyBuilder(1).onReconnect(infos::add).build();
+        List<String> data = dataOf(ServerSentEvent.reconnecting(opener, policy));
+
+        assertEquals(List.of("half", "[DONE]"), data);
+        assertEquals(Arrays.asList(null, "5"), openedWith);
+        assertEquals(1, infos.size());
+        assertEquals("connection reset", infos.getFirst().cause().getCause().getMessage());
+    }
+
+    @Test
+    @DisplayName("a failing opener is a reconnectable failure, not a terminal one")
+    void failingOpenerReconnects() {
+        List<ReconnectInfo> infos = new ArrayList<>();
+        AtomicInteger opens = new AtomicInteger();
+
+        Function<String, Stream<ServerSentEvent>> opener = lastEventId -> {
+            if (opens.getAndIncrement() == 0) {
+                throw new UncheckedIOException(new IOException("connect refused"));
+            }
+            return Stream.of(ServerSentEvent.ofData("[DONE]"));
+        };
+
+        ReconnectPolicy policy = quickPolicyBuilder(1).onReconnect(infos::add).build();
+        assertEquals(List.of("[DONE]"), dataOf(ServerSentEvent.reconnecting(opener, policy)));
+        assertEquals(2, opens.get());
+        assertEquals("connect refused", infos.getFirst().cause().getCause().getMessage());
+    }
+
+    @Test
+    @DisplayName("server retry: field wins over the policy backoff and is reported in ReconnectInfo")
+    void serverRetryFieldWins() {
+        List<ReconnectInfo> infos = new ArrayList<>();
+        AtomicInteger opens = new AtomicInteger();
+
+        Function<String, Stream<ServerSentEvent>> opener = lastEventId -> {
+            if (opens.getAndIncrement() == 0) {
+                return Stream.of(
+                        new ServerSentEvent("1", "message", "one", 50L),
+                        new ServerSentEvent("1", "message", "two", 50L));
+            }
+            return Stream.of(ServerSentEvent.ofData("[DONE]"));
+        };
+
+        ReconnectPolicy policy = ReconnectPolicy.builder()
+                .maxAttempts(1)
+                .initialBackoff(Duration.ofSeconds(1))
+                .onReconnect(infos::add)
+                .build();
+        assertEquals(List.of("one", "two", "[DONE]"), dataOf(ServerSentEvent.reconnecting(opener, policy)));
+        assertEquals(Duration.ofMillis(50), infos.getFirst().delay());
+    }
+
+    @Test
+    @DisplayName("exponential growth with jitter is capped by maxBackoff")
+    void growthIsCappedAtMaxBackoff() {
+        ReconnectPolicy policy = ReconnectPolicy.builder()
+                .maxAttempts(10)
+                .initialBackoff(Duration.ofMillis(100))
+                .maxBackoff(Duration.ofMillis(500))
+                .backoffMultiplier(2.0)
+                .jitter(Jitter.NONE)
+                .build();
+        java.util.Random random = new java.util.Random(42);
+        assertEquals(100L, policy.nextDelayMillis(1, null, 0L, random));
+        assertEquals(200L, policy.nextDelayMillis(2, null, 0L, random));
+        assertEquals(400L, policy.nextDelayMillis(3, null, 0L, random));
+        assertEquals(500L, policy.nextDelayMillis(4, null, 0L, random));
+        assertEquals(500L, policy.nextDelayMillis(6, null, 0L, random));
+        assertEquals(500L, policy.nextDelayMillis(1, 900L, 0L, random));
+    }
+
+    @Test
+    @DisplayName("jitter draws stay within the bound; NONE is exactly the bound")
+    void jitterWithinBound() {
+        ReconnectPolicy full = ReconnectPolicy.builder()
+                .initialBackoff(Duration.ofMillis(100))
+                .maxBackoff(Duration.ofMillis(100))
+                .jitter(Jitter.FULL)
+                .build();
+        java.util.Random random = new java.util.Random(7);
+        for (int i = 0; i < 50; i++) {
+            long delay = full.nextDelayMillis(1, null, 0L, random);
+            assertTrue(delay >= 0 && delay <= 100, "delay out of bound: " + delay);
+        }
+
+        ReconnectPolicy decorrelated = ReconnectPolicy.builder()
+                .initialBackoff(Duration.ofMillis(100))
+                .maxBackoff(Duration.ofMillis(500))
+                .jitter(Jitter.DECORRELATED)
+                .build();
+        long delay = decorrelated.nextDelayMillis(1, null, 300L, random);
+        assertTrue(delay >= 100 && delay <= 500, "delay out of bound: " + delay);
+    }
+
+    @Test
+    @DisplayName("[DONE] ends the stream immediately when stopOnDone is on (default)")
+    void doneStopsStreamAndReconnect() {
+        AtomicInteger opens = new AtomicInteger();
+        Function<String, Stream<ServerSentEvent>> opener = lastEventId -> {
+            opens.incrementAndGet();
+            return Stream.of(
+                    new ServerSentEvent("9", "message", "last", null),
+                    ServerSentEvent.ofData("[DONE]"),
+                    ServerSentEvent.ofData("after-done"));
+        };
+
+        assertEquals(List.of("last", "[DONE]"), dataOf(ServerSentEvent.reconnecting(opener, quickPolicy(3))));
+        assertEquals(1, opens.get());
+    }
+
+    @Test
+    @DisplayName("with stopOnDone off, events after [DONE] still flow")
+    void doneDoesNotStopWhenDisabled() {
+        AtomicInteger opens = new AtomicInteger();
+        Function<String, Stream<ServerSentEvent>> opener = lastEventId -> {
+            opens.incrementAndGet();
+            return Stream.of(
+                    ServerSentEvent.ofData("[DONE]"),
+                    ServerSentEvent.ofData("after-done"));
+        };
+
+        ReconnectPolicy policy = quickPolicyBuilder(0).stopOnDone(false).build();
+        assertEquals(List.of("[DONE]", "after-done"), dataOf(ServerSentEvent.reconnecting(opener, policy)));
+        assertEquals(1, opens.get());
+    }
+
+    @Test
+    @DisplayName("maxAttempts bounds the reconnects; exhaustion rethrows the last failure")
+    void exhaustionRethrowsLastFailure() {
+        AtomicInteger opens = new AtomicInteger();
+        Function<String, Stream<ServerSentEvent>> opener = lastEventId -> {
+            opens.incrementAndGet();
+            return failing("boom");
+        };
+
+        UncheckedIOException thrown = assertThrows(UncheckedIOException.class,
+                () -> dataOf(ServerSentEvent.reconnecting(opener, quickPolicy(2))));
+
+        assertEquals("boom", thrown.getCause().getMessage());
+        assertEquals(3, opens.get());
+    }
+
+    @Test
+    @DisplayName("exhaustion after clean EOFs ends the stream quietly")
+    void exhaustionAfterCleanEofEndsQuietly() {
+        AtomicInteger opens = new AtomicInteger();
+        Function<String, Stream<ServerSentEvent>> opener = lastEventId -> {
+            opens.incrementAndGet();
+            return Stream.empty();
+        };
+
+        assertEquals(List.of(), dataOf(ServerSentEvent.reconnecting(opener, quickPolicy(1))));
+        assertEquals(2, opens.get());
+    }
+
+    @Test
+    @DisplayName("non-IO runtime failures are programming errors: they propagate without reconnect")
+    void nonIoFailurePropagates() {
+        AtomicInteger opens = new AtomicInteger();
+        Function<String, Stream<ServerSentEvent>> opener = lastEventId -> {
+            opens.incrementAndGet();
+            Iterator<ServerSentEvent> failing = new Iterator<>() {
+                @Override
+                public boolean hasNext() {
+                    throw new IllegalStateException("user bug");
+                }
+
+                @Override
+                public ServerSentEvent next() {
+                    throw new NoSuchElementException();
+                }
+            };
+            return StreamSupport.stream(
+                    Spliterators.spliteratorUnknownSize(failing, Spliterator.ORDERED | Spliterator.NONNULL), false);
+        };
+
+        IllegalStateException thrown = assertThrows(IllegalStateException.class,
+                () -> dataOf(ServerSentEvent.reconnecting(opener, quickPolicy(3))));
+
+        assertEquals("user bug", thrown.getMessage());
+        assertEquals(1, opens.get());
+    }
+
+    @Test
+    @DisplayName("close() cancels the pending reconnect")
+    void closeCancelsReconnect() {
+        AtomicInteger opens = new AtomicInteger();
+        Function<String, Stream<ServerSentEvent>> opener = lastEventId -> {
+            opens.incrementAndGet();
+            return Stream.of(new ServerSentEvent("1", "message", "one", null));
+        };
+
+        Stream<ServerSentEvent> stream = ServerSentEvent.reconnecting(opener, quickPolicy(3));
+        try {
+            Iterator<ServerSentEvent> iterator = stream.iterator();
+            assertEquals("one", iterator.next().data());
+            stream.close();
+            assertFalse(iterator.hasNext());
+        } finally {
+            stream.close();
+        }
+        assertEquals(1, opens.get());
+    }
+
+    @Test
+    @DisplayName("closing the outer stream closes the underlying stream")
+    void closePropagatesToInnerStream() {
+        AtomicBoolean innerClosed = new AtomicBoolean();
+        Function<String, Stream<ServerSentEvent>> opener =
+                lastEventId -> Stream.of(new ServerSentEvent("1", "message", "one", null))
+                        .onClose(() -> innerClosed.set(true));
+
+        try (Stream<ServerSentEvent> stream = ServerSentEvent.reconnecting(opener, quickPolicy(0))) {
+            Iterator<ServerSentEvent> iterator = stream.iterator();
+            assertEquals("one", iterator.next().data());
+        }
+        assertTrue(innerClosed.get());
+    }
+
+    @Test
+    @DisplayName("interrupt during the reconnect wait propagates and restores the flag")
+    void interruptDuringReconnectWait() {
+        Function<String, Stream<ServerSentEvent>> opener = lastEventId -> Stream.of(
+                new ServerSentEvent("1", "message", "one", null));
+
+        ReconnectPolicy policy = ReconnectPolicy.builder()
+                .maxAttempts(1)
+                .initialBackoff(Duration.ofSeconds(30))
+                .build();
+
+        try (Stream<ServerSentEvent> stream = ServerSentEvent.reconnecting(opener, policy)) {
+            Iterator<ServerSentEvent> iterator = stream.iterator();
+            assertEquals("one", iterator.next().data());
+            Thread.currentThread().interrupt();
+            try {
+                UncheckedIOException thrown = assertThrows(UncheckedIOException.class, iterator::hasNext);
+                assertTrue(thrown.getCause() instanceof java.io.InterruptedIOException);
+                assertTrue(Thread.interrupted());
+            } finally {
+                Thread.interrupted();
+            }
+        }
+    }
+
+    @Test
+    @DisplayName("policy defaults follow WHATWG EventSource: 3 reconnect attempts, 3000 ms fallback, [DONE] stops")
+    void policyDefaults() {
+        ReconnectPolicy policy = ReconnectPolicy.defaults();
+
+        assertEquals(3, policy.maxAttempts());
+        assertEquals(Duration.ofSeconds(3), policy.getInitialBackoff());
+        assertEquals(Duration.ofSeconds(30), policy.getMaxBackoff());
+        assertEquals(1.0, policy.getBackoffMultiplier());
+        assertEquals(Jitter.NONE, policy.getJitter());
+        assertTrue(policy.isStopOnDone());
+        assertTrue(policy.isEnabled());
+        assertFalse(ReconnectPolicy.builder().maxAttempts(0).build().isEnabled());
+    }
+
+    @Test
+    @DisplayName("policy builder rejects invalid values")
+    void policyValidation() {
+        assertThrows(IllegalStateException.class, () -> ReconnectPolicy.builder().maxAttempts(-1).build());
+        assertThrows(IllegalStateException.class,
+                () -> ReconnectPolicy.builder().initialBackoff(Duration.ofMillis(-1)).build());
+        assertThrows(IllegalStateException.class, () -> ReconnectPolicy.builder()
+                .initialBackoff(Duration.ofSeconds(5))
+                .maxBackoff(Duration.ofSeconds(1))
+                .build());
+        assertThrows(IllegalStateException.class,
+                () -> ReconnectPolicy.builder().backoffMultiplier(0.5).build());
+        assertThrows(NullPointerException.class, () -> ReconnectPolicy.builder().jitter(null));
+        assertThrows(NullPointerException.class,
+                () -> ServerSentEvent.reconnecting(null, ReconnectPolicy.defaults()));
+        assertThrows(NullPointerException.class,
+                () -> ServerSentEvent.reconnecting(lastEventId -> Stream.empty(), null));
+    }
+}

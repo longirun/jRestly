@@ -1,6 +1,7 @@
 package ru.jrestly.http;
 
 import java.util.Objects;
+import java.util.function.Function;
 import java.util.stream.Stream;
 
 /**
@@ -61,5 +62,47 @@ public record ServerSentEvent(String id, String event, String data, Long retry) 
     public static Stream<ServerSentEvent> parse(Stream<String> lines) {
         Objects.requireNonNull(lines, "lines must not be null");
         return ServerSentEventParser.parse(lines);
+    }
+
+    /**
+     * Wraps an SSE connection factory into a lazy stream that reconnects per
+     * {@link ReconnectPolicy} (ADR-0059).
+     *
+     * <p>Each returned connection is consumed event by event; a mid-stream
+     * {@link java.io.UncheckedIOException}, a failing opener call, or a clean EOF
+     * opens the next connection with the last seen event id passed back to the
+     * {@code opener} — the canonical use is a nullable
+     * {@code @RequestHeader("Last-Event-ID")} parameter:
+     *
+     * <pre>{@code
+     * Stream<ServerSentEvent> events = ServerSentEvent.reconnecting(
+     *         lastEventId -> api.streamChat(body, lastEventId),
+     *         ReconnectPolicy.builder().maxAttempts(5).build());
+     * }</pre>
+     *
+     * <p>The stream is lazy: the opener runs on the consumer's thread, on the
+     * first pull and on every reconnect. The previous connection's stream is
+     * closed before the wait; closing the returned stream closes the current
+     * connection and cancels reconnection. Failures other than
+     * {@code UncheckedIOException} propagate without a reconnect.
+     *
+     * <p>Honest contract: a server that does not honor {@code Last-Event-ID}
+     * may replay events after a reconnect — that is protocol behavior, not a
+     * library guarantee.
+     *
+     * @param opener the connection factory receiving the nullable
+     *               {@code Last-Event-ID} value (the id of the last seen event,
+     *               or {@code null} on the first connection); must return a
+     *               fresh non-null stream
+     * @param policy the reconnection policy ({@link ReconnectPolicy#defaults()}
+     *               for WHATWG defaults with a 3-attempt bound)
+     * @return a lazy concatenation of the events of successive connections
+     * @throws NullPointerException if {@code opener} or {@code policy} is {@code null}
+     */
+    public static Stream<ServerSentEvent> reconnecting(
+            Function<String, Stream<ServerSentEvent>> opener, ReconnectPolicy policy) {
+        Objects.requireNonNull(opener, "opener must not be null");
+        Objects.requireNonNull(policy, "policy must not be null");
+        return ServerSentEventReconnector.reconnecting(opener, policy);
     }
 }

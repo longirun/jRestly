@@ -1,6 +1,8 @@
 # ADR-0059: SSE Stream Resilience & Streaming Trailer Completion
 
-> 2026-10-16 · Proposed · Status: Concept · Next free ADR: 0060
+> 2026-10-16 · Proposed · Status: Concept
+> Ф1 реализована в сессии #161 (см. Amendment ниже); впереди Ф2 и Ф3.
+> Next free ADR: 0060
 > Эпик-кандидат №2 из активной зоны DRAFT («HTTP Trailers & Advanced Streaming
 > ergonomics»). Сессия #160: аудит зоны + концепт. Реализация — последующие
 > сессии по фазам (TDD, red-first).
@@ -176,7 +178,52 @@
 ## Phase plan
 
 1. **Ф1:** `ReconnectPolicy` + `ServerSentEvent.reconnecting` + unit/e2e
-   (сессия ~#161).
+   (сессия ~#161). ✅ **Реализована в #161.**
 2. **Ф2:** `WireResponse.trailersSupplier` + `populateTrailers` + терминальные
    хуки + engines parity (сессии ~#162–#163).
 3. **Ф3:** spike stall guard → решение keep/drop (сессия ~#164).
+
+## Amendment #161 — Ф1 реализована
+
+Реализовано по TDD (red-first: 32 compile-errors на отсутствующий API, затем
+18 юнитов + 1 e2e; гейты **1131/1131**, javadoc зелёный, 0 warnings):
+
+- **`ReconnectPolicy`** (`ru.jrestly.http`): `maxAttempts` (default 3),
+  `initialBackoff` (3000 мс — WHATWG fallback), `maxBackoff` (30 с),
+  `backoffMultiplier` (1.0 — роста нет), `jitter` (`NONE` — ждём ровно
+  серверный `retry:`), `stopOnDone` (true), `onReconnect(Consumer<ReconnectInfo>)`.
+  `defaults()` — общий иммутабельный инстанс. Имена полей — по образцу
+  `RetryPolicy` (концепт говорил `maxDelay`; консистентность с семейством
+  побеждает).
+- **`ReconnectInfo`** — record `(attempt, lastEventId, delay, cause)`;
+  `cause == null` при чистом EOF.
+- **`ServerSentEvent.reconnecting(Function<String, Stream<ServerSentEvent>>, ReconnectPolicy)`**;
+  ленивый `ServerSentEventReconnector` (package-private): реконнект на
+  `UncheckedIOException`/чистом EOF/падении opener'а, `Last-Event-ID` —
+  последний виденный `event.id()` (реплей), задержка — последний серверный
+  `retry:` (персистится парсером, #142) → `initialBackoff`, всё capped
+  `maxBackoff` и grown/jittered по policy; `Thread.sleep` на потоке
+  потребителя (без скрытых исполнителей); `close()` отменяет реконнект и
+  закрывает текущее соединение; `[DONE]` при `stopOnDone` — терминален и
+  немедленно освобождает соединение; прерывание ожидания —
+  `UncheckedIOException(InterruptedIOException)` + восстановленный флаг.
+  Остальные `RuntimeException` не реконнектятся (программные ошибки) —
+  пробрасываются как есть.
+
+Уточнения семантики против концепта (зафиксированы в Javadoc):
+
+1. `maxAttempts` считает **реконнекты после первой связи** (0 = выключено) —
+   сознательное отличие от `RetryPolicy` («total attempts including the
+   first»): у `ReconnectPolicy` слово «attempt» читается как «повторная
+   попытка», а 0 — честный off-switch.
+2. `maxBackoff` ограничивает и серверное значение (`retry: 3600000` не
+   усыпит потребителя на час по умолчанию), не только экспоненциальный рост.
+3. Рост — `multiplier^(n-1)` от базы, начиная со второго реконнекта; jitter —
+   последним слоем (`NONE` по умолчанию = чистая EventSource-семантика).
+
+E2E (`SseReconnectWireMockTest`): обрыв смоделирован чистым EOF (WireMock
+`Fault.*` не отдаёт тело перед сбросом) — стаб-сценарий «dropped → resumed»,
+второй стаб требует `Last-Event-ID: 2`; проверено `findAll`: 2 запроса, у
+первого заголовка нет, у второго — `2`; серверный `retry: 50` дошёл до
+`ReconnectInfo.delay`. Полуразорванный транспорт (mid-stream
+`UncheckedIOException`) покрыт юнитами.

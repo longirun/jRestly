@@ -1,5 +1,27 @@
 # DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
+> **Сессия #161 (ADR-0059 — Ф1 реализована):** `ServerSentEvent.reconnecting(
+> opener, ReconnectPolicy)` по TDD red-first (32 compile-errors → 18 юнитов +
+> 1 e2e). Новый публичный API: `ReconnectPolicy` (maxAttempts = реконнекты
+> после первой связи, default 3; initialBackoff 3000 мс WHATWG; maxBackoff
+> 30 с; multiplier 1.0; `Jitter.NONE` — ждём ровно серверный `retry:`;
+> `stopOnDone` true; `onReconnect(Consumer<ReconnectInfo>)`) и
+> `ReconnectInfo(attempt, lastEventId, delay, cause)`. Ленивый
+> `ServerSentEventReconnector`: реконнект на `UncheckedIOException`/чистом
+> EOF/падении opener'а; реплей `Last-Event-ID` = последний виденный `id`
+> (персистится парсером, #142); задержка — серверный `retry:` → fallback,
+> capped maxBackoff, grown по multiplier, jitter последним слоем;
+> `Thread.sleep` на потоке потребителя (без скрытых исполнителей); `close()`
+> отменяет реконнект; `[DONE]` терминален и сразу освобождает соединение;
+> прерывание ожидания — `UncheckedIOException(InterruptedIOException)` +
+> флаг; прочие RuntimeException не реконнектятся. E2E WireMock
+> «dropped → resumed»: второй стаб требует `Last-Event-ID: 2` (обрыв — чистый
+> EOF: Fault не отдаёт тело перед сбросом), `findAll` подтверждает 2 запроса
+> и заголовок; `retry: 50` дошёл до `ReconnectInfo.delay`. ADR-0059 дополнен
+> Amendment #161; впереди Ф2 (трейлеры) и Ф3 (stall guard, spike-gated).
+> **1131/1131** (core 1070 + okhttp 23 + apache5 23 + bench 15), javadoc
+> зелёный, 0 warnings.
+
 > **Сессия #160 (кандидат №2 — аудит зоны + концепт ADR-0059):** оформлен
 > `docs/0.10.0/ADR-0059-sse-stream-resilience-and-streaming-trailer-completion.md`
 > (Status: Proposed) — три пробела, подтверждённых по коду: (A) у
@@ -229,15 +251,15 @@
 
 - **Кандидат №2 — HTTP Trailers & Advanced Streaming ergonomics**:
   Расширенные сценарии работы с трейлерами и чанками в стриминге данных (LLM / SSE).
-  **В работе: сессия #160 — аудит зоны + концепт ADR-0059**
-  (`docs/0.10.0/ADR-0059-sse-stream-resilience-and-streaming-trailer-completion.md`,
-  Proposed). План фаз: Ф1 — SSE-переподключение `ServerSentEvent.reconnecting`
-  (`Last-Event-ID` replay через opener-параметр, серверный `retry:`/`Jitter`,
-  `stopOnDone`, bounded attempts); Ф2 — ленивые трейлеры на стриминговом пути
+  **В работе: ADR-0059** (`docs/0.10.0/ADR-0059-sse-stream-resilience-and-streaming-trailer-completion.md`,
+  Proposed). Фазы: **Ф1 — сделана (#161)**: `ServerSentEvent.reconnecting` +
+  `ReconnectPolicy`/`ReconnectInfo` (EventSource-семантика: `Last-Event-ID`
+  replay, серверный `retry:`/`Jitter`, `stopOnDone`, bounded attempts,
+  `onReconnect`); Ф2 — ленивые трейлеры на стриминговом пути
   (`WireResponse.trailersSupplier` + `ResponseHeaders.populateTrailers` +
   терминальные EOF/close-хуки; JDK-движок остаётся пустым — платформенное
   ограничение); Ф3 (spike-gated) — `stallTimeout` (idle-stall guard).
-  Следующий шаг: **Ф1 по TDD (red-first)**.
+  Следующий шаг: **Ф2 по TDD (red-first)**.
 
 - **Кандидат №3 — OkHttpEngine / ApacheHttpEngine external modules** (ADR-0058):
   Вынос внешних коннекторов в отдельные субмодули для максимальной скорости под нагрузкой.
