@@ -23,6 +23,18 @@ public final class RateLimiters {
         return new TokenBucketRateLimiter(name, config);
     }
 
+    /**
+     * Computes the remaining wait budget relative to an absolute {@code nanoTime}
+     * deadline, clamped to zero. Package-private seam for tests.
+     *
+     * @param deadlineNanos absolute nanoTime deadline of the wait
+     * @param nowNanos current nanoTime
+     * @return remaining budget, or zero once the deadline is reached
+     */
+    static long remainingBudget(long deadlineNanos, long nowNanos) {
+        return Math.max(0L, deadlineNanos - nowNanos);
+    }
+
     private static final class TokenBucketRateLimiter implements RateLimiter {
 
         private final String name;
@@ -52,15 +64,20 @@ public final class RateLimiters {
         @Override
         public boolean tryAcquire(Duration timeout) {
             long timeoutNanos = timeout != null ? Math.max(0L, timeout.toNanos()) : 0L;
+            // Anchor the wait budget to an absolute nanoTime deadline: the value
+            // returned by awaitNanos is a platform-dependent estimate of the
+            // time actually slept (it can even be negative), so incremental
+            // bookkeeping on it is not a reliable bound on total wait time.
+            long deadlineNanos = System.nanoTime() + timeoutNanos;
             lock.lock();
             try {
-                long remainingWaitNanos = timeoutNanos;
                 while (true) {
                     refill();
                     if (availableTokens >= 1.0) {
                         availableTokens -= 1.0;
                         return true;
                     }
+                    long remainingWaitNanos = remainingBudget(deadlineNanos, System.nanoTime());
                     if (remainingWaitNanos <= 0L) {
                         return false;
                     }
@@ -71,9 +88,7 @@ public final class RateLimiters {
                     }
                     try {
                         waitingThreads++;
-                        long waitTime = Math.min(nanosNeeded, remainingWaitNanos);
-                        long waited = canAcquire.awaitNanos(waitTime);
-                        remainingWaitNanos -= (waitTime - waited);
+                        canAcquire.awaitNanos(Math.min(nanosNeeded, remainingWaitNanos));
                     } catch (InterruptedException e) {
                         Thread.currentThread().interrupt();
                         return false;

@@ -115,3 +115,39 @@ Accepted
   - Возможность шаринга инстансов по имени через реестры `CircuitBreakerRegistry` и `RateLimiterRegistry`.
 - **Минусы / Ограничения:**
   - Не заменяет распределенный кластерный Rate Limiter (Redis / API Gateway), фокус — на локальной защите микросервиса-клиента.
+
+## Amendment #191
+
+2026-10-17 · Session #191 (audit: concurrent lifecycle of `CircuitBreaker`/`RateLimiter`).
+
+Section "Методы" declares `tryAcquire(Duration timeout)`: "попытка получить
+токен с ожиданием до `timeout`" — i.e. the timeout is an upper bound on total
+wait time. The original in-memory implementation (ADR-0043, commit `dd82872`)
+bookkept the budget incrementally as `remainingWaitNanos -= (waitTime -
+waited)`, where `waited` is the value returned by
+`Condition.awaitNanos(waitTime)`. That value is a platform-dependent
+**estimate** of the time actually slept — on JDK 21 / Linux it was observed to
+be slightly **negative** (the parkNanos estimate overshoots the request).
+Consequences: on a platform where the estimate comes back ≈ `waitTime` for a
+full sleep, the budget is never decremented, and a waiter whose just-refilled
+token is snatched by a competing thread re-enters the loop and waits a second
+full refill period without counting it against the timeout — total block time
+can reach ~2× the requested `timeout`. With a strongly negative estimate the
+budget is over-decremented, giving a premature timeout. On the current
+platform the negative estimate happened to mask the bug.
+
+Resolution: the wait budget is now anchored to an absolute `System.nanoTime()`
+deadline computed once at entry (`deadlineNanos = now + timeout`), and the
+remaining budget is re-derived from the deadline on every loop iteration via
+the package-private seam `RateLimiters.remainingBudget(deadlineNanos,
+nowNanos)` (clamped to zero). The `awaitNanos` return value is no longer
+trusted for bookkeeping — the sleep is purely an optimization, the deadline is
+the source of truth. Gate: seam test `RateLimiterTest.remainingBudgetTracksDeadline`
+(compile-red against the pre-fix code) + behavioral guard
+`RateLimiterTest.timeoutIsHardBoundUnderContestedRefill` (two waiters race for
+the single token that refills inside their shared 150 ms window — at most one
+may succeed and none may block past the timeout + margin). 1206/1206 green,
+javadoc under `-Werror`, 0 warnings. The `InMemoryCircuitBreaker` side of the
+slice audited clean: all mutable state is lock- or volatile-protected, the
+reentrant `checkAutoHalfOpenTransition` is sound, and a half-open failure
+reopens immediately, which absorbs stale in-flight probes.

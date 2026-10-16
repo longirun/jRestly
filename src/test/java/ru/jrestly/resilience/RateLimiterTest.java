@@ -4,6 +4,11 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
+import java.util.concurrent.CyclicBarrier;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -14,8 +19,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * Unit tests for the token-bucket {@link RateLimiter} (ADR-0043): the burst
  * limit per refresh period, refill over time, bounded waiting through
- * {@code tryAcquire(timeout)}, fail-fast {@link RateLimitExceededException}
- * and the name-keyed {@link RateLimiterRegistry}. Pure unit tests, no HTTP.
+ * {@code tryAcquire(timeout)} (deadline-based budget seam + contested-refill
+ * guard), fail-fast {@link RateLimitExceededException} and the name-keyed
+ * {@link RateLimiterRegistry}. Pure unit tests, no HTTP.
  */
 class RateLimiterTest {
 
@@ -84,4 +90,82 @@ class RateLimiterTest {
                 .build());
         assertEquals(50, custom.config().limitForPeriod());
     }
+
+    @Test
+    @DisplayName("remainingBudget computes the wait budget against an absolute deadline")
+    void remainingBudgetTracksDeadline() {
+        long oneSecondNanos = 1_000_000_000L;
+        long start = 10_000_000_000L;
+        long deadline = start + 150_000_000L;
+
+        assertEquals(150_000_000L, RateLimiters.remainingBudget(deadline, start),
+                "budget at the start of the wait equals the full timeout");
+        assertEquals(50_000_000L, RateLimiters.remainingBudget(deadline, start + 100_000_000L),
+                "budget shrinks by the wall-clock time already spent waiting");
+        assertEquals(0L, RateLimiters.remainingBudget(deadline, deadline),
+                "budget is zero once the deadline is reached");
+        assertEquals(0L, RateLimiters.remainingBudget(deadline, deadline + 25_000_000L),
+                "budget is clamped to zero when the deadline was overshot");
+        assertEquals(oneSecondNanos, RateLimiters.remainingBudget(deadline + oneSecondNanos, deadline),
+                "a later deadline keeps its full remaining budget");
+    }
+
+    @Test
+    @DisplayName("tryAcquire(timeout) waits at most the timeout even when refilled tokens are contested")
+    void timeoutIsHardBoundUnderContestedRefill() throws Exception {
+        // Refill yields one token every 100 ms (burst cap 2). Main consumes the
+        // burst, then releases two waiters that race for the single token that
+        // refills within their shared 150 ms window: at most one of them can
+        // legitimately succeed, and no call may block longer than the timeout
+        // (plus scheduling margin).
+        RateLimiter limiter = RateLimiter.of("contested", RateLimiterConfig.builder()
+                .limitForPeriod(2)
+                .limitRefreshPeriod(Duration.ofMillis(200))
+                .timeoutDuration(Duration.ZERO)
+                .build());
+
+        assertTrue(limiter.tryAcquire());
+        assertTrue(limiter.tryAcquire());
+        assertFalse(limiter.tryAcquire());
+
+        Duration timeout = Duration.ofMillis(150);
+        // Main is the third barrier party: the bucket is drained just before
+        // the waiters' timeout windows start, so the refill clock and the
+        // windows share one origin.
+        CyclicBarrier start = new CyclicBarrier(3);
+        ExecutorService pool = Executors.newFixedThreadPool(2);
+        try {
+            Future<AcquireOutcome> first = pool.submit(
+                    () -> raceForToken(limiter, timeout, start));
+            Future<AcquireOutcome> second = pool.submit(
+                    () -> raceForToken(limiter, timeout, start));
+            start.await(2, TimeUnit.SECONDS);
+            AcquireOutcome a = first.get(2, TimeUnit.SECONDS);
+            AcquireOutcome b = second.get(2, TimeUnit.SECONDS);
+
+            assertTrue(a.acquired() ^ b.acquired(),
+                    "exactly one of the two waiters may acquire the single refilled token, but got: "
+                            + a + ", " + b);
+            long marginMillis = 30;
+            assertTrue(a.elapsedMillis() <= timeout.toMillis() + marginMillis,
+                    "first waiter blocked " + a.elapsedMillis() + " ms beyond allowed "
+                            + timeout.toMillis() + " ms timeout");
+            assertTrue(b.elapsedMillis() <= timeout.toMillis() + marginMillis,
+                    "second waiter blocked " + b.elapsedMillis() + " ms beyond allowed "
+                            + timeout.toMillis() + " ms timeout");
+        } finally {
+            pool.shutdownNow();
+        }
+    }
+
+    private AcquireOutcome raceForToken(RateLimiter limiter, Duration timeout, CyclicBarrier start)
+            throws Exception {
+        start.await(2, TimeUnit.SECONDS);
+        long startNanos = System.nanoTime();
+        boolean acquired = limiter.tryAcquire(timeout);
+        long elapsedMillis = (System.nanoTime() - startNanos) / 1_000_000;
+        return new AcquireOutcome(acquired, elapsedMillis);
+    }
+
+    private record AcquireOutcome(boolean acquired, long elapsedMillis) {}
 }
