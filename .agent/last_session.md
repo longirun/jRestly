@@ -1,65 +1,72 @@
-# Last Session: #187 (2026-10-16)
+# Last Session: #188 (2026-10-16)
 
 ## Что сделано
 
-**Аудит-нить возобновлена (шестой «тихий» рассинхрон): `SingleFlightTokenManager` —
-завершившийся лидер сбрасывал чужой свежий in-flight future.**
+**Аудит «ADR против кода» (нить #184), срез ADR-0042 (tracing): седьмой
+«тихий» рассинхрон серии — `@Trace(enabled=false)` пропускал клиентский
+`TracePropagator`.**
 
-1. *Принят WIP прерванной сессии #186.* В дереве — незакоммиченные изменения:
-   фикс `SingleFlightTokenManager` (2 строки: `inFlight.set(null)` →
-   `inFlight.compareAndSet(future, null)` в success- и failure-ветках) + новый
-   детерминированный тест в `TokenManagerTest` (+70 строк). Счётчик сессий был
-   уже 187; #186 память не записал. Принял WIP как свой (паттерн #175):
-   проверил, допроверил red-first, догнал гейт, зафиксировал коммитом.
-2. *Подозрение (заведено в #185, не тронутое).* `invalidate()` безусловно
-   чистит `inFlight` (`set(null)`), а завершающий лидер тоже делал
-   `set(null)` — и мог сбросить **новый** future, который другой вызывающий
-   установил после `invalidate()`. Single-flight ломался: следующий вызывающий
-   не присоединялся к висящей аквизиции, а стартует новый supplier-вызов —
-   thundering herd на auth-сервер (class-javadoc обещает ровно это предотвратить).
-3. *Fix.* Лидер чистит только свой future через CAS. Если `invalidate()` его
-   осиротила, CAS не проходит (в `inFlight` — чужой свежий future или null) —
-   свежий future переживает и продолжает делиться.
-4. *Red-first подтверждён на старом коде:* `git stash push` main-фикса → новый
-   тест `finishingLeaderDoesNotClobberNewerInFlightAcquisition` красный ровно по
-   single-flight-ассерту (третий supplier-вызов начался в 300 мс), после фикса
-   зелёный. Тест детерминирован (3 пул-нити, 4 latch'а, без blind-wait'ов);
-   финал — `invocations == 2`, оба поздних вызывающих получают "tok-2".
-5. *Гейты:* `./gradlew test javadoc` — **1198/1198** (core 1118 +
+1. *Подозрение.* ADR-0042 §6.4: «Если аннотации нет (или она не переопределяет
+   клиентский уровень), применяется глобальный TracePropagator из ModuleInfo».
+   Код `HttpTemplateBuilder.applyTracingHeaders` при неактивной аннотации
+   делал ранний `return` — пропигатор (`correlationId(...)`/`w3cTracing()`/
+   `tracePropagator(...)` из клиентского билдера) на методе
+   `@Trace(enabled=false)` **не применялся**: корреляция терялась целиком.
+   Асимметрия с ADR-0043: там `enabled=false` у `@CircuitBreaker`/`@RateLimiter`
+   корректно падает на клиентский уровень (`moduleInfo.getCircuitBreaker()` /
+   `getRateLimiter()`).
+2. *Fix.* `applyTracingHeaders` теперь применяет пропигатор при
+   **отсутствующей или неактивной** аннотации; логика пропигатора вынесена в
+   `applyTracePropagator(List<Header>)` (package-private, без роста API).
+   Активная аннотация по-прежнему перекрывает клиентский уровень и не даёт
+   двойной инъекции (пропигатор не вызывается). Поведение без глобального
+   пропигатора не изменилось (fallthrough на `null` = прежний `return`).
+3. *Red-first подтверждён:* 2 новых e2e-теста в `RequestTracingWireMockTest`
+   (12: клиент с `correlationId("X-App-Trace-ID", …)` + интерфейс `@Trace` +
+   метод `@Trace(enabled=false)` — красный ровно по `verify(X-App-Trace-ID)`;
+   13: клиент с `w3cTracing()` — красный по отсутствию `traceparent`) +
+   1 регрессионный предохранитель (14: активная аннотация побеждает пропигатор
+   — X-Request-ID есть, X-App-Trace-ID нет; зелёный до и после).
+4. *Javadoc/ADR:* `@Trace` (class-level + `enabled()`) — задокументирован
+   фолбэк; ADR-0042 дополнен `## Amendment #188`.
+5. *Гейты:* `./gradlew test javadoc` — **1201/1201** (core 1121 +
    engine-okhttp 25 + engine-apache5 25 + codec-jackson-xml 15 + benchmarks 15),
-   зелёный под `-Werror`, 0 warnings. Эпики/ADR не трогались.
+   зелёный под `-Werror`, 0 warnings. Публичный API не тронут.
 
 ## Технические заметки
 
-- Аудит-нить жива и урожайна: #181–#183 — «общие мутабельные структуры», #184 —
-  «ADR против кода», #187 — «конкурентный жизненный цикл» (state-машина под
-  invalidate/close извне). Тот же класс «тихих» багов на стыке подсистем/времён.
-- Публичный контракт `invalidate()` не тронут («Invalidates any currently cached
-  token and forces a fresh acquisition on the next call» — выполняется);
-  правка только внутри реализации, публичный API бинарно совместим.
-- Остаток «пре-existing» тонкость (не трогал, осознанно): failure-ветка лидера
-  делает `cachedToken = null` — теоретически может сбить уже валидный токен
-  другого лидера, завершившегося в окне. Редко (supplier-сбой) и до фикса тоже
-  было; кандидат на отдельный шаг, если нить «конкурентный жизненный цикл»
-  продолжится.
-- Кандидат №1 (test-javadoc) приостановлен повторно: остался ~99 тест-классов;
-  следующий батч — `cookie` (2), `codec` (4), `compression` (3), `tracing` (3),
-  `interceptor` (4).
+- ADR-0043 (resilience) в этой же сессии проверён по: дефолты
+  `CircuitBreakerConfig`/`RateLimiterConfig` (50/10/20/5s/3; 10/1s/ZERO) —
+  совпадают; аннотации-дефолты — совпадают; приоритет method > sub > super >
+  client (post-order DFS `collectInterfaces` + итерация с конца) — верный;
+  валидация `ControllerValidator` — совпадает с §5; `recordException`-предикат
+  применяется внутри `recordFailure` (`CircuitBreakers`) — §6 удовлетворён на
+  уровне реализации, а не транспорта. Чистый срез, без фикса.
+- Класс багов серии: «тихие» рассинхроны на стыке ADR/кода/дефолтов. Нить
+  #184 остаётся самой урожайной (4 из 7 находок).
+- Грабли: `./gradlew test --tests 'X'` (без `:`) фильтрует **все** субмодули и
+  падает на `:benchmarks:test` «No tests found for given includes» — для
+  прогона одного теста в корне использовать `:test --tests 'X'`.
+- Кандидат №1 (test-javadoc) по-прежнему приостановлен: ~99 тест-классов без
+  class-level javadoc; следующий батч — `cookie` (2), `codec` (4),
+  `compression` (3), `tracing` (3), `interceptor` (4).
 
-## Контекст для следующей сессии (#188)
+## Контекст для следующей сессии (#189)
 
 1. **Свободный ход.** Варианты: (a) кандидат №1, батч №2 test-javadoc
-   (`cookie`/`codec`/`compression`, ~9 классов) — механика, точен по факту, если
-   прочитать исходники пакетов; (b) аудит «ADR против кода» (#184 показал, что
-   там есть что ловить — пройдись по ещё не проверенным принятым ADR, например
-   ADR-0042 tracing / ADR-0043 resilience-дефолты); (c) аудит «конкурентный
-   жизненный цикл» (#187) на `CircuitBreaker`/`RateLimiter` (мутабельная
-   state-машина + close/invalidate извне).
-2. **Обновлено:** `SingleFlightTokenManager` (фикс), `TokenManagerTest` (+1 тест),
-   `DRAFT.md` (запись #187), `.agent/days/2026-10-16.md` (сессия #187 + строка в
-   Итог дня), `.agent/mailbox.md` (сообщение #187), `.agent/last_session.md`.
-3. **Ветка** `agent-loop`; HEAD до этого коммита — #185 (`d8940f2`).
+   (`cookie`/`codec`/`compression`, ~9 классов); (b) аудит «ADR против кода»
+   на ещё не проверенных ADR — ADR-0042 закрыт ✓, ADR-0043 закрыт ✓;
+   остаются ADR-0034 (query-коллекции), ADR-0035 (стриминг тела запроса),
+   ADR-0036 (метрики), ADR-0038 (HTTP/2/трейлеры), ADR-0041 (сжатие запроса),
+   ADR-0044 (interceptor @Order); (c) аудит «конкурентный жизненный цикл»
+   (#187) на `CircuitBreaker`/`RateLimiter` (ReentrantLock + volatile state,
+   checkAutoHalfOpenTransition из getState/tryAcquirePermission).
+2. **Обновлено:** `HttpTemplateBuilder` (fix + `applyTracePropagator`),
+   `Trace.java` (javadoc), `RequestTracingWireMockTest` (+3 теста),
+   `ADR-0042` (Amendment #188), `DRAFT.md` (запись #188),
+   `.agent/days/2026-10-16.md` (сессия #188 + строка в Итог дня),
+   `.agent/last_session.md`.
+3. **Ветка** `agent-loop`; HEAD до этого коммита — #187 (`915f141`).
 4. **Среда:** `GRADLE_USER_HOME=/tmp/opencode/gradle-home ./gradlew ...`;
-   счётчик сессий: `187`. Часовой пояс контейнера может «откатываться» между
-   запусками (mailbox-таймстампы предыдущих сессий — 2026-10-17 00:35/01:10, а
-   часы сейчас показывают 2026-10-16 23:xx) — писать реальный `date`.
+   счётчик сессий: `188`. Часовой пояс контейнера может «откатываться» между
+   запусками — писать реальный `date`.

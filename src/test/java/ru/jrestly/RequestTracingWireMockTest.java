@@ -276,6 +276,82 @@ class RequestTracingWireMockTest extends BaseWireMockTest {
     }
 
     @Test
+    @DisplayName("12. @Trace(enabled = false) falls back to the client-level propagator (ADR-0042 §6.4)")
+    void shouldFallBackToClientLevelPropagatorWhenTraceDisabled() {
+        stubFor(get(urlEqualTo("/api/trace/disabled"))
+                .willReturn(aResponse().withStatus(200).withBody("ok")));
+
+        JRestlyClient customClient = JRestlyClient.builder()
+                .baseUrl(client.getModuleInfo().getEnvironment().getUrl())
+                .correlationId("X-App-Trace-ID", () -> "app-12345")
+                .build();
+        try {
+            InterfaceLevelTraceApi api = customClient.get(InterfaceLevelTraceApi.class);
+            assertEquals("ok", api.disabledTrace());
+
+            // The disabled annotation is inactive, so the client-level propagator applies
+            verify(getRequestedFor(urlEqualTo("/api/trace/disabled"))
+                    .withHeader("X-App-Trace-ID", equalTo("app-12345")));
+            List<LoggedRequest> requests = findAll(getRequestedFor(urlEqualTo("/api/trace/disabled")));
+            assertEquals(1, requests.size());
+            // ...while the interface-level @Trace (X-Request-ID) stays disabled on this method
+            assertFalse(requests.get(0).containsHeader("X-Request-ID"));
+        } finally {
+            customClient.close();
+        }
+    }
+
+    @Test
+    @DisplayName("13. @Trace(enabled = false) falls back to the client-level W3C propagator (ADR-0042 §6.4)")
+    void shouldFallBackToClientLevelW3cWhenTraceDisabled() {
+        stubFor(get(urlEqualTo("/api/trace/disabled"))
+                .willReturn(aResponse().withStatus(200).withBody("ok")));
+
+        JRestlyClient customClient = JRestlyClient.builder()
+                .baseUrl(client.getModuleInfo().getEnvironment().getUrl())
+                .w3cTracing()
+                .build();
+        try {
+            InterfaceLevelTraceApi api = customClient.get(InterfaceLevelTraceApi.class);
+            assertEquals("ok", api.disabledTrace());
+
+            List<LoggedRequest> requests = findAll(getRequestedFor(urlEqualTo("/api/trace/disabled")));
+            assertEquals(1, requests.size());
+            String traceparent = requests.get(0).getHeader("traceparent");
+            assertNotNull(traceparent);
+            assertTrue(TraceContext.parse(traceparent).isPresent());
+            assertFalse(requests.get(0).containsHeader("X-Request-ID"));
+        } finally {
+            customClient.close();
+        }
+    }
+
+    @Test
+    @DisplayName("14. Active @Trace still overrides the client-level propagator (no double injection)")
+    void shouldPreferActiveAnnotationOverClientLevelPropagator() {
+        stubFor(get(urlEqualTo("/api/trace/default"))
+                .willReturn(aResponse().withStatus(200).withBody("ok")));
+
+        JRestlyClient customClient = JRestlyClient.builder()
+                .baseUrl(client.getModuleInfo().getEnvironment().getUrl())
+                .correlationId("X-App-Trace-ID", () -> "app-12345")
+                .build();
+        try {
+            InterfaceLevelTraceApi api = customClient.get(InterfaceLevelTraceApi.class);
+            assertEquals("ok", api.defaultTrace());
+
+            List<LoggedRequest> requests = findAll(getRequestedFor(urlEqualTo("/api/trace/default")));
+            assertEquals(1, requests.size());
+            // The active interface-level @Trace wins
+            assertNotNull(requests.get(0).getHeader("X-Request-ID"));
+            // ...and the client-level propagator does not add a second ID
+            assertFalse(requests.get(0).containsHeader("X-App-Trace-ID"));
+        } finally {
+            customClient.close();
+        }
+    }
+
+    @Test
     @DisplayName("11. CompletableFuture async twin propagates @Trace header")
     void shouldPropagateTraceInAsyncCall() {
         stubFor(get(urlEqualTo("/api/trace/async"))

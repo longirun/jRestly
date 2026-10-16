@@ -533,61 +533,63 @@ public class HttpTemplateBuilder {
     }
 
     private void applyTracingHeaders(List<Header> result) {
+        // An active @Trace annotation overrides the client level (ADR-0042 §6.3);
+        // a missing or disabled one falls back to the client-level TracePropagator (§6.4)
         Trace effectiveTrace = methodMetadata.effectiveTrace();
-        if (effectiveTrace != null) {
-            if (!effectiveTrace.enabled()) {
-                return;
-            }
-            if (effectiveTrace.w3c()) {
-                boolean hasTraceparent = result.stream()
-                        .anyMatch(h -> h.name() != null && h.name().equalsIgnoreCase("traceparent"));
-                if (!hasTraceparent || effectiveTrace.forceNew()) {
-                    if (effectiveTrace.forceNew()) {
-                        result.removeIf(h -> h.name() != null && h.name().equalsIgnoreCase("traceparent"));
-                    }
-                    TraceContext tc = TraceContext.random();
-                    result.add(new Header("traceparent", tc.toTraceparent()));
-                }
-            } else {
-                String headerName = effectiveTrace.header().trim();
-                boolean hasHeader = result.stream()
-                        .anyMatch(h -> h.name() != null && h.name().equalsIgnoreCase(headerName));
-                if (!hasHeader || effectiveTrace.forceNew()) {
-                    if (effectiveTrace.forceNew()) {
-                        result.removeIf(h -> h.name() != null && h.name().equalsIgnoreCase(headerName));
-                    }
-                    String id = UUID.randomUUID().toString();
-                    result.add(new Header(headerName, id));
-                }
+        if (effectiveTrace == null || !effectiveTrace.enabled()) {
+            if (moduleInfo != null && moduleInfo.getTracePropagator() != null) {
+                applyTracePropagator(result);
             }
             return;
         }
+        if (effectiveTrace.w3c()) {
+            boolean hasTraceparent = result.stream()
+                    .anyMatch(h -> h.name() != null && h.name().equalsIgnoreCase("traceparent"));
+            if (!hasTraceparent || effectiveTrace.forceNew()) {
+                if (effectiveTrace.forceNew()) {
+                    result.removeIf(h -> h.name() != null && h.name().equalsIgnoreCase("traceparent"));
+                }
+                TraceContext tc = TraceContext.random();
+                result.add(new Header("traceparent", tc.toTraceparent()));
+            }
+        } else {
+            String headerName = effectiveTrace.header().trim();
+            boolean hasHeader = result.stream()
+                    .anyMatch(h -> h.name() != null && h.name().equalsIgnoreCase(headerName));
+            if (!hasHeader || effectiveTrace.forceNew()) {
+                if (effectiveTrace.forceNew()) {
+                    result.removeIf(h -> h.name() != null && h.name().equalsIgnoreCase(headerName));
+                }
+                String id = UUID.randomUUID().toString();
+                result.add(new Header(headerName, id));
+            }
+        }
+    }
 
-        if (moduleInfo != null && moduleInfo.getTracePropagator() != null) {
-            TraceRequestContext traceContext = new TraceRequestContext(
-                    controller,
-                    method,
-                    createUrl(),
-                    requestMeta.httpMethod(),
-                    Collections.unmodifiableList(result)
-            );
-            Map<String, String> injected = moduleInfo.getTracePropagator().inject(traceContext);
-            if (injected != null) {
-                for (Map.Entry<String, String> entry : injected.entrySet()) {
-                    String name = entry.getKey();
-                    String value = entry.getValue();
-                    if (name != null && value != null) {
-                        boolean exists = false;
-                        for (int i = 0, size = result.size(); i < size; i++) {
-                            Header h = result.get(i);
-                            if (h.name() != null && h.name().equalsIgnoreCase(name)) {
-                                exists = true;
-                                break;
-                            }
+    private void applyTracePropagator(List<Header> result) {
+        TraceRequestContext traceContext = new TraceRequestContext(
+                controller,
+                method,
+                createUrl(),
+                requestMeta.httpMethod(),
+                Collections.unmodifiableList(result)
+        );
+        Map<String, String> injected = moduleInfo.getTracePropagator().inject(traceContext);
+        if (injected != null) {
+            for (Map.Entry<String, String> entry : injected.entrySet()) {
+                String name = entry.getKey();
+                String value = entry.getValue();
+                if (name != null && value != null) {
+                    boolean exists = false;
+                    for (int i = 0, size = result.size(); i < size; i++) {
+                        Header h = result.get(i);
+                        if (h.name() != null && h.name().equalsIgnoreCase(name)) {
+                            exists = true;
+                            break;
                         }
-                        if (!exists) {
-                            result.add(new Header(name, value));
-                        }
+                    }
+                    if (!exists) {
+                        result.add(new Header(name, value));
                     }
                 }
             }

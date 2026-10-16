@@ -79,6 +79,27 @@ Accepted
 - `headers.traceparent()`: возвращает `Optional<String>` из заголовка `traceparent`.
 - `headers.traceContext()`: парсит `TraceContext` из заголовка `traceparent`.
 
+## Amendment #188
+
+Аудит «ADR против кода» (сессия #188) выявил расхождение в пункте 6.4 Decision:
+при неактивной аннотации (`@Trace(enabled = false)`) `HttpTemplateBuilder`
+выполнял ранний `return`, минуя глобальный `TracePropagator` из `ModuleInfo` —
+вопреки прямому требованию 6.4 «Если аннотации нет (или она не переопределяет
+клиентский уровень), применяется глобальный TracePropagator» и в асимметрии с
+семантикой ADR-0043, где `enabled = false` у `@CircuitBreaker`/`@RateLimiter`
+корректно падает на клиентский уровень. Поведение: метод с
+`@Trace(enabled = false)` на клиенте с настроенным
+`correlationId(...)`/`w3cTracing()`/`tracePropagator(...)` терял заголовок
+корреляции **целиком** (тихий обрыв сквозной трассировки). Фикс:
+`applyTracingHeaders` применяет пропигатор при **отсутствующей или неактивной**
+аннотации (логика пропигатора вынесена в `applyTracePropagator`), активная
+аннотация по-прежнему перекрывает клиентский уровень (без двойной инъекции).
+Публичный API не тронут; поведение без глобального пропигатора не изменилось
+(ранний `return` → тот же результат, что и fallthrough на `null`). TDD red-first:
+2 красных e2e-теста в `RequestTracingWireMockTest` (correlationId- и w3c-фолбэк
+на `@Trace(enabled = false)`), 1 регрессионный предохранитель (активная
+аннотация побеждает пропигатор).
+
 ## Consequences
 - **Плюсы:**
   - Полная поддержка распределенной трассировки и correlation ID из коробки без единой внешней зависимости.

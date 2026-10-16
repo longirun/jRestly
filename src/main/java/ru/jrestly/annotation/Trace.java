@@ -16,7 +16,9 @@ import java.lang.annotation.Target;
  *   <li>When {@link #w3c()} is {@code true}, injects a W3C {@code traceparent} header (e.g. {@code 00-${traceId}-${spanId}-01}).</li>
  *   <li>If the header was already provided by the caller (e.g. via {@link RequestHeader}), the user-provided
  *       value is preserved unless {@link #forceNew()} is {@code true}.</li>
- *   <li>Can be selectively disabled on individual methods of an annotated interface via {@code @Trace(enabled = false)}.</li>
+ *   <li>Can be selectively disabled on individual methods of an annotated interface via
+ *       {@code @Trace(enabled = false)}; on a disabled method the client-level
+ *       {@code TracePropagator} (if configured) applies instead (ADR-0042 §6.4).</li>
  * </ul>
  */
 @Documented
@@ -43,7 +45,8 @@ public @interface Trace {
 
     /**
      * Controls whether tracing is active. Can be set to {@code false} on a method
-     * to opt out of an interface-level {@code @Trace}.
+     * to opt out of an interface-level {@code @Trace}. On a disabled method the
+     * client-level {@code TracePropagator} (if configured) applies instead.
      *
      * @return {@code true} if enabled, {@code false} to disable
      */
