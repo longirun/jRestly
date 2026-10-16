@@ -27,6 +27,8 @@ import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 /**
  * Standard zero-dependency {@link HttpEngine} implementation backed by Java 21's {@link HttpClient}.
@@ -35,6 +37,7 @@ public class JdkHttpEngine implements HttpEngine {
 
     private final HttpClient httpClient;
     private final boolean ownsClient;
+    private final ExecutorService managedExecutor;
 
     /**
      * Constructs a {@link JdkHttpEngine} wrapping an existing {@link HttpClient} without ownership.
@@ -53,8 +56,13 @@ public class JdkHttpEngine implements HttpEngine {
      * @param ownsClient {@code true} if {@link #close()} should close the underlying {@link HttpClient}
      */
     public JdkHttpEngine(HttpClient httpClient, boolean ownsClient) {
+        this(httpClient, ownsClient, null);
+    }
+
+    private JdkHttpEngine(HttpClient httpClient, boolean ownsClient, ExecutorService managedExecutor) {
         this.httpClient = Objects.requireNonNull(httpClient, "httpClient");
         this.ownsClient = ownsClient;
+        this.managedExecutor = managedExecutor;
     }
 
     /**
@@ -69,6 +77,9 @@ public class JdkHttpEngine implements HttpEngine {
 
     /**
      * Creates a new {@link JdkHttpEngine} with an internally managed {@link HttpClient} configured from {@link ModuleInfo}.
+     * When {@link ModuleInfo#getExecutor()} is {@code null} and {@link ModuleInfo#isVirtualThreads()}
+     * is enabled, the client is driven by an internally managed virtual-thread executor (ADR-0026)
+     * that is shut down together with the engine on {@link #close()}.
      *
      * @param moduleInfo the client module configuration, must not be {@code null}
      * @return a new managed HTTP engine instance
@@ -101,10 +112,15 @@ public class JdkHttpEngine implements HttpEngine {
             builder.authenticator(authenticator);
         }
         Executor executor = moduleInfo.getExecutor();
+        ExecutorService managedExecutor = null;
+        if (executor == null && moduleInfo.isVirtualThreads()) {
+            managedExecutor = Executors.newVirtualThreadPerTaskExecutor();
+            executor = managedExecutor;
+        }
         if (executor != null) {
             builder.executor(executor);
         }
-        return new JdkHttpEngine(builder.build(), true);
+        return new JdkHttpEngine(builder.build(), true, managedExecutor);
     }
 
     /**
@@ -162,6 +178,9 @@ public class JdkHttpEngine implements HttpEngine {
     public void close() {
         if (ownsClient) {
             httpClient.close();
+        }
+        if (managedExecutor != null) {
+            managedExecutor.close();
         }
     }
 

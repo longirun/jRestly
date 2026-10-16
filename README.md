@@ -308,7 +308,7 @@ The body is composed from per-part publishers — buffering is bounded to a sing
 
 ## Performance & benchmarks
 
-The declarative layer (dynamic proxy, metadata resolution, pipeline dispatch) costs single-digit microseconds per call — visible only without a network, and noise against a real round-trip. The transport is pluggable ([ADR-0052](docs/0.10.0/ADR-0052-http-engine-spi-and-jdk-engine.md)): the zero-dep core runs on `java.net.http.HttpClient` by default, and adding the `jrestly-engine-okhttp` or `jrestly-engine-apache5` module ([ADR-0058](docs/0.10.0/ADR-0058-external-http-engine-submodules-okhttp-apache5.md)) plugs a faster transport into the same declarative client — the full jRestly pipeline included.
+The declarative layer (dynamic proxy, metadata resolution, pipeline dispatch) costs single-digit microseconds per call — visible only without a network, and noise against a real round-trip. The transport is pluggable ([ADR-0052](docs/0.10.0/ADR-0052-http-engine-spi-and-jdk-engine.md)): the zero-dep core runs on `java.net.http.HttpClient` by default, and adding the `jrestly-engine-okhttp` or `jrestly-engine-apache5` module ([ADR-0058](docs/0.10.0/ADR-0058-external-http-engine-submodules-okhttp-apache5.md)) plugs a faster transport into the same declarative client — the full jRestly pipeline included. The module is picked up automatically via `ServiceLoader`; `builder.httpEngine(...)` remains the explicit override.
 
 Full methodology (loopback raw-TCP stand, JMH), comparative tables against raw `java.net.http.HttpClient`, OkHttp, Apache HC5, Retrofit, Feign and Spring `RestClient`, and honest limitations: **[BENCHMARKS.md](BENCHMARKS.md)**.
 

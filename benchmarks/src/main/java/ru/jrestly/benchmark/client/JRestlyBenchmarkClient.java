@@ -32,8 +32,17 @@ public final class JRestlyBenchmarkClient implements AutoCloseable {
     private final JRestlyClient client;
     private final UserApi api;
 
+    /**
+     * Creates a client pinned to the zero-dependency JDK transport: with the engine
+     * submodules on the classpath a default client would auto-detect a third-party
+     * engine via {@code ServiceLoader} (ADR-0058), silently hijacking the
+     * "jrestly (JDK)" benchmark row.
+     *
+     * @param baseUrl the benchmark server base URL
+     */
     public JRestlyBenchmarkClient(String baseUrl) {
-        this(baseUrl, (ru.jrestly.engine.HttpEngine) null);
+        this(baseUrl, ru.jrestly.engine.JdkHttpEngine.create(
+                ru.jrestly.SimpleModuleInfo.builder().baseUrl(baseUrl).build()));
     }
 
     public JRestlyBenchmarkClient(String baseUrl, ru.jrestly.engine.HttpEngine engine) {

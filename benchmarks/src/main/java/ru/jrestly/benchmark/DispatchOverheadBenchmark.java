@@ -72,6 +72,10 @@ public class DispatchOverheadBenchmark {
         jrestlyClient = JRestlyClient.builder()
                 .baseUrl("http://mock-in-memory.local")
                 .logger(ru.jrestly.benchmark.util.NoOpLogger.INSTANCE)
+                // Pinned: auto-detection (ADR-0058) would otherwise create a third-party
+                // engine that mock dispatch never needs.
+                .httpEngine(ru.jrestly.engine.JdkHttpEngine.create(
+                        ru.jrestly.SimpleModuleInfo.builder().baseUrl("http://mock-in-memory.local").build()))
                 .mock(req -> req.uri().getPath().contains("/ping"), mockPingResponse)
                 .mock(mockUserResponse)
                 .build();

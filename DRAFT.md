@@ -1,5 +1,28 @@
 # DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
+> **Сессия #159 (Finding #158 закрыт — движки подключаются сами):**
+> `AbstractHttpClient.createConnection()` целиком делегирует
+> `HttpEngineResolver.resolve(moduleInfo)`: явный движок → SPI-провайдеры по
+> приоритету → JDK-fallback. Дублирующая сборка JDK-клиента из
+> `createConnection()` удалена — единственный источник правды
+> `JdkHttpEngine.create(moduleInfo)`, который теперь сам honor-ит
+> `isVirtualThreads()` (собственный managed executor, закрывается в
+> `engine.close()`). Клиентский managed-executor ADR-0026 остался за
+> `AbstractHttpClient` (custom → виртуальные потоки; закрывается в `close()`) —
+> `ExecutorConfigTest` не тронут. **TDD red-first:** e2e-гейт
+> `SpiEngineAutoDetectionTest` (3 теста) + `TestSpiEngineProvider` в тестовом
+> classpath (`META-INF/services/ru.jrestly.engine.HttpEngineProvider`, доступен
+> только под статическим флагом — остальные тесты не затронуты): до фикса
+> «default client picks up the SPI engine» красный, после зелёный; предохранители
+> (fallback на JDK без провайдера; явный движок побеждает) зелёные до и после.
+> Бенчмарки: с обоими субмодулями на classpath дефолтный клиент молча
+> становился бы движковым — JDK-транспорт закреплён явным `JdkHttpEngine.create`
+> в `JRestlyBenchmarkClient`/`DispatchOverheadBenchmark`, примечание о честности
+> добавлено в `BENCHMARKS.md`; README-секция Performance уточнена
+> (ServiceLoader-подхват + явный override). ADR-0058: Finding #158 → Resolution
+> #159, header «Complete, Finding закрыт». **1112/1112** (core 1051 + okhttp 23
+> + apache5 23 + bench 15), javadoc-гейты зелёные, 0 warnings.
+
 > **Сессия #158 (ADR-0058 — публичная бенчмарк-документация + скрытый дефект
 > интеграции):** оформлен публичный `BENCHMARKS.md` (методология, матрица
 > 10 клиентов, честные ограничения, воспроизведение; свежий прогон JMH
@@ -225,9 +248,10 @@
   закрыта** — `engine-apache5` зелёный (23/23), пассивный транспорт через
   `disableContentCompression()`; оба субмодуля в строю. **Сессия #158: публичная
   бенчмарк-документация оформлена** (`BENCHMARKS.md`), ADR-0058 → Accepted, но
-  открыт **Finding #158**: `AbstractHttpClient` не вызывает `HttpEngineResolver`
-  — автообнаружение end-to-end не подключено; фикс и красный e2e-тест — #159
-  (см. блок сессии #158 выше).
+  всплыл Finding #158 (резолвер не подключён). **Сессия #159: Finding закрыт** —
+  `createConnection()` делегирует `HttpEngineResolver.resolve`; e2e-гейт
+  `SpiEngineAutoDetectionTest`; JDK-строка бенчей закреплена явно.
+  **ADR-0058 полностью завершён.**
 
 
 ---

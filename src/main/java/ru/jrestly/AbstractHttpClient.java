@@ -4,8 +4,6 @@ import ru.jrestly.annotation.Anonymous;
 import ru.jrestly.annotation.Authorization;
 import ru.jrestly.http.HttpTemplateBuilder;
 
-import javax.net.ssl.SSLContext;
-import javax.net.ssl.SSLParameters;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.net.Authenticator;
@@ -14,7 +12,6 @@ import java.net.CookieManager;
 import java.net.CookieStore;
 import java.net.ProxySelector;
 import java.net.http.HttpClient;
-import java.time.Duration;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -25,8 +22,9 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 /**
- * Base class for declarative HTTP clients. Owns a JDK {@link HttpClient}
- * and a cache of dynamic proxies, one per controller interface;
+ * Base class for declarative HTTP clients. Owns an HTTP transport
+ * ({@link ru.jrestly.engine.HttpEngine}, ADR-0052) and a cache of dynamic
+ * proxies, one per controller interface;
  * {@link JRestlyClient} is the ready-to-use subclass.
  */
 public abstract class AbstractHttpClient {
@@ -42,7 +40,7 @@ public abstract class AbstractHttpClient {
     /** The module configuration this client was created with. */
     protected ModuleInfo moduleInfo;
 
-    /** The JDK HTTP client used for every exchange; created by {@link #createConnection()}. */
+    /** The JDK HTTP client; non-null when the resolved engine is a {@link ru.jrestly.engine.JdkHttpEngine} (ADR-0052). */
     protected HttpClient httpClient;
 
     /** The HTTP engine used for every exchange (ADR-0052); created by {@link #createConnection()}. */
@@ -92,64 +90,39 @@ public abstract class AbstractHttpClient {
     }
 
     /**
-     * Creates the JDK {@link HttpClient} from the module configuration:
-     * its connect timeout, HTTP version, and SSL/TLS configuration (ADR-0020),
-     * with the JDK redirect policy set to {@code NEVER}.
+     * Creates the HTTP transport for the module configuration (ADR-0052,
+     * ADR-0058). Resolution order:
+     * <ol>
+     *   <li>an explicit {@link ModuleInfo#getHttpEngine()} always wins;</li>
+     *   <li>otherwise {@link ru.jrestly.engine.HttpEngineResolver} inspects
+     *       {@link java.util.ServiceLoader} for registered
+     *       {@link ru.jrestly.engine.HttpEngineProvider}s (e.g. the external
+     *       OkHttp/Apache submodules) and picks the highest-priority available one;</li>
+     *   <li>with no provider available, the resolver falls back to the
+     *       zero-dependency JDK engine.</li>
+     * </ol>
+     *
+     * <p>The executor for asynchronous pipeline stages (ADR-0026) is resolved
+     * here too: a custom {@link ModuleInfo#getExecutor()} wins, otherwise
+     * virtual threads are used when {@link ModuleInfo#isVirtualThreads()} is
+     * enabled, with the managed service shut down on {@link #close()}.
      *
      * <p>Protected hook: a subclass may override it to build a different
      * client (e.g. with a network proxy or custom transport settings).
      */
     protected void createConnection() {
-        if (moduleInfo.getHttpEngine() != null) {
-            this.httpEngine = moduleInfo.getHttpEngine();
-            if (this.httpEngine instanceof ru.jrestly.engine.JdkHttpEngine jdkEngine) {
-                this.httpClient = jdkEngine.getHttpClient();
-            }
-            return;
-        }
-
-        HttpClient.Builder builder = HttpClient.newBuilder()
-                .connectTimeout(Duration.ofMillis(moduleInfo.getConnectTimeout()))
-                .version(moduleInfo.getHttpVersion())
-                .followRedirects(HttpClient.Redirect.NEVER);
-
-        SSLContext sslContext = moduleInfo.getSslContext();
-        if (sslContext != null) {
-            builder.sslContext(sslContext);
-        }
-
-        SSLParameters sslParameters = moduleInfo.getSslParameters();
-        if (sslParameters != null) {
-            builder.sslParameters(sslParameters);
-        }
-
-        CookieHandler cookieHandler = moduleInfo.getCookieHandler();
-        if (cookieHandler != null) {
-            builder.cookieHandler(cookieHandler);
-        }
-
-        ProxySelector proxySelector = moduleInfo.getProxySelector();
-        if (proxySelector != null) {
-            builder.proxy(proxySelector);
-        }
-
-        Authenticator authenticator = moduleInfo.getAuthenticator();
-        if (authenticator != null) {
-            builder.authenticator(authenticator);
-        }
-
         Executor customExecutor = moduleInfo.getExecutor();
         if (customExecutor != null) {
             this.executor = customExecutor;
-            builder.executor(customExecutor);
         } else if (moduleInfo.isVirtualThreads()) {
             this.managedExecutorService = Executors.newVirtualThreadPerTaskExecutor();
             this.executor = this.managedExecutorService;
-            builder.executor(this.managedExecutorService);
         }
 
-        this.httpClient = builder.build();
-        this.httpEngine = new ru.jrestly.engine.JdkHttpEngine(this.httpClient, true);
+        this.httpEngine = ru.jrestly.engine.HttpEngineResolver.resolve(moduleInfo);
+        if (this.httpEngine instanceof ru.jrestly.engine.JdkHttpEngine jdkEngine) {
+            this.httpClient = jdkEngine.getHttpClient();
+        }
     }
 
     /**

@@ -1,11 +1,12 @@
 # ADR-0058: External HTTP Engine Submodules (OkHttp / Apache HttpClient 5)
 
-> 2026-10-16 · Accepted · Status: Complete, открыт Finding #158 · Next free ADR: 0059
+> 2026-10-16 · Accepted · Status: Complete · Next free ADR: 0059
 > Реализация: фаза 1 (ядро, `priority()` + стабильная сортировка, сессия #149),
 > субмодули `engine-okhttp` (сессии #150–#155; пассивный транспорт — #156) и
 > `engine-apache5` (#157). Публичные цифры и методология — `BENCHMARKS.md` (#158).
-> **Открыто:** `AbstractHttpClient` не вызывает `HttpEngineResolver` — автообнаружение
-> end-to-end не работает (Finding #158), фикс — #159. Финальный гейт: 1109/1109.
+> **Finding #158 закрыт в #159:** `AbstractHttpClient.createConnection()` делегирует
+> `HttpEngineResolver.resolve(moduleInfo)` — ServiceLoader-автообнаружение end-to-end
+> работает; e2e-гейт `SpiEngineAutoDetectionTest`. Финальный гейт: 1112/1112.
 
 ## Context
 
@@ -256,6 +257,27 @@ ServiceLoader) — полный контракт паритета (timeout, stre
 Доказательства: у `HttpEngineResolver.resolve` нет ни одного call-site в
 `src/main` (grep); JMH-прогон #158 с обоими субмодулями на classpath показывает
 у дефолтного клиента цифры JDK-транспорта (1666 µs), а не быстрых движков
-(~400–540 µs). До фикса (#159: делегирование `createConnection()` резолверу +
-красный e2e-тест с провайдером из тестового classpath) статус автообнаружения —
-«declared, not wired».
+(~400–540 µs).
+
+### Resolution (сессия #159)
+
+- `AbstractHttpClient.createConnection()` целиком делегирует резолверу:
+  `HttpEngineResolver.resolve(moduleInfo)` (явный движок → SPI-провайдеры по
+  приоритету → JDK-fallback). Дублирующая сборка JDK-клиента из
+  `createConnection()` удалена — единственный источник правды
+  `JdkHttpEngine.create(moduleInfo)`.
+- Executor-семантика ADR-0026 сохранена: клиентский managed-исполнитель
+  (custom → виртуальные потоки) резолвится в `AbstractHttpClient` и
+  закрывается в `close()`; `JdkHttpEngine.create` дополнительно honor-ит
+  `isVirtualThreads()` для транспорта (собственный managed executor,
+  закрывается в `engine.close()`).
+- Red-first e2e-гейт: `SpiEngineAutoDetectionTest` + провайдер
+  `TestSpiEngineProvider` в тестовом classpath
+  (`META-INF/services/ru.jrestly.engine.HttpEngineProvider`, доступен только
+  при взведённом флаге — остальные тесты не затронуты). До фикса тест красный
+  («default client picks up the SPI engine»), два предохранителя (fallback на
+  JDK; явный движок побеждает) зелёные до и после.
+- Benchmarks: «jrestly default (JDK)» строка больше не может опираться на
+  автообнаружение (оба субмодуля на classpath) — JDK-транспорт закреплён
+  явным `JdkHttpEngine.create` в `JRestlyBenchmarkClient`/`DispatchOverheadBenchmark`;
+  примечание добавлено в `BENCHMARKS.md`.

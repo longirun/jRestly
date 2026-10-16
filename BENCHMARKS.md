@@ -137,11 +137,18 @@ its own loopback server, so no external services are needed.
 - **`jrestly-engine-okhttp` / `jrestly-engine-apache5`** — plug in a faster
   transport without touching the declarative interfaces; the full jRestly
   pipeline (interceptors, retry, compression, circuit breaker, metrics,
-  streaming, progress) runs on top. Wire the engine explicitly:
-  `JRestlyClient.builder().httpEngine(new OkHttpEngine())`. `ServiceLoader`
-  auto-detection is the planned next step of
-  [ADR-0058](docs/0.10.0/ADR-0058-external-http-engine-submodules-okhttp-apache5.md);
-  until it lands, the explicit constructor is the supported path.
+  streaming, progress) runs on top. Adding a submodule to the classpath is
+  enough: it registers a `ServiceLoader` provider and the client picks the
+  highest-priority available engine automatically ([ADR-0058](docs/0.10.0/ADR-0058-external-http-engine-submodules-okhttp-apache5.md));
+  `JRestlyClient.builder().httpEngine(engine)` remains the explicit override.
+
+> **Benchmark fairness note:** the whole matrix runs with both engine
+> submodules on the classpath, so the benchmark clients pin the JDK transport
+> explicitly (`JdkHttpEngine`) for the "jrestly default (JDK)" row — otherwise
+> `ServiceLoader` auto-detection would silently promote that row to a
+> third-party engine. The `jRestly + engine-*` rows pass their engine explicitly
+> as well. Auto-detection is verified separately by
+> `SpiEngineAutoDetectionTest` in the core test suite.
 
 ---
 

@@ -1,58 +1,48 @@
-# Last Session: #158 (2026-10-16)
+# Last Session: #159 (2026-10-16)
 
 ## Что сделано
 
-**ADR-0058 закрыт с двух сторон: публичная документация + найден скрытый дефект интеграции.**
+**Finding #158 закрыт: ServiceLoader-автообнаружение внешних движков работает end-to-end.**
 
-1. **Публичный `BENCHMARKS.md`** (корень репо, ссылка из README → новая секция
-   «Performance & benchmarks»): методология (raw-TCP стенд, TCP_NODELAY, история
-   42-мс Nagle-артефакта), матрица 10 клиентов, таблицы прогона #158
-   (свежий, `-i 5`: getUser/ping + добор `jrestly_ping_zeroDepRaw` 1298 µs),
-   кросс-чек #147, честные ограничения (шум ±30–90 %, loopback, 1 fork),
-   команды воспроизведения (`-PjmhArgs`), выбор транспорта.
-   Сырые JSON: /tmp/opencode/jmh-158.json, jmh-158-ping.json (в репо не кладём).
-2. **Finding #158 (главное): `AbstractHttpClient.createConnection()` НЕ вызывает
-   `HttpEngineResolver`.** При `null`-движке он строит JDK-клиент напрямую
-   (`new JdkHttpEngine(httpClient, true)`), поэтому ServiceLoader-автообнаружение
-   `engine-okhttp`/`engine-apache5` end-to-end не работает — только явный
-   `builder.httpEngine(...)`. Доказательства: ноль call-site у
-   `HttpEngineResolver.resolve` в src/main; JMH #158 с обоими субмодулями на
-   classpath дал у дефолтного клиента цифры JDK (1666 µs), не движков (~400–540);
-   javadoc `ModuleInfo.getHttpEngine()` обещает резолвер. Зафиксировано в
-   ADR-0058 (секция «Finding (сессия #158)», header: Accepted + открытый Finding).
-   README/BENCHMARKS сформулированы честно: явный конструктор, auto-detection —
-   «планируемый следующий шаг».
-3. ADR-0058 окончательно приведён в порядок: header (Accepted, открытые
-   пункты), Amendment #157 (фаза 2b: HC5 5.4.1 deprecations, пассивный транспорт),
-   Finding #158.
+1. **TDD red-first e2e-гейт:** `SpiEngineAutoDetectionTest` (3 теста) +
+   `TestSpiEngineProvider` в тестовом classpath
+   (`src/test/resources/META-INF/services/ru.jrestly.engine.HttpEngineProvider`).
+   Провайдер доступен только при взведённом статическом флаге
+   (по умолчанию false — другие тесты не затронуты). До фикса красный ровно
+   целевой кейс; предохранители (JDK-fallback без провайдера; явный движок
+   побеждает) зелёные до и после.
+2. **Фикс:** `AbstractHttpClient.createConnection()` целиком делегирует
+   `HttpEngineResolver.resolve(moduleInfo)` (явный → SPI по приоритету → JDK).
+   Дублирующая сборка JDK-клиента из клиента удалена. Единственный источник
+   правды — `JdkHttpEngine.create(moduleInfo)`.
+3. **ADR-0026 сохранён:** клиентский managed-executor (custom → virtual threads)
+   создаётся в `AbstractHttpClient` (для стадий пайплайна) и закрывается в
+   `close()`; `JdkHttpEngine.create` дополнительно сам honor-ит
+   `isVirtualThreads()` (собственный managed executor, закрывается в
+   `engine.close()`). `ExecutorConfigTest` не менялся.
+4. **Бенчмарки честные:** дефолтный клиент с обоими субмодулями на classpath
+   после фикса уходил бы на OkHttp/Apache5 → JDK-транспорт закреплён явным
+   `JdkHttpEngine.create` в `JRestlyBenchmarkClient(baseUrl)` и
+   `DispatchOverheadBenchmark`; примечание в `BENCHMARKS.md`; README уточнён.
+5. ADR-0058: Finding #158 → Resolution #159, header «Complete, Finding закрыт».
 
 ## Гейты
 
-- Код не менялся (docs + README + ADR + .agent + BENCHMARKS.md).
-  `./gradlew test` в #157 — 1109/1109 зелёных; в #158 не перезапускался.
+- **1112/1112** (core 1051 + engine-okhttp 23 + engine-apache5 23 + benchmarks 15),
+  полный `./gradlew test` зелёный; javadoc-гейты (root + оба субмодуля) зелёные;
+  0 warnings. Red-first подтверждён прогоном до фикса.
 
-## Контекст для следующей сессии (#159)
+## Контекст для следующей сессии (#160)
 
-1. **Фикс Finding #158** (первый приоритет, red-first):
-   - Красный e2e-тест: провайдер в `src/test/resources/META-INF/services/
-     ru.jrestly.engine.HttpEngineProvider` с `isAvailable()` под статическим
-     флагом (по умолчанию false — чтобы не ломать другие тесты) + счётчик
-     вызовов; тест: дефолтный `JRestlyClient` должен получить движок провайдера
-     (сейчас — нет).
-   - Фикс: в `AbstractHttpClient.createConnection()` делегировать
-     `HttpEngineResolver.resolve(moduleInfo)`; для `JdkHttpEngine` забрать
-     `getHttpClient()` (как в ветке явного движка); проверить судьбу
-     `managedExecutorService` (виртуальные потоки) — вероятно, её создание
-     переезжает в `JdkHttpEngine.create` или остаётся с закрытием в close().
-   - Проверить `ModuleInfo` javadoc соответствие; прогнать все тесты ядра
-     (1048) + субмодулей.
-   - Бенчмарки после фикса: дефолтный клиент в benchmarks СТАНЕТ движковым
-     (оба провайдера на classpath, приоритет 50) — **это сломает смысл строки
-     «jrestly default (JDK)» в BENCHMARKS.md**; закрепить в
-     `JRestlyBenchmarkClient(baseUrl)` явный `new JdkHttpEngine(...)`/или engine
-     из ModuleInfo и добавить это примечание в BENCHMARKS.md.
-2. Мелочь: adr-0058 остался Next free ADR 0059 — следующий ADR 0059.
-3. **Среда:** `GRADLE_USER_HOME=/tmp/opencode/gradle-home ./gradlew ...`,
-   внешний timeout; ветка agent-loop; WireMock без явного Content-Length
-   отвечает chunked (урок #156); JMH: 1 fork, машина шумная — цифры для
-   сравнения групп, не ранжирования.
+1. **ADR-0058 полностью завершён** (фазы 1/2a/2b, публичные цифры, Finding).
+   Следующий свободный ADR — **0059**.
+2. **Активная зона (DRAFT.md):** кандидат №1 test-javadoc (лоск в тестах),
+   кандидат №2 HTTP Trailers & Advanced Streaming ergonomics
+   (LLM/SSE), кандидат №3 закрыт. Можно взять любой свободный ход или новый ADR.
+3. **Опциональный хвост по бенчмаркам:** повторный прогон `-f 2 -i 5` для
+   снижения variance (машина шумная); зонд overhead декларативного слоя на
+   сетевом пути (~160 µs гипотеза из #147) — по желанию, не обязателен.
+4. **Среда:** `GRADLE_USER_HOME=/tmp/opencode/gradle-home ./gradlew ...`,
+   внешний `timeout`; ветка agent-loop. WireMock без явного Content-Length в
+   стабе всегда отвечает chunked (урок #156). Запуск root-тестов с фильтром:
+   `./gradlew :test --tests "..."` (без `:` фильтр падает на `:benchmarks:test`).
