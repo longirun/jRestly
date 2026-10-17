@@ -99,3 +99,33 @@ Known refinement (non-goal here): file-backed `Path`/`File` bodies report
 `-1` instead of the file size while a listener is active; the size is only
 known to the engine at send time (candidate for engine-reported byte
 accounting).
+
+## Amendment #194
+
+2026-10-17 · Session #194 (audit slice: ADR-0036 × ADR-0046, the
+transparent 401-refresh flow under an active metrics listener).
+
+Section 2 declares `attempts()` as «total attempts executed». The 401
+refresh flow of ADR-0046 performs **two** transmission phases: the initial
+`executeWithRetries`/`executeAsyncWithRetries` phase and — when the response
+is 401 and `retryOnUnauthorized` is on — a second phase after
+`tokenManager.invalidate()`. Both phases shared the same attempt counter
+(`int[] attemptsHolder` on the sync circuit, the `AtomicInteger attemptsRef`
+on the async circuit), and the second phase **overwrote** the first phase's
+count. A listener thus saw `attempts() == 1` (and `isRetried() == false`)
+for a call that physically went to the wire twice — and, with `@Retry`,
+reported only the refresh phase's count instead of the sum
+(e.g. 503 → 401 → 200 reported 1 instead of 3).
+
+Resolution: both circuits now sum the phases — the sync path captures the
+first phase's count before the second `executeWithRetries` and adds it to
+the holder afterwards; the async path captures the first phase's count in
+the 401 branch and, on the second phase's completion (success **or**
+failure), adds it to `attemptsRef` before the terminal stages read it.
+`CallMetrics.attempts()` javadoc now states the total explicitly includes
+the transparent 401-refresh phase. E2E-gated:
+`ClientMetricsWireMockTest` `refresh401SumsAttemptsAcrossPhases` (sync),
+`refresh401AfterRetriesSumsBothPhases` (sync, retry loop + refresh = 3),
+`refresh401SumsAttemptsAcrossPhasesAsync` (async). Known refinement
+(non-goal here): the per-transmission `onAttemptComplete`/`onRetry`
+numbers restart at 1 in the refresh phase (per-phase, not per-call).

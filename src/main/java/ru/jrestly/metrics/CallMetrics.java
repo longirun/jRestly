@@ -54,7 +54,8 @@ public interface CallMetrics {
     Duration duration();
 
     /**
-     * Total number of transmission attempts executed for this call (at least 1).
+     * Total number of transmission attempts executed for this logical call,
+     * including the transparent 401-refresh phase (ADR-0046). At least 1.
      *
      * @return the attempt count
      */

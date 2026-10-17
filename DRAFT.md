@@ -1,5 +1,34 @@
 # DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
+> **Сессия #194 (аудит: ADR-0036 × ADR-0046 — прозрачный 401-рефреш затирает
+> счётчик `attempts()`):** тринадцатый срез нити «ADR против кода» — 12-я
+> «тихая» находка, кандидат (a) из заметок #193 подтверждён на обоих контурах.
+> ADR-0036 §2 обещает `attempts()` — «total attempts executed», а 401-рефреш
+> (ADR-0046) — это **две** фазы передачи: первый `executeWithRetries`/
+> `executeAsyncWithRetries` и второй — после `tokenManager.invalidate()`. Фазы
+> делили один счётчик (`int[] attemptsHolder` на sync-контуре, `AtomicInteger
+> attemptsRef` на async), и вторая фаза **затирает** первую: слушатель видел
+> `attempts() == 1` и `isRetried() == false` для вызова, физически ушедшего на
+> провод дважды; с `@Retry` ещё хуже — 503 → 401 → 200 отчитывался как 1
+> вместо 3. Fix: фазы суммируются — sync: значение первой фазы сохраняется
+> перед вторым `executeWithRetries` и прибавляется в holder после; async:
+> значение берётся в 401-ветке и в `whenComplete` второй фазы (успех **или**
+> сбой) прибавляется через `accumulateAndGet` до того, как терминальные стадии
+> читают `attemptsRef` (порядок зависимостей CFE: свой `whenComplete`
+> навешивается раньше продолжения `thenCompose`). Javadoc `CallMetrics.attempts()` уточнён
+> (включая refresh-фазу, не менее 1). TDD: behavior-red (3 e2e-теста, на
+> старом коде — ровно по целевым ассертам: expected 2/3 but was 1,
+> `isRetried()` false) → зелёный. +3 теста в `ClientMetricsWireMockTest`
+> (новый интерфейс `RefreshMetricsClient`; sync 401→200; sync 503→401→200 = 3
+> с по-одному `onAttemptComplete` на передачу и одним `onRetry`; async
+> 401→200). Гейт **1220/1220** (core 1140 + engine-okhttp 25 + engine-apache5
+> 25 + codec-jackson-xml 15 + benchmarks 15), `./gradlew test javadoc` зелёный
+> под `-Werror`, 0 warnings. ADR-0036 → Amendment #194 (non-goal задокументирован:
+> номера `attempt` в `onAttemptComplete`/`onRetry` стартуют с 1 в refresh-фазе
+> — per-phase, а не per-call; кандидат на отдельный срез). Дальше — ADR-0038
+> (HTTP/2/трейлеры) или ADR-0035 целиком; мелкий кандидат (b) из #193 не тронут:
+> `onCallStart` при short-circuit.
+
 > **Сессия #193 (аудит: ADR-0036 × ADR-0035 — метрики материализовали
 > стриминг-тело лишний раз):** двенадцатый срез нити «ADR против кода» —
 > впервые не «формулировка ADR vs код», а стык двух ADR'ов. `@WithMetrics`-

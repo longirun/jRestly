@@ -20,6 +20,8 @@ import ru.jrestly.annotation.RequestBody;
 import ru.jrestly.annotation.RequestParam;
 import ru.jrestly.annotation.Retry;
 import ru.jrestly.annotation.WithMetrics;
+import ru.jrestly.auth.Token;
+import ru.jrestly.auth.TokenManager;
 import ru.jrestly.http.HandledException;
 import ru.jrestly.http.UnexpectedStatusException;
 import ru.jrestly.http.WireRequest;
@@ -29,6 +31,7 @@ import ru.jrestly.metrics.CallMetrics;
 import ru.jrestly.metrics.ClientMetricsListener;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
+import static com.github.tomakehurst.wiremock.client.WireMock.equalTo;
 import static com.github.tomakehurst.wiremock.client.WireMock.get;
 import static com.github.tomakehurst.wiremock.client.WireMock.post;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
@@ -154,6 +157,19 @@ class ClientMetricsWireMockTest {
         @Get(path = "/api/faulty")
         @WithMetrics(FaultyMetricsListener.class)
         TestDto getFaulty();
+    }
+
+    public interface RefreshMetricsClient {
+
+        @Get(path = "/api/secure")
+        TestDto getSecure();
+
+        @Get(path = "/api/secure-retry")
+        @Retry(times = 3, initialBackoffMs = 10, maxBackoffMs = 50)
+        TestDto getSecureRetryable();
+
+        @Get(path = "/api/secure-async")
+        CompletableFuture<TestDto> getSecureAsync();
     }
 
     @BeforeEach
@@ -417,6 +433,137 @@ class ClientMetricsWireMockTest {
         TestDto dto = api.getFaulty();
         assertNotNull(dto);
         assertEquals("Faulty", dto.name());
+    }
+
+    @Test
+    @DisplayName("Transparent 401 refresh: attempts() sums both transmission phases (sync)")
+    void refresh401SumsAttemptsAcrossPhases() {
+        wireMock.stubFor(get(urlEqualTo("/api/secure"))
+                .withHeader("Authorization", equalTo("Bearer stale-token"))
+                .willReturn(aResponse().withStatus(401).withBody("Unauthorized: token expired")));
+        wireMock.stubFor(get(urlEqualTo("/api/secure"))
+                .withHeader("Authorization", equalTo("Bearer fresh-token"))
+                .willReturn(aResponse()
+                        .withStatus(200)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody("{\"id\":\"404\",\"name\":\"Recovered\"}")));
+
+        AtomicInteger tokenFetchCounter = new AtomicInteger();
+        TokenManager tokenManager = TokenManager.of(() -> {
+            int count = tokenFetchCounter.incrementAndGet();
+            return Token.of(count == 1 ? "stale-token" : "fresh-token");
+        });
+
+        JRestlyClient authClient = JRestlyClient.builder()
+                .baseUrl(wireMock.baseUrl())
+                .bearerAuth(tokenManager)
+                .metricsListener(recordingListener)
+                .build();
+        try {
+            RefreshMetricsClient authApi = (RefreshMetricsClient) authClient.createController(RefreshMetricsClient.class);
+            TestDto result = authApi.getSecure();
+            assertEquals("Recovered", result.name());
+            assertEquals(2, tokenFetchCounter.get());
+
+            assertEquals(1, recordingListener.completedCalls.size());
+            CallMetrics metrics = recordingListener.completedCalls.getFirst();
+            assertEquals(200, metrics.statusCode());
+            assertTrue(metrics.isSuccess());
+            assertTrue(metrics.isRetried(), "401 + refresh is two transmissions");
+            assertEquals(2, metrics.attempts(), "attempts() is the total across both phases");
+        } finally {
+            authClient.close();
+        }
+    }
+
+    @Test
+    @DisplayName("401 refresh after a @Retry loop: attempts() sums retry phase and refresh phase (sync)")
+    void refresh401AfterRetriesSumsBothPhases() {
+        wireMock.stubFor(get(urlEqualTo("/api/secure-retry"))
+                .withHeader("Authorization", equalTo("Bearer stale-token"))
+                .inScenario("secure-retry-401")
+                .whenScenarioStateIs(Scenario.STARTED)
+                .willSetStateTo("GOT401")
+                .willReturn(aResponse().withStatus(503).withBody("Service Unavailable")));
+        wireMock.stubFor(get(urlEqualTo("/api/secure-retry"))
+                .withHeader("Authorization", equalTo("Bearer stale-token"))
+                .inScenario("secure-retry-401")
+                .whenScenarioStateIs("GOT401")
+                .willReturn(aResponse().withStatus(401).withBody("Unauthorized: token expired")));
+        wireMock.stubFor(get(urlEqualTo("/api/secure-retry"))
+                .withHeader("Authorization", equalTo("Bearer fresh-token"))
+                .willReturn(aResponse()
+                        .withStatus(200)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody("{\"id\":\"405\",\"name\":\"Recovered\"}")));
+
+        AtomicInteger tokenFetchCounter = new AtomicInteger();
+        TokenManager tokenManager = TokenManager.of(() -> {
+            int count = tokenFetchCounter.incrementAndGet();
+            return Token.of(count == 1 ? "stale-token" : "fresh-token");
+        });
+
+        JRestlyClient authClient = JRestlyClient.builder()
+                .baseUrl(wireMock.baseUrl())
+                .bearerAuth(tokenManager)
+                .metricsListener(recordingListener)
+                .build();
+        try {
+            RefreshMetricsClient authApi = (RefreshMetricsClient) authClient.createController(RefreshMetricsClient.class);
+            TestDto result = authApi.getSecureRetryable();
+            assertEquals("Recovered", result.name());
+
+            assertEquals(3, recordingListener.attempts.size(), "one onAttemptComplete per transmission");
+            assertEquals(1, recordingListener.retries.size(), "only the 503 schedules a retry");
+
+            assertEquals(1, recordingListener.completedCalls.size());
+            CallMetrics metrics = recordingListener.completedCalls.getFirst();
+            assertEquals(200, metrics.statusCode());
+            assertTrue(metrics.isSuccess());
+            assertEquals(3, metrics.attempts(), "2 retry-loop attempts + 1 refresh attempt");
+        } finally {
+            authClient.close();
+        }
+    }
+
+    @Test
+    @DisplayName("Transparent 401 refresh: attempts() sums both transmission phases (async)")
+    void refresh401SumsAttemptsAcrossPhasesAsync() {
+        wireMock.stubFor(get(urlEqualTo("/api/secure-async"))
+                .withHeader("Authorization", equalTo("Bearer stale-token"))
+                .willReturn(aResponse().withStatus(401).withBody("Unauthorized: token expired")));
+        wireMock.stubFor(get(urlEqualTo("/api/secure-async"))
+                .withHeader("Authorization", equalTo("Bearer fresh-token"))
+                .willReturn(aResponse()
+                        .withStatus(200)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody("{\"id\":\"406\",\"name\":\"Recovered\"}")));
+
+        AtomicInteger tokenFetchCounter = new AtomicInteger();
+        TokenManager tokenManager = TokenManager.of(() -> {
+            int count = tokenFetchCounter.incrementAndGet();
+            return Token.of(count == 1 ? "stale-token" : "fresh-token");
+        });
+
+        JRestlyClient authClient = JRestlyClient.builder()
+                .baseUrl(wireMock.baseUrl())
+                .bearerAuth(tokenManager)
+                .metricsListener(recordingListener)
+                .build();
+        try {
+            RefreshMetricsClient authApi = (RefreshMetricsClient) authClient.createController(RefreshMetricsClient.class);
+            TestDto result = authApi.getSecureAsync().join();
+            assertEquals("Recovered", result.name());
+            assertEquals(2, tokenFetchCounter.get());
+
+            assertEquals(1, recordingListener.completedCalls.size());
+            CallMetrics metrics = recordingListener.completedCalls.getFirst();
+            assertEquals(200, metrics.statusCode());
+            assertTrue(metrics.isSuccess());
+            assertEquals(2, metrics.attempts(), "attempts() is the total across both phases");
+        } finally {
+            authClient.close();
+        }
     }
 
     @Test

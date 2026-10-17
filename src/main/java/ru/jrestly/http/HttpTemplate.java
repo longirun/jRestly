@@ -242,7 +242,14 @@ class HttpTemplate {
                     closeIntermediateStream(response);
                     tokenManager.invalidate();
                     effectiveRequest = applyRequestInterceptors(request, requestContext);
+                    // ADR-0036 Amendment #194: attempts() is the total across all
+                    // transmissions of the call — the refresh phase must not
+                    // clobber the first phase's count
+                    int firstPhaseAttempts = attemptsHolder != null ? attemptsHolder[0] : 1;
                     response = executeWithRetries(effectiveRequest, requestContext, attemptsHolder);
+                    if (attemptsHolder != null) {
+                        attemptsHolder[0] = firstPhaseAttempts + attemptsHolder[0];
+                    }
                 }
             }
             T result = processResponse(effectiveRequest, response, start);
@@ -363,10 +370,19 @@ class HttpTemplate {
                     if (response.statusCode() == 401) {
                         closeIntermediateStream(response);
                         tokenManager.invalidate();
+                        // ADR-0036 Amendment #194: attempts() is the total across all
+                        // transmissions of the call — the refresh phase must not
+                        // clobber the first phase's count
+                        int firstPhaseAttempts = attemptsRef.get();
                         try {
                             WireRequest refreshed = applyRequestInterceptors(initialRequest, requestContext);
                             activeRequestRef.set(refreshed);
-                            return executeAsyncWithRetries(refreshed, requestContext, attemptsRef);
+                            CompletableFuture<WireResponse> secondPhase = executeAsyncWithRetries(refreshed, requestContext, attemptsRef);
+                            // accumulate on phase completion (success or failure),
+                            // before the terminal stages read attemptsRef
+                            secondPhase.whenComplete((ignored, phaseFailure) ->
+                                    attemptsRef.accumulateAndGet(firstPhaseAttempts, Integer::sum));
+                            return secondPhase;
                         } catch (Throwable t) {
                             CompletableFuture<WireResponse> failed = new CompletableFuture<>();
                             failed.completeExceptionally(t);
