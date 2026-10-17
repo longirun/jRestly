@@ -68,3 +68,17 @@ Fix: `ControllerValidator.validateMethod` computes the verb's effective `Request
 The inverse-direction guard from Amendment #214 (a `@MultipartFormFile` requires `MULTIPART_FORM_DATA`) does not cover this, and neither does the hub-centric `@RequestBody`/`@Cookie` combination guard (Amendment #215) — this is a pairing between two non-hub annotations. Note the asymmetry with the other pairings among `@PathVariable`/`@RequestParam`/`@RequestHeader`/`@MultipartFormFile`: those double-bind (both halves fire), which is why they remain accepted; only `@MultipartFormFile` + `@RequestParam` resolves to a single part and drops the other binding.
 
 Fix: `ControllerValidator.validateMethod` adds `method(): parameter must not combine @MultipartFormFile with @RequestParam` to the aggregated `ControllerValidationException` at proxy creation. No public API change; separate file and text-field parameters behave exactly as before. Covered by `ControllerValidationTest.rejectsMultipartFormFileCombinedWithRequestParamEagerly` (red-first).
+
+## Amendment #233
+
+**Form or multipart methods with only URI/header parameters (e.g. `@PathVariable`) silently passed eager validation and produced empty bodies.**
+
+`ControllerValidator.validateMethod` previously enforced the "must have at least one parameter" rule for `APPLICATION_FORM_URLENCODED` and `MULTIPART_FORM_DATA` via a blacklist-based `payloadParamCount` that filtered out `ResponseHeaders`, progress listeners, `@Cookie`, and `@RequestHeader` — but neglected `@PathVariable`. A method whose only parameters were `@PathVariable` (or unannotated / headers) therefore counted as having payload parameters.
+
+At runtime, however, `HttpTemplateBuilder.createUrlEncodedBody()` builds the form body strictly from `@RequestParam` parameters (`createRequestParams()`), and `createMultipartParts()` builds parts strictly from `@MultipartFormFile` and `@RequestParam` parameters. When none are present, `createUrlEncodedBody()` returns `new byte[0]` and `createMultipartParts()` returns an empty list. The request was silently sent on the wire with an empty body (or empty multipart payload).
+
+Fix: `ControllerValidator.validateMethod` replaces the negative-filter heuristic with a positive capability check:
+- `MULTIPART_FORM_DATA` requires at least one `@MultipartFormFile` or `@RequestParam` parameter.
+- `APPLICATION_FORM_URLENCODED` requires at least one `@RequestParam` parameter.
+
+If none are present, the aggregated `ControllerValidationException` reports `method(): MULTIPART_FORM_DATA method must have at least one parameter` or `method(): APPLICATION_FORM_URLENCODED method must have at least one parameter`. No public API change; methods combining `@PathVariable` with body parameters behave exactly as before. Covered by `ControllerValidationTest.rejectsFormOrMultipartWithoutBodyParametersEagerly` (red-first).

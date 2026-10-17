@@ -1,5 +1,39 @@
 # DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
+> **Сессия #233 (free-аудит: `payloadParamCount` в `ControllerValidator` считал
+> `@PathVariable` payload-параметром — form/multipart с одним `@PathVariable`
+> тихо собирал и слал пустое тело — 27-я «тихая» находка серии):** свободный ход из
+> контекста #216 (активная зона пуста, highest ADR 0060). Взял подсказку #216
+> («форма `payloadParamCount`, считающая `@PathVariable`»). Исторически
+> `payloadParamCount` исключал не-payload типы отрицательным фильтром
+> (`!ResponseHeaders && !UploadProgressListener && !DownloadProgressListener &&
+> !@Cookie && !@RequestHeader`), но пропустил `@PathVariable`. Метод form-urlencoded
+> или multipart, принимающий только `@PathVariable` (например, `@Post(path = "/users/${id}",
+> requestType = RequestType.APPLICATION_FORM_URLENCODED) void submit(@PathVariable("id") String id);`),
+> успешно проходил eager-валидацию (0 проблем), но `HttpTemplateBuilder.createUrlEncodedBody`
+> собирает тело строго из `@RequestParam` (`createRequestParams`), а
+> `createMultipartParts` — строго из `@MultipartFormFile` и `@RequestParam`. В итоге
+> `createUrlEncodedBody` отдавал `new byte[0]`, `createMultipartParts` — пустой список
+> частей, и запрос молча уходил на провод с пустым телом (ни ошибки, ни лога) — тот же
+> класс, что #207–#216. Fix: хрупкий блэклист заменён на позитивную проверку:
+> `MULTIPART_FORM_DATA` требует хотя бы один `@MultipartFormFile` или `@RequestParam`;
+> `APPLICATION_FORM_URLENCODED` требует хотя бы один `@RequestParam`. Если ни одного нет —
+> добавляется в общий агрегированный `ControllerValidationException` при создании прокси
+> (`method(): MULTIPART_FORM_DATA method must have at least one parameter` /
+> `method(): APPLICATION_FORM_URLENCODED method must have at least one parameter`).
+> Публичный API не тронут; методы, сочетающие `@PathVariable` с параметрами тела,
+> работают как раньше. TDD red-first:
+> `ControllerValidationTest.rejectsFormOrMultipartWithoutBodyParametersEagerly`
+> (form и multipart с одним `@PathVariable` → по 1 проблеме + eager исключение;
+> сочетания `@PathVariable` с `@RequestParam` / `@MultipartFormFile` — no-false-positive)
+> — падал на до-фикс коде ровно по `assertEquals(1, formProblems.size())` (список был пуст)
+> → зелёный. ADR-0024 → `## Amendment #233`.
+> Гейт **1245/1245** (core 1165 + engine-okhttp 25 + engine-apache5 25 +
+> codec-jackson-xml 15 + benchmarks 15), 0 failures/errors, `./gradlew test javadoc`
+> зелёный под `-Werror`, 0 warnings. Дальше — free-аудит (Path/File-тела метрик;
+> зависимость других деклараций от окружения сборки) или концепт ADR-0061+ (HTTP-кэш
+> RFC 9111 ждёт решения Антона; вопрос в mailbox).
+
 > **Сессия #216 (free-аудит: `@MultipartFormFile` + `@RequestParam` на одном
 > параметре тихо выбрасывал request-param-биндинг — 26-я «тихая» находка серии,
 > поправка наблюдения #215):** свободный ход из контекста #215 (активная зона

@@ -344,6 +344,54 @@ public class ControllerValidationTest {
         assertTrue(ControllerValidator.validate(ValidMultipartFieldAndFileController.class).isEmpty());
     }
 
+    interface PathOnlyFormController {
+        @ru.jrestly.annotation.Post(path = "/users/${id}", requestType = ru.jrestly.http.RequestType.APPLICATION_FORM_URLENCODED)
+        String postForm(@ru.jrestly.annotation.PathVariable(name = "id") String id);
+    }
+
+    interface PathOnlyMultipartController {
+        @ru.jrestly.annotation.Post(path = "/users/${id}", requestType = ru.jrestly.http.RequestType.MULTIPART_FORM_DATA)
+        String postMultipart(@ru.jrestly.annotation.PathVariable(name = "id") String id);
+    }
+
+    interface PathAndFormParamController {
+        @ru.jrestly.annotation.Post(path = "/users/${id}", requestType = ru.jrestly.http.RequestType.APPLICATION_FORM_URLENCODED)
+        String postForm(@ru.jrestly.annotation.PathVariable(name = "id") String id,
+                        @ru.jrestly.annotation.RequestParam(name = "name") String name);
+    }
+
+    interface PathAndMultipartParamController {
+        @ru.jrestly.annotation.Post(path = "/users/${id}", requestType = ru.jrestly.http.RequestType.MULTIPART_FORM_DATA)
+        String postMultipart(@ru.jrestly.annotation.PathVariable(name = "id") String id,
+                             @ru.jrestly.annotation.MultipartFormFile(partName = "file") java.io.File file);
+    }
+
+    @Test
+    void rejectsFormOrMultipartWithoutBodyParametersEagerly() {
+        // @PathVariable substitutes template variables into the URL path; it does
+        // not construct form-urlencoded or multipart request bodies. When a method
+        // declared APPLICATION_FORM_URLENCODED or MULTIPART_FORM_DATA has only
+        // @PathVariable parameters, HttpTemplateBuilder assembles an empty body
+        // (zero form params or zero multipart parts) and sends an empty body on the wire.
+        // ControllerValidator's payloadParamCount previously neglected @PathVariable,
+        // so such methods silently passed validation (ADR-0024).
+        List<String> formProblems = ControllerValidator.validate(PathOnlyFormController.class);
+        assertEquals(1, formProblems.size());
+        assertTrue(formProblems.getFirst().contains("postForm(): APPLICATION_FORM_URLENCODED method must have at least one parameter"));
+
+        List<String> multipartProblems = ControllerValidator.validate(PathOnlyMultipartController.class);
+        assertEquals(1, multipartProblems.size());
+        assertTrue(multipartProblems.getFirst().contains("postMultipart(): MULTIPART_FORM_DATA method must have at least one parameter"));
+
+        JRestlyClient client = JRestlyClient.builder().baseUrl("http://localhost:1").build();
+        assertThrows(ControllerValidationException.class, () -> client.get(PathOnlyFormController.class));
+        assertThrows(ControllerValidationException.class, () -> client.get(PathOnlyMultipartController.class));
+
+        // no false positive when body parameters accompany @PathVariable
+        assertTrue(ControllerValidator.validate(PathAndFormParamController.class).isEmpty());
+        assertTrue(ControllerValidator.validate(PathAndMultipartParamController.class).isEmpty());
+    }
+
     @Test
     void rejectsBlankHeaderOrParamNameOnClassAndMethod() {
         var classHeaderProblems = ControllerValidator.validate(BlankClassHeaderController.class);

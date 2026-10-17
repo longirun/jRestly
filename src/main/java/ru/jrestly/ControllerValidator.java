@@ -55,9 +55,10 @@ import java.util.regex.Pattern;
  * and its parent interfaces (a sub-interface method wins over a parent
  * declaration with the same signature) and checks each one: it carries
  * exactly one HTTP verb annotation — {@code @Get}, {@code @Post},
- * {@code @Put}, {@code @Patch} or {@code @Delete} — and a method without
- * parameters is not declared form- or multipart-typed (those request
- * types need at least one parameter to build a body from).
+ * {@code @Put}, {@code @Patch} or {@code @Delete} — and a form- or
+ * multipart-typed method has at least one parameter to build a body from
+ * ({@code @RequestParam} for form-urlencoded; {@code @MultipartFormFile} or
+ * {@code @RequestParam} for multipart).
  *
  * <p>A payload binding must match the verb's request type: a
  * {@code @RequestBody} parameter is consumed only on the default
@@ -459,17 +460,17 @@ public final class ControllerValidator {
             problems.add(method.getName() + "(): @Get method must not declare @RequestBody parameter");
         }
 
-        long payloadParamCount = Arrays.stream(method.getParameters())
-                .filter(p -> !ResponseHeaders.class.equals(p.getType())
-                        && !UploadProgressListener.class.equals(p.getType())
-                        && !DownloadProgressListener.class.equals(p.getType())
-                        && !p.isAnnotationPresent(Cookie.class)
-                        && !p.isAnnotationPresent(RequestHeader.class))
-                .count();
-        if (payloadParamCount == 0) {
-            if (requestType == RequestType.MULTIPART_FORM_DATA) {
+        if (requestType == RequestType.MULTIPART_FORM_DATA) {
+            boolean hasMultipartPayload = Arrays.stream(method.getParameters())
+                    .anyMatch(p -> p.isAnnotationPresent(MultipartFormFile.class)
+                            || p.isAnnotationPresent(RequestParam.class));
+            if (!hasMultipartPayload) {
                 problems.add(method.getName() + "(): MULTIPART_FORM_DATA method must have at least one parameter");
-            } else if (requestType == RequestType.APPLICATION_FORM_URLENCODED) {
+            }
+        } else if (requestType == RequestType.APPLICATION_FORM_URLENCODED) {
+            boolean hasFormPayload = Arrays.stream(method.getParameters())
+                    .anyMatch(p -> p.isAnnotationPresent(RequestParam.class));
+            if (!hasFormPayload) {
                 problems.add(method.getName() + "(): APPLICATION_FORM_URLENCODED method must have at least one parameter");
             }
         }
