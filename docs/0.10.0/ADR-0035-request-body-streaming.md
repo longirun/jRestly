@@ -54,3 +54,29 @@ Accepted
   - Clear, fail-fast controller validation diagnostics.
 - **Negative:**
   - Raw `InputStream` instances without a `Supplier` cannot be re-read on retries; documentation advises using `Supplier<InputStream>` or `Path` when retries are enabled.
+
+## Amendment #198
+
+Audit "ADR against code", 17th slice — light **ADR-0035** (outgoing request body streaming), the last unwalked ADR of the accepted-ADR fiber.
+
+**Verified against code, no divergence — the slice is clean (third after #192 and #197):**
+
+- **§1 types** — all eight are wired through `HttpTemplateBuilder.createJsonBodyPayload`: `Flow.Publisher<ByteBuffer>`/`Flow.Publisher<String>` (adapted to `ByteBuffer` via `adaptToByteBufferPublisher`), `HttpRequest.BodyPublisher`, `InputStream`, `Supplier<InputStream>`, `Supplier<BodyPublisher>`, `Supplier<Flow.Publisher<ByteBuffer>>`, `Path`, `File`.
+- **§2 default Content-Type** — an explicit `@ContentType`/`@RequestHeader("Content-Type")` is honored; a streaming/reactive `body` falls back to `application/octet-stream`, while `String`/`byte[]`/POJO keep `requestType.mime()`.
+- **§3 wire model & builder** — `WireRequest.bodyPublisherSupplier` + the 7-arg backward-compatible constructor + `withBodyPublisher`/`withBodyPublisherSupplier`/`Builder` carry the supplier across retries and 307/308 redirect hops (`HttpTemplate.nextHop` preserves it); `logRequest` emits `<streaming body>` without touching the live stream.
+- **§4 fail-fast validation** — `ControllerValidator` rejects multiple `@RequestBody`, any combination with `@RequestParam`/`@PathVariable`/`@RequestHeader`/`@Cookie`/`@MultipartFormFile`, and `@RequestBody` on `@Get` (covered by `RequestBodyValidationTest`).
+
+**Untested normative seams locked by five guard tests (green on the current code; the sensitivity is structural):**
+
+1. `Supplier<HttpRequest.BodyPublisher>` is re-supplied once per transmission across `@Retry` (`RequestBodyStreamingWireMockTest.testUploadSupplierBodyPublisherAcrossRetry`).
+2. `Supplier<Flow.Publisher<ByteBuffer>>` yields a fresh publisher per call (`testUploadSupplierFlowPublisher`).
+3. A `307` redirect replays a streaming `Supplier<InputStream>` body on the second hop (`testRedirect307ReplaysStreamingSupplierBody`).
+4. A `File` body streams with a known `Content-Length` and defaults to `application/octet-stream` (`testUploadFileDefaultsToOctetStream`).
+5. `HttpTemplate.logRequest` logs the `<streaming body>` placeholder and never invokes the publisher supplier (`HttpTemplateLoggingTest.streamingBodyLogsPlaceholderWithoutConsumingSupplier`).
+
+**Wording drifts (documented here, no code change):**
+
+- §2 references `@Post(contentType = ...)` / `@Put(contentType = ...)`, but the verb annotations expose a `requestType` attribute (a `RequestType` enum); the raw media type is declared through `@ContentType`. The sentence should name `requestType`/`@ContentType`.
+- §3 says log `<streaming body>` "with content length when available"; the length is only knowable by invoking the supplier, which the same sentence forbids. The placeholder is logged alone — kept as-is.
+
+**Non-goal:** a `null` streaming argument (e.g. a `null` `Flow.Publisher`) has no runtime type, so the Content-Type falls back to `requestType.mime()` (`application/json`) instead of `application/octet-stream`; the declared parameter type is not consulted for the null case. No body is sent either way, so both media types are defensible — left unchanged.

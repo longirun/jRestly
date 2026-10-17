@@ -1,5 +1,36 @@
 # DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
+> **Сессия #198 (аудит: ADR-0035 целиком — ЧИСТЫЙ срез, пять нормативных
+> стыков закреплены предохранителями):** 17-й срез нити «ADR против кода»,
+> свет ADR-0035 (стриминг тела запроса) — последний нехоженый ADR из
+> принятого фонда. §1–§4 сверены по коду: все восемь типов тела
+> (`Flow.Publisher<ByteBuffer>`/`<String>`, `BodyPublisher`, `InputStream`,
+> `Supplier<InputStream>`/`<BodyPublisher>`/`<Flow.Publisher>`, `Path`, `File`)
+> проводятся через `createJsonBodyPayload`; §2 — явный `@ContentType` чтится,
+> стриминговые типы падают на `application/octet-stream`, `String`/`byte[]`/
+> POJO — на `requestType.mime()`; §3 — supplier переживает retry и 307/308
+> (`nextHop` сохраняет `bodyPublisherSupplier`), `logRequest` пишет
+> `<streaming body>` не трогая живой поток; §4 — `ControllerValidator` режет
+> множественный `@RequestBody`, комбинации и `@Get`-тело. Рассинхронов нет —
+> **чистый срез** (третий за серию после #192/#197). Непокрытые стыки → +5
+> предохранителей: (1) `Supplier<BodyPublisher>` пересепляется на каждый retry
+> (503→200, 2 вызова); (2) `Supplier<Flow.Publisher<ByteBuffer>>` — свежий
+> publisher; (3) 307-редирект переигрывает стриминговый supplier на втором
+> хопе; (4) `File`-тело — известный `Content-Length` + дефолт octet-stream;
+> (5) `logRequest` пишет плейсхолдер и **не** вызывает supplier. Все зелёные —
+> структурная чувствительность. Два дрейфа формулировок задокументированы без
+> правки кода: §2 ссылается на `@Post(contentType=…)`, хотя атрибут зовётся
+> `requestType` (+`@ContentType`); §3 «content length when available» — длину
+> нельзя узнать, не подняв supplier, что сам же §3 запрещает. Non-goal: `null`
+> стриминговый аргумент → Content-Type = `requestType.mime()`, а не
+> octet-stream (объявленный тип параметра не читается для null-случая). ADR-0035
+> → Amendment #198, проверен и закрыт. Гейт **1229/1229** (core 1149 +
+> engine-okhttp 25 + engine-apache5 25 + codec-jackson-xml 15 + benchmarks 15),
+> `./gradlew test javadoc` зелёный под `-Werror`, 0 warnings. Дальше — free-аудит
+> (`ModuleInfo`/`SimpleModuleInfo` мутабельность, `ServerSentEventReconnector`
+> жизненный цикл) или test-javadoc батч №2 (`cookie`/`codec`/`compression`/
+> `tracing`/`interceptor`).
+>
 > **Сессия #197 (аудит: ADR-0038 × ADR-0059 — ЧИСТЫЙ срез, три не покрытых
 > теста стыка закреплены предохранителями):** 16-й срез нити «ADR против
 > кода» — свет ADR-0038 (HTTP/2/трейлеры) × ADR-0059 (стриминг-трейлеры).

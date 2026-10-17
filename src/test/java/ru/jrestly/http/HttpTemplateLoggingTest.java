@@ -4,10 +4,12 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.net.URI;
+import java.net.http.HttpRequest;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.ResourceBundle;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -96,6 +98,25 @@ class HttpTemplateLoggingTest {
     @DisplayName("DELETE with a body logs the body")
     void deleteWithBodyLogsTheBody() {
         assertBodyLogged(HttpMethod.DELETE, "{\"id\":7}");
+    }
+
+    @Test
+    @DisplayName("Streaming body logs the <streaming body> placeholder without invoking the supplier (ADR-0035 §3)")
+    void streamingBodyLogsPlaceholderWithoutConsumingSupplier() {
+        AtomicInteger invocations = new AtomicInteger();
+        WireRequest request = new WireRequest(HttpMethod.POST, TARGET, List.of(),
+                "application/octet-stream", null, null, null,
+                () -> {
+                    invocations.incrementAndGet();
+                    return HttpRequest.BodyPublishers.ofString("live-stream");
+                });
+
+        template.logRequest(request);
+
+        String log = logger.last();
+        assertTrue(log.contains("<streaming body>"), log);
+        assertFalse(log.contains("live-stream"), log);
+        assertEquals(0, invocations.get(), "logRequest must not invoke the body publisher supplier");
     }
 
     private void assertBodyLogged(HttpMethod method, String body) {

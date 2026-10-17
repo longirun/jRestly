@@ -60,6 +60,20 @@ class RequestBodyStreamingWireMockTest {
         @Post(path = "/upload/supplier-once")
         String uploadSupplierOnce(@RequestBody Supplier<InputStream> streamSupplier);
 
+        @Post(path = "/upload/supplier-flow-pub")
+        String uploadSupplierFlowPublisher(@RequestBody Supplier<Flow.Publisher<ByteBuffer>> publisherSupplier);
+
+        @Post(path = "/upload/supplier-body-pub")
+        @Retry(times = 2, nonIdempotent = true, initialBackoffMs = 10, maxBackoffMs = 50)
+        String uploadSupplierBodyPublisher(@RequestBody Supplier<HttpRequest.BodyPublisher> publisherSupplier);
+
+        @Post(path = "/upload/redirect-307")
+        @FollowRedirects(count = 2)
+        String uploadRedirect307(@RequestBody Supplier<InputStream> streamSupplier);
+
+        @Put(path = "/upload/file")
+        String uploadFile(@RequestBody java.io.File file);
+
         @Put(path = "/upload/path")
         String uploadPath(@RequestBody Path path);
 
@@ -232,6 +246,102 @@ class RequestBodyStreamingWireMockTest {
         assertEquals("OK_SUPPLIER", result);
         assertEquals(2, supplyCount.get(), "Supplier should have been called twice (1 initial + 1 retry)");
         wireMock.verify(2, postRequestedFor(urlEqualTo("/upload/supplier-retry")));
+    }
+
+    @Test
+    @DisplayName("Upload Supplier<HttpRequest.BodyPublisher> is re-supplied across retry attempts (ADR-0035 §1)")
+    void testUploadSupplierBodyPublisherAcrossRetry() {
+        wireMock.stubFor(post(urlEqualTo("/upload/supplier-body-pub"))
+                .inScenario("SupplierBodyPublisherRetry")
+                .whenScenarioStateIs(Scenario.STARTED)
+                .willReturn(aResponse().withStatus(503).withBody("Service Unavailable"))
+                .willSetStateTo("Retried"));
+
+        wireMock.stubFor(post(urlEqualTo("/upload/supplier-body-pub"))
+                .inScenario("SupplierBodyPublisherRetry")
+                .whenScenarioStateIs("Retried")
+                .withRequestBody(equalTo("reusable-body-publisher"))
+                .willReturn(ok("OK_SUPPLIER_BODY_PUB")));
+
+        AtomicInteger supplyCount = new AtomicInteger();
+        Supplier<HttpRequest.BodyPublisher> supplier = () -> {
+            supplyCount.incrementAndGet();
+            return HttpRequest.BodyPublishers.ofString("reusable-body-publisher");
+        };
+
+        String result = api.uploadSupplierBodyPublisher(supplier);
+        assertEquals("OK_SUPPLIER_BODY_PUB", result);
+        assertEquals(2, supplyCount.get(), "Publisher supplier should be invoked once per transmission");
+        wireMock.verify(2, postRequestedFor(urlEqualTo("/upload/supplier-body-pub")));
+    }
+
+    @Test
+    @DisplayName("Upload Supplier<Flow.Publisher<ByteBuffer>> supplies a fresh publisher per transmission (ADR-0035 §1)")
+    void testUploadSupplierFlowPublisher() {
+        wireMock.stubFor(post(urlEqualTo("/upload/supplier-flow-pub"))
+                .withRequestBody(equalTo("flow-pub-payload"))
+                .willReturn(ok("OK_SUPPLIER_FLOW")));
+
+        AtomicInteger supplyCount = new AtomicInteger();
+        Supplier<Flow.Publisher<ByteBuffer>> supplier = () -> {
+            supplyCount.incrementAndGet();
+            return createByteBufferPublisher(List.of(
+                    "flow-".getBytes(StandardCharsets.UTF_8),
+                    "pub-".getBytes(StandardCharsets.UTF_8),
+                    "payload".getBytes(StandardCharsets.UTF_8)));
+        };
+
+        String result = api.uploadSupplierFlowPublisher(supplier);
+        assertEquals("OK_SUPPLIER_FLOW", result);
+        assertEquals(1, supplyCount.get());
+        wireMock.verify(postRequestedFor(urlEqualTo("/upload/supplier-flow-pub")));
+    }
+
+    @Test
+    @DisplayName("307 redirect replays a streaming Supplier body on a fresh connection (ADR-0035 §3)")
+    void testRedirect307ReplaysStreamingSupplierBody() {
+        wireMock.stubFor(post(urlEqualTo("/upload/redirect-307"))
+                .willReturn(aResponse()
+                        .withStatus(307)
+                        .withHeader("Location", "/upload/redirect-307-target")));
+
+        wireMock.stubFor(post(urlEqualTo("/upload/redirect-307-target"))
+                .withRequestBody(equalTo("redirect-stream-payload"))
+                .willReturn(ok("OK_REDIRECT_STREAM")));
+
+        AtomicInteger supplyCount = new AtomicInteger();
+        Supplier<InputStream> supplier = () -> {
+            supplyCount.incrementAndGet();
+            return new ByteArrayInputStream("redirect-stream-payload".getBytes(StandardCharsets.UTF_8));
+        };
+
+        String result = api.uploadRedirect307(supplier);
+        assertEquals("OK_REDIRECT_STREAM", result);
+        assertEquals(2, supplyCount.get(), "Supplier should be invoked once per redirect hop");
+        wireMock.verify(postRequestedFor(urlEqualTo("/upload/redirect-307-target"))
+                .withRequestBody(equalTo("redirect-stream-payload")));
+    }
+
+    @Test
+    @DisplayName("Upload File streams directly with known Content-Length and defaults to application/octet-stream (ADR-0035 §1/§2)")
+    void testUploadFileDefaultsToOctetStream() throws IOException {
+        Path tempFile = Files.createTempFile("jrestly-upload-file-test-", ".bin");
+        try {
+            byte[] fileBytes = "file-body-content-98765".getBytes(StandardCharsets.UTF_8);
+            Files.write(tempFile, fileBytes);
+
+            wireMock.stubFor(put(urlEqualTo("/upload/file"))
+                    .withHeader("Content-Type", containing("application/octet-stream"))
+                    .withHeader("Content-Length", equalTo(String.valueOf(fileBytes.length)))
+                    .withRequestBody(equalTo("file-body-content-98765"))
+                    .willReturn(ok("OK_FILE")));
+
+            String result = api.uploadFile(tempFile.toFile());
+            assertEquals("OK_FILE", result);
+            wireMock.verify(putRequestedFor(urlEqualTo("/upload/file")));
+        } finally {
+            Files.deleteIfExists(tempFile);
+        }
     }
 
     @Test
