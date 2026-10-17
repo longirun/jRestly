@@ -1,5 +1,40 @@
 # DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
+> **Сессия #211 (free-аудит: `path()` глагола не проверялся на URI-легальность —
+> 21-я «тихая» находка серии, прямое продолжение оси #210 «парные декларативные
+> конструкции»):** свободный ход из контекста #210 (активная зона пуста, highest
+> ADR 0060). #210 закрыл *пару* шаблон ⇄ `@PathVariable`, но оставил нехоженой
+> **форму самой половины**: `path()` глагола (`@Get/@Post/@Put/@Patch/@Delete`)
+> никогда не сверялся с тем, что `URI.create` вообще примет. Путь (или абсолютный
+> URL) с URI-нелегальным символом доживает до **отправки**, где
+> `HttpTemplate.createUri` → `URI.create(url)` падает голым
+> `IllegalArgumentException` — без имени метода и без полного URL. Реалистичные
+> ловушки: пробел (`@Get(path = "/api/ us")`), CR/LF (то же + риск инъекции в
+> request-line), **Retrofit/JAX-RS-стиль `{id}`** вместо jRestly'шного `${id}`
+> (`@Get(path = "/users/{id}")` — падает на `{`), битый percent-escape
+> (`/api/100%` → `Malformed escape pair`). Тот же класс, что #207–#210. Fix:
+> `ControllerValidator.validatePath` маскирует `${...}`-плейсхолдеры
+> same-length-строкой легального символа (валидный шаблон не спотыкается,
+> индексы в сообщении выровнены с исходным путём) и прогоняет результат через
+> `URI.create`; любое `IllegalArgumentException` уходит в общий агрегированный
+> `ControllerValidationException` при создании прокси
+> (`method(): path must be a valid URI reference: <reason>`). Проверка **точно
+> зеркалит** строку, которую реально скормит фреймворк (относительный путь, либо
+> абсолютный URL при `startsWith("http")`), поэтому ложных срабатываний нет:
+> non-ASCII символы пути, sub-delims, `%XX`, `?`/`#`, а также IPv6-скобки в
+> authority (`http://[::1]/api/items` — легальны в authority, но НЕ в path)
+> проходят так же, как на отправке. Публичный API не тронут; корректный путь
+> ведёт себя как раньше. TDD red-first: новый
+> `ControllerValidationTest.rejectsInvalidUriCharactersInPathEagerly` (пробел,
+> `{id}`, битый `%` → 3 проблемы + eager исключение; `%20`/`?x=1` и IPv6-URL —
+> no-false-positive) — красный ровно по `assertEquals(3, problems.size())` →
+> зелёный. ADR-0025 → `## Amendment #211`. Гейт **1237/1237** (core 1157 +
+> engine-okhttp 25 + engine-apache5 25 + codec-jackson-xml 15 + benchmarks 15),
+> 0 failures/errors, `./gradlew test javadoc` зелёный под `-Werror`, 0 warnings.
+> Дальше — free-аудит по той же оси (осталось: `@ExpectStatus(statuses = {})` /
+> `@FollowRedirects(count < 0)` — решение #207 «фича, не дыра») или концепт
+> ADR-0061+ (HTTP-кэш ждёт ответа Антона; вопрос в mailbox от #208, ответа нет).
+>
 > **Сессия #210 (free-аудит: path-template ⇄ `@PathVariable` не сверялись eager'ом
 > — 20-я «тихая» находка серии, новая ось «декларативная пара обязана совпадать»):**
 > свободный ход из контекста #209 (активная зона пуста, highest ADR 0060). Семья
@@ -1246,10 +1281,13 @@ JDK-движке, валидация `@ExpectStatus`/`@FollowRedirects` (инв�
 закрыт в #209** (был в этом списке) — семья name-bearing required-атрибутов
 теперь валидируется eagerly полностью. **#210 открыл новую аудит-ось
 «парные декларативные конструкции»** — путь глагола ⇄ `@PathVariable` теперь
-сверяются eagerly (ADR-0025 Amendment #210); кандидаты по той же оси:
-`@Get/Post/... path()` (blank/CRLF/пробелы — падает поздно в `URI.create`),
-`@ExpectStatus(statuses = {})`/`@FollowRedirects(count < 0)` (пустой/отрицательный
-декларативный вход), `@PathVariable.name` ⇄ fallback-имя параметра при
+сверяются eagerly (ADR-0025 Amendment #210), а **в #211 закрыта форма самой
+половины**: `@Get/Post/... path()` проверяется на URI-легальность той же
+проверкой, что реально скормит фреймворк (`URI.create` с маскированными
+`${...}`; ADR-0025 Amendment #211) — пробел/CRLF/`{id}`/битый `%` больше не
+доживают до отправки. Кандидаты по той же оси: `@ExpectStatus(statuses = {})`/
+`@FollowRedirects(count < 0)` (пустой/отрицательный декларативный вход —
+решение #207 «фича, не дыра»), `@PathVariable.name` ⇄ fallback-имя параметра при
 отсутствии `-parameters`.
 
 ---

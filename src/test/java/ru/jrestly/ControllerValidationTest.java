@@ -287,5 +287,47 @@ public class ControllerValidationTest {
         // no false positive on a matching template
         assertTrue(ControllerValidator.validate(ValidPathVariableController.class).isEmpty());
     }
+
+    interface InvalidPathController {
+        @ru.jrestly.annotation.Get(path = "/api/ us")
+        String space();
+
+        @ru.jrestly.annotation.Get(path = "/api/users/{id}")
+        String singleBrace();
+
+        @ru.jrestly.annotation.Get(path = "/api/100%")
+        String malformedEscape();
+    }
+
+    interface ValidPathCharactersController {
+        @ru.jrestly.annotation.Get(path = "/api/items%20list?x=1")
+        String percentEncoded();
+
+        @ru.jrestly.annotation.Get(path = "http://[::1]/api/items")
+        String ipv6AbsoluteUrl();
+    }
+
+    @Test
+    void rejectsInvalidUriCharactersInPathEagerly() {
+        // ADR-0025: a verb's path is another paired declarative construct. A path
+        // (or absolute URL) carrying a character that is illegal in a URI -- a
+        // space, a CR/LF, or a Retrofit/JAX-RS-style {id} placeholder instead of
+        // ${id} -- is only rejected at send time by URI.create ("Illegal character
+        // in path at index N" / "Malformed escape pair"), naming neither the method
+        // nor the path. It now joins the eager-validation channel.
+        List<String> problems = ControllerValidator.validate(InvalidPathController.class);
+        assertEquals(3, problems.size());
+        assertTrue(problems.stream().anyMatch(p -> p.startsWith("space(): path must be a valid URI reference")));
+        assertTrue(problems.stream().anyMatch(p -> p.startsWith("singleBrace(): path must be a valid URI reference")));
+        assertTrue(problems.stream().anyMatch(p -> p.startsWith("malformedEscape(): path must be a valid URI reference")));
+
+        JRestlyClient client = JRestlyClient.builder().baseUrl("http://localhost:1").build();
+        assertThrows(ControllerValidationException.class, () -> client.get(InvalidPathController.class));
+
+        // no false positive on legal path characters, including ${...} placeholders
+        // and IPv6 brackets (legal in the authority of an absolute URL)
+        assertTrue(ControllerValidator.validate(ValidPathCharactersController.class).isEmpty());
+        assertTrue(ControllerValidator.validate(ValidPathVariableController.class).isEmpty());
+    }
 }
 

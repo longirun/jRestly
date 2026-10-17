@@ -68,3 +68,22 @@ Fix: `ControllerValidator.validateMethod` now extracts the `${...}` placeholders
 - a blank placeholder (`${}`) is rejected as well.
 
 No public API change; a matching template behaves exactly as before. Covered by `ControllerValidationTest.rejectsPathVariableTemplateMismatchEagerly` (red-first).
+
+## Amendment #211
+
+**Missing eager validation of the verb path itself — a path carrying a URI-illegal character failed late in `URI.create`, naming neither the method nor the path.**
+
+Following #210 (the template ⇄ `@PathVariable` pairing), the *same* declarative half had no validation of its own form: `@Get`/`@Post`/`@Put`/`@Patch`/`@Delete` `path()` was never checked for URI legality. A path (or absolute URL) with a character that is illegal in a URI survives proxy creation and only blows up at *send time*, inside `HttpTemplate.createUri`'s `URI.create(url)`:
+
+- a **space** (`@Get(path = "/api/ us")`) — `Illegal character in path at index N`;
+- a **CR/LF** — same, and a request-line injection risk;
+- a **Retrofit/JAX-RS-style `{id}`** placeholder instead of jRestly's `${id}` (`@Get(path = "/users/{id}")`) — `Illegal character in path at index N` on the `{`;
+- a **malformed percent-escape** (`@Get(path = "/api/100%")`) — `Malformed escape pair at index N`.
+
+All of them are late and cryptic, and none names the offending method (the *relative* path alone is reported, not the assembled `baseUrl + path`).
+
+Fix: `ControllerValidator.validatePath` builds the path with the `${...}` placeholders masked by a same-length run of a legal character (so a valid template does not trip the check, and reported indices stay aligned with the declared path) and runs it through `URI.create`. Any `IllegalArgumentException` joins the aggregated `ControllerValidationException` raised at proxy creation:
+
+- `method(): path must be a valid URI reference: <URI.create reason>`
+
+This deliberately mirrors the exact string the framework feeds to `URI.create` (relative path, or absolute URL when it starts with `http`), so there are no false positives: non-ASCII path characters, RFC 3986 sub-delims, `%XX` escapes, query/fragment delimiters, and IPv6 authority brackets (`http://[::1]/api/items`, legal in the authority but *illegal* in a path) all pass, exactly as they do at send time. No public API change; a valid path behaves exactly as before. Covered by `ControllerValidationTest.rejectsInvalidUriCharactersInPathEagerly` (red-first).

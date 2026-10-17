@@ -35,6 +35,7 @@ import ru.jrestly.metrics.ClientMetricsListener;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.lang.reflect.Parameter;
+import java.net.URI;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
@@ -63,7 +64,10 @@ import java.util.regex.Pattern;
  *
  * <p>Each verb path is checked against its {@code @PathVariable} parameters
  * (ADR-0025): every {@code ${name}} placeholder must have a matching
- * parameter, and every {@code @PathVariable} must match a placeholder.
+ * parameter, and every {@code @PathVariable} must match a placeholder. The
+ * path must also be a valid URI reference once placeholders are masked: a
+ * space, CR/LF or a brace-style {@code {id}} placeholder fails here instead
+ * of at send time inside {@code URI.create}.
  *
  * <p>Runs at proxy creation ({@link AbstractHttpClient#createController}):
  * with the module's controller validation enabled, a non-empty result
@@ -247,6 +251,7 @@ public final class ControllerValidator {
         }
 
         validatePathVariableMismatch(method, problems);
+        validatePath(method.getName() + "()", resolvePath(method), problems);
 
         for (RequestHeader header : method.getAnnotationsByType(RequestHeader.class)) {
             if (header.name().isBlank()) {
@@ -612,6 +617,27 @@ public final class ControllerValidator {
                 problems.add(method.getName() + "(): @PathVariable '" + pathVariable
                         + "' does not match any ${...} placeholder in path '" + path + "'");
             }
+        }
+    }
+
+    // ADR-0025: a verb's path is the other half of the path/@PathVariable pair.
+    // A path (or absolute URL) carrying a character that is illegal in a URI --
+    // a space, a CR/LF, or a Retrofit/JAX-RS-style {id} placeholder instead of
+    // ${id} -- is only rejected at send time by URI.create ("Illegal character in
+    // path at index N" / "Malformed escape pair"), naming neither the method nor
+    // the path. It is caught here, at proxy creation. ${...} placeholders are
+    // masked with a same-length legal run first, so a valid template does not trip
+    // the check and reported indices stay aligned with the declared path.
+    private static void validatePath(String prefix, String path, List<String> problems) {
+        if (path == null) {
+            return;
+        }
+        String masked = PATH_PLACEHOLDER.matcher(path)
+                .replaceAll(match -> "x".repeat(match.group().length()));
+        try {
+            URI.create(masked);
+        } catch (IllegalArgumentException e) {
+            problems.add(prefix + ": path must be a valid URI reference: " + e.getMessage());
         }
     }
 
