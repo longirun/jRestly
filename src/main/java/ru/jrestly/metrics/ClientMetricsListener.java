@@ -59,7 +59,8 @@ public interface ClientMetricsListener {
      *
      * @param context the request context
      * @param request the wire request that failed
-     * @param attempt the 1-based index of the failed attempt
+     * @param attempt the 1-based index of the failed transmission within the logical
+     *                call (per-call numbering, as in {@link #onAttemptComplete})
      * @param reason the failure reason (e.g. exception or HTTP response status)
      * @param delay the backoff delay before the next attempt
      */
@@ -71,7 +72,9 @@ public interface ClientMetricsListener {
      *
      * @param context the request context
      * @param request the wire request for this attempt
-     * @param attempt the 1-based index of the attempt
+     * @param attempt the 1-based index of this transmission within the logical call —
+     *                continuous across the transparent 401-refresh phase, so the last
+     *                value reported for a call equals {@link CallMetrics#attempts()}
      * @param response the response if received across the wire, or empty on transport failure
      * @param failure the failure exception if transport failed, or empty
      * @param duration the duration of this specific attempt

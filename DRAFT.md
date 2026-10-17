@@ -1,5 +1,33 @@
 # DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
+> **Сессия #196 (аудит: ADR-0036 × ADR-0046 — закрыт non-goal #194: номера
+> попыток в `onAttemptComplete`/`onRetry` стали сквозными, per-call):**
+> 15-й срез нити «ADR против кода» — на этот раз доведение до конца
+> отложенного. После #194 `attempts()` суммирует обе фазы 401-рефреша, но
+> слушательские номера оставались пер-фазовыми: для 503 → 401 → 200
+> `attempts() == 3`, а третий `onAttemptComplete` нумеровался **1** —
+> последний номер ≠ `attempts()`, индексы попыток не уникальны внутри
+> вызова. Fix: `attemptOffset` (число передач первой фазы) прокинут через
+> оба контура — `executeWithRetries`/`scheduleRetry` (sync) и
+> `executeAsyncWithRetries`/`attemptAsync`/`scheduleAsyncRetry` (async);
+> слушательские номера = `attempt + offset`. Окно retry-политики, backoff и
+> DEBUG-лог `Attempt N/M` остались пер-фазовыми (`maxAttempts` ограничивает
+> каждую фазу, refresh-фаза начинает backoff с нуля); внутренние счётчики
+> (`attemptsHolder`/`attemptsRef`) не тронуты. Javadoc `@param attempt`
+> `onAttemptComplete`/`onRetry` — сквозная нумерация + инвариант «последний
+> номер вызова = `attempts()`». TDD behavior-red: 4 красных ровно по целевым
+> ассертам (expected 2/3 but was 1; sync ×2, async ×2) → зелёный. +1 e2e
+> `refresh401AfterRetriesContinuousNumbersAsync` (async 503→401→200: 1, 2, 3,
+> onRetry attempt=1, `attempts()==3`), 3 теста #194 усилены sequence-ассертами
+> (sync 1,2; sync 1,2,3; async 1,2). Гейт **1222/1222** (core 1142 +
+> engine-okhttp 25 + engine-apache5 25 + codec-jackson-xml 15 + benchmarks
+> 15), `./gradlew test javadoc` зелёный под `-Werror`, 0 warnings. ADR-0036
+> → Amendment #196; non-goal #194 помечен resolved. Свет ADR-0036 выжат
+> (#193 bytes × стриминг, #194 attempts × refresh, #195 attempts ×
+> short-circuit, #196 номера × refresh); остался non-goal #193 (Path/File-тела
+> — -1; кандидат на engine-reported byte accounting). Дальше — ADR-0038
+> (HTTP/2/трейлеры) или ADR-0035 целиком.
+>
 > **Сессия #195 (аудит: ADR-0036 × ADR-0047 — short-circuit скрывал нулевой
 > счётчик попыток: `attempts()` клэмпился до 1):** 14-й срез нити «ADR против
 > кода» — стык ADR-0036 (метрики) × ADR-0047 (short-circuit), кандидат (c) из

@@ -128,7 +128,8 @@ the transparent 401-refresh phase. E2E-gated:
 `refresh401AfterRetriesSumsBothPhases` (sync, retry loop + refresh = 3),
 `refresh401SumsAttemptsAcrossPhasesAsync` (async). Known refinement
 (non-goal here): the per-transmission `onAttemptComplete`/`onRetry`
-numbers restart at 1 in the refresh phase (per-phase, not per-call).
+numbers restart at 1 in the refresh phase (per-phase, not per-call) —
+resolved in Amendment #196.
 
 ## Amendment #195
 
@@ -158,3 +159,34 @@ onCallStart x1, onAttemptComplete x0, onCallComplete x1, `attempts() == 0`,
 `isRetried() == false`) and the updated
 `shortCircuitInvokesResponseInterceptorAndMetrics`; unit gate:
 `ClientMetricsValidationTest` (attempts = 0 accepted, -1 rejected).
+
+## Amendment #196
+
+2026-10-17 · Session #196 (audit slice: ADR-0036 × ADR-0046, closing the
+Amendment #194 non-goal).
+
+Since Amendment #194, `CallMetrics.attempts()` reports the total across both
+transmission phases of the transparent 401-refresh flow — but the
+per-transmission numbers carried by `onAttemptComplete`/`onRetry` still
+**restarted at 1 in the refresh phase** (per-phase, not per-call). The SPI
+was inconsistent inside one logical call: for 503 → 401 → 200 a listener
+saw `attempts() == 3` while the third `onAttemptComplete` was numbered **1**
+again — the last reported number no longer equaled `attempts()`, and attempt
+indexes were not unique within a call.
+
+Resolution: an `attemptOffset` (the first phase's transmission count) now
+flows through both circuits — `executeWithRetries`/`scheduleRetry` on the
+sync path, `executeAsyncWithRetries`/`attemptAsync`/`scheduleAsyncRetry` on
+the async path — and the listener-facing numbers are `attempt + offset`
+(per-call, continuous). The retry-policy window, backoff computation and the
+DEBUG `Attempt N/M` log line stay phase-local: `maxAttempts` bounds each
+phase, and the refresh phase starts a fresh backoff. The `attempts`
+parameter of `onAttemptComplete`/`onRetry` javadoc now states the per-call
+numbering and the invariant «the last value reported for a call equals
+`CallMetrics.attempts()`». E2E-gated: `ClientMetricsWireMockTest`
+`refresh401SumsAttemptsAcrossPhases` (sync: 1, 2),
+`refresh401AfterRetriesSumsBothPhases` (sync 503 → 401 → 200: 1, 2, 3;
+onRetry numbers the phase-1 failure),
+`refresh401SumsAttemptsAcrossPhasesAsync` (async: 1, 2) and the new
+`refresh401AfterRetriesContinuousNumbersAsync` (async 503 → 401 → 200:
+1, 2, 3).

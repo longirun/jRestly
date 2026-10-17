@@ -168,6 +168,10 @@ class ClientMetricsWireMockTest {
         @Retry(times = 3, initialBackoffMs = 10, maxBackoffMs = 50)
         TestDto getSecureRetryable();
 
+        @Get(path = "/api/secure-retry-async")
+        @Retry(times = 3, initialBackoffMs = 10, maxBackoffMs = 50)
+        CompletableFuture<TestDto> getSecureRetryAsync();
+
         @Get(path = "/api/secure-async")
         CompletableFuture<TestDto> getSecureAsync();
     }
@@ -465,6 +469,10 @@ class ClientMetricsWireMockTest {
             assertEquals("Recovered", result.name());
             assertEquals(2, tokenFetchCounter.get());
 
+            assertEquals(2, recordingListener.attempts.size(), "one onAttemptComplete per transmission");
+            assertEquals(1, recordingListener.attempts.get(0).attempt(), "first phase transmission is attempt 1");
+            assertEquals(2, recordingListener.attempts.get(1).attempt(), "refresh phase continues the per-call numbering");
+
             assertEquals(1, recordingListener.completedCalls.size());
             CallMetrics metrics = recordingListener.completedCalls.getFirst();
             assertEquals(200, metrics.statusCode());
@@ -514,7 +522,11 @@ class ClientMetricsWireMockTest {
             assertEquals("Recovered", result.name());
 
             assertEquals(3, recordingListener.attempts.size(), "one onAttemptComplete per transmission");
+            assertEquals(1, recordingListener.attempts.get(0).attempt());
+            assertEquals(2, recordingListener.attempts.get(1).attempt());
+            assertEquals(3, recordingListener.attempts.get(2).attempt(), "refresh phase continues the per-call numbering");
             assertEquals(1, recordingListener.retries.size(), "only the 503 schedules a retry");
+            assertEquals(1, recordingListener.retries.getFirst().attempt(), "onRetry numbers the failed transmission per call");
 
             assertEquals(1, recordingListener.completedCalls.size());
             CallMetrics metrics = recordingListener.completedCalls.getFirst();
@@ -556,11 +568,69 @@ class ClientMetricsWireMockTest {
             assertEquals("Recovered", result.name());
             assertEquals(2, tokenFetchCounter.get());
 
+            assertEquals(2, recordingListener.attempts.size(), "one onAttemptComplete per transmission");
+            assertEquals(1, recordingListener.attempts.get(0).attempt(), "first phase transmission is attempt 1");
+            assertEquals(2, recordingListener.attempts.get(1).attempt(), "refresh phase continues the per-call numbering");
+
             assertEquals(1, recordingListener.completedCalls.size());
             CallMetrics metrics = recordingListener.completedCalls.getFirst();
             assertEquals(200, metrics.statusCode());
             assertTrue(metrics.isSuccess());
             assertEquals(2, metrics.attempts(), "attempts() is the total across both phases");
+        } finally {
+            authClient.close();
+        }
+    }
+
+    @Test
+    @DisplayName("401 refresh after a @Retry loop: attempt numbers stay continuous across phases (async)")
+    void refresh401AfterRetriesContinuousNumbersAsync() {
+        wireMock.stubFor(get(urlEqualTo("/api/secure-retry-async"))
+                .withHeader("Authorization", equalTo("Bearer stale-token"))
+                .inScenario("secure-retry-async-401")
+                .whenScenarioStateIs(Scenario.STARTED)
+                .willSetStateTo("GOT401")
+                .willReturn(aResponse().withStatus(503).withBody("Service Unavailable")));
+        wireMock.stubFor(get(urlEqualTo("/api/secure-retry-async"))
+                .withHeader("Authorization", equalTo("Bearer stale-token"))
+                .inScenario("secure-retry-async-401")
+                .whenScenarioStateIs("GOT401")
+                .willReturn(aResponse().withStatus(401).withBody("Unauthorized: token expired")));
+        wireMock.stubFor(get(urlEqualTo("/api/secure-retry-async"))
+                .withHeader("Authorization", equalTo("Bearer fresh-token"))
+                .willReturn(aResponse()
+                        .withStatus(200)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody("{\"id\":\"407\",\"name\":\"Recovered\"}")));
+
+        AtomicInteger tokenFetchCounter = new AtomicInteger();
+        TokenManager tokenManager = TokenManager.of(() -> {
+            int count = tokenFetchCounter.incrementAndGet();
+            return Token.of(count == 1 ? "stale-token" : "fresh-token");
+        });
+
+        JRestlyClient authClient = JRestlyClient.builder()
+                .baseUrl(wireMock.baseUrl())
+                .bearerAuth(tokenManager)
+                .metricsListener(recordingListener)
+                .build();
+        try {
+            RefreshMetricsClient authApi = (RefreshMetricsClient) authClient.createController(RefreshMetricsClient.class);
+            TestDto result = authApi.getSecureRetryAsync().join();
+            assertEquals("Recovered", result.name());
+
+            assertEquals(3, recordingListener.attempts.size(), "one onAttemptComplete per transmission");
+            assertEquals(1, recordingListener.attempts.get(0).attempt());
+            assertEquals(2, recordingListener.attempts.get(1).attempt());
+            assertEquals(3, recordingListener.attempts.get(2).attempt(), "refresh phase continues the per-call numbering");
+            assertEquals(1, recordingListener.retries.size(), "only the 503 schedules a retry");
+            assertEquals(1, recordingListener.retries.getFirst().attempt());
+
+            assertEquals(1, recordingListener.completedCalls.size());
+            CallMetrics metrics = recordingListener.completedCalls.getFirst();
+            assertEquals(200, metrics.statusCode());
+            assertTrue(metrics.isSuccess());
+            assertEquals(3, metrics.attempts(), "2 retry-loop attempts + 1 refresh attempt");
         } finally {
             authClient.close();
         }
