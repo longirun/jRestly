@@ -467,12 +467,16 @@ public class SimpleModuleInfo implements ModuleInfo {
         }
 
         /**
-         * The connect timeout in milliseconds (default 5 000).
+         * The connect timeout in milliseconds (default 5 000). Must not be negative.
          *
-         * @param ms the connect timeout in milliseconds
+         * @param ms the connect timeout in milliseconds, not negative
          * @return this builder, for chaining
+         * @throws IllegalArgumentException if {@code ms} is negative
          */
         public Builder connectTimeout(int ms) {
+            if (ms < 0) {
+                throw new IllegalArgumentException("connectTimeout must not be negative");
+            }
             this.connectTimeout = ms;
             return this;
         }
@@ -493,12 +497,16 @@ public class SimpleModuleInfo implements ModuleInfo {
         }
 
         /**
-         * The socket (request) timeout in milliseconds (default 30 000).
+         * The socket (request) timeout in milliseconds (default 30 000). Must not be negative.
          *
-         * @param ms the socket timeout in milliseconds
+         * @param ms the socket timeout in milliseconds, not negative
          * @return this builder, for chaining
+         * @throws IllegalArgumentException if {@code ms} is negative
          */
         public Builder socketTimeout(int ms) {
+            if (ms < 0) {
+                throw new IllegalArgumentException("socketTimeout must not be negative");
+            }
             this.socketTimeout = ms;
             return this;
         }

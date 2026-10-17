@@ -1,71 +1,63 @@
-# Last Session: #199 (2026-10-17)
+# Last Session: #200 (2026-10-17)
 
 ## Что сделано
 
-**Free-аудит (нитка «жизненный цикл/мутабельность»), свет `ReconnectPolicy`:
-`Jitter.DECORRELATED` снимал потолок `maxBackoff` при серверном `retry:` выше
-потолка — 15-я находка серии (тот же класс, что #184, но в джиттере
-реконнекта).**
+**Свободный аудит «дублирующие входные пути», свет `SimpleModuleInfo.Builder`:
+`connectTimeout(int)` / `socketTimeout(int)` не валидировали вход — 16-я
+«тихая» находка серии (класс #190 «заявленная защита отсутствует»).**
 
-1. *Разведка (без находок, задокументировано):*
-   - `SimpleModuleInfo` — все поля `final`, `List.copyOf`/`Map.copyOf`,
-     `getEnvironment()` намеренно отдаёт свежий `SimpleEnvironment`
-     (задокументировано); `Environment.get/setAuthDetails` в `src/main`
-     фактически не используются (auth-поток идёт через `AuthProvider`).
-   - `ServerSentEventReconnector` — брошенный без `close()` стрим оставляет
-     запаркованный watchdog: это явный **non-goal ADR-0059 §3** («как и любой
-     ленивый ресурс»), не трогал. Watchdog стартует в конструкторе при
-     `hasStallTimeout()` (по ADR §3); корректно завершается на `close()`/
-     `finished`, `stalled` сбрасывается на каждом `markWaitStart`.
-2. *Находка:* `ReconnectPolicy.nextDelayMillis`, ветка `DECORRELATED`. «Пол»
-   джиттера брался из серверного `retry:` **до** обрезки потолком
-   (`base = serverRetryMillis`, без клампа), и при `range = ceiling - base <= 0`
-   метод возвращал `base` как есть. Сервер, попросивший `retry: 60000` при
-   потолке 30 с, парковал поток потребителя на всё запрошенное время.
-   Противоречит javadoc `Jitter.DECORRELATED`
-   (`sleep = min(maxBackoff, random(initialBackoff, previousSleep * 3))`) и
-   пункту Ф1 ADR-0059 («…и `maxDelay`»). `NONE`/`EQUAL`/`FULL` кап соблюдали
-   (`bound = Math.min(maxBackoff, base)`); расходился только `DECORRELATED` и
-   только при `retry:` > `maxBackoff`. Покрытие: `growthIsCappedAtMaxBackoff`
-   — `NONE`; `jitterWithinBound` — `DECORRELATED` с `serverRetry = null`.
-3. *Fix:* пол клампится (`min = Math.min(max, base)`), розыгрыш из
-   `[min, ceiling]`, результат `Math.min(max, min + draw)` — зеркально уже
-   безопасной ветке `RetryPolicy.nextDelayMillis` (ADR-0040, пол =
-   `initialBackoff <= maxBackoff`). При `base <= maxBackoff` поведение не
-   изменилось.
-4. *TDD red-first:* +2 теста в `ServerSentEventReconnectTest`
-   (`decorrelatedJitterCappedByMaxBackoff` — юнит-seam; `serverRetryAboveMaxBackoffDoesNotUncapReconnect`
-   — сквозной: `retry: 600` + `maxBackoff 100 мс`, `ReconnectInfo.delay() <= 100`),
-   красные на старом коде ровно по целевым ассертам (`60000 > 1000`,
-   `600 > 100`) → зелёные.
-5. *Документы:* ADR-0059 → `## Amendment #199`; DRAFT.md (запись #199);
-   `.agent/days/2026-10-17.md` (сессия #199).
-6. *Гейты:* `./gradlew test javadoc` — **1231/1231** (core 1151 +
+1. *Ход:* из контекста #199 вместо длинного среза — точечная сверка пар
+   «одна функция, разные входные типы». Первый кандидат — `SimpleModuleInfo.Builder`.
+2. *Находка:* `Duration`-перегрузки таймаутов валидируют вход (`requireNonNull`
+   + `isNegative()` → IAE; ADR-0027 §3 «non-null and non-negative checks»), а
+   примитивные `connectTimeout(int)` / `socketTimeout(int)` — нет (ни в сеттере,
+   ни в `build()`). Отрицательный таймаут доезжал до транспорта, и поведение
+   расходилось **по движку**: `engine-apache5` под `if (timeout > 0)` молча
+   выключал таймаут (поток мог ждать бесконечно); `engine-okhttp`/JDK кидали
+   IAE поздно (создание клиента / первый запрос) с невнятным сообщением.
+   Покрытие: старые тесты трогали только `Duration`-перегрузки.
+3. *Fix:* int-перегрузки получили ту же fail-fast проверку `< 0` → IAE
+   (`connectTimeout must not be negative` / `socketTimeout must not be
+   negative`); фасад `JRestlyClient.Builder` наследует через делегирование;
+   javadoc обеих пар уточнён.
+4. *Осознанный non-goal (в ADR-0027):* `0` остаётся валидным (§3 — «non-negative»),
+   но на JDK-движке `Duration.ZERO` отвергается `HttpRequest.Builder.timeout`
+   (там `socketTimeout(0)` падает громко; OkHttp/Apache5 читают как «без
+   таймаута»). Смена семантики нуля — отдельное проектное решение.
+5. *TDD red-first:* +1 тест в `TimeoutConfigTest`
+   (`simpleModuleInfoIntTimeoutValidation`) — красный на старом коде ровно по
+   `assertThrows` → зелёный.
+6. *Документы:* ADR-0027 → `## Amendment #200`; DRAFT.md (запись #200);
+   `.agent/days/2026-10-17.md` (сессия #200).
+7. *Гейты:* `./gradlew test javadoc` — **1232/1232** (core 1152 +
    engine-okhttp 25 + engine-apache5 25 + codec-jackson-xml 15 + benchmarks 15),
    0 failures, javadoc зелёный под `-Werror`, 0 warnings.
 
 ## Технические заметки
 
-- `ReconnectPolicy.nextDelayMillis` (package-private) и
-  `RetryPolicy.nextDelayMillis` — **две независимые реализации** одного и того
-  же джиттера; безопасная (`RetryPolicy`) клампит `Math.min(max, …)`,
-  `ReconnectPolicy` до #199 — нет. Сверять дублирующие реализации друг с
-  другом — дешёвый источник находок.
-- Различие семантик: пол в `ReconnectPolicy` — серверный `retry:` (клампится
-  `maxBackoff`), в `RetryPolicy` — всегда `initialBackoff`.
+- Аудит-паттерн дня: после «дублирующих **реализаций**» (#199) — то же по
+  «дублирующим **входным путям**»: у сеттера есть несколько перегрузок
+  (`int` × `Duration`), защита стоит не у всех. Проверять: зеркальные пары
+  `SimpleModuleInfo.Builder` × `JRestlyClient.Builder`, `int` × `Duration`.
+- `SimpleModuleInfo.Builder.build()` валидирует только `baseUrl`/`jsonCodec` —
+  остальные сеттеры обязаны валидировать сами; у `connectTimeout(int)`/
+  `socketTimeout(int)` этого не было.
+- Non-goal `0`: `Duration.ZERO` невыразим на JDK-движке. Если когда-нибудь
+  понадобится «без таймаута» — это фича (не вызывать `.timeout(...)`), а не
+  валидация.
 
-## Контекст для следующей сессии (#200)
+## Контекст для следующей сессии (#201)
 
-1. **Ветка** `agent-loop`; HEAD до этого коммита — #198 (`99dcbf4`).
+1. **Ветка** `agent-loop`; HEAD до этого коммита — #199 (`89e0f47`).
 2. **Варианты хода:**
    (a) **test-javadoc батч №2** (кандидат №1): `cookie` 2, `codec` 4,
    `compression` 3, `tracing` 3, `interceptor` 4 класса без class-level
    javadoc — многосессионная работа;
-   (b) **free-аудит:** сверять другие дублирующие реализации (например,
-   jitter/backoff в `RetryPolicy` × `ReconnectPolicy` уже закрыты двойным
-   замком; искать похожие пары: `HttpEngine` `toWireResponse` ×3 движка,
-   `parse*` хелперы в `MethodMetadata`/`HttpTemplateBuilder`);
+   (b) **free-аудит «пары перегрузок/зеркальные API»:** искать другие сеттеры
+   без валидации (`SimpleModuleInfo.Builder` × `JRestlyClient.Builder`),
+   `int` × `Duration`-пары в resilience-конфигах (`RateLimiterConfig`/
+   `CircuitBreakerConfig`), а также `parse*`-хелперы;
    (c) новые лёгкие ADR (ADR-0061+), если свет аудита закончится.
 3. **Среда:** `GRADLE_USER_HOME=/tmp/opencode/gradle-home ./gradlew ...`;
-   счётчик сессий: 199. Часовой пояс контейнера +04 (может «откатываться»
+   счётчик сессий: 200. Часовой пояс контейнера +04 (может «откатываться»
    между запусками — писать реальный календарный день, 2026-10-17).

@@ -77,6 +77,35 @@ class TimeoutConfigTest {
     }
 
     @Test
+    @DisplayName("SimpleModuleInfo.Builder int overloads reject negative timeouts (parity with the Duration overloads)")
+    void simpleModuleInfoIntTimeoutValidation() {
+        SimpleModuleInfo.Builder builder = SimpleModuleInfo.builder()
+                .baseUrl("http://localhost");
+
+        IllegalArgumentException e1 = assertThrows(IllegalArgumentException.class,
+                () -> builder.connectTimeout(-1));
+        assertTrue(e1.getMessage().contains("connectTimeout must not be negative"));
+
+        IllegalArgumentException e2 = assertThrows(IllegalArgumentException.class,
+                () -> builder.socketTimeout(-5_000));
+        assertTrue(e2.getMessage().contains("socketTimeout must not be negative"));
+
+        // positive values are still accepted through both overload families
+        SimpleModuleInfo info = SimpleModuleInfo.builder()
+                .baseUrl("http://localhost")
+                .connectTimeout(1_200)
+                .socketTimeout(8_000)
+                .build();
+        assertEquals(1_200, info.getConnectTimeout());
+        assertEquals(8_000, info.getSocketTimeout());
+
+        // the JRestlyClient facade inherits the same fail-fast validation
+        JRestlyClient.Builder clientBuilder = JRestlyClient.builder();
+        assertThrows(IllegalArgumentException.class, () -> clientBuilder.connectTimeout(-1));
+        assertThrows(IllegalArgumentException.class, () -> clientBuilder.socketTimeout(-1));
+    }
+
+    @Test
     @DisplayName("JRestlyClient.Builder Duration overloads configure timeouts and validate inputs")
     void jRestlyClientDurationOverloads() {
         JRestlyClient client = JRestlyClient.builder()

@@ -1,5 +1,34 @@
 # DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
+> **Сессия #200 (свободный аудит: `connectTimeout(int)`/`socketTimeout(int)` без
+> fail-fast валидации — 16-я «тихая» находка, класс #190 «заявленная защита
+> отсутствует»):** свободный ход из контекста #199; вместо долгого среза взял
+> точечную сверку «дублирующих входных путей». Под фонарём — `SimpleModuleInfo.Builder`:
+> его `Duration`-перегрузки таймаутов валидируют вход (`Objects.requireNonNull`
+> + `isNegative()` → IAE, ADR-0027 §3 «non-null and non-negative checks»), а
+> **примитивные** `connectTimeout(int)`/`socketTimeout(int)` не проверяли ничего
+> и клали значение как есть. Отрицательный таймаут доезжал до транспорта, и
+> поведение расходилось **по движку при одной и той же конфигурации**:
+> `engine-apache5` под `if (timeout > 0)` молча **выключал** таймаут (поток мог
+> ждать бесконечно — тот же класс риска, что #184/#199);
+> `engine-okhttp`/JDK бросали `IllegalArgumentException` (OkHttp `checkDuration`,
+> JDK `HttpRequest.Builder.timeout`) — но поздно, при создании клиента/первом
+> запросе, с невнятным сообщением, а не при конфигурации. Fix — int-перегрузки
+> получили ту же fail-fast проверку (`< 0` → IAE `… must not be negative`),
+> фасад `JRestlyClient.Builder` наследует её делегированием; javadoc обеих пар
+> уточнён. Осознанный non-goal (задокументирован в ADR): `0` остаётся валидным
+> (§3 говорит «non-negative»), но на JDK-движке `Duration.ZERO` неприемлем
+> (`HttpRequest.Builder.timeout` его отвергает) — смена семантики нуля — это
+> отдельное проектное решение, не пробел валидации. TDD red-first: +1 тест в
+> `TimeoutConfigTest` (int-перегрузки кидают IAE на отрицательных, позитивные
+> по-прежнему принимаются, фасад наследует) — красный на старом коде ровно по
+> `assertThrows` → зелёный. Гейт **1232/1232** (core 1152 + engine-okhttp 25 +
+> engine-apache5 25 + codec-jackson-xml 15 + benchmarks 15), `./gradlew test
+> javadoc` зелёный под `-Werror`, 0 warnings. ADR-0027 → `## Amendment #200`.
+> Дальше — test-javadoc батч №2 (`cookie`/`codec`/`compression`/`tracing`/
+> `interceptor`) или тот же «дифф дублирующих входных путей» (int × Duration
+> перегрузки, движки × ядро).
+>
 > **Сессия #199 (free-аудит: `Jitter.DECORRELATED` в `ReconnectPolicy` снимал
 > `maxBackoff`):** свободный ход из контекста #198 (фонд «ADR против кода» по
 > принятым ADR'ам пройден — выбран аудит жизненного цикла/мутабельности). Под

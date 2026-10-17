@@ -170,10 +170,11 @@ public class JRestlyClient extends AbstractHttpClient {
         }
 
         /**
-         * The connect timeout in milliseconds (default 5 000).
+         * The connect timeout in milliseconds (default 5 000). Must not be negative.
          *
-         * @param ms the connect timeout in milliseconds
+         * @param ms the connect timeout in milliseconds, not negative
          * @return this builder, for chaining
+         * @throws IllegalArgumentException if {@code ms} is negative
          */
         public Builder connectTimeout(int ms) {
             moduleInfoBuilder.connectTimeout(ms);
@@ -192,10 +193,11 @@ public class JRestlyClient extends AbstractHttpClient {
         }
 
         /**
-         * The socket (request) timeout in milliseconds (default 30 000).
+         * The socket (request) timeout in milliseconds (default 30 000). Must not be negative.
          *
-         * @param ms the socket timeout in milliseconds
+         * @param ms the socket timeout in milliseconds, not negative
          * @return this builder, for chaining
+         * @throws IllegalArgumentException if {@code ms} is negative
          */
         public Builder socketTimeout(int ms) {
             moduleInfoBuilder.socketTimeout(ms);

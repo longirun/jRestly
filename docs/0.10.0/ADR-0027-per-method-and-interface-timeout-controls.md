@@ -114,3 +114,34 @@ In `HttpTemplateBuilder`:
 - Asynchronous `CompletableFuture` calls complete exceptionally with `HttpTimeoutException`.
 - `@Retry` transport policies recognize `HttpTimeoutException` as an `IOException` and retry accordingly.
 - Core remains 100% zero-dependency on standard Java 21 platform classes.
+
+---
+
+## Amendment #200
+
+**Gap:** §3's fail-fast validation was implemented only on the `Duration`
+overloads. The primitive `connectTimeout(int)` / `socketTimeout(int)` methods
+accepted **any** value and stored it verbatim, so a negative timeout reached the
+transports unchecked. Downstream behaviour then diverged by engine for the very
+same configuration:
+
+- `engine-apache5` guards `if (timeout > 0)` around both `setSoTimeout` and the
+  connect timeout, so a negative value silently **disables** the timeout — the
+  call can block indefinitely;
+- `engine-okhttp` / the JDK engine hand the value to `OkHttpClient.Builder`
+  (`checkDuration`) and `HttpRequest.Builder.timeout(Duration)`, which throw
+  `IllegalArgumentException` — but only later, with an opaque message, at client
+  creation or first request rather than at configuration time.
+
+**Fix:** the int overloads now reject negative values with the same fail-fast
+contract as their `Duration` twins. Message: `connectTimeout must not be
+negative` / `socketTimeout must not be negative`. The `JRestlyClient.Builder`
+facade inherits the check through delegation. Positive values are unchanged.
+
+**Deliberately left as-is (documented non-goal):** `0` remains a valid input
+(§3 says *non-negative*). It is not, however, expressible as a request timeout
+on the JDK engine — `HttpRequest.Builder.timeout` rejects `Duration.ZERO` — so
+`socketTimeout(0)` fails loudly there while OkHttp/Apache5 read it as "no
+timeout". Changing `0` semantics (e.g. to "no timeout", or rejecting it) is a
+separate design decision, not a validation gap, and is out of scope here.
+
