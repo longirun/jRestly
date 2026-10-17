@@ -676,15 +676,16 @@ public class ProblemDetail {
             while (i < len) {
                 i = skipWhitespace(json, i);
                 if (i >= len) break;
-                if (json.charAt(i) == '}') break;
+                if (json.charAt(i) == '}') {
+                    i++;
+                    break;
+                }
 
                 if (json.charAt(i) != '"') {
                     throw new IllegalArgumentException("Expected string key at index " + i);
                 }
                 String key = parseString(json, i);
-                i += key.length() + 2; // skip parsed string including quotes (approx or exact)
-                // accurately skip quoted string:
-                i = skipQuotedString(json, skipWhitespace(json, i - key.length() - 2));
+                i = skipQuotedString(json, i);
 
                 i = skipWhitespace(json, i);
                 if (i >= len || json.charAt(i) != ':') {
@@ -701,7 +702,10 @@ public class ProblemDetail {
                 if (i < len && json.charAt(i) == ',') {
                     i++;
                 } else if (i < len && json.charAt(i) == '}') {
+                    i++;
                     break;
+                } else if (i < len) {
+                    throw new IllegalArgumentException("Expected ',' or '}' at index " + i);
                 }
             }
             return map;
@@ -728,7 +732,7 @@ public class ProblemDetail {
                     i++;
                 }
             }
-            return len;
+            throw new IllegalArgumentException("Unclosed quote starting at index " + start);
         }
 
         private static String parseString(String s, int start) {
@@ -766,7 +770,7 @@ public class ProblemDetail {
                 }
                 i++;
             }
-            return sb.toString();
+            throw new IllegalArgumentException("Unclosed string literal starting at index " + start);
         }
 
         private record ParseResult(Object value, int nextIndex) {
@@ -774,7 +778,9 @@ public class ProblemDetail {
 
         private static ParseResult parseValue(String s, int i) {
             int len = s.length();
-            if (i >= len) return new ParseResult(null, len);
+            if (i >= len) {
+                throw new IllegalArgumentException("Unexpected end of JSON at index " + i);
+            }
             char c = s.charAt(i);
 
             if (c == '"') {
@@ -803,25 +809,35 @@ public class ProblemDetail {
                 return new ParseResult(null, i + 4);
             }
 
-            // Number
-            int start = i;
-            while (i < len && (Character.isDigit(s.charAt(i)) || s.charAt(i) == '-' || s.charAt(i) == '.' || s.charAt(i) == 'e' || s.charAt(i) == 'E' || s.charAt(i) == '+')) {
-                i++;
-            }
-            String numStr = s.substring(start, i);
-            try {
-                if (numStr.contains(".") || numStr.contains("e") || numStr.contains("E")) {
-                    return new ParseResult(Double.parseDouble(numStr), i);
-                } else {
-                    long l = Long.parseLong(numStr);
-                    if (l >= Integer.MIN_VALUE && l <= Integer.MAX_VALUE) {
-                        return new ParseResult((int) l, i);
+            // Number: must start with a digit or minus sign
+            if (Character.isDigit(c) || c == '-') {
+                int start = i;
+                if (c == '-') {
+                    i++;
+                    if (i >= len || !Character.isDigit(s.charAt(i))) {
+                        throw new IllegalArgumentException("Invalid number at index " + start);
                     }
-                    return new ParseResult(l, i);
                 }
-            } catch (NumberFormatException e) {
-                return new ParseResult(numStr, i);
+                while (i < len && (Character.isDigit(s.charAt(i)) || s.charAt(i) == '.' || s.charAt(i) == 'e' || s.charAt(i) == 'E' || s.charAt(i) == '+' || s.charAt(i) == '-')) {
+                    i++;
+                }
+                String numStr = s.substring(start, i);
+                try {
+                    if (numStr.contains(".") || numStr.contains("e") || numStr.contains("E")) {
+                        return new ParseResult(Double.parseDouble(numStr), i);
+                    } else {
+                        long l = Long.parseLong(numStr);
+                        if (l >= Integer.MIN_VALUE && l <= Integer.MAX_VALUE) {
+                            return new ParseResult((int) l, i);
+                        }
+                        return new ParseResult(l, i);
+                    }
+                } catch (NumberFormatException e) {
+                    throw new IllegalArgumentException("Invalid number format at index " + start + ": " + numStr, e);
+                }
             }
+
+            throw new IllegalArgumentException("Unexpected token at index " + i + ": '" + c + "'");
         }
 
         private static List<Object> parseArray(String s, int start) {
@@ -830,7 +846,12 @@ public class ProblemDetail {
             int i = start + 1; // skip '['
             while (i < len) {
                 i = skipWhitespace(s, i);
-                if (i >= len || s.charAt(i) == ']') break;
+                if (i >= len) {
+                    throw new IllegalArgumentException("Unclosed array starting at index " + start);
+                }
+                if (s.charAt(i) == ']') {
+                    break;
+                }
 
                 ParseResult res = parseValue(s, i);
                 list.add(res.value);
@@ -841,6 +862,8 @@ public class ProblemDetail {
                     i++;
                 } else if (i < len && s.charAt(i) == ']') {
                     break;
+                } else {
+                    throw new IllegalArgumentException("Expected ',' or ']' at index " + i);
                 }
             }
             return list;
@@ -868,7 +891,7 @@ public class ProblemDetail {
                     }
                 }
             }
-            return len - 1;
+            throw new IllegalArgumentException("Unclosed bracket '" + open + "' starting at index " + start);
         }
     }
 }

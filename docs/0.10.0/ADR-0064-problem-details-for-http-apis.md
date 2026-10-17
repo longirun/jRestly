@@ -64,3 +64,15 @@ Implements the standard members defined by RFC 9457 §3.1:
 1. **Enterprise Grade Error Handling:** Callers consuming RFC 7807 / 9457 APIs can access structured errors via `ex.getProblemDetail().orElseThrow()` without writing custom error DTOs.
 2. **Backward Compatibility:** All existing exception signatures and string getters (`getRawBody()`, `getStatusCode()`, `getResponseHeaders()`) remain 100% intact.
 3. **Zero Dependencies:** Pure Java 21 core with zero external library requirements.
+
+## Amendment #242 (2026-10-17)
+
+**ZeroDepJsonParser Hardening against Malformed Input, Infinite Loops and OOM:**
+1. *Issue:* In `ProblemDetail$ZeroDepJsonParser.parseValue`, unrecognized tokens (such as `[?]`, `[abc]`, `{"key": }`) fell through to the number parsing routine, read zero characters, caught `NumberFormatException`, and returned an empty string with an un-advanced index `i`. In `parseArray`, this triggered an infinite loop allocating memory until `OutOfMemoryError`. In addition, keys containing escaped characters caused an inaccurate offset calculation in `i - key.length() - 2`.
+2. *Resolution:*
+   - Number parsing strictly verifies a leading digit or minus sign before attempting numeric extraction.
+   - Any unrecognized token immediately throws an `IllegalArgumentException` with the token and character position.
+   - String key skipping in `parseObject` uses direct `skipQuotedString(json, i)`, ensuring exact index positioning regardless of escaped characters.
+   - Unclosed strings, arrays, brackets, missing colons, and missing commas throw actionable `IllegalArgumentException` fail-fast errors instead of looping or misparsing.
+   - Default method coverage for `PayloadCodec` and `PayloadCodecProvider` brought class coverage across the entire library to **100.00% (143/143 classes)**.
+

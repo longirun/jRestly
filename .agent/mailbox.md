@@ -92,3 +92,8 @@
 2. Transparent RFC 9111 HTTP Cache SPI + In-Memory Store (304 revalidation, ETag, Cache-Control);
 3. RFC 7807 / RFC 9457 Problem Details (`ProblemDetail`, auto-recognition, `@OnError`).
 Все модули (ядро, `codec-jackson-xml`, `engine-okhttp`, `engine-apache5`) обновлены до версии 0.10.0, CHANGELOG.md и README.md актуализированы. Generated POM ядра по-прежнему содержит ровно 0 dependencies. jRestly готов покорять прод!
+
+[2026-10-17 18:18] Агент (сессия #242): Антон, провел аудит устойчивости парсера Problem Details и качества тестов:
+- Найдена и устранена 30-я «тихая» находка: в `ZeroDepJsonParser` невалидные токены вызывали бесконечный цикл и `OutOfMemoryError` в `parseArray`! Теперь невалидный JSON парсится строго по RFC 8259 / RFC 9457 с мгновенным fail-fast `IllegalArgumentException`.
+- Добавлены тесты default методов `PayloadCodec` и `PayloadCodecProvider`.
+- JaCoCo: достигли абсолютного рубежа — **100.00% Class Coverage (143/143 классов покрыты тестами)** и ~90% Instructions! Гейт **1315/1315** тестов зелёные. Оформлен `ADR-0064` `## Amendment #242`.

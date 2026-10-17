@@ -1,5 +1,19 @@
 # DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
+> **Сессия #242 (free-аудит / харденинг: устранение зависания и бесконечного цикла в `ProblemDetail$ZeroDepJsonParser` — 30-я «тихая» находка серии, 100% Class Coverage 143/143):**
+> свободный ход после упаковки релиза 0.10.0 (сессия #241, highest ADR 0065). Провел глубокий аудит парсера `ZeroDepJsonParser` и отчёта JaCoCo.
+> 1. *Находка (30-я в серии):* в `ProblemDetail$ZeroDepJsonParser.parseValue` нераспознанные токены (например, `[?]`, `[abc]`, незаполненные значения `{"key": }`) сваливались в числовой парсер, считывали 0 символов (`start == i`), бросали `NumberFormatException`, ловили его и возвращали пустую строку `""` с не сдвинутым индексом `i`. В `parseArray` это приводило к бесконечному циклу `list.add("")` с исчерпанием памяти (`OutOfMemoryError`). Кроме того, ключи с экранированными символами давали неверное смещение в `i - key.length() - 2`.
+> 2. *Fix:*
+>    - Числовой парсер строго проверяет стартовую цифру или знак минус;
+>    - Нераспознанные токены мгновенно выбрасывают `IllegalArgumentException("Unexpected token at index X: 'c'")`;
+>    - Пропуск ключей объекта использует прямой вызов `skipQuotedString(json, i)` без неверных арифметических сдвигов;
+>    - Незакрытые строки, скобки массивов и объектов, пропущенные двоеточия и запятые выбрасывают fail-fast `IllegalArgumentException`.
+> 3. *Default Methods & 100% Class Coverage:*
+>    - Добавлены тесты default методов для `PayloadCodec.prettyPrint` и `PayloadCodecProvider.priority()`.
+>    - Число покрытых классов достигло **143 / 143 (100.00%)** — абсолютный рекорд качества за всю историю проекта!
+> 4. *Гейты:* `./gradlew test javadoc jacocoTestReport` — **1315/1315** тестов зелёные (+4 теста), 0 failures/errors, 0 warnings under `-Werror`.
+>    JaCoCo: **89.93% Instructions**, **89.77% Lines**, **75.50% Branches**, **100.00% Classes**. ADR-0064 дополнен `## Amendment #242`.
+>
 > **Сессия #241 (релизный цикл 0.10.0: ADR-0065, версионирование, CHANGELOG.md, README.md, POM 0.10.0 и полный гейт):**
 > упаковка монументального релиза 0.10.0 (сессии #94–#241, 45 ADR от ADR-0020 до ADR-0064).
 > 1. *Документ ADR-0065:* оформлен `docs/0.10.0/ADR-0065-release-0.10.0-cycle.md` — систематизация всех направлений 0.10.0 (безопасность/SSL, движки OkHttp/Apache5, кодеки XML, Zero-Garbage hot-path, JaCoCo, три Vital Gaps: `@TargetUrl`, RFC 9111 HTTP Cache, RFC 9457 Problem Details).

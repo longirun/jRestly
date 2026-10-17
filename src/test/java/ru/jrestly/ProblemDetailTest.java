@@ -168,6 +168,61 @@ class ProblemDetailTest {
         assertThrows(IllegalArgumentException.class, () -> ProblemDetail.fromJson("   "));
         assertThrows(IllegalArgumentException.class, () -> ProblemDetail.fromJson("[1, 2, 3]"));
         assertThrows(IllegalArgumentException.class, () -> ProblemDetail.fromJson("not a json"));
+        assertThrows(IllegalArgumentException.class, () -> ProblemDetail.fromJson("{\"key\": [?]}"));
+        assertThrows(IllegalArgumentException.class, () -> ProblemDetail.fromJson("{\"key\": [abc]}"));
+        assertThrows(IllegalArgumentException.class, () -> ProblemDetail.fromJson("{\"key\": }"));
+        assertThrows(IllegalArgumentException.class, () -> ProblemDetail.fromJson("{\"key\": ?}"));
+    }
+
+    @Test
+    @DisplayName("ZeroDepJsonParser handles escaped keys, nested objects and various number formats")
+    void zeroDepJsonParserAdvanced() {
+        String json = """
+                {
+                  "type": "https://example.org/error",
+                  "title": "Complex Error",
+                  "status": 500,
+                  "detail": "Failed",
+                  "escaped\\"key": "val1",
+                  "escaped\\\\key": "val2",
+                  "negativeInt": -42,
+                  "floatingPoint": -3.1415,
+                  "exponent": 1.2e3,
+                  "nestedObj": {
+                    "inner": "value"
+                  },
+                  "nestedArr": [1, "two", false, null]
+                }
+                """;
+
+        ProblemDetail pd = ProblemDetail.fromJson(json);
+        assertEquals(500, pd.getStatus());
+        assertEquals("val1", pd.getProperty("escaped\"key"));
+        assertEquals("val2", pd.getProperty("escaped\\key"));
+        assertEquals(-42, pd.getProperty("negativeInt"));
+        assertEquals(-3.1415, pd.getProperty("floatingPoint"));
+        assertEquals(1200.0, pd.getProperty("exponent"));
+        assertTrue(pd.getProperty("nestedObj") instanceof Map);
+        assertTrue(pd.getProperty("nestedArr") instanceof List);
+    }
+
+    @Test
+    @DisplayName("ZeroDepJsonParser syntax error handling")
+    void zeroDepJsonParserSyntaxErrors() {
+        // Missing colon
+        assertThrows(IllegalArgumentException.class, () -> ProblemDetail.fromJson("{\"key\" \"val\"}"));
+        // Missing comma between fields
+        assertThrows(IllegalArgumentException.class, () -> ProblemDetail.fromJson("{\"a\": 1 \"b\": 2}"));
+        // Unclosed string
+        assertThrows(IllegalArgumentException.class, () -> ProblemDetail.fromJson("{\"key\": \"val}"));
+        // Unclosed object
+        assertThrows(IllegalArgumentException.class, () -> ProblemDetail.fromJson("{\"key\": \"val\""));
+        // Unclosed array
+        assertThrows(IllegalArgumentException.class, () -> ProblemDetail.fromJson("{\"arr\": [1, 2}"));
+        // Missing value
+        assertThrows(IllegalArgumentException.class, () -> ProblemDetail.fromJson("{\"key\":}"));
+        // Leading minus without digits
+        assertThrows(IllegalArgumentException.class, () -> ProblemDetail.fromJson("{\"key\": -}"));
     }
 
     @Test

@@ -139,4 +139,30 @@ class CodecRegistryTest {
     void adapterRequiresCodec() {
         assertThrows(NullPointerException.class, () -> new JsonCodecAdapter(null));
     }
+
+    @Test
+    @DisplayName("PayloadCodec default prettyPrint decodes text with specified charset or UTF-8 fallback")
+    void payloadCodecDefaultPrettyPrint() {
+        PayloadCodec codec = new FakeCodec("application/xml");
+        assertNull(codec.prettyPrint(null, "application/xml", null));
+        assertEquals("<tag/>", codec.prettyPrint("<tag/>".getBytes(StandardCharsets.UTF_8), "application/xml", null));
+        assertEquals("<tag/>", codec.prettyPrint("<tag/>".getBytes(StandardCharsets.ISO_8859_1), "application/xml", StandardCharsets.ISO_8859_1));
+    }
+
+    @Test
+    @DisplayName("PayloadCodecProvider default priority is zero")
+    void payloadCodecProviderDefaultPriority() {
+        PayloadCodecProvider provider = new PayloadCodecProvider() {
+            @Override
+            public boolean isAvailable() {
+                return true;
+            }
+
+            @Override
+            public PayloadCodec createCodec() {
+                return new FakeCodec("application/custom");
+            }
+        };
+        assertEquals(0, provider.priority());
+    }
 }
