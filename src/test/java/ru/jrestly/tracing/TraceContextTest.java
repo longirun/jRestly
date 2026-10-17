@@ -116,5 +116,49 @@ class TraceContextTest {
         // Wrong parts count in version 00
         assertTrue(TraceContext.parse("00-" + VALID_TRACE_ID + "-" + VALID_SPAN_ID + "-01-extra").isEmpty());
         assertTrue(TraceContext.parse("00-" + VALID_TRACE_ID + "-" + VALID_SPAN_ID).isEmpty());
+        // Non-hex version
+        assertTrue(TraceContext.parse("zz-" + VALID_TRACE_ID + "-" + VALID_SPAN_ID + "-01").isEmpty());
+        assertTrue(TraceContext.parse("0-" + VALID_TRACE_ID + "-" + VALID_SPAN_ID + "-01").isEmpty());
+        // Non-hex flags
+        assertTrue(TraceContext.parse("00-" + VALID_TRACE_ID + "-" + VALID_SPAN_ID + "-zz").isEmpty());
+        assertTrue(TraceContext.parse("00-" + VALID_TRACE_ID + "-" + VALID_SPAN_ID + "-1").isEmpty());
+    }
+
+    @Test
+    @DisplayName("TraceContext 3-arg factory, 1-arg parse, and W3C forward-compatibility with future versions")
+    void threeArgFactoryAndForwardCompatibility() {
+        // 3-arg factory
+        TraceContext ctx3 = TraceContext.of(VALID_TRACE_ID, VALID_SPAN_ID, "00");
+        assertEquals("00", ctx3.traceFlags());
+        assertFalse(ctx3.isSampled());
+        assertNull(ctx3.traceState());
+
+        // 1-arg parse
+        String header00 = "00-" + VALID_TRACE_ID + "-" + VALID_SPAN_ID + "-01";
+        Optional<TraceContext> parsed00 = TraceContext.parse(header00);
+        assertTrue(parsed00.isPresent());
+        assertEquals(VALID_TRACE_ID, parsed00.get().traceId());
+        assertEquals("01", parsed00.get().traceFlags());
+        assertNull(parsed00.get().traceState());
+
+        // W3C forward compatibility: version 01 allows extra fields
+        String header01 = "01-" + VALID_TRACE_ID + "-" + VALID_SPAN_ID + "-01-future-extra-metadata";
+        Optional<TraceContext> parsed01 = TraceContext.parse(header01);
+        assertTrue(parsed01.isPresent(), "Version 01+ should allow forward-compatible extra fields");
+        assertEquals(VALID_TRACE_ID, parsed01.get().traceId());
+        assertEquals(VALID_SPAN_ID, parsed01.get().spanId());
+        assertEquals("01", parsed01.get().traceFlags());
+    }
+
+    @Test
+    @DisplayName("isSampled checks least significant bit of trace flags")
+    void isSampledFlags() {
+        assertFalse(TraceContext.of(VALID_TRACE_ID, VALID_SPAN_ID, "00").isSampled());
+        assertTrue(TraceContext.of(VALID_TRACE_ID, VALID_SPAN_ID, "01").isSampled());
+        assertFalse(TraceContext.of(VALID_TRACE_ID, VALID_SPAN_ID, "02").isSampled());
+        assertTrue(TraceContext.of(VALID_TRACE_ID, VALID_SPAN_ID, "03").isSampled());
+        assertFalse(TraceContext.of(VALID_TRACE_ID, VALID_SPAN_ID, "10").isSampled());
+        assertTrue(TraceContext.of(VALID_TRACE_ID, VALID_SPAN_ID, "11").isSampled());
     }
 }
+

@@ -269,4 +269,120 @@ class ResponseHeadersTest {
         assertEquals(Optional.of("not-a-valid-date"), badDate.lastModified());
         assertTrue(badDate.lastModifiedInstant().isEmpty());
     }
+
+    @Test
+    @DisplayName("ageSeconds() correctly parses valid, invalid, negative, and absent Age headers")
+    void ageSecondsParsing() {
+        ResponseHeaders validAge = new ResponseHeaders(200, List.of(new Header("Age", "3600")), Duration.ZERO);
+        assertEquals(OptionalLong.of(3600L), validAge.ageSeconds());
+        assertEquals(Optional.of("3600"), validAge.age());
+
+        ResponseHeaders zeroAge = new ResponseHeaders(200, List.of(new Header("Age", "0")), Duration.ZERO);
+        assertEquals(OptionalLong.of(0L), zeroAge.ageSeconds());
+
+        ResponseHeaders negativeAge = new ResponseHeaders(200, List.of(new Header("Age", "-15")), Duration.ZERO);
+        assertTrue(negativeAge.ageSeconds().isEmpty());
+
+        ResponseHeaders invalidAge = new ResponseHeaders(200, List.of(new Header("Age", "not-a-number")), Duration.ZERO);
+        assertTrue(invalidAge.ageSeconds().isEmpty());
+
+        ResponseHeaders noAge = new ResponseHeaders(200, List.of(), Duration.ZERO);
+        assertTrue(noAge.ageSeconds().isEmpty());
+    }
+
+    @Test
+    @DisplayName("captureCallable wraps call with checked exception, cleans ThreadLocal, and supports nested calls")
+    void captureCallablePattern() throws Exception {
+        // Success case with Callable
+        CapturedResponse<String> res = ResponseHeaders.captureCallable(() -> {
+            Consumer<ResponseHeaders> captor = ResponseHeaders.CURRENT_CAPTOR.get();
+            assertNotNull(captor);
+            captor.accept(new ResponseHeaders(200, List.of(new Header("ETag", "\"v100\"")), Duration.ofMillis(5)));
+            return "callable-success";
+        });
+        assertEquals("callable-success", res.result());
+        assertEquals(Optional.of("\"v100\""), res.headers().etag());
+        assertNull(ResponseHeaders.CURRENT_CAPTOR.get());
+
+        // Checked exception propagates and ThreadLocal is cleaned up
+        assertThrows(java.io.IOException.class, () -> ResponseHeaders.captureCallable(() -> {
+            throw new java.io.IOException("disk I/O error");
+        }));
+        assertNull(ResponseHeaders.CURRENT_CAPTOR.get());
+
+        // Nested captureCallable restores previous captor correctly
+        CapturedResponse<String> outer = ResponseHeaders.captureCallable(() -> {
+            CapturedResponse<Integer> inner = ResponseHeaders.captureCallable(() -> {
+                Consumer<ResponseHeaders> innerCaptor = ResponseHeaders.CURRENT_CAPTOR.get();
+                assertNotNull(innerCaptor);
+                innerCaptor.accept(new ResponseHeaders(201, List.of(new Header("X-Inner", "in")), Duration.ZERO));
+                return 42;
+            });
+            assertEquals(42, inner.result());
+            assertEquals(201, inner.headers().statusCode());
+            assertEquals(Optional.of("in"), inner.headers().firstValue("X-Inner"));
+
+            Consumer<ResponseHeaders> outerCaptor = ResponseHeaders.CURRENT_CAPTOR.get();
+            assertNotNull(outerCaptor);
+            outerCaptor.accept(new ResponseHeaders(200, List.of(new Header("X-Outer", "out")), Duration.ZERO));
+            return "outer-success";
+        });
+        assertEquals("outer-success", outer.result());
+        assertEquals(Optional.of("out"), outer.headers().firstValue("X-Outer"));
+        assertNull(ResponseHeaders.CURRENT_CAPTOR.get());
+    }
+
+    @Test
+    @DisplayName("Parses Set-Cookie and Set-Cookie2 headers and builds case-insensitive cookieMap")
+    void cookiesAndCookieMap() {
+        List<Header> headers = List.of(
+                new Header("Set-Cookie", "session=s123; Path=/; Secure"),
+                new Header("Set-Cookie2", "pref=dark; Path=/"),
+                new Header("Set-Cookie", "flag=; Path=/")
+        );
+        ResponseHeaders resp = new ResponseHeaders(200, headers, Duration.ZERO);
+
+        assertEquals(3, resp.cookies().size());
+        assertTrue(resp.cookie("session").isPresent());
+        assertTrue(resp.cookie("SESSION").isPresent()); // case-insensitive
+        assertEquals(Optional.of("s123"), resp.cookieValue("session"));
+        assertEquals(Optional.of("s123"), resp.cookieValue("SESSION"));
+
+        assertTrue(resp.cookie("pref").isPresent());
+        assertEquals(Optional.of("dark"), resp.cookieValue("pref"));
+
+        assertTrue(resp.cookie("nonexistent").isEmpty());
+        assertTrue(resp.cookieValue("nonexistent").isEmpty());
+
+        Map<String, String> cookieMap = resp.cookieMap();
+        assertEquals(3, cookieMap.size());
+        assertEquals("s123", cookieMap.get("session"));
+        assertEquals("s123", cookieMap.get("SESSION"));
+        assertEquals("dark", cookieMap.get("pref"));
+        assertEquals("", cookieMap.get("flag"));
+    }
+
+    @Test
+    @DisplayName("populate overloads with version, duration, and trailers")
+    void populateAndTrailers() {
+        ResponseHeaders resp = new ResponseHeaders();
+        resp.populate(200, List.of(new Header("Trailer", "X-Checksum")), Duration.ofMillis(25), java.net.http.HttpClient.Version.HTTP_2);
+
+        assertTrue(resp.isPopulated());
+        assertEquals(200, resp.statusCode());
+        assertEquals(java.net.http.HttpClient.Version.HTTP_2, resp.version());
+        assertTrue(resp.isHttp2());
+        assertFalse(resp.isHttp1());
+        assertEquals(Duration.ofMillis(25), resp.duration());
+
+        // Trailers
+        assertEquals(List.of("X-Checksum"), resp.declaredTrailers());
+        resp.populateTrailers(List.of(new Header("X-Checksum", "sha256:abcd")));
+        assertEquals(Optional.of("sha256:abcd"), resp.firstTrailer("X-Checksum"));
+        assertEquals(Optional.of("sha256:abcd"), resp.firstTrailer("x-checksum"));
+        assertEquals(List.of("sha256:abcd"), resp.trailerValues("X-Checksum"));
+        assertTrue(resp.firstTrailer("X-Missing").isEmpty());
+        assertTrue(resp.trailerValues("X-Missing").isEmpty());
+    }
 }
+

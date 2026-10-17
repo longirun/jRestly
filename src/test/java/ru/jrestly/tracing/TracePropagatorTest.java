@@ -155,5 +155,52 @@ class TracePropagatorTest {
         assertEquals(2, headers.size());
         assertEquals("cid-1", headers.get("X-Request-ID"));
         assertEquals("tenant-alpha", headers.get("X-Tenant-ID"));
+
+        // Empty or null composite
+        TracePropagator emptyComp1 = TracePropagators.composite();
+        assertTrue(emptyComp1.inject(ctx).isEmpty());
+
+        TracePropagator emptyComp2 = TracePropagators.composite((TracePropagator[]) null);
+        assertTrue(emptyComp2.inject(ctx).isEmpty());
+    }
+
+    @Test
+    @DisplayName("TracePropagators standard correlationId factories and validations")
+    void testStandardCorrelationIdFactoriesAndValidations() {
+        // Default correlationId() uses X-Request-ID and UUID
+        TracePropagator defaultProp = TracePropagators.correlationId();
+        TraceRequestContext ctx = new TraceRequestContext(Object.class, null, "https://api.example.com", HttpMethod.GET, List.of());
+        Map<String, String> mapDefault = defaultProp.inject(ctx);
+        assertTrue(mapDefault.containsKey("X-Request-ID"));
+        assertEquals(36, mapDefault.get("X-Request-ID").length());
+
+        // Single argument correlationId("X-Custom")
+        TracePropagator customProp = TracePropagators.correlationId("X-Custom-Trace");
+        Map<String, String> mapCustom = customProp.inject(ctx);
+        assertTrue(mapCustom.containsKey("X-Custom-Trace"));
+
+        // ThreadLocal without generateIfMissing returns empty when unset
+        ThreadLocal<String> emptyTl = new ThreadLocal<>();
+        TracePropagator noGenProp = TracePropagators.threadLocal("X-Opt-Trace", emptyTl, false);
+        assertTrue(noGenProp.inject(ctx).isEmpty());
+
+        // w3c does not overwrite existing tracestate
+        TraceContext tc = TraceContext.of("4bf92f3577b34da6a3ce929d0e0e4736", "00f067aa0ba902b7", "01", "newstate=1");
+        TracePropagator w3c = TracePropagators.w3c(() -> tc, false);
+        TraceRequestContext ctxWithState = new TraceRequestContext(Object.class, null, "https://api.example.com", HttpMethod.GET,
+                List.of(new Header("tracestate", "existing=1")));
+        Map<String, String> w3cMap = w3c.inject(ctxWithState);
+        assertEquals("00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01", w3cMap.get("traceparent"));
+        assertFalse(w3cMap.containsKey("tracestate"), "Existing tracestate must not be overwritten");
+
+        // Factory null and blank validations
+        assertThrows(NullPointerException.class, () -> TracePropagators.correlationId(null));
+        assertThrows(IllegalArgumentException.class, () -> TracePropagators.correlationId("   "));
+        assertThrows(NullPointerException.class, () -> TracePropagators.correlationId("X-Req", null));
+        assertThrows(NullPointerException.class, () -> TracePropagators.w3c(null, false));
+        assertThrows(NullPointerException.class, () -> TracePropagators.threadLocal(null, emptyTl, false));
+        assertThrows(IllegalArgumentException.class, () -> TracePropagators.threadLocal("  ", emptyTl, false));
+        assertThrows(NullPointerException.class, () -> TracePropagators.threadLocal("X-Req", null, false));
     }
 }
+

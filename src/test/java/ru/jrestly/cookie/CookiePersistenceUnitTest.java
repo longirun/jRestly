@@ -388,6 +388,95 @@ class CookiePersistenceUnitTest {
         assertThrows(NullPointerException.class, () -> JRestlyClient.builder().persistentCookieStore(null));
     }
 
+    @Test
+    @DisplayName("PersistentCookieStore getURIs() delegates and builder supports custom delegate")
+    void persistentCookieStoreGetUrisAndCustomDelegate() {
+        TestCookiePersister persister = new TestCookiePersister();
+        CookieStore customDelegate = new java.net.CookieManager().getCookieStore();
+
+        PersistentCookieStore store = PersistentCookieStore.builder()
+                .delegate(customDelegate)
+                .persister(persister)
+                .build();
+
+        assertSame(customDelegate, store.getDelegate());
+        assertTrue(store.getURIs().isEmpty());
+
+        URI uri = URI.create("https://example.com/api");
+        HttpCookie cookie = new HttpCookie("test", "val");
+        cookie.setDomain("example.com");
+        cookie.setPath("/api");
+        store.add(uri, cookie);
+
+        List<URI> uris = store.getURIs();
+        assertFalse(uris.isEmpty());
+        assertEquals(customDelegate.getURIs(), uris);
+    }
+
+    @Test
+    @DisplayName("PersistentCookieStore handles .local domains, empty domains, and secure/path variations during preload")
+    void persistentCookieStoreLocalDomainAndEmptyDomain() {
+        TestCookiePersister persister = new TestCookiePersister();
+
+        // 1. Cookie with .local domain (starts with dot)
+        HttpCookie localCookie1 = new HttpCookie("c1", "v1");
+        localCookie1.setDomain(".myservice.local");
+        localCookie1.setPath("/app");
+        localCookie1.setSecure(true);
+
+        // 2. Cookie with .local domain (no leading dot)
+        HttpCookie localCookie2 = new HttpCookie("c2", "v2");
+        localCookie2.setDomain("backend.local");
+        localCookie2.setPath("");
+        localCookie2.setSecure(false);
+
+        // 3. Cookie with null domain and blank path
+        HttpCookie noDomainCookie = new HttpCookie("c3", "v3");
+        noDomainCookie.setDomain(null);
+        noDomainCookie.setPath(null);
+
+        // 4. Cookie with empty domain
+        HttpCookie emptyDomainCookie = new HttpCookie("c4", "v4");
+        emptyDomainCookie.setDomain("   ");
+
+        // 5. Expired cookie should be skipped
+        HttpCookie expiredCookie = new HttpCookie("c5", "v5");
+        expiredCookie.setDomain("expired.com");
+        expiredCookie.setMaxAge(0);
+
+        persister.preloaded.addAll(List.of(localCookie1, localCookie2, noDomainCookie, emptyDomainCookie, expiredCookie));
+
+        PersistentCookieStore store = PersistentCookieStore.of(persister);
+        assertEquals(4, store.size());
+
+        // Verifying cookies for bare host (without .local)
+        List<HttpCookie> forBareHost1 = store.get(URI.create("https://myservice/app"));
+        assertEquals(1, forBareHost1.size());
+        assertEquals("c1", forBareHost1.get(0).getName());
+
+        List<HttpCookie> forBareHost2 = store.get(URI.create("http://backend/"));
+        assertEquals(1, forBareHost2.size());
+        assertEquals("c2", forBareHost2.get(0).getName());
+    }
+
+    @Test
+    @DisplayName("FileCookiePersister handles path without parent directory")
+    void fileCookiePersisterWithoutParentPath(@TempDir Path tempDir) throws IOException {
+        Path originalUserDir = Path.of(".").toAbsolutePath();
+        Path tempFile = tempDir.resolve("direct-cookies.txt");
+        // Using file directly with its parent or relative representation
+        FileCookiePersister persister = FileCookiePersister.of(tempFile);
+        HttpCookie c = new HttpCookie("k", "v");
+        c.setDomain("test.local");
+        persister.saveAll(List.of(c));
+
+        assertTrue(Files.exists(tempFile));
+        assertEquals(1, persister.loadAll().size());
+        persister.clear();
+        assertFalse(Files.exists(tempFile));
+    }
+
+
     private static final class TestCookiePersister implements CookiePersister {
         final List<HttpCookie> preloaded = new ArrayList<>();
         final List<HttpCookie> lastSaved = new ArrayList<>();

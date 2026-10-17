@@ -100,5 +100,31 @@ Implements the standard members defined by RFC 9457 §3.1:
    - Total test suite reached **1343 / 1343** tests green (+19 tests across all modules, 0 failures, 0 errors).
    - JaCoCo coverage established a new historic high: **92.02% Instructions** (28,738 / 31,231), **91.92% Lines** (6,248 / 6,797), **77.76% Branches**, **95.29% Methods**, and **100.00% Classes (143/143)**.
 
+## Amendment #246 (2026-10-17)
+
+**Peripheral Hardening, Wire Contract Verification & JaCoCo 80% Branch / 93.5% Instruction Milestone:**
+1. *ResponseHeaders & Transport Ergonomics:*
+   - Added unit tests for `ResponseHeaders.ageSeconds()`, validating non-negative parsing, absent header defaults, negative values, and malformed strings.
+   - Tested `ResponseHeaders.captureCallable(Callable<T>)` covering checked exceptions propagation, guaranteed ThreadLocal cleanup on failures, and nested execution scopes.
+   - Verified `Set-Cookie2` header parsing, `cookie(name)` and `cookieValue(name)` case-insensitivity, and `cookieMap()` empty-string fallback for null values.
+   - Verified 4-arg `populate` overload and HTTP/2 trailers accessors (`declaredTrailers`, `firstTrailer`).
+2. *WireResponse Comprehensive Contract:*
+   - Built dedicated `WireResponseUnitTest` covering all `of(...)` static factory overloads (status code only, string bodies, byte arrays, headers with null/non-null bodies), `hasBody()` semantics, `Builder` body overloads (byte[], string, charset, stream), null version fallback to HTTP/1.1, equality, hashCode, and formatted `toString()`.
+3. *Persistent Cookie Storage & Tracing:*
+   - Verified `PersistentCookieStore.getURIs()` delegation to underlying store, `Builder.delegate(...)`, `.local` domain normalization during preload, and `FileCookiePersister` on paths without parent directories.
+   - Verified `TraceContext.of(...)` 3-arg factory, 1-arg `parse(...)`, W3C forward compatibility Level 1 for future versions with extra fields, and `TracePropagators` default factories, null/empty composites, and input validations.
+4. *ProblemDetail & ZeroDepJsonParser:*
+   - Tested typed property mismatch safety in `getProperty(name, Class<T>)`, URI instances and property name blank filtering in `Builder`.
+   - Verified parser resilience against malformed numbers (`1.2.3`, `1e+`), unclosed brackets in nested structures, and non-string object keys.
+5. *Quality Metrics:*
+   - Total test suite reached **1376 / 1376** tests green (+21 tests across all modules, 0 failures, 0 errors).
+   - **JaCoCo Coverage Milestones:**
+     * **CLASS:** **143 / 143 (100.00%)** — complete class coverage across all modules.
+     * **BRANCH:** **80.17%** (3,533 / 4,407) — surpassed 80% branch coverage for the first time in project history!
+     * **INSTRUCTION:** **93.51%** (29,174 / 31,198) — new historic all-time high!
+     * **LINE:** **93.39%** (6,346 / 6,795) — new historic all-time high!
+     * **METHOD:** **96.76%** (1,372 / 1,418) — new historic all-time high!
+
+
 
 

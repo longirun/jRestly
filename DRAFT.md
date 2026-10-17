@@ -1,5 +1,39 @@
 # DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
+> **Сессия #246 (free-аудит / качество: верификация контрактов WireResponse, ResponseHeaders, PersistentCookieStore, TraceContext, ProblemDetail, исторический рубеж JaCoCo 80.17% Branch / 93.51% Instruction Coverage):**
+> свободный ход развития качества и устойчивости кодовой базы.
+> 1. *Сьют `WireResponseUnitTest`:*
+>    - Создан специализированный сьют `ru.jrestly.http.WireResponseUnitTest` (+10 тестов), детально верифицирующий все методы `WireResponse` и `WireResponse.Builder`:
+>      `of(statusCode)`, `of(statusCode, String)` (null/non-null), `of(statusCode, byte[])` (null/empty/non-empty), `of(statusCode, headers, String/byte[])`, `header(name)` case-insensitive поиск и null-check, `hasBody()`, `Builder.body(byte[])`, `Builder.body(String, Charset)`, `Builder.stream(InputStream)` со сбросом байтов, `Builder.version(null)` дефолт к `HTTP_1_1`, `Builder.headers(null)` / `Builder.trailers(null)` null-safety, а также `equals()`, `hashCode()`, и форматирование `toString()`.
+> 2. *ResponseHeaders:*
+>    - `ageSeconds()`: детальные проверки неотрицательного парсинга, нулевого возраста, отрицательных значений (`OptionalLong.empty()`), нечисловых строк и отсутствующего заголовка;
+>    - `captureCallable(Callable<T>)`: проверен успешный возврат и связывание заголовков, проброс checked exceptions (например, `IOException`) с гарантированной очисткой ThreadLocal `CURRENT_CAPTOR`, и вложенные вызовы с восстановлением предыдущего captor;
+>    - `Set-Cookie2` заголовок: верифицирован парсинг и объединение с `Set-Cookie`, регистронезависимый поиск `cookie(name)` / `cookieValue(name)`, и `cookieMap()` с дефолтом `""` для cookie без значений;
+>    - `populate` 4-аргументная перегрузка с `HttpClient.Version.HTTP_2` и HTTP/2 trailers (`declaredTrailers`, `firstTrailer`, `trailerValues`).
+> 3. *PersistentCookieStore & FileCookiePersister:*
+>    - `PersistentCookieStore.getURIs()` делегирование к underlying store и `Builder.delegate(customDelegate)`;
+>    - Обработка `.local` доменов при preload (автоматическое связывание с bare host без `.local`), обработка cookie с пустым/null доменом;
+>    - `FileCookiePersister` на путях без родительской директории (относительные пути).
+> 4. *TraceContext & TracePropagators:*
+>    - `TraceContext.of(traceId, spanId, traceFlags)` 3-аргументная фабрика, `TraceContext.parse(traceparent)` 1-аргументный метод;
+>    - W3C Level 1 forward-compatibility: версии 01+ с дополнительными метаданными успешно парсируются;
+>    - `isSampled()` побитовая проверка младшего бита traceFlags ("00", "01", "02", "03", "10", "11");
+>    - Дефолтные фабрики `TracePropagators.correlationId()`, `TracePropagators.correlationId(headerName)`, безопасный пустой composite, threadLocal без fallback генерации, защита существующего `tracestate` от перезаписи, и строгая null/blank валидация аргументов.
+> 5. *ProblemDetail & ZeroDepJsonParser:*
+>    - Проверка безопасного возврата `null` при несоответствии типов в `getProperty(name, Class<T>)`;
+>    - `Builder.instance(URI)` и фильтрация пустых/null имен свойств в `Builder.property`;
+>    - Проверка fail-fast ошибок `ZeroDepJsonParser` при невалидных числах (`1.2.3`, `1e+`), незакрытых скобках во вложенных объектах/массивах, и не-строковых ключах.
+> 6. *TDD и гейты:*
+>    - Всего тестов: **1376 / 1376** green across all 5 modules (+21 тест, 0 failures, 0 errors).
+>    - Javadoc чист под `-Werror`, 0 warnings.
+>    - **JaCoCo Coverage:**
+>      * **CLASS:** **143 / 143 (100.00%)**
+>      * **BRANCH:** **80.17%** (3,533 / 4,407) — впервые преодолен рубеж 80%!
+>      * **INSTRUCTION:** **93.51%** (29,174 / 31,198) — новый исторический рекорд!
+>      * **LINE:** **93.39%** (6,346 / 6,795) — новый исторический рекорд!
+>      * **METHOD:** **96.76%** (1,372 / 1,418) — новый исторический рекорд!
+>    - ADR-0064 дополнен `## Amendment #246`.
+>
 > **Сессия #245 (free-аудит / качество: устранение бесконечного цикла в `MoshiCodec.copyValue` на null-токенах — 32-я «тихая» находка серии, очистка мертвого кода в `HttpTemplateBuilder`, рекорд JaCoCo 92.85% Instructions / 79.08% Branches):**
 > свободный ход развития качества и устойчивости кодовой базы.
 > 1. *Находка (32-я в серии):* в `MoshiCodec.copyValue` при обработке ветки `case NULL` ридер вызывал `writer.nullValue()`, но забывал потребить токен `reader.nextNull()`. При наличии `null` значений в массивах (или объектах) ридер зависал в бесконечном цикле, непрерывно аллоцируя сегменты памяти буфера Okio вплоть до `java.lang.OutOfMemoryError: Java heap space`. Fix: добавлен вызов `reader.nextNull()` в ветке `case NULL`.

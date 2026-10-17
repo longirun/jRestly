@@ -513,7 +513,44 @@ class ProblemDetailTest {
         assertEquals(1, ex.getResponseHeaders().size());
         assertEquals("1", ex.getResponseHeaders().getFirst().value());
     }
+
+    @Test
+    @DisplayName("ProblemDetail.Builder instance(URI), property blank filtering and typed property mismatch")
+    void builderInstanceUriAndPropertyFiltering() {
+        URI instUri = URI.create("https://api.example.com/item/1");
+        ProblemDetail pd = ProblemDetail.builder()
+                .instance(instUri)
+                .property("validKey", "validValue")
+                .property(null, "ignored")
+                .property("   ", "ignored")
+                .build();
+
+        assertEquals(instUri, pd.getInstance());
+        assertEquals("validValue", pd.getProperty("validKey"));
+        assertNull(pd.getProperty("nonExistent"));
+
+        // Type mismatch returns null safely
+        assertNull(pd.getProperty("validKey", Integer.class));
+        assertEquals("validValue", pd.getProperty("validKey", String.class));
+        assertNull(pd.getProperty("nonExistent", String.class));
+    }
+
+    @Test
+    @DisplayName("ZeroDepJsonParser invalid numbers, unclosed brackets, and non-string keys")
+    void parserInvalidNumbersAndUnclosedBrackets() {
+        // Invalid numbers
+        assertThrows(IllegalArgumentException.class, () -> ProblemDetail.fromJson("{\"num\": 1.2.3}"));
+        assertThrows(IllegalArgumentException.class, () -> ProblemDetail.fromJson("{\"num\": 1e+}"));
+
+        // Unclosed brackets in nested objects and arrays
+        assertThrows(IllegalArgumentException.class, () -> ProblemDetail.fromJson("{\"nested\": {\"key\": \"val\""));
+        assertThrows(IllegalArgumentException.class, () -> ProblemDetail.fromJson("{\"arr\": [1, 2, 3"));
+
+        // Non-string key inside nested object
+        assertThrows(IllegalArgumentException.class, () -> ProblemDetail.fromJson("{\"nested\": {123: \"val\"}}"));
+    }
 }
+
 
 
 

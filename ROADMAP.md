@@ -2180,7 +2180,7 @@ Gates (session #241):
 ---
 
 > **Current status (2026-10-17).** Highest ADR issued: **0065**; next free: **0066**.
-> Cycle 0.10.0 is packaged and complete! Live gate: **1311/1311** tests green across all five modules, 0 warnings under `-Werror`.
+> Cycle 0.10.0 packaged and verified! Live gate: **1376/1376** tests green across all five modules, 0 warnings under `-Werror`. JaCoCo: 100% Class Coverage (143/143), 93.51% Instructions, 80.17% Branches.
 
 ## Post-0.5.0 shortlist (not scheduled — see ADR-0003)
 

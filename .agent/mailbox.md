@@ -51,12 +51,6 @@
 
 ---
 
-[2026-10-17 18:38] Агент (сессия #243): Антон, провел еще один шаг глубокого аудита кодовой базы и периферии новых фичей:
-- Найдена и устранена 31-я «тихая» находка: `ProblemDetail.toJson()` искажал нативные массивы Java (`String[]`, `int[]`, `Object[]` и др.) в extension properties — они форматировались как строковые токены `"[Ljava.lang.String;@5e265ba4"` вместо JSON-массивов `[...]`. Добавлена рекурсивная поддержка массивов любого типа.
-- В `ZeroDepJsonParser` ужесточена валидация unicode-escape (`\uXXXX`) последовательностей (строгая проверка 4 hex-символов).
-- Расширено покрытие тестами `ProblemDetailException`, `CacheControl.toString()` и вычисления `freshnessLifetime` по `Expires`/`Date` в `InMemoryHttpCache`.
-- Зафиксирован исторический рекорд качества: преодолён 90% рубеж по инструкциям и строкам — **90.85% Instructions**, **90.64% Lines**, **76.92% Branches** при **100.00% Class Coverage (143/143 классов)**! Полный гейт **1324/1324** тестов зелёные, javadoc чист под `-Werror`. Оформлен `ADR-0064` `## Amendment #243`.
-
 [2026-10-17 18:58] Агент (сессия #244): Антон, провел глубокий аудит и верификацию главного публичного фасада `JRestlyClient.Builder`, сериализации вложенных структур в Problem Details и периферийных компонентов:
 - Создан новый тестовый сьют `JRestlyClientBuilderTest` (+10 тестов), детально верифицирующий все методы фасада билдера (кэш, виртуальные нити, cookies, прокси, сжатие, трейсинг/correlationId, resilience CB/RL, авторизация Bearer/Basic/ApiKey, mock/short-circuit, таймауты, движки) и их трансляцию в `ModuleInfo`.
 - В `ProblemDetail` протестирована сериализация вложенных `Map<?, ?>` и `null` значений в extension properties, обработка `Long` чисел (> Integer.MAX_VALUE), парсинг escape-символов (`\/`, `\b`, `\f`, `\r`, `\t`), кавычек во вложенных структурах и строковых статусов в `ZeroDepJsonParser`.
@@ -70,3 +64,12 @@
 - Расширено тестовое покрытие для `CircuitBreakerConfig` (валидация параметров и кастомный предикат), `SimpleCachedResponse` (null headers/body/version, валидаторы, замена Age), `FileCookiePersister` (кастомный Charset, null-checks), `SingleFlightTokenManager` (обработка Error, null token), `JacksonCodec` (ошибки десериализации байтов и сериализации), `MethodMetadata` (аксессоры и флаги параметров), `ProblemDetail` (RFC заголовки для 20 статусов, URI в свойствах, escape управляющих символов < 0x20).
 - Новый исторический рекорд JaCoCo: **92.85% Instructions** (28,967 / 31,198), **92.73% Lines** (6,301 / 6,795), **79.08% Branches** (3,485 / 4,407), **95.91% Methods** (1,360 / 1,418) при **100.00% Class Coverage (143/143 классов)**!
 - Тестовая база выросла до **1355 / 1355** тестов (100% green across all 5 modules), javadoc чист под `-Werror`.
+
+[2026-10-17 19:48] Агент (сессия #246): Антон, провел глубокий аудит и верификацию периферийных моделей, транспорта и заголовков:
+- Создан тестовый сьют `WireResponseUnitTest` (+10 тестов), детально верифицирующий все фабрики `WireResponse.of(...)`, методы билдера, оверлоады тел (byte[], string, charset, stream), дефолты протоколов, equals/hashCode/toString.
+- В `ResponseHeaders`: верифицирован `ageSeconds()`, `captureCallable(Callable)` (в т.ч. checked exceptions, ThreadLocal cleanup и вложенные вызовы), заголовок `Set-Cookie2` и `cookieMap()` с null-значениями, `populate` и HTTP/2 trailers.
+- В `PersistentCookieStore` и `FileCookiePersister`: верифицировано делегирование `getURIs()`, `Builder.delegate(...)`, авто-нормализация `.local` доменов при preload, и пути без родительских директорий.
+- В `TraceContext` и `TracePropagators`: верифицированы 3-arg фабрика `of(...)`, 1-arg `parse(...)`, W3C forward-compatibility Level 1 с future extra metadata, дефолтные correlationId фабрики, пустые композиты и валидация аргументов.
+- В `ProblemDetail` и `ZeroDepJsonParser`: проверены type mismatch в `getProperty(name, Class)`, `Builder.instance(URI)`, обработка ошибок при битых числах и незакрытых скобках.
+- Преодолен исторический рубеж JaCoCo: **впервые пробит рубеж 80% Branch Coverage (80.17%)**, а Instruction Coverage вырос до **93.51%** (29,174 / 31,198), Line Coverage — **93.39%**, Method Coverage — **96.76%** при **100.00% Class Coverage (143/143 классов)**!
+- База тестов достигла **1376 / 1376** тестов (100% green across all 5 modules, 0 failures, 0 errors, 0 warnings under `-Werror`). Оформлен `ADR-0064` `## Amendment #246`.
