@@ -177,6 +177,35 @@ public class ControllerValidationTest {
         assertTrue(ControllerValidator.validate(ValidRetryController.class).isEmpty());
     }
 
+    interface BlankAuthDetailsController {
+        @ru.jrestly.annotation.Get(path = "/login")
+        @ru.jrestly.annotation.SetAuthDetails(headerName = "")
+        String login();
+    }
+
+    interface ValidAuthDetailsController {
+        @ru.jrestly.annotation.Get(path = "/login")
+        @ru.jrestly.annotation.SetAuthDetails(headerName = "access-token")
+        String login();
+    }
+
+    @Test
+    void rejectsBlankSetAuthDetailsHeaderNameEagerly() {
+        // @SetAuthDetails.headerName is a required name attribute like @Trace.header /
+        // @Cookie.name, but a blank value silently disabled credential capture: the
+        // response-header lookup matched nothing, so the auth token was never written
+        // back. It now joins the eager-validation channel (ADR-0046).
+        List<String> problems = ControllerValidator.validate(BlankAuthDetailsController.class);
+        assertEquals(1, problems.size());
+        assertTrue(problems.getFirst().contains("login(): @SetAuthDetails headerName must not be blank"));
+
+        JRestlyClient client = JRestlyClient.builder().baseUrl("http://localhost:1").build();
+        assertThrows(ControllerValidationException.class, () -> client.get(BlankAuthDetailsController.class));
+
+        // no false positive on a properly named capture
+        assertTrue(ControllerValidator.validate(ValidAuthDetailsController.class).isEmpty());
+    }
+
     @Test
     void rejectsBlankHeaderOrParamNameOnClassAndMethod() {
         var classHeaderProblems = ControllerValidator.validate(BlankClassHeaderController.class);

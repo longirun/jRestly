@@ -1,5 +1,32 @@
 # DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
+> **Сессия #208 (free-аудит: `@SetAuthDetails(headerName = "")` тихо отключал
+> захват креды — 18-я «тихая» находка серии, прямое продолжение #207):** свободный
+> ход из контекста #207 (активная зона пуста, highest ADR 0060). Продолжил приём
+> #207 — сверка «семьи декларативных аннотаций» на предмет, у всех ли членов
+> семейства eager-валидация. Взгляд упал на **name-bearing** аннотации:
+> `@Trace.header`, `@Cookie.name`, `@RequestHeader.name`, `@CircuitBreaker.name`,
+> `@RateLimiter.name` — все валидируют blank; **`@SetAuthDetails.headerName`
+> (required-атрибут без дефолта) — единственная без проверки**. Blank-имя не падает:
+> `AuthProvider.captureAuthDetails(headerName, …)` фильтрует заголовки ответа через
+> `headerName.equalsIgnoreCase(header.name())`, что не совпадает ни с чем →
+> токен **никогда не захватывается**, клиент бесконечно шлёт устаревшую/пустую
+> креду. Тот же класс «тихого no-op», что null `@Compress` (#190) и ленивый
+> `@Retry` (#207). Fix: `ControllerValidator.validateMethod` получил blank-проверку
+> (`method(): @SetAuthDetails headerName must not be blank`) в общий агрегированный
+> `ControllerValidationException` при создании прокси; публичный API не тронут,
+> корректно названный захват работает как раньше. TDD red-first: новый
+> `ControllerValidationTest.rejectsBlankSetAuthDetailsHeaderNameEagerly`
+> (blank → 1 проблема + eager `ControllerValidationException`; валидное имя —
+> no-false-positive) — красный ровно по `assertEquals(1, problems.size())` → зелёный.
+> ADR-0046 → `## Amendment #208`. Гейт **1234/1234** (core 1154 + engine-okhttp 25 +
+> engine-apache5 25 + codec-jackson-xml 15 + benchmarks 15), 0 failures/errors,
+> `./gradlew test javadoc` зелёный под `-Werror`, 0 warnings. Не тронуты (наблюдение):
+> `@MultipartFormFile.partName` (required, blank → part с пустым `name=""`, но
+> серверная семантика неоднозначна — не «дыра»), `@ExpectStatus`/`@FollowRedirects`
+> (инварианты нигде не объявлены — фича, #207). Дальше — free-аудит или концепт
+> ADR-0061+.
+>
 > **Сессия #207 (free-аудит: невалидный `@Retry` проскакивал eager-валидацию
 > контроллера — 17-я «тихая» находка серии):** свободный ход из контекста #206
 > (активная зона пуста). Проверял «дублирующие входные пути» (#200) на уровне

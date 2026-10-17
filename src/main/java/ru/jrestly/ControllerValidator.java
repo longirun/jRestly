@@ -23,6 +23,7 @@ import ru.jrestly.annotation.PathVariable;
 import ru.jrestly.annotation.RequestBody;
 import ru.jrestly.annotation.RequestParam;
 import ru.jrestly.annotation.Retry;
+import ru.jrestly.annotation.SetAuthDetails;
 import ru.jrestly.http.RequestType;
 import ru.jrestly.http.ResponseHeaders;
 import ru.jrestly.http.DownloadProgressListener;
@@ -280,6 +281,13 @@ public final class ControllerValidator {
 
         if (method.isAnnotationPresent(Retry.class)) {
             validateRetry(method.getName() + "()", method.getAnnotation(Retry.class), problems);
+        }
+
+        if (method.isAnnotationPresent(SetAuthDetails.class)) {
+            SetAuthDetails authDetails = method.getAnnotation(SetAuthDetails.class);
+            if (authDetails.headerName().isBlank()) {
+                problems.add(method.getName() + "(): @SetAuthDetails headerName must not be blank");
+            }
         }
 
         for (Accept accept : method.getAnnotationsByType(Accept.class)) {

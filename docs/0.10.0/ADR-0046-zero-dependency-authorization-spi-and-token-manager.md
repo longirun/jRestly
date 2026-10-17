@@ -70,3 +70,13 @@ This approach was insufficient for modern cloud environments:
 - **Zero-Dependency Guarantee:** All token management, RFC 7617 base64 encoding, and single-flight concurrency rely strictly on `java.base` (`CompletableFuture`, `AtomicReference`, `Base64`).
 - **Production-Ready Resilience:** Eliminates cache stampede under high concurrent load (such as Java 21 Virtual Threads) and provides automatic self-healing on token invalidation.
 - **Full Backward Compatibility:** Existing `AuthProvider` and `@RequestHeader` mechanisms remain untouched.
+
+## Amendment #208
+
+**Missing eager validation of `@SetAuthDetails.headerName` — a blank value silently disabled credential capture.**
+
+The legacy capture path (Decision §2, `@SetAuthDetails`) names a response header whose value is written back into the `AuthProvider` via `captureAuthDetails(headerName, responseHeaders)`. `headerName` is a *required* attribute (no default), yet `ControllerValidator` never checked it: every other name-bearing declarative annotation is validated eagerly for blank (`@Trace.header`, `@Cookie.name`, `@RequestHeader.name`, `@CircuitBreaker.name`, `@RateLimiter.name`), but `@SetAuthDetails` was the lone gap.
+
+A blank `headerName` does not fail — `captureAuthDetails` filters response headers with `headerName.equalsIgnoreCase(header.name())`, which matches nothing, so the token is never captured and the client keeps sending its stale (or no) credential indefinitely. That is the same silent no-op class as the null `@Compress` algorithm (ADR-0041 Amendment #190) and the un-validated `@Retry` invariants (ADR-0040 Amendment #207).
+
+Fix: `ControllerValidator.validateMethod` adds a blank check (`method(): @SetAuthDetails headerName must not be blank`), joining the aggregated `ControllerValidationException` raised at proxy creation. No public API change; a properly named capture behaves exactly as before. Covered by `ControllerValidationTest.rejectsBlankSetAuthDetailsHeaderNameEagerly` (red-first).
