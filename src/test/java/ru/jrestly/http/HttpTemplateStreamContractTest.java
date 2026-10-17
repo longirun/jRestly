@@ -240,6 +240,25 @@ class HttpTemplateStreamContractTest {
         assertNotNull(t.getHttpEngine());
     }
 
+    @Test
+    @DisplayName("fallbackMethod: template with null method resolves to exchange() method in RequestContext")
+    void fallbackMethodResolvesToExchangeMethodWhenNull() {
+        HttpTemplate t = template();
+        java.util.concurrent.atomic.AtomicReference<java.lang.reflect.Method> methodRef = new java.util.concurrent.atomic.AtomicReference<>();
+        t.setRequestInterceptors(List.of((req, ctx) -> {
+            methodRef.set(ctx.method());
+            ctx.shortCircuit(WireResponse.of(200, "ok"));
+            return req;
+        }));
+        t.setReturnType(String.class);
+        t.setStreamBody(false);
+        t.exchange();
+
+        assertNotNull(methodRef.get());
+        assertEquals("exchange", methodRef.get().getName());
+        assertEquals(HttpTemplate.class, methodRef.get().getDeclaringClass());
+    }
+
     // ------------------------------------------------------------------
     // fixtures
     // ------------------------------------------------------------------

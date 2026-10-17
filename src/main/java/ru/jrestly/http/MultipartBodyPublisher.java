@@ -99,7 +99,7 @@ public final class MultipartBodyPublisher {
     }
 
     // Streams an InputStream chunk-by-chunk with a known Content-Length
-    private static HttpRequest.BodyPublisher ofStream(Supplier<? extends InputStream> source, long contentLength) {
+    static HttpRequest.BodyPublisher ofStream(Supplier<? extends InputStream> source, long contentLength) {
         // BodyPublishers.fromPublisher requires positive length; 0-length short-circuits to noBody
         if (contentLength == 0) {
             return HttpRequest.BodyPublishers.noBody();

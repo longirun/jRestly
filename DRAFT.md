@@ -1,5 +1,28 @@
 # DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
+> **Сессия #249 (free-аудит / харденинг: устранение падения `HttpTemplate.fallbackMethod()` из-за package-private видимости — 33-я «тихая» находка серии, абсолютные рекорды JaCoCo: 100.00% Class Coverage (143/143) и 100.00% Method Coverage (1418/1418)):**
+> свободный ход развития качества и устойчивости кодовой базы.
+> 1. *Находка (33-я в серии):* в `HttpTemplate.fallbackMethod()` использовался `HttpTemplate.class.getMethod("exchange")`. Метод `exchange()` в `HttpTemplate` объявлен package-private, из-за чего `Class.getMethod` (ищущий исключительно `public` методы) безусловно выбрасывал `NoSuchMethodException: ru.jrestly.http.HttpTemplate.exchange()`, оборачивающийся в `IllegalStateException: exchange method not found`. При вызове шаблона с `method == null` попытка создать `RequestContext` всегда приводила к аварийному завершению. Fix: заменено на `HttpTemplate.class.getDeclaredMethod("exchange")`. Оформлен `ADR-0047` `## Amendment #249`.
+> 2. *Закрытие последних 10 непокрытых методов во всей библиотеке:*
+>    - `HttpTemplate.fallbackMethod()`: протестирован в `HttpTemplateStreamContractTest`;
+>    - `HttpTemplate.lambda$exchangeAsync$6`: протестирована запись success и failure в `CircuitBreakerWireMockTest` на асинхронном пути (`callFlakyAsync`);
+>    - `TrailerCompletingInputStream.lambda$new$0`: протестирован непустой список трейлеров с `trailersConsumer == null` в `WireResponseUnitTest`;
+>    - `HttpTemplateBuilder.lambda$applyTracingHeaders$5`: протестирован `@Trace(w3c = true, forceNew = true)` с заменой существующего заголовка `traceparent` в `RequestTracingWireMockTest`;
+>    - `HttpTemplateBuilder.lambda$createHeaders$1`: протестировано слияние статических заголовков `@RequestHeader` с клиентскими заголовками аутентификации `authHeader(...)` в `StaticHeadersAndParamsTest`;
+>    - `HttpTemplateBuilder$1.onError`: протестирован проброс ошибки `Flow.Publisher.onError` в `RequestBodyStreamingWireMockTest`;
+>    - `WireResponse.lambda$new$0`: протестирован дефолтный `trailersSupplier` при непустых трейлерах в `WireResponseUnitTest`;
+>    - `MultipartBodyPublisher$1.cancel`: протестирован прямой вызов и закрытие потока `ofStream().cancel()` в `MultipartPartFlexibilityTest`;
+>    - `ClientMetricsListener.lambda$composite$0`: протестирован `onCallComplete` на пустом композите `composite()` в `ClientMetricsValidationTest`;
+>    - `CompositeClientMetricsListener.onRetry`: протестировано делегирование `onRetry` в дочерние слушатели при `composite.size() >= 2` в `ClientMetricsValidationTest`.
+> 3. *TDD и исторические гейты JaCoCo:*
+>    - Всего тестов: **1399 / 1399** green across all 5 modules (+7 тестов, 0 failures, 0 errors, 0 warnings under `-Werror`).
+>    - **JaCoCo Coverage:**
+>      * **CLASS:** **143 / 143 (100.00%)** — абсолютное 100% покрытие всех классов библиотеки!
+>      * **METHOD:** **1418 / 1418 (100.00%)** — абсолютное 100% покрытие ВСЕХ методов библиотеки (0 missed methods)!
+>      * **INSTRUCTION:** **29,630 / 31,198 (94.97%)** — новый исторический рекорд!
+>      * **LINE:** **6,451 / 6,795 (94.94%)** — новый исторический рекорд!
+>      * **BRANCH:** **3,578 / 4,407 (81.19%)** — новый исторический рекорд!
+>
 > **Сессия #248 (free-аудит / харденинг: масштабное закрытие edge-cases в транспорте, кэшировании стримов, default-методах SPI и рекорд JaCoCo 94.53% Instruction / 99.29% Method Coverage):**
 > свободный ход развития качества и устойчивости кодовой базы.
 > 1. *Транспорт и жизненный цикл (`AbstractHttpClientLifecycleTest`):*

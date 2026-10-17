@@ -66,6 +66,10 @@ class RequestTracingWireMockTest extends BaseWireMockTest {
         @Trace(forceNew = true)
         String forceNewTrace(@RequestHeader(name = "X-Request-ID") String id);
 
+        @Get(path = "/api/trace/force-new-w3c")
+        @Trace(w3c = true, forceNew = true)
+        String forceNewW3cTrace(@RequestHeader(name = "traceparent") String traceparent);
+
         @Get(path = "/api/trace/async")
         CompletableFuture<String> asyncTrace();
     }
@@ -175,6 +179,24 @@ class RequestTracingWireMockTest extends BaseWireMockTest {
         assertNotNull(header);
         assertFalse(header.equals("manual-req-id-777"));
         assertNotNull(UUID.fromString(header));
+    }
+
+    @Test
+    @DisplayName("@Trace(w3c = true, forceNew = true) removes user-supplied traceparent and generates new W3C context")
+    void shouldForceNewW3cTraceWhenRequested() {
+        stubFor(get(urlEqualTo("/api/trace/force-new-w3c"))
+                .willReturn(aResponse().withStatus(200).withBody("ok")));
+
+        InterfaceLevelTraceApi api = client.get(InterfaceLevelTraceApi.class);
+        String res = api.forceNewW3cTrace("00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01");
+        assertEquals("ok", res);
+
+        List<LoggedRequest> requests = findAll(getRequestedFor(urlEqualTo("/api/trace/force-new-w3c")));
+        assertEquals(1, requests.size());
+        String header = requests.get(0).getHeader("traceparent");
+        assertNotNull(header);
+        assertFalse(header.equals("00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"));
+        assertTrue(header.startsWith("00-"));
     }
 
     @Test

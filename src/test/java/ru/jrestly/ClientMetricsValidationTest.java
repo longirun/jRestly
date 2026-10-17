@@ -195,14 +195,19 @@ class ClientMetricsValidationTest {
             }
         };
 
-        ClientMetricsListener compositeLifecycle = ClientMetricsListener.composite(detailed);
+        // Two listeners ensure CompositeClientMetricsListener instance is created (size >= 2)
+        ClientMetricsListener compositeLifecycle = ClientMetricsListener.composite(detailed, detailed);
         compositeLifecycle.onCallStart(context, wireReq);
         compositeLifecycle.onRetry(context, wireReq, 2, new IOException("retry-test"), Duration.ofMillis(50));
         compositeLifecycle.onAttemptComplete(context, wireReq, 1, Optional.empty(), Optional.empty(), Duration.ofMillis(20));
 
-        assertEquals(1, lifecycleEvents[0]);
-        assertEquals(1, lifecycleEvents[1]);
-        assertEquals(1, lifecycleEvents[2]);
+        assertEquals(2, lifecycleEvents[0]);
+        assertEquals(2, lifecycleEvents[1]);
+        assertEquals(2, lifecycleEvents[2]);
+
+        // Empty composite listener onCallComplete is a safe no-op
+        ClientMetricsListener emptyComposite = ClientMetricsListener.composite();
+        emptyComposite.onCallComplete(dummyMetrics);
 
         // Default interface onRetry is a no-op
         ClientMetricsListener defaultListener = metrics -> {};

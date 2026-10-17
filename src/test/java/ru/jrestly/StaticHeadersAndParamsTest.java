@@ -324,4 +324,27 @@ class StaticHeadersAndParamsTest extends BaseWireMockTest {
         verify(postRequestedFor(urlEqualTo("/api/static/token-override"))
                 .withRequestBody(equalTo("grant_type=password&client_id=my-app")));
     }
+
+    @Test
+    @DisplayName("Static headers merge cleanly with client-level auth headers")
+    void staticHeadersMergeWithAuthHeaders() {
+        stubFor(get(urlEqualTo("/api/static/single-header"))
+                .willReturn(aResponse().withStatus(200).withBody("auth-merged")));
+
+        JRestlyClient authClient = JRestlyClient.builder()
+                .baseUrl(client.getModuleInfo().getEnvironment().getUrl())
+                .authHeader("Authorization", "Bearer token-123")
+                .build();
+        try {
+            SingleClassHeaderController controller = authClient.get(SingleClassHeaderController.class);
+            String result = controller.call();
+            assertEquals("auth-merged", result);
+
+            verify(getRequestedFor(urlEqualTo("/api/static/single-header"))
+                    .withHeader("Authorization", equalTo("Bearer token-123"))
+                    .withHeader("X-Api-Key", equalTo("secret-123")));
+        } finally {
+            authClient.close();
+        }
+    }
 }

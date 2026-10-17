@@ -10,6 +10,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Unit tests for the multipart part factory (ADR-0024): text parts with UTF-8
@@ -149,5 +150,33 @@ class MultipartPartFlexibilityTest {
             @Override public void onError(Throwable throwable) {}
             @Override public void onComplete() {}
         });
+    }
+
+    @Test
+    @DisplayName("MultipartBodyPublisher ofStream subscription cancel() closes underlying stream")
+    void multipartStreamSubscriptionCancel() {
+        java.util.concurrent.atomic.AtomicBoolean closed = new java.util.concurrent.atomic.AtomicBoolean();
+        java.io.InputStream is = new java.io.ByteArrayInputStream("data".getBytes(StandardCharsets.UTF_8)) {
+            @Override
+            public void close() throws java.io.IOException {
+                closed.set(true);
+                super.close();
+            }
+        };
+        var publisher = MultipartBodyPublisher.ofStream(() -> is, 4L);
+        publisher.subscribe(new java.util.concurrent.Flow.Subscriber<java.nio.ByteBuffer>() {
+            @Override
+            public void onSubscribe(java.util.concurrent.Flow.Subscription subscription) {
+                // Request 1 chunk to open the stream
+                subscription.request(1);
+                // Cancel subscription
+                subscription.cancel();
+            }
+
+            @Override public void onNext(java.nio.ByteBuffer item) {}
+            @Override public void onError(Throwable throwable) {}
+            @Override public void onComplete() {}
+        });
+        assertTrue(closed.get());
     }
 }

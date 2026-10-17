@@ -270,5 +270,32 @@ class WireResponseUnitTest {
                 null)) {
             assertEquals(-1, in.read());
         }
+
+        // Null consumer with non-empty trailers invokes default no-op consumer
+        try (TrailerCompletingInputStream in = new TrailerCompletingInputStream(
+                new ByteArrayInputStream(new byte[0]),
+                () -> List.of(new Header("X-Trailer", "val")),
+                null)) {
+            assertEquals(-1, in.read());
+        }
+    }
+
+    @Test
+    @DisplayName("WireResponse compact constructor generates default trailersSupplier when null and trailers non-empty")
+    void testWireResponseTrailersSupplierDefault() {
+        WireResponse resp = new WireResponse(
+                200,
+                List.of(),
+                null,
+                null,
+                HttpClient.Version.HTTP_1_1,
+                List.of(new Header("X-Trailer", "value")),
+                null
+        );
+        assertNotNull(resp.trailersSupplier());
+        List<Header> trailers = resp.trailersSupplier().get();
+        assertEquals(1, trailers.size());
+        assertEquals("X-Trailer", trailers.get(0).name());
+        assertEquals("value", trailers.get(0).value());
     }
 }

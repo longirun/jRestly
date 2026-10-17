@@ -464,4 +464,26 @@ class RequestBodyStreamingWireMockTest {
         String result = api.uploadNullable(null);
         assertEquals("OK_NULL", result);
     }
+
+    @Test
+    @DisplayName("Upload Flow.Publisher propagates upstream onError to request subscriber")
+    void testUploadPublisherPropagatesError() {
+        wireMock.stubFor(post(urlEqualTo("/upload/strings"))
+                .willReturn(ok("OK_STRINGS")));
+
+        Flow.Publisher<String> failingPublisher = subscriber -> {
+            subscriber.onSubscribe(new Flow.Subscription() {
+                @Override
+                public void request(long n) {
+                    subscriber.onError(new IOException("simulated stream failure"));
+                }
+
+                @Override
+                public void cancel() {
+                }
+            });
+        };
+
+        assertThrows(RuntimeException.class, () -> api.uploadStrings(failingPublisher));
+    }
 }

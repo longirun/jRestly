@@ -593,7 +593,7 @@ class HttpTemplate {
 
     private static Method fallbackMethod() {
         try {
-            return HttpTemplate.class.getMethod("exchange");
+            return HttpTemplate.class.getDeclaredMethod("exchange");
         } catch (NoSuchMethodException e) {
             throw new IllegalStateException("exchange method not found", e);
         }

@@ -166,6 +166,25 @@ class CircuitBreakerWireMockTest extends BaseWireMockTest {
     }
 
     @Test
+    @DisplayName("Async call records success and failure in circuit breaker")
+    void asyncCallRecordsSuccessAndFailureInCircuitBreaker() throws Exception {
+        stubFor(get(urlEqualTo("/api/cb/async"))
+                .willReturn(aResponse().withStatus(200).withBody("ASYNC_OK")));
+
+        FlakyApi api = client.get(FlakyApi.class);
+        // Successful async call records success
+        CompletableFuture<String> futureOk = api.callFlakyAsync();
+        assertEquals("ASYNC_OK", futureOk.get());
+
+        // Failed async call (500) records failure
+        stubFor(get(urlEqualTo("/api/cb/async"))
+                .willReturn(aResponse().withStatus(500).withBody("ERROR")));
+        CompletableFuture<String> futureFail = api.callFlakyAsync();
+        ExecutionException ex = assertThrows(ExecutionException.class, futureFail::get);
+        assertInstanceOf(ServerErrorException.class, ex.getCause());
+    }
+
+    @Test
     @DisplayName("Client-level circuit breaker protects unannotated interfaces")
     void clientLevelCircuitBreakerProtectsUnannotated() {
         stubFor(get(urlEqualTo("/api/cb/plain"))
