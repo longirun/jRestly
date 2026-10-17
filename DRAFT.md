@@ -1,5 +1,43 @@
 # DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
+> **Сессия #258 (free-аудит `HttpTemplate`, хвост `exchange()`/`exchangeAsync()`, ADR-0036 метрики × pre-wire сбой request-интерцептора: 36-я «тихая» находка — жизненный цикл метрик ломался на пути сбоя request-интерцептора до провода; гейт 1450/1450, BRANCH 83.47% и INSTRUCTION 95.90% и LINE 95.70% — новые рекорды):**
+> свободный ход по хвосту непокрытых ветвей `HttpTemplate` (196 missed по данным #257,
+> покрытие ветвей 79.12%), сужение на tail `exchange()`/`exchangeAsync()` — путь
+> pre-wire сбоя request-интерцептора в едином диспетчере `<T> T exchange()`.
+> 1. *Находка (36-я в серии):* ADR-0036 Amendment #195 починил short-circuit-путь,
+>    но сестринский pre-wire путь — когда `RequestInterceptor` **бросает** исключение
+>    до того, как запрос положен на провод, — всё ещё ломал SPI внутри одного
+>    логического вызова. В `catch` interceptor-failure срабатывало
+>    `notifyCallComplete` с `attempts = 1`, а `notifyCallStart` — объявленное
+>    «pairs 1:1 with `onCallComplete` (in-flight gauges stay balanced)» — находилось
+>    ниже, за тем местом, где `catch` уже перебрасывает (sync) или возвращает
+>    failed future (async). Слушатель видел `onCallComplete` **без** сопряжённого
+>    `onCallStart` (in-flight gauge ушёл в минус), а `attempts()` сообщал **1**
+>    для вызова, который физически не касался провода (`onAttemptComplete` — 0
+>    вызовов) — то же самопротиворечие, что #195 устранил для short-circuit,
+>    но на ветку сбоку.
+> 2. *TDD red-first:* 2 красных (sync + async) —
+>    `RequestPipelineTest.requestInterceptorFailurePairedMetricsLifecycle` и
+>    `asyncTwinRequestInterceptorFailurePairedMetricsLifecycle`: request-интерцептор,
+>    бросающий исключение, + записывающий `ClientMetricsListener` (`RecordingMetrics`);
+>    ассерты `onCallStart` x1 **до** `onCallComplete` x1 и `attempts() == 0`.
+>    До фикса: `expected: <[start, complete]> but was: <[complete]>`.
+> 3. *Fix:* в interceptor-failure `catch` — `notifyCallStart` сразу до
+>    `notifyCallComplete` и честный счётчик передач `0` (до движка ничего не
+>    дошло). Нормальный (небросающий) путь не тронут: `notifyCallStart` по-прежнему
+>    срабатывает ровно один раз на исходном месте. Javadoc `onCallStart` уточнён
+>    (срабатывает и когда интерцептор **падает**, не только short-circuit).
+>    ADR-0036 дополнен `## Amendment #258`.
+> 4. *TDD и исторические гейты JaCoCo:*
+>    - Всего тестов: **1450 / 1450** green across all 5 modules (+2 тестов, 0 failures, 0 errors, 0 warnings under `-Werror`).
+>    - **JaCoCo Coverage:**
+>      * **CLASS:** **143 / 143 (100.00%)**; **METHOD:** **1418 / 1418 (100.00%)** — абсолютное 100% сохранено!
+>      * **BRANCH:** **3,707 / 4,441 (83.47%)** — новый исторический рекорд!
+>      * **INSTRUCTION:** **30,044 / 31,328 (95.90%)** — новый исторический рекорд!
+>      * **LINE:** **6,527 / 6,820 (95.70%)** — новый исторический рекорд!
+>      * **COMPLEXITY:** **2,970 / 3,671 (80.90%)**.
+>    - `HttpTemplate`: missed branches 196 → **195** (ветви 79.12%).
+
 > **Сессия #257 (free-аудит `HttpTemplate`, кластер problem-detail/`@OnError`: 35-я «тихая» находка — BOM-префикс Problem Detail тела молча ронял структурированную ошибку; гейт 1448/1448, BRANCH 83.45% и INSTRUCTION 95.88% и LINE 95.69% — три новых рекорда):**
 > свободный ход по хвосту непокрытых ветвей `HttpTemplate` (201 missed), сужение
 > на кластер problem-detail: `probePayloadDecode` (20), `handleOnError` (15),

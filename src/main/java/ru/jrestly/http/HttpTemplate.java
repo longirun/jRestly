@@ -203,7 +203,11 @@ class HttpTemplate {
             } catch (Throwable t) {
                 invokeResponseInterceptors(requestContext, effectiveRequest, null, t, start);
                 if (hasMetrics) {
-                    notifyCallComplete(requestContext, effectiveRequest, null, t, start, 1);
+                    // ADR-0036 Amendment #258: the interceptor failed before any wire
+                    // transmission, so pair onCallStart with onCallComplete (1:1,
+                    // in-flight gauges stay balanced) and report the true count — 0.
+                    notifyCallStart(requestContext, effectiveRequest);
+                    notifyCallComplete(requestContext, effectiveRequest, null, t, start, 0);
                 }
                 if (async) {
                     CompletableFuture<Object> failed = new CompletableFuture<>();

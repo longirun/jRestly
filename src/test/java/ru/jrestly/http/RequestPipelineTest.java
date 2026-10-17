@@ -6,10 +6,13 @@ import ru.jrestly.annotation.Get;
 import ru.jrestly.annotation.OnError;
 import ru.jrestly.annotation.RequestParam;
 import ru.jrestly.fixtures.TestModuleInfo;
+import ru.jrestly.interceptor.RequestContext;
 import ru.jrestly.interceptor.RequestInterceptor;
 import ru.jrestly.interceptor.ResponseContext;
 import ru.jrestly.interceptor.ResponseInterceptor;
 import ru.jrestly.json.JsonCodec;
+import ru.jrestly.metrics.CallMetrics;
+import ru.jrestly.metrics.ClientMetricsListener;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
@@ -394,6 +397,53 @@ class RequestPipelineTest {
     }
 
     @Test
+    @DisplayName("ADR-0036 #258: interceptor failure pairs onCallStart with onCallComplete and reports 0 attempts (sync)")
+    void requestInterceptorFailurePairedMetricsLifecycle() throws Exception {
+        StubHttpClient client = new StubHttpClient(new ArrayDeque<>(), new AtomicReference<>());
+        HttpTemplate t = createTemplate("hello", new Object[]{"Anton"}, String.class);
+        t.setHttpClient(client);
+
+        RecordingMetrics metrics = new RecordingMetrics();
+        t.setMetricsListener(metrics);
+
+        RuntimeException boom = new RuntimeException("interceptor boom");
+        t.setRequestInterceptors(List.of((req, ctx) -> {
+            throw boom;
+        }));
+
+        RuntimeException thrown = assertThrows(RuntimeException.class, t::exchange);
+        assertSame(boom, thrown);
+
+        // onCallStart must fire exactly once, before onCallComplete (1:1 pairing),
+        // and attempts() must be 0 — the request never reached the wire.
+        assertEquals(List.of("start", "complete"), metrics.events);
+        assertEquals(List.of(0), metrics.attempts);
+    }
+
+    @Test
+    @DisplayName("ADR-0036 #258: interceptor failure pairs onCallStart with onCallComplete and reports 0 attempts (async)")
+    void asyncTwinRequestInterceptorFailurePairedMetricsLifecycle() throws Exception {
+        StubHttpClient client = new StubHttpClient(new ArrayDeque<>(), new AtomicReference<>());
+        HttpTemplate t = createTemplate("helloAsync", new Object[]{"Anton"}, String.class);
+        t.setHttpClient(client);
+
+        RecordingMetrics metrics = new RecordingMetrics();
+        t.setMetricsListener(metrics);
+
+        IllegalStateException boom = new IllegalStateException("async interceptor boom");
+        t.setRequestInterceptors(List.of((req, ctx) -> {
+            throw boom;
+        }));
+
+        CompletableFuture<String> future = t.exchange();
+        IllegalStateException ex = causeOf(future::join);
+        assertSame(boom, ex);
+
+        assertEquals(List.of("start", "complete"), metrics.events);
+        assertEquals(List.of(0), metrics.attempts);
+    }
+
+    @Test
     @DisplayName("stream response interceptor inspects metadata without consuming the live body stream")
     void streamResponseInterceptorReceivesMetadataWithoutConsumingBody() throws Exception {
         byte[] payload = "streaming-pipe-data".getBytes(StandardCharsets.UTF_8);
@@ -490,6 +540,27 @@ class RequestPipelineTest {
 
     private static <T> StubResponse<T> stubResponse(int status, Map<String, List<String>> headers, T body) {
         return new StubResponse<>(status, headers, body);
+    }
+
+    /**
+     * Records the metrics lifecycle events in invocation order: "start" on
+     * {@code onCallStart}, "complete" on {@code onCallComplete} (capturing the
+     * reported {@code attempts()}).
+     */
+    private static final class RecordingMetrics implements ClientMetricsListener {
+        final List<String> events = new ArrayList<>();
+        final List<Integer> attempts = new ArrayList<>();
+
+        @Override
+        public void onCallStart(RequestContext context, WireRequest request) {
+            events.add("start");
+        }
+
+        @Override
+        public void onCallComplete(CallMetrics metrics) {
+            events.add("complete");
+            attempts.add(metrics.attempts());
+        }
     }
 
     private static final class StubCodec implements JsonCodec {

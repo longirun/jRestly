@@ -190,3 +190,39 @@ onRetry numbers the phase-1 failure),
 `refresh401SumsAttemptsAcrossPhasesAsync` (async: 1, 2) and the new
 `refresh401AfterRetriesContinuousNumbersAsync` (async 503 → 401 → 200:
 1, 2, 3).
+
+## Amendment #258
+
+2026-10-18 · Session #258 (free-audit slice: ADR-0036 × the pre-wire
+request-interceptor failure path of `HttpTemplate.exchange` / `exchangeAsync`).
+
+Amendment #195 fixed the short-circuit path, but the sibling pre-wire failure
+path — a `RequestInterceptor` that **throws** before the request is placed on
+the wire — still broke the SPI inside one logical call. In the unified
+dispatch (`HttpTemplate.exchange`), the interceptor-failure `catch` fired
+`notifyCallComplete` with `attempts = 1`, yet `notifyCallStart` — declared
+«pairs 1:1 with `onCallComplete` (in-flight gauges stay balanced)» and
+«also invoked when a request interceptor short-circuits the call» — sat further
+down, past the point where the `catch` already rethrows (sync) or returns a
+failed future (async). A listener thus saw `onCallComplete` **without** a paired
+`onCallStart` (the in-flight gauge underflowed) while `attempts()` reported
+**1** for a call that never touched the wire (`onAttemptComplete` fired zero
+times) — the same self-contradiction #195 eliminated for short-circuited calls,
+one branch over.
+
+Resolution: the interceptor-failure `catch` now fires `notifyCallStart`
+immediately before `notifyCallComplete` and passes the true transmission count,
+`0` (nothing reached the engine). `onCallStart`/`onCallComplete` are paired 1:1
+on every pre-wire failure, `attempts()` equals the number of
+`onAttemptComplete` callbacks, and the `onCallStart` javadoc now names the
+failing-interceptor case alongside short-circuiting. The normal (non-throwing)
+path is untouched: `notifyCallStart` still fires exactly once, at its original
+site, before the wire attempt. Unit-gated (sync + async):
+`RequestPipelineTest.requestInterceptorFailurePairedMetricsLifecycle` and
+`RequestPipelineTest.asyncTwinRequestInterceptorFailurePairedMetricsLifecycle`
+(onCallStart x1 before onCallComplete x1, `attempts() == 0`, the interceptor's
+own exception preserved). Known refinement (non-goal here): the async circuit
+completes the future with a *checked* interceptor exception as-is, while the
+sync circuit wraps it in `RuntimeException`; in practice
+`RequestInterceptor.intercept` declares no checked exceptions, so only unchecked
+throwers reach this path today.
