@@ -370,6 +370,8 @@ public final class ControllerValidator {
             }
         }
 
+        RequestType requestType = resolveRequestType(method);
+
         for (java.lang.reflect.Parameter param : method.getParameters()) {
             if (param.isAnnotationPresent(RequestBody.class)) {
                 if (param.isAnnotationPresent(RequestParam.class)
@@ -403,6 +405,9 @@ public final class ControllerValidator {
                 MultipartFormFile part = param.getAnnotation(MultipartFormFile.class);
                 if (part.partName().isBlank()) {
                     problems.add(method.getName() + "(): @MultipartFormFile partName must not be blank");
+                }
+                if (!RequestType.MULTIPART_FORM_DATA.equals(requestType)) {
+                    problems.add(method.getName() + "(): @MultipartFormFile parameter requires requestType = MULTIPART_FORM_DATA");
                 }
             }
             if (UploadProgressListener.class.equals(param.getType())) {
@@ -445,7 +450,6 @@ public final class ControllerValidator {
                         && !p.isAnnotationPresent(RequestHeader.class))
                 .count();
         if (payloadParamCount == 0) {
-            RequestType requestType = resolveRequestType(method);
             if (requestType == RequestType.MULTIPART_FORM_DATA) {
                 problems.add(method.getName() + "(): MULTIPART_FORM_DATA method must have at least one parameter");
             } else if (requestType == RequestType.APPLICATION_FORM_URLENCODED) {

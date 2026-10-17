@@ -240,6 +240,34 @@ public class ControllerValidationTest {
         assertTrue(ControllerValidator.validate(ValidMultipartPartNameController.class).isEmpty());
     }
 
+    interface FileParamOnJsonController {
+        @ru.jrestly.annotation.Post(path = "/upload")
+        String upload(@ru.jrestly.annotation.MultipartFormFile(partName = "file") java.io.File file);
+    }
+
+    interface FileParamOnMultipartController {
+        @ru.jrestly.annotation.Post(path = "/upload", requestType = ru.jrestly.http.RequestType.MULTIPART_FORM_DATA)
+        String upload(@ru.jrestly.annotation.MultipartFormFile(partName = "file") java.io.File file);
+    }
+
+    @Test
+    void rejectsMultipartFormFileWithoutMultipartRequestTypeEagerly() {
+        // @MultipartFormFile parts are assembled only when the verb's requestType is
+        // MULTIPART_FORM_DATA; the inverse guard exists (MULTIPART_FORM_DATA requires
+        // a parameter), but a file parameter on a JSON/form method slipped through:
+        // the parts list stays null and the arguments are silently dropped from the
+        // wire request. It now joins the eager-validation channel (ADR-0024).
+        List<String> problems = ControllerValidator.validate(FileParamOnJsonController.class);
+        assertEquals(1, problems.size());
+        assertTrue(problems.getFirst().contains("upload(): @MultipartFormFile parameter requires requestType = MULTIPART_FORM_DATA"));
+
+        JRestlyClient client = JRestlyClient.builder().baseUrl("http://localhost:1").build();
+        assertThrows(ControllerValidationException.class, () -> client.get(FileParamOnJsonController.class));
+
+        // no false positive when the verb opts into multipart
+        assertTrue(ControllerValidator.validate(FileParamOnMultipartController.class).isEmpty());
+    }
+
     @Test
     void rejectsBlankHeaderOrParamNameOnClassAndMethod() {
         var classHeaderProblems = ControllerValidator.validate(BlankClassHeaderController.class);

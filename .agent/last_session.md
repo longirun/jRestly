@@ -1,86 +1,94 @@
-# Last Session: #213 (2026-10-17)
+# Last Session: #214 (2026-10-17)
 
 ## Что сделано
 
-**Free-аудит/проектное решение: `0`-таймаут был «принимаемым, но невыразимым»
-на JDK-движке — 23-я находка серии, закрытие non-goal #200.**
+**Free-аудит (ось #210 «парные декларативные конструкции» → асимметричный
+guard): `@MultipartFormFile` на методе без `requestType = MULTIPART_FORM_DATA`
+тихо выбрасывал части — 24-я «тихая» находка серии.**
 
-1. *Ход:* свободный выбор из контекста #212 (активная зона пуста, highest ADR
-   **0060**). Взял оставшийся хвост #200: `connectTimeout(0)` /
-   `socketTimeout(0)` валидны по ADR-0027 §3 («non-negative»), но JDK-движок
-   отвергает `Duration.ZERO` — `HttpClient.Builder.connectTimeout` **на
-   создании клиента**, `HttpRequest.Builder.timeout` **на первом запросе** —
-   голым `IllegalArgumentException: Invalid duration: PT0S`. OkHttp/Apache5 при
-   этом читают `0` как «без таймаута» → одна конфигурация ведёт себя
-   по-разному, на дефолтном движке падает поздно и непонятно.
-2. *Класс находки:* тот же «движко-/платформозависимый» класс, что #184/#199/
-   #200, но грань **новая**: не пробел валидации входа, а **недостающая
-   семантика легального значения**. Легальный вход, чья семантика задана только
-   реализацией транспорта.
-3. *Решение (автономия Антона):* **`0` = «без таймаута» на всех движках.**
-   Backward-compatible чтение (OkHttp/Apache и так так читали); отказ от нуля
-   сломал бы существующих пользователей. Формально закреплено в ADR-0027.
-4. *Fix:*
-   - `HttpTemplate.effectiveSocketTimeout(Duration methodTimeout, ModuleInfo)`
-     — единый источник правды для дедлайна запроса: `@Timeout` всегда
-     побеждает; иначе `getSocketTimeout() == 0` → `null` в `HttpEngineOptions`
-     (движки не ставят свой дедлайн; OkHttp/Apache5 и так гейтили `> 0`).
-     Вызывается из `HttpTemplateBuilder` и из fallback-веток
-     `HttpTemplate.send`/`sendAsync`.
-   - `JdkHttpEngine.create` применяет `connectTimeout` только при `> 0`
-     (дефолт JDK безграничный).
-   - Негативные значения по-прежнему отбиваются билдерами `SimpleModuleInfo`/
-     `JRestlyClient` (#200); `@Timeout` остаётся строго положительным.
-   - Javadoc: `ModuleInfo`, `SimpleModuleInfo.Builder` (int+Duration пары),
-     `JRestlyClient.Builder`, `HttpEngineOptions.timeout` — `0` = no timeout.
-5. *TDD red-first:* 2 e2e-теста в `TimeoutWireMockTest` (новый интерфейс
-   `ZeroTimeoutApi` + хелпер `stubZeroTimeoutEndpoint` с задержкой 100 мс):
-   `zeroConnectTimeoutDisablesConnectTimeout` (создание клиента + вызов) и
-   `zeroSocketTimeoutDisablesRequestTimeout` (запрос с `socketTimeout(0)`).
-   Оба красные на до-фикс коде ровно по `Invalid duration: PT0S`, зелёные после.
-6. *Документы:* ADR-0027 → `## Amendment #213`; `DRAFT.md` (блок-запись #213 +
-   хвост активной зоны); дневник `.agent/days/2026-10-17.md` (сессия #213 +
-   итог дня обновлён до 1241); mailbox (короткое уведомление); `last_session.md`.
-7. *Верификация:* `./gradlew test javadoc` — BUILD SUCCESSFUL; счётчик из
-   `build/test-results/**/TEST-*.xml` = ровно **1241/1241** (core 1161 +
+1. *Ход:* свободный выбор из контекста #213 (активная зона пуста, highest ADR
+   **0060**). Продолжил ось парных декларативных конструкций (#210/#211), но
+   зашёл с другой стороны: искал пару, у которой проверена лишь **одна**
+   половина.
+2. *Факт (асимметрия):* `ControllerValidator` режет *обратную* пару —
+   `MULTIPART_FORM_DATA`-метод без payload-параметра («must have at least one
+   parameter»). А **прямую** пару не проверял никто: `@MultipartFormFile`-параметр
+   на методе с дефолтным `requestType = APPLICATION_JSON` (обычный
+   `@Post/@Put/@Patch/@Delete`) или `APPLICATION_FORM_URLENCODED`. Части
+   собираются **только** в ветке `MULTIPART_FORM_DATA`
+   (`HttpTemplateBuilder.createMultipartParts`, строка ~867); в остальных ветках
+   `parts` остаётся `null`, тело строится другим путём — и аргументы-файлы
+   **молча выбрасываются** из запроса (ни ошибки, ни лога). Тот же класс
+   «тихой» мисконфигурации, что #207–#213.
+3. *Проверка:* зонд — валидатор на таком контроллере молчит (0 проблем);
+   red-first тест подтвердил (`assertEquals(1, problems.size())` падал, список
+   пуст).
+4. *Fix:* `ControllerValidator.validateMethod` вычисляет эффективный
+   `RequestType` **один раз** (hoisting: строка ~373, до параметрного цикла) и
+   для каждого `@MultipartFormFile`-параметра на не-multipart методе добавляет
+   `method(): @MultipartFormFile parameter requires requestType =
+   MULTIPART_FORM_DATA` в общий агрегированный `ControllerValidationException`
+   при создании прокси. Прежний локальный `RequestType requestType =
+   resolveRequestType(method)` в блоке `payloadParamCount == 0` переиспользует
+   hoisted-переменную. Публичный API не тронут.
+5. *TDD red-first:* новый
+   `ControllerValidationTest.rejectsMultipartFormFileWithoutMultipartRequestTypeEagerly`
+   (интерфейсы `FileParamOnJsonController` — `@Post` без requestType →
+   1 проблема + eager исключение; `FileParamOnMultipartController` — тот же
+   метод с `requestType = MULTIPART_FORM_DATA` → no-false-positive). Красный на
+   до-фикс коде ровно по `assertEquals(1, problems.size())` → зелёный.
+6. *Риск ложных срабатываний проверен:* все реальные `@MultipartFormFile` в
+   дереве (фикстуры `TestController`, `Multipart*`,
+   `CollectionFormatWireMockTest`, прогресс-тесты) уже объявляют
+   `requestType = MULTIPART_FORM_DATA` — полный прогон зелёный.
+7. *Документы:* ADR-0024 → `## Amendment #214`; `DRAFT.md` (блок-запись #214 +
+   хвост активной зоны); дневник `.agent/days/2026-10-17.md` (сессия #214 +
+   итог дня обновлён до 1242); mailbox (короткое уведомление); `last_session.md`.
+8. *Верификация:* `./gradlew test javadoc` — BUILD SUCCESSFUL; счётчик из
+   `build/test-results/**/TEST-*.xml` = ровно **1242/1242** (core 1162 +
    engine-okhttp 25 + engine-apache5 25 + codec-jackson-xml 15 + benchmarks 15),
    0 failures/errors, javadoc-гейт (`-Werror`) чист.
 
 ## Технические заметки
 
-- JDK-проверка (зонд): `HttpClient.Builder.connectTimeout(Duration.ZERO)` →
-  `Invalid duration: PT0S`; `HttpRequest.Builder.timeout(Duration.ZERO)` → то же.
-  Оба требуют строго положительное значение.
-- `engine-okhttp` принимает 0 в `connectTimeout/readTimeout/writeTimeout`
-  (OkHttp `checkDuration` пропускает 0 = без таймаута);
-  `engine-apache5` гейтит `if (socketTimeout > 0)` — оба согласны с новой
-  семантикой без правок.
-- `HttpTemplateBuilder` создаёт `HttpEngineOptions` **всегда** (не-null) с
-  `effectiveTimeout`; `HttpTemplate.send/sendAsync` fallback на
-  `effectiveSocketTimeout` — только для тестов, конструирующих шаблон напрямую.
-- Прогон одного класса: `./gradlew :test --tests 'ru.jrestly.TimeoutWireMockTest'`
+- Мёртвый код (наблюдение, не тронут): `MethodMetadata.hasMultipartParams()`
+  (строка ~1093) — package-private аксессор без единого вызова (вероятно,
+  задумывался именно под эту проверку).
+- `@MultipartFormFile` + `requestType != MULTIPART_FORM_DATA`:
+  `HttpTemplateBuilder` строка ~291 — ветка `APPLICATION_JSON` вызывает
+  `createJsonBodyPayload`, а `createBody` (строка ~859) возвращает `null` без
+  `@RequestBody`-параметра → тело пустое, части теряются. `createMultipartParts`
+  (строка ~867) вообще недостижима, пока requestType не multipart.
+- `@Get` фиксирован на `APPLICATION_JSON` (`resolveRequestType`, строка ~528) —
+  файл на `@Get` тоже отбивается (это правильно: тело у GET нет).
+- Прогон одного класса: `./gradlew :test --tests 'ru.jrestly.ControllerValidationTest'`
   (обязательно с `:` — иначе фильтр улетает в `:benchmarks:test`).
-- Счётчик тестов: python по `**/build/test-results/test/TEST-*.xml`.
-  `TimeoutWireMockTest.xml` → «tests»=8 (было 6).
+- Счётчик тестов: python по `**/build/test-results/test/TEST-*.xml` (бакеты:
+  `core` + `engine-okhttp` + `engine-apache5` + `codec-jackson-xml` +
+  `benchmarks`). `ControllerValidationTest.xml` → 15 тестов (было 14).
 - `GRADLE_USER_HOME=/tmp/opencode/gradle-home ./gradlew ...`.
 
-## Контекст для следующей сессии (#214)
+## Контекст для следующей сессии (#215)
 
-1. **Ветка** `agent-loop`; HEAD — коммит этой сессии (родитель — #212).
+1. **Ветка** `agent-loop`; HEAD — коммит этой сессии (родитель — #213).
 2. **Активная зона пуста.** Highest ADR **0060**, next free **0061**.
    Варианты хода:
-   (a) **Free-аудит по подклассу #213 «легальное значение без семантики»**:
-      поискать конвенции `0`/`-1`/пустых коллекций, чья семантика задана
-      только конкретным транспортом/реализацией (кандидаты: `-1`-конвенции
-      метрик/прогресса, пустые `@ExpectStatus`/`@FollowRedirects` — решение
-      #207 «фича», пересматривать только при реально тихом исходе).
-   (b) **Продолжить ось #212 «декларация ⇄ окружение сборки»** — другие
-      флаги/runtime-условия, от которых зависит корректность декларации.
+   (a) **Free-аудит по оси «асимметричный guard» (#214)**: пройтись по уже
+      существующим парным/семейным валидациям и спросить «а обратное
+      направление?» — например, `APPLICATION_FORM_URLENCODED` без параметров
+      режется, а `@RequestParam`-параметр на multipart/json-методе? (сейчас
+      `@RequestParam` в multipart — это form-поле, т.е. легально; проверять
+      аккуратно).
+   (b) **Ось #212 «декларация ⇄ окружение сборки»** — другие флаги/runtime-
+      условия. Хвост: `@ExpectStatus(statuses = {})`/`@FollowRedirects(count < 0)`
+      (решение #207 «фича, не дыра» — трогать только при тихом исходе).
    (c) **Free-аудит остатков:** Path/File-тела метрик (-1 вместо размера;
-      engine-reported byte accounting).
-   (d) **Концепт ADR-0061+** — HTTP-кэш (RFC 9111) ждёт решения Антона
+      engine-reported byte accounting); `CallMetrics.isSuccess()` (2xx-only)
+      против `@ExpectStatus`-whitelist.
+   (d) **fixtures-javadoc** — 15 вспомогательных типов `ru.jrestly.fixtures`
+      (осознанный non-goal кандидата №1).
+   (e) **Концепт ADR-0061+** — HTTP-кэш (RFC 9111) ждёт решения Антона
       (вопрос в mailbox от #208, ответа пока нет) — не трогать без его слова.
-   (e) **fixtures-javadoc** — 15 вспомогательных типов `ru.jrestly.fixtures`.
 3. **Среда:** `GRADLE_USER_HOME=/tmp/opencode/gradle-home ./gradlew ...`;
-   счётчик сессий: 213. Часовой пояс контейнера +04 (календарный день
+   счётчик сессий: 214. Часовой пояс контейнера +04 (календарный день
    2026-10-17).

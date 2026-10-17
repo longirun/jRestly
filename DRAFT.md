@@ -1,5 +1,37 @@
 # DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
+> **Сессия #214 (free-аудит: `@MultipartFormFile` на методе без `requestType =
+> MULTIPART_FORM_DATA` тихо выбрасывал части — 24-я «тихая» находка серии,
+> обратная сторона уже проверенной пары):** свободный ход из контекста #213
+> (активная зона пуста, highest ADR 0060). Продолжил ось #210/#211 «парные
+> декларативные конструкции»: `ControllerValidator` уже режет *обратную* пару —
+> `MULTIPART_FORM_DATA`-метод без единого payload-параметра («must have at least
+> one parameter») — но **прямую** пару не проверял никто:
+> `@MultipartFormFile`-параметр на методе, чей `requestType` остался дефолтным
+> `APPLICATION_JSON` (обычный `@Post/@Put/@Patch/@Delete`) или
+> `APPLICATION_FORM_URLENCODED`. Части собираются **только** внутри ветки
+> `MULTIPART_FORM_DATA` (`HttpTemplateBuilder.createMultipartParts`); во всех
+> прочих ветках `parts` остаётся `null`, тело строится своим путём, а
+> аргументы-файлы **молча выбрасываются** из запроса — без ошибки и без лога
+> (тот же класс, что #207–#213). Проверено зондом (валидатор молчит: 0 проблем)
+> и red-first тестом. Fix: `ControllerValidator.validateMethod` считает
+> эффективный `RequestType` один раз и для каждого `@MultipartFormFile`-параметра
+> на не-multipart методе добавляет `method(): @MultipartFormFile parameter
+> requires requestType = MULTIPART_FORM_DATA` в общий агрегированный
+> `ControllerValidationException` при создании прокси. Публичный API не тронут;
+> корректный multipart-метод ведёт себя как раньше. TDD red-first:
+> `ControllerValidationTest.rejectsMultipartFormFileWithoutMultipartRequestTypeEagerly`
+> (файл на JSON-`@Post` → 1 проблема + eager исключение; тот же метод с
+> `requestType = MULTIPART_FORM_DATA` — no-false-positive) — красный на до-фикс
+> коде ровно по `assertEquals(1, problems.size())` (список пуст) → зелёный.
+> ADR-0024 → `## Amendment #214`. Наблюдение (не трогал):
+> `MethodMetadata.hasMultipartParams()` — мёртвый пакетно-приватный аксессор
+> (вероятно, задумывался ровно под эту проверку). Гейт **1242/1242**
+> (core 1162 + engine-okhttp 25 + engine-apache5 25 + codec-jackson-xml 15 +
+> benchmarks 15), 0 failures/errors, `./gradlew test javadoc` зелёный под
+> `-Werror`, 0 warnings. Дальше — free-аудит или концепт ADR-0061+ (HTTP-кэш
+> RFC 9111 ждёт слова Антона; вопрос в mailbox).
+
 > **Сессия #213 (free-аудит/проектное решение: `0`-таймаут был «принимаемым, но
 > невыразимым» на JDK-движке — 23-я находка серии, закрытие non-goal #200):**
 > свободный ход из контекста #212 (активная зона пуста, highest ADR 0060).
@@ -1361,7 +1393,11 @@ engine-reported byte accounting), валидация `@ExpectStatus`/`@FollowRed
 Кандидаты по той же оси: `@ExpectStatus(statuses = {})`/`@FollowRedirects(count < 0)`
 (пустой/отрицательный декларативный вход — решение #207 «фича, не дыра»);
 проверить, нет ли других деклараций, чья корректность зависит от флагов
-компиляции/окружения.
+компиляции/окружения. **#214 — четвёртый виток оси, но с другой грани: пара
+была проверена лишь с одной стороны** (`MULTIPART_FORM_DATA` без параметров
+резался, а `@MultipartFormFile` без `MULTIPART_FORM_DATA` — тихо выбрасывался;
+ADR-0024 Amendment #214). Приём: у парной проверки сверять **обе** стороны —
+асимметричный guard так же опасен, как его отсутствие.
 
 ---
 
