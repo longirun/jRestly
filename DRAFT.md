@@ -1,5 +1,39 @@
 # DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
+> **Сессия #197 (аудит: ADR-0038 × ADR-0059 — ЧИСТЫЙ срез, три не покрытых
+> теста стыка закреплены предохранителями):** 16-й срез нити «ADR против
+> кода» — свет ADR-0038 (HTTP/2/трейлеры) × ADR-0059 (стриминг-трейлеры).
+> ADR-0038 §1–§6 сверён полностью: модель `WireResponse` (version/trailers/
+> supplier, совместимые конструкторы, equals без supplier), захват
+> транспорта — все три движка несут version в обоих контурах (buffered и
+> streaming), иерархия `@HttpVersion` (метод > sub > super; направление
+> цикла корректно — `collectInterfaces` предпорядковый), `ResponseHeaders`
+> (version/isHttp2/isHttp1/trailers/firstTrailer/trailerValues/
+> declaredTrailers, case-insensitive, capture-forwarder'ы),
+> `CallMetrics.version()`, `logResponse`-протокол, `handleDecompression`
+> (все три компонента на всех ветках), `processResponse`-прокидка. ADR-0059
+> Ф2 сверён: CAS-хук EOF+close, sync+async (тот же хвост), движки
+> (OkHttp/Apache5 ленивые, JDK — платформенно пусто), `populateTrailers`
+> (synchronized, идемпотентен). `CURRENT_CAPTOR` — ThreadLocal, но javadoc
+> «synchronous» — осознанная граница. Рассинхронов нет — **чистый срез**
+> (второй за серию после #192). Непокрытые стыки → +2 предохранителя в
+> `StreamingTrailersTest` (синтетический `GzipStreamingEngine`):
+> (1) стриминг × прозрачный gzip × трейлеры — поправка #163 утверждает
+> «hook сохраняется при стриминговой декомпрессии», впервые проверено
+> (payload распакован, supplier 1× на EOF, значения на том же holder);
+> (2) пара Ф2.4 «declaredTrailers() — сразу, значения — после дрена»
+> зафиксирована вместе (до чтения: version/declared, trailers пуст; после:
+> значения + case-insensitive lookup); (3) version на стриминговом пути
+> (e2e-версионные тесты были только буферные). Оба зелёные —
+> предохранители; чувствительность структурная. ADR-0038 проверен и
+> закрыт; ADR-0059 → Amendment #197. Гейт **1224/1224** (core 1144 +
+> engine-okhttp 25 + engine-apache5 25 + codec-jackson-xml 15 + benchmarks
+> 15), `./gradlew test javadoc` зелёный под `-Werror`, 0 warnings. Дальше —
+> ADR-0035 целиком (контракт BodyPublisher: retry-совместимость, progress ×
+> streaming, nullable publisher) или free-аудит (`ModuleInfo`/
+> `SimpleModuleInfo` мутабельность, `ServerSentEventReconnector` жизненный
+> цикл) или test-javadoc батч №2.
+>
 > **Сессия #196 (аудит: ADR-0036 × ADR-0046 — закрыт non-goal #194: номера
 > попыток в `onAttemptComplete`/`onRetry` стали сквозными, per-call):**
 > 15-й срез нити «ADR против кода» — на этот раз доведение до конца

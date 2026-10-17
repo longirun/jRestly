@@ -41,6 +41,68 @@ class StreamingTrailersTest {
 
         @Get(path = "/stream/async-lines")
         CompletableFuture<Stream<String>> asyncLines(ResponseHeaders headers);
+
+        @Get(path = "/gz/bytes")
+        InputStream gzipBytes(ResponseHeaders headers);
+
+        @Get(path = "/gz/lines")
+        Stream<String> gzipLines(ResponseHeaders headers);
+    }
+
+    /**
+     * Synthetic HttpEngine returning a gzip-compressed streaming response
+     * (ADR-0021) over a negotiated HTTP/2 connection (ADR-0038) with a
+     * declared trailer whose value only exists after the body is drained
+     * (ADR-0059): the terminal hook must survive transparent decompression.
+     */
+    static class GzipStreamingEngine implements HttpEngine {
+
+        private final AtomicInteger trailersRequested = new AtomicInteger();
+
+        @Override
+        public WireResponse send(WireRequest request, HttpEngineOptions options) throws IOException {
+            byte[] payload = "gzipped first line\ngzipped second line\n".getBytes(StandardCharsets.UTF_8);
+            byte[] compressed = gzip(payload);
+            InputStream stream = new ByteArrayInputStream(compressed);
+
+            return new WireResponse(
+                    200,
+                    List.of(
+                            new Header("Trailer", "X-Checksum"),
+                            new Header("Content-Encoding", "gzip"),
+                            new Header("Content-Type", "text/plain")
+                    ),
+                    null,
+                    stream,
+                    HttpClient.Version.HTTP_2,
+                    List.of(),
+                    () -> {
+                        trailersRequested.incrementAndGet();
+                        return List.of(new Header("X-Checksum", "cafef00d"));
+                    }
+            );
+        }
+
+        @Override
+        public CompletableFuture<WireResponse> sendAsync(WireRequest request, HttpEngineOptions options) {
+            try {
+                return CompletableFuture.completedFuture(send(request, options));
+            } catch (IOException e) {
+                return CompletableFuture.failedFuture(e);
+            }
+        }
+
+        @Override
+        public void close() {
+        }
+
+        static byte[] gzip(byte[] payload) throws IOException {
+            java.io.ByteArrayOutputStream bos = new java.io.ByteArrayOutputStream();
+            try (java.util.zip.GZIPOutputStream gz = new java.util.zip.GZIPOutputStream(bos)) {
+                gz.write(payload);
+            }
+            return bos.toByteArray();
+        }
     }
 
     /**
@@ -225,5 +287,65 @@ class StreamingTrailersTest {
 
         assertEquals(List.of("first line", "second line"), lines);
         assertEquals(Optional.of("app;dur=12.5"), headers.firstTrailer("Server-Timing"));
+    }
+
+    @Test
+    @DisplayName("Gzip streaming (ADR-0021): version, declared trailers and late values all survive transparent decompression (ADR-0038 x ADR-0059)")
+    void gzipStreamingResponseCarriesVersionAndTrailersThroughDecompression() throws IOException {
+        GzipStreamingEngine engine = new GzipStreamingEngine();
+        StreamingClient client = JRestlyClient.builder()
+                .baseUrl("http://localhost:8080")
+                .httpEngine(engine)
+                .build()
+                .get(StreamingClient.class);
+
+        ResponseHeaders headers = new ResponseHeaders();
+        try (InputStream in = client.gzipBytes(headers)) {
+            // Metadata known before any body consumption (ADR-0038 x ADR-0059 Ф2.4):
+            // the negotiated version and the declared trailer names are available
+            // immediately, while trailer values are still empty.
+            assertEquals(HttpClient.Version.HTTP_2, headers.version());
+            assertTrue(headers.isHttp2());
+            assertEquals(List.of("X-Checksum"), headers.declaredTrailers());
+            assertTrue(headers.trailers().isEmpty());
+
+            // Transparent decompression (ADR-0021) must not break the payload...
+            String text = new String(in.readAllBytes(), StandardCharsets.UTF_8);
+            assertEquals("gzipped first line\ngzipped second line\n", text);
+        }
+
+        // ...and must not swallow the terminal trailer hook: the supplier is
+        // requested exactly once on EOF, and the value lands on the same holder.
+        assertEquals(1, engine.trailersRequested.get());
+        assertEquals(Optional.of("cafef00d"), headers.firstTrailer("X-Checksum"));
+        assertEquals(List.of("cafef00d"), headers.trailerValues("X-CHECKSUM"));
+    }
+
+    @Test
+    @DisplayName("Gzip Stream<String> (ADR-0021): declared trailers precede values on the same holder (ADR-0059 Ф2.4)")
+    void gzipLineStreamingDeclaresTrailersImmediatelyButValuesArriveAfterDrain() {
+        GzipStreamingEngine engine = new GzipStreamingEngine();
+        StreamingClient client = JRestlyClient.builder()
+                .baseUrl("http://localhost:8080")
+                .httpEngine(engine)
+                .build()
+                .get(StreamingClient.class);
+
+        ResponseHeaders headers = new ResponseHeaders();
+        Stream<String> stream = client.gzipLines(headers);
+
+        // Before the drain: declaration is visible, values are not yet.
+        assertEquals(HttpClient.Version.HTTP_2, headers.version());
+        assertEquals(List.of("X-Checksum"), headers.declaredTrailers());
+        assertTrue(headers.firstTrailer("X-Checksum").isEmpty());
+
+        List<String> lines;
+        try (Stream<String> s = stream) {
+            lines = s.toList();
+        }
+
+        assertEquals(List.of("gzipped first line", "gzipped second line"), lines);
+        assertEquals(1, engine.trailersRequested.get());
+        assertEquals(Optional.of("cafef00d"), headers.firstTrailer("X-Checksum"));
     }
 }

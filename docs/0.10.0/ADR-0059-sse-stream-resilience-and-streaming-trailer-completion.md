@@ -306,3 +306,34 @@ E2E (`SseReconnectWireMockTest`): обрыв смоделирован чисты
 Гейты: **1152/1152** (core 1087 + engine-okhttp 25 + engine-apache5 25 +
 benchmarks 15), `./gradlew test javadoc` зелёный под `-Werror`, 0 warnings.
 
+## Amendment #197 — Ф2.3: стык «декомпрессия × трейлеры × версия» закреплён тестами
+
+Срез аудита «ADR против кода» (сессия #197, свет ADR-0038 × ADR-0059):
+функциональный стык чист — ни один из пунктов Ф2 не расходится с кодом.
+Закреплены предохранителями два ранее не покрытых тестом стыка:
+
+1. **Ф2.3 × ADR-0021 (прозрачная декомпрессия):** утверждение поправки #163
+   «[terminal hook] сохраняется при стриминговой декомпрессии
+   (`HttpTemplate.handleDecompression`)» впервые проверено сквозным тестом:
+   gzip-стрим с `Trailer`-декларацией и `trailersSupplier` проходит через
+   `handleDecompression` (новым `WireResponse` с `GZIPInputStream`) и
+   `processResponse` (обёртка `TrailerCompletingInputStream` поверх
+   распакованного потока) — payload распакован, supplier запрошен ровно
+   один раз на EOF, значение приземляется на тот же `ResponseHeaders`.
+2. **Ф2.4 × ADR-0038 (мгновенное vs позднее):** «имена объявленных трейлеров
+   доступны сразу из заголовка `Trailer` (`declaredTrailers()`), значения —
+   после исчерпания стрима» зафиксировано как пара на одном holder:
+   до чтения — `version()`/`isHttp2()` (HTTP/2) и `declaredTrailers()`
+   видны, `trailers()`/`firstTrailer()` пусты; после дрена — значения
+   доступны, case-insensitive `trailerValues(...)` работает для поздних
+   трейлеров.
+
+Новые тесты: `StreamingTrailersTest` +2 (`gzipStreamingResponseCarriesVersionAndTrailersThroughDecompression`,
+`gzipLineStreamingDeclaresTrailersImmediatelyButValuesArriveAfterDrain`)
+на синтетическом `GzipStreamingEngine` (gzip-payload + `Content-Encoding:
+gzip` + `Trailer: X-Checksum` + `HTTP_2` + supplier). Код ядра не менялся.
+Гейты: **1224/1224**, `./gradlew test javadoc` зелёный под `-Werror`,
+0 warnings. ADR-0038 при срезе сверён полностью (§1–§6: модель, захват
+транспорта, иерархия `@HttpVersion`, инспекция `ResponseHeaders`,
+`CallMetrics.version()`, платформенные границы) — рассинхронов нет.
+

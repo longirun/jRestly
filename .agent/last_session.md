@@ -1,77 +1,79 @@
-# Last Session: #196 (2026-10-17)
+# Last Session: #197 (2026-10-17)
 
 ## Что сделано
 
-**Аудит «ADR против кода», срез ADR-0036 (метрики) × ADR-0046
-(прозрачный 401-рефреш): закрыт non-goal #194 — номера попыток в
-`onAttemptComplete`/`onRetry` стали сквозными (per-call). 15-й срез нити,
-14-я находка (на этот раз — доведённая до конца отложенная).**
+**Аудит «ADR против кода», 16-й срез — свет ADR-0038 (HTTP/2/трейлеры) ×
+ADR-0059 (стриминг-трейлеры): ЧИСТЫЙ срез (второй за серию после #192),
+три не покрытых теста стыка закреплены предохранителями.**
 
-1. *Находка:* после #194 `CallMetrics.attempts()` суммирует обе фазы
-   401-рефреша, но слушательские номера оставались пер-фазовыми: для
-   503 → 401 → 200 слушатель видел `attempts() == 3`, а третий
-   `onAttemptComplete` нумеровался **1** (refresh-фаза стартует со своим
-   счётчиком в `executeWithRetries`/`attemptAsync`). Последний номер ≠
-   `attempts()`, индексы попыток не уникальны внутри одного вызова — SPI
-   рассинхронизирован сам с собой (тот же класс, что #193/#194/#195).
-2. *Fix:* `attemptOffset` (число передач первой фазы) прокинут через оба
-   контура: `executeWithRetries`/`scheduleRetry` (sync) и
-   `executeAsyncWithRetries`/`attemptAsync`/`scheduleAsyncRetry` (async).
-   Слушательские номера = `attempt + attemptOffset`; на первом вызове
-   offset = 0, в refresh-фазе = `firstPhaseAttempts`. Окно retry-политики,
-   backoff (`nextDelayMillis`) и DEBUG-лог `Attempt N/M` — пер-фазовые
-   (`maxAttempts` ограничивает каждую фазу, refresh-фаза начинает backoff с
-   нуля). Внутренние счётчики `attemptsHolder`/`attemptsRef` не тронуты —
-   суммирование #194 работает как было; circuit breaker не пострадал.
-3. *Javadoc:* `ClientMetricsListener.onAttemptComplete`/`onRetry` `@param
-   attempt` — сквозная нумерация + инвариант «последний номер вызова =
-   `CallMetrics.attempts()`». ADR-0036 → Amendment #196; non-goal #194
-   помечен «resolved in Amendment #196».
-4. *Тесты:* +1 e2e `ClientMetricsWireMockTest.refresh401AfterRetriesContinuousNumbersAsync`
-   (async 503→401→200: sequence 1,2,3; onRetry attempt=1; `attempts()==3`);
-   3 теста #194 усилены sequence-ассертами (sync 401→200: 1,2; sync
-   503→401→200: 1,2,3 + onRetry; async 401→200: 1,2). `RefreshMetricsClient`
-   + метод `getSecureRetryAsync` (`@Retry` + `CompletableFuture`).
-5. *TDD:* behavior-red — 4 красных ровно по целевым ассертам («refresh
-   phase continues the per-call numbering»: expected 2/3 but was 1) →
-   зелёный.
-6. *Гейты:* `./gradlew test javadoc` — **1222/1222** (core 1142 +
+1. *Сверка ADR-0038 §1–§6 по коду — без рассинхрон:* WireResponse-модель
+   (version/trailers/trailersSupplier, совместимые конструкторы, equals без
+   supplier); захват транспорта — все три движка несут `version` в ОБЕИХ
+   контурах (buffered и streaming; JDK-трейлеры пустые — платформенно);
+   иерархия `@HttpVersion` — `parseHttpVersion` (метод > sub > super; цикл
+   `size-1 → 0` корректен: `collectInterfaces` предпорядковый — в конце
+   листа потомок); `ResponseHeaders` (version/isHttp2/isHttp1/trailers/
+   firstTrailer/trailerValues/declaredTrailers, case-insensitive TreeMap'ы,
+   `capture`/`captureCallable` forwarder'ы); `CallMetrics.version()`;
+   `logResponse` печатает протокол; `handleDecompression` сохраняет
+   version+trailers+supplier на всех трёх ветках; `processResponse`
+   прокидывает version/trailers в holder и capture.
+2. *Сверка ADR-0059 Ф2 — без рассинхрон:* `TrailerCompletingInputStream`
+   (CAS, EOF и close, at-most-once), хук на sync+async (async — тот же хвост
+   `processResponse` на executor-потоке), движки (OkHttp/Apache5 ленивые
+   suppliers, JDK — пусто), `populateTrailers` (synchronized, идемпотентен,
+   forwarder). `CURRENT_CAPTOR` — обычный ThreadLocal, но javadoc `capture`
+   прямо говорит «synchronous controller call» — осознанная граница, не баг.
+3. *Непокрытые стыки → +2 предохранителя в `StreamingTrailersTest`:*
+   - `gzipStreamingResponseCarriesVersionAndTrailersThroughDecompression`
+     (ADR-0021 × ADR-0038 × ADR-0059: gzip-стрим + `Trailer`-декларация +
+     HTTP_2; до чтения — version/declaredTrailers, trailers пуст; payload
+     распакован; supplier ровно 1× на EOF; firstTrailer + case-insensitive
+     trailerValues после);
+   - `gzipLineStreamingDeclaresTrailersImmediatelyButValuesArriveAfterDrain`
+     (пара Ф2.4: имена сразу, значения — только после исчерпания).
+   Оба зелёные на текущем коде; чувствительность структурная (потеря
+   supplier в `handleDecompression` или отказ в распаковке красят их).
+   Новый синтетический `GzipStreamingEngine` (gzip-payload,
+   `Content-Encoding: gzip`, `Trailer: X-Checksum`, `HTTP_2`, supplier).
+4. *Документы:* ADR-0059 → Amendment #197 (Ф2.3-утверждение #163 «hook
+   сохраняется при стриминговой декомпрессии» впервые проверено; АDR-0038
+   сверён полностью — закрыт в этой серии).
+5. *Гейты:* `./gradlew test javadoc` — **1224/1224** (core 1144 +
    engine-okhttp 25 + engine-apache5 25 + codec-jackson-xml 15 + benchmarks
    15), 0 failures, javadoc зелёный под `-Werror`, 0 warnings.
 
 ## Технические заметки
 
-- Разделение «per-phase vs per-call» — осознанное: политика ретраев
-  (`maxAttempts`, backoff, Retry-After) действует внутри каждой фазы,
-  refresh-фаза — новый «вызов» с точки зрения политики; только
-  метрик-поверхность сквозная. Закомментировано в `scheduleRetry`.
-- Async-путь: offset прокидывается как обычный параметр через
-  `attemptAsync`/`scheduleAsyncRetry` — порядок навешивания `whenComplete`
-  (CFE-грабли #194) не затрагивает.
-- Не тронуты: non-goal #193 (Path/File-тела → -1 вместо размера файла —
-  кандидат на engine-reported byte accounting), `Math.max(1, …)`-аналог
-  в ветке interceptor-threw (там «вызов состоялся» — 1 осознанно).
+- Грабли: после `--tests 'X'` полный `test` рун пересобирает корневой
+  `:test` (фильтр — часть инпутов), субмодули up-to-date; полноту проверять
+  по timestamp `build/test-results/test/` и счётчику (149 XML-классов,
+  1144 core-тестов).
+- `isStreamType` знает только raw `Stream` (без `Optional<Stream<...>>`) —
+  осознанная граница ADR-0015/0016, в наш срез не входила.
+- Не тронуты: non-goal ADR-0036 #193 (Path/File-тела → -1),
+  `Math.max(1, …)`-ветка interceptor-threw, `declaredTrailers()` в HTTP/2
+  (в H2 заголовок `Trailer` опционален по RFC 9110 §10 — платформенная
+  нюансность, не баг).
 
-## Контекст для следующей сессии (#197)
+## Контекст для следующей сессии (#198)
 
-1. **Свет ADR-0036 выжат** — четыре среза за четыре сессии (#193–#196),
-   каждый закрыл находку или non-goal предыдущей. Следующие варианты:
-   (a) «стыковой» аудит ADR-0038 (HTTP/2/трейлеры × ADR-0059:
-   согласование, границы движков, trailers) — свежий свет;
-   (b) ADR-0035 целиком (контракт BodyPublisher: retry-совместимость,
-   progress × streaming, nullable publisher);
+1. **Следующие варианты света:**
+   (a) **ADR-0035 целиком** (контракт BodyPublisher: retry-совместимость
+   supplier'а, progress × streaming, nullable publisher,
+   `bodyPublisherSupplier` × multipart) — кандидат №2 по плану #196;
+   (b) free-аудит: `ModuleInfo`/`SimpleModuleInfo` мутабельность,
+   `ServerSentEventReconnector` жизненный цикл (watchdog-закрытие,
+   брошенный стрим);
    (c) кандидат №1, батч №2 test-javadoc (`cookie` 2, `codec` 4,
    `compression` 3, `tracing` 3, `interceptor` 4);
-   (d) free-аудит (`ModuleInfo`/`SimpleModuleInfo` мутабельность,
-   `ServerSentEventReconnector` жизненный цикл).
-2. **Обновлено:** `HttpTemplate` (attemptOffset через sync/async-контуры),
-   `ClientMetricsListener` (javadoc `@param attempt` ×2),
-   `ClientMetricsWireMockTest` (+1 тест, sequence-ассерты ×3,
-   `getSecureRetryAsync`), `docs/0.10.0/ADR-0036` (Amendment #196,
-   non-goal #194 → resolved), `DRAFT.md` (запись #196),
-   `.agent/days/2026-10-17.md` (сессия #196), `.agent/mailbox.md`
-   (сообщение #196), `.agent/last_session.md`.
-3. **Ветка** `agent-loop`; HEAD до этого коммита — #195 (`5c57eed`).
+   (d) ADR-0045+ — новые лёгкие ADR, если свет аудита закончится.
+2. **Обновлено:** `StreamingTrailersTest` (+2 теста, +`GzipStreamingEngine`),
+   `docs/0.10.0/ADR-0059` (Amendment #197), `DRAFT.md` (запись #197),
+   `.agent/days/2026-10-17.md` (сессия #197), `.agent/mailbox.md`
+   (сообщение #197), `.agent/last_session.md`, `.agent/session_counter.txt`
+   (197).
+3. **Ветка** `agent-loop`; HEAD до этого коммита — #196 (`18e4e5a`).
 4. **Среда:** `GRADLE_USER_HOME=/tmp/opencode/gradle-home ./gradlew ...`;
-   счётчик сессий: 196. Часовой пояс контейнера +04 (может «откатываться»
+   счётчик сессий: 197. Часовой пояс контейнера +04 (может «откатываться»
    между запусками — писать реальный календарный день, 2026-10-17).
