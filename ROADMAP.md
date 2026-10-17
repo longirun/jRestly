@@ -2073,10 +2073,33 @@ Gates (sessions #178–#180):
 
 ---
 
-> **Current status (2026-10-17).** Highest ADR issued: **0061**; next free: **0062**.
-> Quality Control baseline established with JaCoCo (91.37% instruction coverage).
-> Live gate: **1258/1258** tests green across all five modules, 0 warnings under `-Werror`.
-> Strategic focus for next cycle: Gap 1 (Dynamic Endpoint / `@TargetUrl`) and Gap 2 (RFC 9111 HTTP Caching).
+### ADR-0062: Dynamic Endpoint Target URL Override (@TargetUrl)
+
+> Source of truth: [`docs/0.10.0/ADR-0062-dynamic-endpoint-target-url-override.md`](docs/0.10.0/ADR-0062-dynamic-endpoint-target-url-override.md).
+> Implementation of Vital Gap #1 from ADR-0061.
+
+**Problem:**
+Enterprise production scenarios (AWS S3 presigned URLs, HATEOAS / Link pagination, dynamic tenant routing, webhooks) require overriding the target URL dynamically at runtime per call, which was previously impossible without creating new client instances.
+
+**Solution:**
+1. Added `@TargetUrl` parameter annotation in `ru.jrestly.annotation` supporting `URI`, `URL`, and `CharSequence`/`String`.
+2. Updated all HTTP verbs (`@Get`, `@Post`, `@Put`, `@Patch`, `@Delete`) with `path() default ""` for clean single-parameter contracts (`@Get String download(@TargetUrl URI uri);`).
+3. Seamless URL composition in `HttpTemplateBuilder.createUrl()` with path variables, subpath slash normalization, query string preservation, and fail-fast null check.
+4. 100% eager validation in `ControllerValidator`: type validation (`URI`/`URL`/`CharSequence`), arity limit (at most 1 `@TargetUrl` per method), and mutual exclusion against HTTP parameter annotations and side-channel hooks.
+5. Zero-reflection hot path dispatch via `MethodMetadata.targetUrlParamIndex()` caching.
+
+**Tests & Live Gate:**
+- `TargetUrlTest`: +12 red-first tests covering eager validation and WireMock end-to-end execution.
+- Total suite: **1270/1270** tests green across all five modules (0 failures, 0 errors).
+- Javadoc gate clean under `-Werror`. JaCoCo coverage: **91.35% Instructions**, **91.13% Lines**, **98.50% Classes**.
+
+---
+
+> **Current status (2026-10-17).** Highest ADR issued: **0062**; next free: **0063**.
+> Vital Gap #1 (Dynamic Endpoint / `@TargetUrl`) successfully implemented.
+> Quality Control baseline verified with JaCoCo (91.35% instruction coverage, 98.50% class coverage).
+> Live gate: **1270/1270** tests green across all five modules, 0 warnings under `-Werror`.
+> Strategic focus for next cycle: Gap 2 (RFC 9111 HTTP Caching SPI & Store).
 
 ## Post-0.5.0 shortlist (not scheduled — see ADR-0003)
 

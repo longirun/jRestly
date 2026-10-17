@@ -445,9 +445,54 @@ public class HttpTemplateBuilder {
                 }
             }
         }
+
+        String targetUrl = null;
+        if (methodMetadata.hasTargetUrl() && args != null && methodMetadata.targetUrlParamIndex() < args.length) {
+            Object arg = args[methodMetadata.targetUrlParamIndex()];
+            if (arg == null) {
+                throw new IllegalArgumentException("@TargetUrl parameter value cannot be null");
+            }
+            targetUrl = arg.toString();
+        }
+
+        if (targetUrl != null) {
+            if (path == null || path.isEmpty()) {
+                return targetUrl;
+            }
+            if (path.startsWith("http://") || path.startsWith("https://")) {
+                return path;
+            }
+            int queryOrFrag = -1;
+            int qIdx = targetUrl.indexOf('?');
+            int hIdx = targetUrl.indexOf('#');
+            if (qIdx >= 0 && hIdx >= 0) {
+                queryOrFrag = Math.min(qIdx, hIdx);
+            } else if (qIdx >= 0) {
+                queryOrFrag = qIdx;
+            } else {
+                queryOrFrag = hIdx;
+            }
+            if (queryOrFrag >= 0) {
+                String basePart = targetUrl.substring(0, queryOrFrag);
+                String restPart = targetUrl.substring(queryOrFrag);
+                return joinUrlPath(basePart, path) + restPart;
+            }
+            return joinUrlPath(targetUrl, path);
+        }
+
         return !path.startsWith("http")
                 ? moduleInfo.getEnvironment().getUrl() + path
                 : path;
+    }
+
+    private static String joinUrlPath(String base, String path) {
+        if (base.endsWith("/") && path.startsWith("/")) {
+            return base + path.substring(1);
+        } else if (!base.endsWith("/") && !path.startsWith("/")) {
+            return base + "/" + path;
+        } else {
+            return base + path;
+        }
     }
 
     private List<Header> createHeaders() {

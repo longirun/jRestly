@@ -26,6 +26,7 @@ import ru.jrestly.annotation.RequestBody;
 import ru.jrestly.annotation.RequestParam;
 import ru.jrestly.annotation.Retry;
 import ru.jrestly.annotation.SetAuthDetails;
+import ru.jrestly.annotation.TargetUrl;
 import ru.jrestly.http.RequestType;
 import ru.jrestly.http.ResponseHeaders;
 import ru.jrestly.http.DownloadProgressListener;
@@ -39,6 +40,7 @@ import java.lang.reflect.Modifier;
 import java.lang.reflect.Parameter;
 import java.net.HttpCookie;
 import java.net.URI;
+import java.net.URL;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
@@ -95,6 +97,12 @@ import java.util.regex.Pattern;
  * {@code @PathVariable}, {@code @RequestHeader}, {@code @Cookie},
  * {@code @RequestBody}, or {@code @MultipartFormFile}), and each may
  * appear at most once per method.
+ *
+ * <p>A parameter annotated with {@link TargetUrl} supplies a dynamic request
+ * URL or base URL override; it must be of type {@link java.net.URI},
+ * {@link java.net.URL}, or {@link CharSequence}/{@link String}, must not
+ * combine with other HTTP parameter annotations, and at most one such
+ * parameter is allowed per method (ADR-0062).
  *
  * <p>Method-level {@code @ExpectStatus} declarations must specify a non-empty
  * array of HTTP status codes in the valid range {@code [100, 599]}.
@@ -450,13 +458,28 @@ public final class ControllerValidator {
                             + " (only the file part is assembled, the @RequestParam binding is silently dropped)");
                 }
             }
-            if (ResponseHeaders.class.equals(param.getType())) {
+            if (param.isAnnotationPresent(TargetUrl.class)) {
+                Class<?> type = param.getType();
+                if (!URI.class.isAssignableFrom(type) && !URL.class.isAssignableFrom(type) && !CharSequence.class.isAssignableFrom(type)) {
+                    problems.add(method.getName() + "(): @TargetUrl parameter must be of type java.net.URI, java.net.URL, or CharSequence/String");
+                }
                 if (param.isAnnotationPresent(RequestParam.class)
                         || param.isAnnotationPresent(PathVariable.class)
                         || param.isAnnotationPresent(RequestHeader.class)
                         || param.isAnnotationPresent(Cookie.class)
                         || param.isAnnotationPresent(RequestBody.class)
                         || param.isAnnotationPresent(MultipartFormFile.class)) {
+                    problems.add(method.getName() + "(): parameter must not combine @TargetUrl with other HTTP parameter annotations");
+                }
+            }
+            if (ResponseHeaders.class.equals(param.getType())) {
+                if (param.isAnnotationPresent(RequestParam.class)
+                        || param.isAnnotationPresent(PathVariable.class)
+                        || param.isAnnotationPresent(RequestHeader.class)
+                        || param.isAnnotationPresent(Cookie.class)
+                        || param.isAnnotationPresent(RequestBody.class)
+                        || param.isAnnotationPresent(MultipartFormFile.class)
+                        || param.isAnnotationPresent(TargetUrl.class)) {
                     problems.add(method.getName() + "(): ResponseHeaders parameter must not be annotated with HTTP parameter annotations");
                 }
             }
@@ -466,7 +489,8 @@ public final class ControllerValidator {
                         || param.isAnnotationPresent(RequestHeader.class)
                         || param.isAnnotationPresent(Cookie.class)
                         || param.isAnnotationPresent(RequestBody.class)
-                        || param.isAnnotationPresent(MultipartFormFile.class)) {
+                        || param.isAnnotationPresent(MultipartFormFile.class)
+                        || param.isAnnotationPresent(TargetUrl.class)) {
                     problems.add(method.getName() + "(): UploadProgressListener parameter must not be annotated with HTTP parameter annotations");
                 }
             }
@@ -476,10 +500,18 @@ public final class ControllerValidator {
                         || param.isAnnotationPresent(RequestHeader.class)
                         || param.isAnnotationPresent(Cookie.class)
                         || param.isAnnotationPresent(RequestBody.class)
-                        || param.isAnnotationPresent(MultipartFormFile.class)) {
+                        || param.isAnnotationPresent(MultipartFormFile.class)
+                        || param.isAnnotationPresent(TargetUrl.class)) {
                     problems.add(method.getName() + "(): DownloadProgressListener parameter must not be annotated with HTTP parameter annotations");
                 }
             }
+        }
+
+        long targetUrlCount = Arrays.stream(method.getParameters())
+                .filter(p -> p.isAnnotationPresent(TargetUrl.class))
+                .count();
+        if (targetUrlCount > 1) {
+            problems.add(method.getName() + "(): multiple parameters annotated with @TargetUrl, at most one is allowed");
         }
 
         long responseHeadersCount = Arrays.stream(method.getParameters())

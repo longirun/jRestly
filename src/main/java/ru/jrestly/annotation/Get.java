@@ -14,10 +14,11 @@ public @interface Get {
 
     /**
      * Target path or absolute URL. May contain ${var} placeholders.
+     * Defaults to empty string when the full URL is supplied dynamically via {@link TargetUrl}.
      *
      * @return the target path, or an absolute URL
      */
-    String path();
+    String path() default "";
 
     /**
      * Default query parameters appended to the request.

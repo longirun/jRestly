@@ -25,6 +25,7 @@ import ru.jrestly.annotation.RequestHeader;
 import ru.jrestly.annotation.RequestParam;
 import ru.jrestly.annotation.Retry;
 import ru.jrestly.annotation.SetAuthDetails;
+import ru.jrestly.annotation.TargetUrl;
 import ru.jrestly.annotation.Timeout;
 import ru.jrestly.annotation.Trace;
 import ru.jrestly.annotation.WithInterceptor;
@@ -83,6 +84,7 @@ final class MethodMetadata {
     private final ru.jrestly.annotation.CircuitBreaker circuitBreakerAnnotation;
     private final ru.jrestly.annotation.RateLimiter rateLimiterAnnotation;
     private final ReturnTypeInfo returnTypeInfo;
+    private final int targetUrlParamIndex;
     private final int responseHeadersParamIndex;
     private final int uploadProgressParamIndex;
     private final int downloadProgressParamIndex;
@@ -131,7 +133,8 @@ final class MethodMetadata {
             String multipartExplicitContentType,
             boolean isResponseHeaders,
             boolean isUploadProgressListener,
-            boolean isDownloadProgressListener
+            boolean isDownloadProgressListener,
+            boolean isTargetUrl
     ) {}
 
     private MethodMetadata(
@@ -156,6 +159,7 @@ final class MethodMetadata {
             ru.jrestly.annotation.CircuitBreaker circuitBreakerAnnotation,
             ru.jrestly.annotation.RateLimiter rateLimiterAnnotation,
             ReturnTypeInfo returnTypeInfo,
+            int targetUrlParamIndex,
             int responseHeadersParamIndex,
             int uploadProgressParamIndex,
             int downloadProgressParamIndex,
@@ -197,6 +201,7 @@ final class MethodMetadata {
         this.circuitBreakerAnnotation = circuitBreakerAnnotation;
         this.rateLimiterAnnotation = rateLimiterAnnotation;
         this.returnTypeInfo = returnTypeInfo;
+        this.targetUrlParamIndex = targetUrlParamIndex;
         this.responseHeadersParamIndex = responseHeadersParamIndex;
         this.uploadProgressParamIndex = uploadProgressParamIndex;
         this.downloadProgressParamIndex = downloadProgressParamIndex;
@@ -261,6 +266,7 @@ final class MethodMetadata {
         ru.jrestly.annotation.RateLimiter rl = parseRateLimiter(method, hierarchy);
         ReturnTypeInfo returnType = parseReturnType(method != null ? method.getGenericReturnType() : Object.class);
 
+        int targetUrlIdx = -1;
         int respHeadersIdx = -1;
         int uploadProgressIdx = -1;
         int downloadProgressIdx = -1;
@@ -277,6 +283,11 @@ final class MethodMetadata {
         for (int i = 0; i < params.length; i++) {
             Parameter p = params[i];
             Class<?> type = p.getType();
+
+            boolean isTargetUrl = p.isAnnotationPresent(TargetUrl.class);
+            if (isTargetUrl && targetUrlIdx < 0) {
+                targetUrlIdx = i;
+            }
 
             boolean isPathVar = p.isAnnotationPresent(PathVariable.class);
             String pathVarName = null;
@@ -370,7 +381,8 @@ final class MethodMetadata {
                     multiContentType,
                     isRespHeaders,
                     isUploadListener,
-                    isDownloadListener
+                    isDownloadListener,
+                    isTargetUrl
             );
         }
 
@@ -411,6 +423,7 @@ final class MethodMetadata {
                 cb,
                 rl,
                 returnType,
+                targetUrlIdx,
                 respHeadersIdx,
                 uploadProgressIdx,
                 downloadProgressIdx,
@@ -1036,6 +1049,14 @@ final class MethodMetadata {
 
     ReturnTypeInfo returnTypeInfo() {
         return returnTypeInfo;
+    }
+
+    int targetUrlParamIndex() {
+        return targetUrlParamIndex;
+    }
+
+    boolean hasTargetUrl() {
+        return targetUrlParamIndex >= 0;
     }
 
     int responseHeadersParamIndex() {

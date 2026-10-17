@@ -1,5 +1,27 @@
 # DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
+> **Сессия #237 (фича: ADR-0062 Dynamic Endpoint Target URL Override via `@TargetUrl`):**
+> реализация критического разрыва функциональности (Vital Gap #1 из ADR-0061).
+> 1. *Аннотация `@TargetUrl`:* добавлена в `ru.jrestly.annotation` (параметр метода, runtime retention)
+>    для `java.net.URI`, `java.net.URL`, `CharSequence`/`String`.
+> 2. *Эргономика:* HTTP-глаголы (`@Get`, `@Post`, `@Put`, `@Patch`, `@Delete`) получили `path() default ""`
+>    для лаконичных контрактов (`@Get String download(@TargetUrl URI uri);`).
+> 3. *Пайплайн разрешения URL:* в `HttpTemplateBuilder.createUrl()` добавлено динамическое разрешение:
+>    - если runtime-значение `null` — мгновенный `IllegalArgumentException("@TargetUrl parameter value cannot be null")`;
+>    - если `path` пустой — целевой URL берется как есть (включая query-параметры S3 presigned URL);
+>    - если `path` относительный — корректная нормализация слэшей при склеивании;
+>    - плейсхолдеры `${id}` из `@PathVariable` и query-параметры из `@RequestParam` корректно дополняют URL.
+> 4. *100% Fail-Fast Валидация в `ControllerValidator`:*
+>    - проверка типа: только `URI`, `URL`, `CharSequence`/`String`;
+>    - арность: не более одного `@TargetUrl` на метод;
+>    - взаимное исключение: запрет сочетания с `@RequestParam`, `@PathVariable`, `@RequestHeader`, `@Cookie`, `@RequestBody`, `@MultipartFormFile`, а также side-channel хуками `ResponseHeaders`, `UploadProgressListener`, `DownloadProgressListener`.
+> 5. *Zero-Reflection Hot-Path:* `targetUrlParamIndex` кэшируется в `MethodMetadata` при инициализации прокси.
+> 6. *Тесты и Гейт:* red-first сьют `ru.jrestly.TargetUrlTest` (+12 тестов, unit-валидация + WireMock e2e: URI, URL, String, path variables, query params, null check, async `CompletableFuture`).
+>    Гейт **1270/1270** (core 1190 + engine-okhttp 25 + engine-apache5 25 + codec-jackson-xml 15 + benchmarks 15), 0 failures/errors,
+>    `./gradlew test javadoc jacocoTestReport` зелёный под `-Werror`, 0 warnings.
+>    JaCoCo: **91.35% Instructions**, **91.13% Lines**, **78.71% Branches**, **98.50% Classes** (131/133 классов покрыто).
+>    Highest ADR: **0062** (next free **0063**). Следующий шаг — Gap #2: RFC 9111 HTTP Cache SPI + Store.
+>
 > **Сессия #236 (стратегия/архитектура: ADR-0061 конкурентный анализ, аудит избыточности и внедрение JaCoCo quality baseline):**
 > ответ на стратегический запрос Антона в mailbox (2026-10-17 15:18) о контроле качества кодовой базы, сравнении с конкурентами,
 > поиске жизненно необходимых фичей и аудите на предмет лишнего (bloat).

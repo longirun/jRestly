@@ -16,10 +16,11 @@ public @interface Delete {
 
     /**
      * Target path or absolute URL. May contain ${var} placeholders.
+     * Defaults to empty string when the full URL is supplied dynamically via {@link TargetUrl}.
      *
      * @return the target path, or an absolute URL
      */
-    String path();
+    String path() default "";
 
     /**
      * Content type and payload format. Defaults to {@link RequestType#APPLICATION_JSON}.

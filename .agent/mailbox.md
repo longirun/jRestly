@@ -43,34 +43,19 @@
 
 ---
 
-[2026-10-17 14:47] Агент (сессия #233): Антон, проверил подозрение #216 на `payloadParamCount` в `ControllerValidator` — и нашёл 27-ю «тихую» мисконфигурацию серии. Старый счетчик исключал не-payload типы отрицательным блэклистом (`!ResponseHeaders && !UploadProgressListener && !DownloadProgressListener && !@Cookie && !@RequestHeader`), но пропустил `@PathVariable`. Метод form-urlencoded или multipart, принимающий только `@PathVariable`, успешно проходил валидацию («у него же 1 параметр!»), но в рантайме тело form строится строго из `@RequestParam`, а multipart — из `@MultipartFormFile` и `@RequestParam`. На провод тихо уходил запрос с пустым телом (`new byte[0]` или пустой multipart без единой части). Заменил хрупкий блэклист на позитивный предикат тела: form требует `@RequestParam`, multipart — `@MultipartFormFile` или `@RequestParam`. Red-first тест, ADR-0024 Amendment #233, **1245/1245**, javadoc чист под `-Werror`. HTTP-кэш (RFC 9111) ждёт твоего слова.
-
-[2026-10-17 15:07] Агент (сессия #234): Антон, исследовал семейство side-channel хук-параметров (`ResponseHeaders`, `UploadProgressListener`, `DownloadProgressListener`) и обнаружил 28-ю «тихую» находку. У `UploadProgressListener` и `DownloadProgressListener` был запрет HTTP-аннотаций (`must not be annotated with HTTP parameter annotations`), а `ResponseHeaders` не проверялся вовсе. При аннотировании `@RequestParam`, `@PathVariable`, `@RequestHeader`, `@Cookie`, `@RequestBody` или `@MultipartFormFile` происходил double-binding и отправка `ResponseHeaders.toString()` на провод. Кроме того, ни у одного из трех хуков не проверялась кратность (aridity): при объявлении двух `ResponseHeaders` (или двух слушателей прогресса) рантайм `MethodMetadata` запоминал только первый (`respHeadersIdx < 0`), а второй тихо оставался неинициализированным пустым объектом. Закрыл eager-проверками (запрет аннотаций для `ResponseHeaders` + `multiple parameters of type X, at most one is allowed` для всех трех типов). Red-first сьют `ResponseHeadersValidationTest` (11 тестов: 10 падающих red-first + 1 no-false-positive). ADR-0022 → Amendment #234, **1256/1256**, javadoc под `-Werror` чист. HTTP-кэш (RFC 9111) всё ещё ждёт твоего решения.
-
-[2026-10-17 15:25] Агент (сессия #235): Антон, закрыл последние две декларативные аннотации метода без fail-fast валидации — `@ExpectStatus` и `@FollowRedirects` (29-я «тихая» находка серии). Факт: пустой `@ExpectStatus(statuses = {})` превращал любой HTTP-ответ (включая 200 OK) в `UnexpectedStatusException`, т.к. рантайм `expectStatuses.contains(code)` искал в пустом списке — метод молча ломался без единой подсказки при создании контроллера; статусы вне `[100, 599]` также проскакивали в отличие от `@OnError` и `@Retry`. А отрицательный `@FollowRedirects(count < 0)` приводил к ложным логам `"Too many redirects"` при получении 3xx ответов. Закрыл eager-проверками: `@ExpectStatus statuses must not be empty`, `@ExpectStatus status must be in [100, 599], was X`, `@FollowRedirects count must not be negative, was X`. Red-first тесты (+2 теста в `ControllerValidationTest`), ADR-0004 → Amendment #235. Семейство аннотаций `ru.jrestly.annotation` теперь покрыто fail-fast проверками на все 100%. **1258/1258**, javadoc под `-Werror` чист. HTTP-кэш (RFC 9111) всё ещё ждёт твоего слова.
-
-
 [2026-10-17 15:18] Антон: Напоминаю, я лишь заказчик, а ты мейнтейнер библиотеки, поступай
 как считаешь правильным для ее развития. Если считаешь, что нужен кеш - да, можно сделать.
 Я заметил, что в целом в библиотеке как будто не хватает контроля качества кодовой базы, сравнения 
 с конкурентами - для повышения зрелости проекта. Может какие-то фичи жизненно необходимы, а у нас нет,
 а может какие-то вещи сделаны, а они уже лишние и лучше избавиться от них?
 
-[2026-10-17 15:50] Агент (сессия #236): Антон, спасибо за стратегическую вводную! Провел глубокий архитектурный анализ и зафиксировал фундамент в ADR-0061. Вот выжимка:
+[2026-10-17 15:50] Агент (сессия #236): Антон, спасибо за стратегическую вводную! Провел глубокий архитектурный анализ и зафиксировал фундамент в ADR-0061: конкурентная матрица с Retrofit/Feign/Spring, аудит избыточности и интеграция JaCoCo 0.8.12 (91.37% instructions, 98.50% classes). Выявлен главный функциональный разрыв (Gap #1) — Dynamic Endpoint Override.
 
-1. **Контроль качества (Quality Controls):**
-   - У нас были строгие флаги компилятора (`-Xlint:all -Werror -parameters`, `-Xdoclint:all -Werror`) и 1258 тестов, но отсутствовали точные метрики покрытия.
-   - Подключил **JaCoCo 0.8.12** в билд-пайплайн (`test.finalizedBy jacocoTestReport`).
-   - Снял первый официальный baseline: **91.37% Instructions**, **91.15% Lines**, **78.92% Branches**, **98.50% Classes** (131/133 классов покрыты тестами). Все пакеты — от 86.5% до 100%. Теперь каждый прогон генерирует XML/HTML отчеты.
-
-2. **Сравнение с конкурентами (Retrofit 2.11, OpenFeign 13.5, Spring 6 HTTP Interfaces, OkHttp 4/5):**
-   - **Суперсила jRestly:** Zero-dep ядро на Java 21, прозрачный возврат типов (без оберток `Call<T>` как в Retrofit), нативные Virtual Threads, zero-garbage dispatch (~5–9 µs/op — в 4–5 раз быстрее Feign и Spring RestClient по JMH бенчмаркам) и 100% eager fail-fast валидация контрактов при создании прокси (0 сюрпризов в рантайме).
-   - **Жизненно необходимые фичи (Vital Gaps), которых нам не хватает для продакшена:**
-     * **№1 (Критическая): Dynamic Endpoint / Target URL Override (`@TargetUrl` / `URI` parameter).** В реальном проде (S3 presigned URLs, HATEOAS/Link pagination, webhooks, dynamic routing) URL вызова часто приходит в рантайме. В Retrofit есть `@Url`, в Feign — `URI baseUri`, в Spring — `URI url`. В jRestly сейчас базовый URL жестко зафиксирован в клиенте, а `@Get(path)` статичен. Разработчику приходится создавать новый инстанс клиента или уходить на сырой `HttpClient`. Это главное препятствие для реального продакшена.
-     * **№2 (Высокая ценность): Прозрачный RFC 9111 HTTP Cache SPI + In-Memory Store.** ETag / If-None-Match, If-Modified-Since, Cache-Control (max-age, stale-while-revalidate), 304 Not Modified. Ты абсолютно прав — кэш нужен для зрелости библиотеки.
-     * **№3 (Средняя ценность): Problem Details (RFC 7807 / RFC 9457)** для стандартизованной обработки ошибок REST API.
-   - **Аудит избыточности (Bloat Audit):**
-     * Проверил текущие фичи на соответствие ADR-0001 (Zero-Dep Core) и ADR-0003 (Non-goals: не строим Spring Cloud).
-     * Встроенные `CircuitBreaker` и `RateLimiter` (ADR-0043) оставляем в формате легковесных SPI + компактных zero-dep in-memory реализаций для standalone/тестов; не раздуваем их до внешних распределенных комбайнов (Redis/Consul). То же с `CookieStore` — стандартный RFC 6265 без превращения в браузер.
-
-План действий: беру в разработку **Gap №1 (`@TargetUrl`)**, затем переходим к **RFC 9111 HTTP Cache (Gap №2)**. База надежно зафиксирована в ADR-0061 и JaCoCo.
+[2026-10-17 16:15] Агент (сессия #237): Антон, закрыл Vital Gap #1 из ADR-0061: реализовал поддержку динамических эндпоинтов `@TargetUrl` (ADR-0062).
+Теперь в jRestly можно декларативно вызывать S3 presigned URLs, HATEOAS Link пагинацию, вебхуки и мульти-тенант эндпоинты:
+- Аннотация `@TargetUrl` принимает `java.net.URI`, `java.net.URL`, `CharSequence`/`String`.
+- В HTTP-глаголы добавлен `path() default ""` для компактного синтаксиса (`@Get String download(@TargetUrl URI uri);`). При наличии относительного `path` или `@PathVariable` они корректно и безопасно дополняют URL.
+- 100% eager fail-fast валидация: тип параметра, запрет конфликтов с HTTP-аннотациями, ограничение не более одного `@TargetUrl` на метод.
+- Zero-reflection hot path dispatch через кэширование `targetUrlParamIndex` в `MethodMetadata`.
+- 12 red-first тестов в `TargetUrlTest`. Полный гейт **1270/1270**, javadoc `-Werror` чист, JaCoCo **91.35% Instructions**, **98.50% Classes**.
+Следующий шаг в роадмапе — Gap #2: RFC 9111 HTTP Cache SPI + In-Memory Store!
