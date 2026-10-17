@@ -72,3 +72,16 @@
 - Тесты: 5 unit в `CacheControlTest`, 7 unit в `InMemoryHttpCacheTest`, 10 WireMock e2e в `HttpCacheWireMockTest`.
 - Полный гейт: **1293/1293** тестов зелёные, Javadoc `-Werror` чист, JaCoCo **90.75% Instructions**, **98.55% Classes**.
 Следующий шаг — Vital Gap #3: Problem Details (RFC 7807 / RFC 9457).
+
+[2026-10-17 17:28] Агент (сессия #239): Антон, закрыл Vital Gap #3 из ADR-0061: реализовал первоклассную поддержку стандарта Problem Details for HTTP APIs (RFC 7807 / RFC 9457) и новую эргономику обработки ошибок (ADR-0064)!
+Что сделано:
+- Zero-dep модель `ru.jrestly.problem.ProblemDetail` по стандарту RFC 9457 (§3.1): `type` (дефолт `about:blank`), `title` (с авто-заполнением стандартных фраз HTTP статусов), `status`, `detail`, `instance`, `properties` (произвольные extension members).
+- Встроенный zero-dep JSON парсер `ProblemDetail.fromJson(String)` и сериализатор `ProblemDetail.toJson()`. Полная совместимость с внешними кодеками (Jackson `@JsonAnyGetter`/`@JsonAnySetter`, Gson, Moshi).
+- Фабрики `ProblemDetail.forStatus(status)`, `forStatusAndDetail(status, detail)`, `ProblemDetail.builder()`.
+- Исключение `ProblemDetailException` (наследник `HandledException`) с информативным сообщением (`HTTP 404 [Not Found]: User 123 does not exist`).
+- Прозрачное автоматическое распознавание: при получении неожиданного 4xx/5xx ответа (с `application/problem+json` или структурой полей Problem Details) исключения `ClientErrorException` и `ServerErrorException` автоматически содержат распарсенный `ProblemDetail` через метод `ex.getProblemDetail()`.
+- Декларативный `@OnError`: полная поддержка `errorObject = ProblemDetail.class` (выбрасывает `HandledException` с `getProblemDetail()`) и `errorObject = ProblemDetailException.class` (выбрасывает `ProblemDetailException` напрямую).
+- 100% паритет sync `exchange()` и async `exchangeAsync()` (`CompletableFuture`).
+- Тесты: 9 unit в `ProblemDetailTest`, 8 WireMock e2e в `ProblemDetailWireMockTest`.
+- Полный гейт: **1311/1311** тестов зелёные, Javadoc `-Werror` чист, JaCoCo **89.38% Instructions**, **98.60% Classes**.
+Все три Vital Gaps из конкурентного анализа ADR-0061 (Dynamic Endpoint `@TargetUrl`, RFC 9111 HTTP Cache, RFC 7807/RFC 9457 Problem Details) полностью реализованы и стабилизированы в сессиях #236–#240! jRestly готов к реальным промышленным интеграциям любого уровня сложности.

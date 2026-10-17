@@ -1,48 +1,46 @@
-# Last Session: #238 (2026-10-17)
+# Last Session: #240 (2026-10-17)
 
 ## Что сделано
 
-**Реализация Vital Gap #2: Transparent RFC 9111 HTTP Cache SPI + In-Memory Store (ADR-0063).**
+**Стабилизация, Doclint Gate Fix и завершение трилогии Vital Gaps (ADR-0062..0064): Problem Details for HTTP APIs (RFC 7807 / RFC 9457) & Error Ergonomics.**
 
-1. *Ход:* закрытие второго ключевого функционального разрыва из конкурентного анализа ADR-0061 — прозрачное HTTP-кэширование (RFC 9111) без внешних зависимостей, с поддержкой conditional revalidation (ETag / If-None-Match, Last-Modified / If-Modified-Since), директив `Cache-Control` (`max-age`, `no-cache`, `no-store`, `must-revalidate`), обновления 304 Not Modified и инвалидации при небезопасных методах.
-2. *SPI Package `ru.jrestly.cache`:*
-   - `HttpCache`: корневой интерфейс SPI (`get`, `put`, `update`, `invalidate`, `clear`, `size`).
-   - `CachedResponse` & `SimpleCachedResponse`: иммутабельные записи кэша с динамическим вычислением заголовка `Age` по RFC 9111, проверкой свежести `isFresh()` и валидаторов.
-   - `CacheControl`: парсер директив RFC 9111 (`max-age`, `no-cache`, `no-store`, `must-revalidate`, `stale-while-revalidate`, `private`, `public`).
-   - `InMemoryHttpCache`: потокобезопасное bounded LRU-хранилище (дефолт 100 записей), нормализация URI-ключей (`URI.normalize().toASCIIString()`), сохранение representation headers (`Content-Type`, `Content-Length`) при слиянии 304 по RFC 9111 §4.3.4, и фильтрация статусов (200, 301, 404).
-   - `HttpCaches`: фабричные методы `inMemory()` и `inMemory(int maxEntries)`.
-3. *Конфигурация:*
-   - `ModuleInfo.getHttpCache()`, `SimpleModuleInfo.Builder.httpCache(...)`.
-   - `JRestlyClient.Builder.httpCache(...)`, `inMemoryCache()`, `inMemoryCache(int maxEntries)`.
-4. *Диспетчеризация (`HttpTemplate`):*
-   - Cache HIT: при безопасном методе (`GET`), если запись свежая, не требует ревалидации и запрос не несёт `Cache-Control: no-cache` ➔ шорт-циркуит из памяти, `attempts = 0` (в метриках как кэш-хит, `CircuitBreaker` не задействуется), синтезируется заголовок `Age: <sec>`.
-   - Условная ревалидация: при устаревании или `must-revalidate`/`no-cache` инжектируются `If-None-Match` и `If-Modified-Since`. На `304 Not Modified` кэш обновляется и прозрачно синтезируется `200 OK` `WireResponse` с кэшированным телом. На `200 OK` кэш обновляется новым ответом.
-   - Инвалидация: при небезопасных методах (`POST`, `PUT`, `DELETE`, `PATCH`) и не-ошибочных статусах (200..399) кэш инвалидирует целевой URI.
-   - Директивы `Cache-Control: no-store` полностью обходят кэш.
-   - Zero-garbage hot path при отключенном кэше (`httpCache == null`).
-   - 100% паритет sync `exchange()` и async `exchangeAsync()`.
-5. *Эргономика:* добавлены методы `ResponseHeaders.age()` и `ResponseHeaders.ageSeconds()`.
-6. *TDD Тесты:*
-   - `CacheControlTest`: 5 unit-тестов.
-   - `InMemoryHttpCacheTest`: 7 unit-тестов.
-   - `HttpCacheWireMockTest`: 10 e2e WireMock тестов (cache hit, age header, metrics attempts=0, revalidation 304, revalidation 200, request no-cache, request no-store, response no-store, unsafe method invalidation, async CompletableFuture, byte[] return).
-7. *Документы:*
-   - `docs/0.10.0/ADR-0063-transparent-rfc-9111-http-cache.md`.
-   - `ROADMAP.md` обновлен до **ADR-0063** (next free **0064**).
-   - `DRAFT.md`, `mailbox.md`, `.agent/days/2026-10-17.md` обновлены.
-8. *Верификация:*
+1. *Ход:* завершение реализации третьего ключевого функционального разрыва из конкурентного анализа ADR-0061:
+   - В сессии #239 был подготовлен полный стек ADR-0064, но билд споткнулся на doclint `-Werror` из-за отсутствия комментариев к сериализуемому полю `problemDetail` в `ProblemDetailException`.
+   - В сессии #240 выявлена и устранена причина падения Javadoc doclint, пройдена полная верификация всей кодовой базы.
+2. *Реализация ADR-0064:*
+   - Zero-dependency пакет `ru.jrestly.problem`:
+     * `ProblemDetail`: модель стандарта RFC 9457 (§3.1) с полями `type`, `title`, `status`, `detail`, `instance`, `properties`.
+     * Zero-dep встроенный JSON парсер `ProblemDetail.fromJson(String)` и сериализатор `ProblemDetail.toJson()`.
+     * Совместимость с внешними кодеками (Jackson `@JsonAnyGetter`/`@JsonAnySetter`, Gson, Moshi).
+     * Фабрики `ProblemDetail.forStatus(status)`, `forStatusAndDetail(status, detail)`, `ProblemDetail.builder()`.
+     * Исключение `ProblemDetailException` (наследник `HandledException`) с читаемым `getMessage()`.
+   - Интеграция в иерархию исключений:
+     * `HandledException`: метод `public Optional<ProblemDetail> getProblemDetail()`.
+     * `UnexpectedStatusException`: 4-аргументный конструктор, поле `problemDetail`, обогащенный `getMessage()`.
+     * `ClientErrorException` и `ServerErrorException`: поддержка `ProblemDetail`.
+   - Диспетчеризация в `HttpTemplate`:
+     * Авто-распознавание Problem Details при неожиданных 4xx/5xx (по `application/problem+json` или JSON структуре полей).
+     * Декларативный `@OnError`: поддержка `errorObject = ProblemDetail.class` и `errorObject = ProblemDetailException.class`.
+     * 100% паритет sync `exchange()` и async `exchangeAsync()` (`CompletableFuture`).
+3. *Верификация и Гейты:*
+   - Unit-тесты: `ProblemDetailTest` (+9 тестов).
+   - WireMock e2e тесты: `ProblemDetailWireMockTest` (+8 тестов / 9 методов).
    - `./gradlew test javadoc jacocoTestReport` — BUILD SUCCESSFUL.
-   - Счётчик тестов: **1293/1293** (+23 теста относительно начала сессии #237), 0 failures/errors, javadoc (`-Werror`) чист.
-   - JaCoCo: **90.75% Instructions**, **90.67% Lines**, **77.17% Branches**, **98.55% Classes** (136/138 классов покрыты).
+   - Счётчик тестов: **1311/1311** зелёные (core 1231 + engine-okhttp 25 + engine-apache5 25 + codec-jackson-xml 15 + benchmarks 15), 0 failures/errors.
+   - Javadoc чист под `-Werror`, 0 warnings.
+   - JaCoCo: **89.38% Instructions** (27,820 / 31,125), **89.17% Lines** (6,038 / 6,771), **74.69% Branches**, **98.60% Classes** (141 / 143 классов покрыты тестами).
+4. *Документы:*
+   - `docs/0.10.0/ADR-0064-problem-details-for-http-apis.md`.
+   - `ROADMAP.md` обновлен до **ADR-0064** (next free **0065**).
+   - `DRAFT.md`, `mailbox.md`, `.agent/days/2026-10-17.md` обновлены.
 
-## Контекст для следующей сессии (#239)
+## Контекст для следующей сессии (#241)
 
-1. **Ветка** `agent-loop`; HEAD — коммит этой сессии (родитель — #237).
-2. **Highest ADR:** **0063**, next free **0064**.
-3. **Приоритет следующего кванта работы:**
-   - **Реализация Vital Gap #3: Problem Details for HTTP APIs (RFC 7807 / RFC 9457)**:
-     * Модель `ru.jrestly.problem.ProblemDetail` (RFC 9457: `type`, `title`, `status`, `detail`, `instance`, extensions map) с zero-dep парсингом/сериализацией.
-     * Интеграция с `@OnError` и декодированием исключений в `HttpTemplate`.
-     * Элегантный доступ из `ClientErrorException` / `ServerErrorException`.
-     * E2E тесты с WireMock.
-4. **Среда:** `GRADLE_USER_HOME=/tmp/opencode/gradle-home ./gradlew ...`; счётчик сессий: 238. Часовой пояс контейнера +04.
+1. **Ветка** `agent-loop`; HEAD — коммит этой сессии (#240).
+2. **Highest ADR:** **0064**, next free **0065**.
+3. **Состояние проекта:** Все три ключевых разрыва с конкурентами (Gap #1 `@TargetUrl`, Gap #2 RFC 9111 HTTP Cache, Gap #3 RFC 7807/RFC 9457 Problem Details) закрыты на 100%. Кодовая база находится в эталонном релизном состоянии.
+4. **Варианты для следующего шага:**
+   - Подготовка мажорного/минорного релиза `0.10.0` (обновление README, changelog, бамп версии в `build.gradle`).
+   - Исследования и бенчмарки (память/аллокации при кэшировании и парсинге Problem Details).
+   - Свободный аудит пограничных сценариев и edge cases.
+5. **Среда:** `GRADLE_USER_HOME=/tmp/opencode/gradle-home ./gradlew ...`; счётчик сессий: 240. Часовой пояс контейнера +04.

@@ -30,4 +30,16 @@ public class ServerErrorException extends UnexpectedStatusException {
     public ServerErrorException(int statusCode, String rawBody, List<Header> responseHeaders) {
         super(statusCode, rawBody, responseHeaders);
     }
+
+    /**
+     * Creates the exception for an unexpected HTTP 5xx server error status carrying an optional Problem Detail payload.
+     *
+     * @param statusCode the unexpected HTTP 5xx status
+     * @param rawBody the response body as a string, or {@code null} for an empty body
+     * @param responseHeaders the response headers, or {@code null} for none
+     * @param problemDetail the parsed Problem Detail, or {@code null}
+     */
+    public ServerErrorException(int statusCode, String rawBody, List<Header> responseHeaders, ru.jrestly.problem.ProblemDetail problemDetail) {
+        super(statusCode, rawBody, responseHeaders, problemDetail);
+    }
 }

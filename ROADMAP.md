@@ -2124,10 +2124,32 @@ Enterprise microservices and cloud workloads repeatedly fetch reference datasets
 
 ---
 
-> **Current status (2026-10-17).** Highest ADR issued: **0063**; next free: **0064**.
-> Vital Gap #1 (Dynamic Endpoint / `@TargetUrl`) and Vital Gap #2 (RFC 9111 HTTP Cache SPI + Store) successfully implemented.
-> Live gate: **1293/1293** tests green across all five modules, 0 warnings under `-Werror`.
-> Strategic focus for next cycle: Gap 3 (RFC 7807 / RFC 9457 Problem Details error ergonomics).
+### ADR-0064: Problem Details for HTTP APIs (RFC 7807 / RFC 9457) & Error Ergonomics
+
+> Source of truth: [`docs/0.10.0/ADR-0064-problem-details-for-http-apis.md`](docs/0.10.0/ADR-0064-problem-details-for-http-apis.md).
+> Implementation of Vital Gap #3 from ADR-0061.
+
+**Problem:**
+Microservice APIs and REST frameworks standardize on RFC 7807 / RFC 9457 Problem Details (`application/problem+json`). Without first-class core support, developers had to write custom DTOs or manually parse raw JSON error bodies.
+
+**Solution:**
+1. Zero-dependency model `ru.jrestly.problem.ProblemDetail` supporting standard members (`type`, `title`, `status`, `detail`, `instance`) and extension properties map.
+2. Built-in zero-dependency parser `ProblemDetail.fromJson(String)` and serializer `ProblemDetail.toJson()`. Full interoperability with Jackson (`@JsonAnyGetter` / `@JsonAnySetter`), Gson, and Moshi.
+3. Exception hierarchy integration: `ProblemDetailException` (extends `HandledException`), `HandledException.getProblemDetail()`, `UnexpectedStatusException.getProblemDetail()`, `ClientErrorException`, `ServerErrorException`.
+4. Automated resolution in `HttpTemplate` on unexpected 4xx/5xx responses (via `application/problem+json` Content-Type or JSON structure), and direct mapping in declarative `@OnError` (for `ProblemDetail.class` and `ProblemDetailException.class`).
+5. Complete parity between synchronous `exchange()` and asynchronous `exchangeAsync()` (`CompletableFuture`).
+
+**Tests & Live Gate:**
+- Unit tests: `ProblemDetailTest` (+9 tests).
+- WireMock end-to-end integration tests: `ProblemDetailWireMockTest` (+8 tests, 9 test methods executed).
+- Total suite: **1311/1311** tests green across all modules (0 failures, 0 errors).
+- Javadoc gate clean under `-Werror`. JaCoCo: instructions coverage 89.4%, 98.6% classes covered (141/143 classes).
+
+---
+
+> **Current status (2026-10-17).** Highest ADR issued: **0064**; next free: **0065**.
+> Vital Gap #1 (`@TargetUrl`), Vital Gap #2 (RFC 9111 HTTP Cache), and Vital Gap #3 (RFC 7807 / RFC 9457 Problem Details) are fully completed!
+> Live gate: **1311/1311** tests green across all five modules, 0 warnings under `-Werror`.
 
 ## Post-0.5.0 shortlist (not scheduled — see ADR-0003)
 

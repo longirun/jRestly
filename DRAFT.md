@@ -1,5 +1,38 @@
 # DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
+> **Сессия #240 (стабилизация и полный гейт: верификация ADR-0064, устранение doclint warning и 1311/1311 green):**
+> завершение цикла реализации трех ключевых функциональных разрывов (Vital Gaps #1–#3 из ADR-0061).
+> 1. *Диагностика и Doclint Gate:*
+>    - В сессии #239 был подготовлен полный стек ADR-0064 (Problem Details for HTTP APIs RFC 7807/RFC 9457), но сборка прервалась из-за doclint warning `no comment` на поле `problemDetail` в `ProblemDetailException` (в силу наследования от `Serializable`).
+>    - Добавлен нормативный Javadoc и тег `@serial` в `ProblemDetailException`.
+> 2. *Полный гейт:*
+>    - `./gradlew test javadoc jacocoTestReport` — BUILD SUCCESSFUL.
+>    - Счётчик тестов: **1311/1311** (core 1231 + engine-okhttp 25 + engine-apache5 25 + codec-jackson-xml 15 + benchmarks 15), 0 failures/errors.
+>    - Javadoc чист под `-Werror`, 0 warnings.
+>    - JaCoCo: **89.38% Instructions**, **89.17% Lines**, **74.69% Branches**, **98.60% Classes** (141/143 классов покрыто тестами).
+>    - Все три Vital Gaps из конкурентной матрицы ADR-0061 (Gap 1 `@TargetUrl`, Gap 2 RFC 9111 HTTP Cache, Gap 3 RFC 7807/RFC 9457 Problem Details) зафиксированы в коде, тестах и документации.
+>
+> **Сессия #239 (фича: ADR-0064 Problem Details for HTTP APIs (RFC 7807 / RFC 9457) & Error Ergonomics):**
+> реализация третьего критического разрыва функциональности (Vital Gap #3 из ADR-0061).
+> 1. *Пакет `ru.jrestly.problem`:*
+>    - `ProblemDetail`: zero-dependency модель по RFC 9457 (§3.1): `type` (дефолт `about:blank`), `title` (с дефолтными HTTP фразами), `status`, `detail`, `instance`, `properties` (extension members map).
+>    - Встроенный zero-dep JSON парсер `ProblemDetail.fromJson(String)` и компактный сериализатор `ProblemDetail.toJson()`.
+>    - Полная совместимость с внешними кодеками: аннотации `@JsonAnyGetter` / `@JsonAnySetter` для Jackson, поддержка Gson и Moshi.
+>    - Фабрики `ProblemDetail.forStatus(int)`, `forStatusAndDetail(int, String)` и `ProblemDetail.builder()`.
+>    - `ProblemDetailException`: наследник `HandledException`, несущий `ProblemDetail` с лаконичным форматированием в `getMessage()`.
+> 2. *Расширение иерархии исключений:*
+>    - `HandledException`: метод `public Optional<ProblemDetail> getProblemDetail()`.
+>    - `UnexpectedStatusException`: поле `problemDetail`, 4-аргументный конструктор, переопределение `getProblemDetail()`, обогащенный `getMessage()`.
+>    - `ClientErrorException` и `ServerErrorException`: 4-аргументные конструкторы с поддержкой `ProblemDetail`.
+> 3. *Диспетчеризация и авто-резолвинг в `HttpTemplate`:*
+>    - Авто-детекция Problem Details при неожиданных 4xx/5xx: проверка `application/problem+json` или структуры JSON (наличие `status`, `title`, `detail`, `type`, `instance`). Попытка через `PayloadCodec` с прозрачным fallback на zero-dep `ProblemDetail.fromJson`.
+>    - Декларативный `@OnError`: поддержка `errorObject = ProblemDetail.class` (выбрасывает `HandledException` с `getProblemDetail()`) и `errorObject = ProblemDetailException.class` (выбрасывает `ProblemDetailException` напрямую).
+>    - 100% паритет sync `exchange()` и async `exchangeAsync()` (`CompletableFuture`).
+> 4. *Тесты и Гейт:*
+>    - Unit-тесты `ProblemDetailTest` (9 тестов): дефолты, фабрики, builder, RFC 9457 Out-of-Credit парсинг, toJson roundtrip, escaping, error cases, equals/hashCode.
+>    - WireMock e2e `ProblemDetailWireMockTest` (8 тестов): 403 ClientErrorException + extension members, 500 ServerErrorException, application/json problem members, @OnError ProblemDetail, @OnError ProblemDetailException, async CompletableFuture, non-JSON 502 HTML, arbitrary JSON.
+>    - Highest ADR: **0064** (next free **0065**). Все три Vital Gaps из ADR-0061 полностью закрыты!
+>
 > **Сессия #238 (фича: ADR-0063 Transparent RFC 9111 HTTP Cache SPI + In-Memory Store):**
 > реализация критического разрыва функциональности (Vital Gap #2 из ADR-0061).
 > 1. *SPI Package `ru.jrestly.cache`:*

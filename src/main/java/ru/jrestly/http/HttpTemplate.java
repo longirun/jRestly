@@ -2552,10 +2552,38 @@ class HttpTemplate {
 
     private void handleOnError(int statusCode, String payload, List<Header> responseHeaders, Charset payloadCharset) {
         Class<?> targetErrorClass = onErrorParser.getErrorClass(statusCode);
-        Object errorObject = (payload != null && !payload.isEmpty() && targetErrorClass != Void.class)
-                ? responseCodec(responseHeaders).deserialize(
-                        payload.getBytes(payloadCharset), targetErrorClass, contentTypeOf(responseHeaders))
-                : null;
+        boolean isProblemException = ru.jrestly.problem.ProblemDetailException.class.isAssignableFrom(targetErrorClass);
+        Class<?> deserializeClass = isProblemException ? ru.jrestly.problem.ProblemDetail.class : targetErrorClass;
+
+        Object errorObject = null;
+        if (payload != null && !payload.isEmpty() && deserializeClass != Void.class) {
+            if (deserializeClass == ru.jrestly.problem.ProblemDetail.class) {
+                try {
+                    errorObject = responseCodec(responseHeaders).deserialize(
+                            payload.getBytes(payloadCharset), deserializeClass, contentTypeOf(responseHeaders));
+                } catch (Throwable ignored) {
+                }
+            } else {
+                errorObject = responseCodec(responseHeaders).deserialize(
+                        payload.getBytes(payloadCharset), deserializeClass, contentTypeOf(responseHeaders));
+            }
+        }
+
+        if (errorObject == null && (targetErrorClass == ru.jrestly.problem.ProblemDetail.class || isProblemException) && payload != null && !payload.isBlank()) {
+            try {
+                errorObject = ru.jrestly.problem.ProblemDetail.fromJson(payload);
+            } catch (Throwable ignored) {
+            }
+        }
+        if (errorObject instanceof ru.jrestly.problem.ProblemDetail pd && pd.getStatus() <= 0) {
+            pd.setStatus(statusCode);
+        }
+        if (isProblemException) {
+            ru.jrestly.problem.ProblemDetail pd = (errorObject instanceof ru.jrestly.problem.ProblemDetail p)
+                    ? p
+                    : ru.jrestly.problem.ProblemDetail.forStatus(statusCode);
+            errorObject = new ru.jrestly.problem.ProblemDetailException(pd, responseHeaders);
+        }
 
         if (Throwable.class.isAssignableFrom(targetErrorClass)) {
             if (errorObject instanceof RuntimeException re) {
@@ -2580,6 +2608,9 @@ class HttpTemplate {
     }
 
     private static Throwable instantiateThrowable(Class<?> clazz, int statusCode, List<Header> responseHeaders) {
+        if (ru.jrestly.problem.ProblemDetailException.class.isAssignableFrom(clazz)) {
+            return new ru.jrestly.problem.ProblemDetailException(ru.jrestly.problem.ProblemDetail.forStatus(statusCode), responseHeaders);
+        }
         try {
             var ctor = clazz.getConstructor(Object.class, int.class, List.class);
             return (Throwable) ctor.newInstance(null, statusCode, responseHeaders);
@@ -2603,14 +2634,79 @@ class HttpTemplate {
         return new HandledException(null, statusCode, responseHeaders);
     }
 
-    private static UnexpectedStatusException createUnexpectedStatusException(
+    private UnexpectedStatusException createUnexpectedStatusException(
             int statusCode, String rawBody, List<Header> responseHeaders) {
+        ru.jrestly.problem.ProblemDetail problemDetail = resolveProblemDetail(statusCode, rawBody, responseHeaders);
         if (statusCode >= 400 && statusCode < 500) {
-            return new ClientErrorException(statusCode, rawBody, responseHeaders);
+            return new ClientErrorException(statusCode, rawBody, responseHeaders, problemDetail);
         }
         if (statusCode >= 500 && statusCode < 600) {
-            return new ServerErrorException(statusCode, rawBody, responseHeaders);
+            return new ServerErrorException(statusCode, rawBody, responseHeaders, problemDetail);
         }
-        return new UnexpectedStatusException(statusCode, rawBody, responseHeaders);
+        return new UnexpectedStatusException(statusCode, rawBody, responseHeaders, problemDetail);
+    }
+
+    private ru.jrestly.problem.ProblemDetail resolveProblemDetail(int statusCode, String rawBody, List<Header> responseHeaders) {
+        if (rawBody == null || rawBody.isBlank()) {
+            return null;
+        }
+        String trimmed = rawBody.trim();
+        if (!trimmed.startsWith("{") || !trimmed.endsWith("}")) {
+            return null;
+        }
+        boolean isProblemType = isProblemJsonContentType(responseHeaders);
+        try {
+            ru.jrestly.codec.PayloadCodec codec = responseCodec(responseHeaders);
+            if (codec != null) {
+                byte[] bytes = trimmed.getBytes(StandardCharsets.UTF_8);
+                ru.jrestly.problem.ProblemDetail pd = codec.deserialize(bytes, ru.jrestly.problem.ProblemDetail.class, contentTypeOf(responseHeaders));
+                if (pd != null && (isProblemType || isLikelyProblemDetail(pd))) {
+                    if (pd.getStatus() <= 0) {
+                        pd.setStatus(statusCode);
+                    }
+                    return pd;
+                }
+            }
+        } catch (Throwable ignored) {
+        }
+        try {
+            ru.jrestly.problem.ProblemDetail pd = ru.jrestly.problem.ProblemDetail.fromJson(trimmed);
+            if (pd != null && (isProblemType || isLikelyProblemDetail(pd))) {
+                if (pd.getStatus() <= 0) {
+                    pd.setStatus(statusCode);
+                }
+                return pd;
+            }
+        } catch (Throwable ignored) {
+        }
+        return null;
+    }
+
+    private static boolean isProblemJsonContentType(List<Header> headers) {
+        if (headers == null || headers.isEmpty()) {
+            return false;
+        }
+        for (Header h : headers) {
+            if ("Content-Type".equalsIgnoreCase(h.name())) {
+                String val = h.value();
+                if (val != null) {
+                    String lower = val.toLowerCase(java.util.Locale.ROOT);
+                    return lower.contains("application/problem+json") || lower.contains("application/problem+xml");
+                }
+            }
+        }
+        return false;
+    }
+
+    private static boolean isLikelyProblemDetail(ru.jrestly.problem.ProblemDetail pd) {
+        if (pd == null) {
+            return false;
+        }
+        boolean hasNonDefaultType = pd.getType() != null && !"about:blank".equals(pd.getType().toString());
+        return pd.getStatus() > 0
+                || hasNonDefaultType
+                || (pd.getTitle() != null && !pd.getTitle().isBlank())
+                || (pd.getDetail() != null && !pd.getDetail().isBlank())
+                || pd.getInstance() != null;
     }
 }

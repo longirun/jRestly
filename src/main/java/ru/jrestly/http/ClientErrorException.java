@@ -29,4 +29,16 @@ public class ClientErrorException extends UnexpectedStatusException {
     public ClientErrorException(int statusCode, String rawBody, List<Header> responseHeaders) {
         super(statusCode, rawBody, responseHeaders);
     }
+
+    /**
+     * Creates the exception for an unexpected HTTP 4xx client error status carrying an optional Problem Detail payload.
+     *
+     * @param statusCode the unexpected HTTP 4xx status
+     * @param rawBody the response body as a string, or {@code null} for an empty body
+     * @param responseHeaders the response headers, or {@code null} for none
+     * @param problemDetail the parsed Problem Detail, or {@code null}
+     */
+    public ClientErrorException(int statusCode, String rawBody, List<Header> responseHeaders, ru.jrestly.problem.ProblemDetail problemDetail) {
+        super(statusCode, rawBody, responseHeaders, problemDetail);
+    }
 }

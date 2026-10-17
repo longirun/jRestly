@@ -74,4 +74,29 @@ public class HandledException extends RuntimeException {
   public List<Header> getResponseHeaders() {
     return responseHeaders;
   }
+
+  /**
+   * The decoded {@link ru.jrestly.problem.ProblemDetail} payload carried by this exception, if present.
+   *
+   * <p>Present when the response payload was decoded into {@link ru.jrestly.problem.ProblemDetail}
+   * (e.g. via {@code @OnError(errorObject = ProblemDetail.class)}), or when an unexpected
+   * status response contained a Problem Detail payload.</p>
+   *
+   * @return an {@link java.util.Optional} containing the {@link ru.jrestly.problem.ProblemDetail}, or empty if not present
+   */
+  public java.util.Optional<ru.jrestly.problem.ProblemDetail> getProblemDetail() {
+    return java.util.Optional.ofNullable(getProblemDetailPayload());
+  }
+
+  /**
+   * Returns the raw {@link ru.jrestly.problem.ProblemDetail} payload, or {@code null} if not present.
+   *
+   * @return the {@link ru.jrestly.problem.ProblemDetail} or {@code null}
+   */
+  public ru.jrestly.problem.ProblemDetail getProblemDetailPayload() {
+    if (details instanceof ru.jrestly.problem.ProblemDetail pd) {
+      return pd;
+    }
+    return null;
+  }
 }
