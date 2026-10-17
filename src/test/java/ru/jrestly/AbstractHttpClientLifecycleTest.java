@@ -18,8 +18,7 @@ import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Lifecycle safety of {@code AbstractHttpClient}: {@code close()} shuts down the
@@ -159,5 +158,50 @@ class AbstractHttpClientLifecycleTest {
 
         client.close();
         assertTrue(trackingEngine.closed.get(), "Pluggable HttpEngine must be closed when client is closed");
+    }
+
+    @Test
+    @DisplayName("getHttpClient and transport accessors work with default, custom and pluggable engines")
+    void testHttpClientAndTransportAccessorsAndFallback() {
+        // 1. Default client uses JdkHttpEngine -> getHttpClient returns live JDK HttpClient
+        JRestlyClient defaultClient = JRestlyClient.builder()
+                .baseUrl("https://example.com")
+                .build();
+        assertNotNull(defaultClient.getHttpClient());
+        assertTrue(defaultClient.getHttpEngine() instanceof JdkHttpEngine);
+        assertNull(defaultClient.getCookieHandler());
+        assertNull(defaultClient.getProxySelector());
+        assertNull(defaultClient.getAuthenticator());
+        defaultClient.close();
+
+        // 2. Client with custom pluggable engine without JDK HttpClient -> getHttpClient returns null
+        CloseTrackingHttpEngine trackingEngine = new CloseTrackingHttpEngine();
+        JRestlyClient pluggableClient = JRestlyClient.builder()
+                .baseUrl("https://example.com")
+                .httpEngine(trackingEngine)
+                .build();
+        assertNull(pluggableClient.getHttpClient());
+        assertSame(trackingEngine, pluggableClient.getHttpEngine());
+        pluggableClient.close();
+
+        // 3. Subclass setting httpClient but not httpEngine triggers fallback to JdkHttpEngine in constructor
+        CloseTrackingHttpClient rawHttpClient = new CloseTrackingHttpClient();
+        AbstractHttpClient fallbackClient = new AbstractHttpClient(SimpleModuleInfo.builder().baseUrl("https://example.com").build()) {
+            @Override
+            protected void createConnection() {
+                this.httpClient = rawHttpClient;
+                this.httpEngine = null; // triggers fallback in constructor
+            }
+        };
+        assertSame(rawHttpClient, fallbackClient.getHttpClient());
+        assertTrue(fallbackClient.getHttpEngine() instanceof JdkHttpEngine);
+        fallbackClient.close();
+
+        // 4. JdkHttpEngine 1-arg constructor wraps without ownership
+        CloseTrackingHttpClient freshClient = new CloseTrackingHttpClient();
+        JdkHttpEngine unownedEngine = new JdkHttpEngine(freshClient);
+        assertSame(freshClient, unownedEngine.getHttpClient());
+        unownedEngine.close();
+        assertFalse(freshClient.closed.get());
     }
 }

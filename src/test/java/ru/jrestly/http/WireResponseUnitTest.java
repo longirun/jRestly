@@ -246,4 +246,29 @@ class WireResponseUnitTest {
         String strNullBody = rNullBody.toString();
         assertTrue(strNullBody.contains("body=null"));
     }
+
+    @Test
+    @DisplayName("TrailerCompletingInputStream intercepts EOF on byte-by-byte read and triggers trailers consumer")
+    void testTrailerCompletingInputStreamSingleByteRead() throws java.io.IOException {
+        byte[] data = new byte[]{42};
+        java.util.concurrent.atomic.AtomicBoolean completed = new java.util.concurrent.atomic.AtomicBoolean(false);
+        List<Header> trailers = List.of(new Header("X-Trailer", "complete"));
+        try (TrailerCompletingInputStream in = new TrailerCompletingInputStream(
+                new ByteArrayInputStream(data),
+                () -> trailers,
+                list -> completed.set(true))) {
+            assertEquals(42, in.read());
+            assertFalse(completed.get());
+            assertEquals(-1, in.read());
+            assertTrue(completed.get());
+        }
+
+        // Safe null supplier and consumer defaults
+        try (TrailerCompletingInputStream in = new TrailerCompletingInputStream(
+                new ByteArrayInputStream(new byte[0]),
+                null,
+                null)) {
+            assertEquals(-1, in.read());
+        }
+    }
 }

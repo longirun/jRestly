@@ -384,5 +384,24 @@ class ResponseHeadersTest {
         assertTrue(resp.firstTrailer("X-Missing").isEmpty());
         assertTrue(resp.trailerValues("X-Missing").isEmpty());
     }
+
+    @Test
+    @DisplayName("requestId parses X-Request-ID and falls back to X-Correlation-ID")
+    void requestIdParsingAndFallback() {
+        ResponseHeaders r1 = new ResponseHeaders(200, List.of(new Header("X-Request-ID", "req-1")), Duration.ZERO);
+        assertEquals(Optional.of("req-1"), r1.requestId());
+
+        ResponseHeaders r2 = new ResponseHeaders(200, List.of(new Header("X-Correlation-ID", "corr-2")), Duration.ZERO);
+        assertEquals(Optional.of("corr-2"), r2.requestId());
+
+        ResponseHeaders r3 = new ResponseHeaders(200, List.of(
+                new Header("X-Request-ID", "req-3"),
+                new Header("X-Correlation-ID", "corr-3")
+        ), Duration.ZERO);
+        assertEquals(Optional.of("req-3"), r3.requestId());
+
+        ResponseHeaders r4 = new ResponseHeaders(200, List.of(), Duration.ZERO);
+        assertTrue(r4.requestId().isEmpty());
+    }
 }
 

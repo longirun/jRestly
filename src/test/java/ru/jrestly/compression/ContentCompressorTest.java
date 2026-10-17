@@ -138,4 +138,28 @@ class ContentCompressorTest {
             assertArrayEquals(original, stream.readAllBytes());
         }
     }
+
+    @Test
+    @DisplayName("DeflateContentCompressor handles RFC 1951 raw deflate fallback and malformed payloads")
+    void testDeflateRawFallbackAndMalformed() throws IOException {
+        byte[] original = "Raw deflate payload without zlib headers across networks.".repeat(8).getBytes(StandardCharsets.UTF_8);
+
+        // Compress using raw deflate (nowrap = true, RFC 1951)
+        java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
+        java.util.zip.Deflater rawDeflater = new java.util.zip.Deflater(java.util.zip.Deflater.DEFAULT_COMPRESSION, true);
+        try (java.util.zip.DeflaterOutputStream dos = new java.util.zip.DeflaterOutputStream(baos, rawDeflater)) {
+            dos.write(original);
+        } finally {
+            rawDeflater.end();
+        }
+        byte[] rawDeflateBytes = baos.toByteArray();
+
+        // Decompress must catch ZipException from standard Inflater and fallback to raw Inflater(true)
+        byte[] decompressed = DeflateContentCompressor.INSTANCE.decompress(rawDeflateBytes);
+        assertArrayEquals(original, decompressed);
+
+        // Malformed compressed bytes fail
+        assertThrows(IOException.class, () ->
+                DeflateContentCompressor.INSTANCE.decompress(new byte[]{1, 2, 3, 4, 5, 6, 7, 8}));
+    }
 }

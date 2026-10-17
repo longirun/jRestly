@@ -85,6 +85,18 @@ class HttpCacheWireMockTest extends BaseWireMockTest {
         @Get(path = "/data/bytes")
         byte[] getBytes();
 
+        @Get(path = "/data/stream")
+        byte[] getStreamDataBytes();
+
+        @Get(path = "/data/stream")
+        InputStream getStream();
+
+        @Get(path = "/data/stream-reval")
+        byte[] getStreamRevalBytes();
+
+        @Get(path = "/data/stream-reval")
+        InputStream getStreamReval(@RequestHeader(name = "Cache-Control") String cacheControl);
+
         @Post(path = "/data")
         String mutateData();
 
@@ -368,5 +380,65 @@ class HttpCacheWireMockTest extends BaseWireMockTest {
 
         testClient.getData();
         assertEquals(0, lastAttempts.get(), "Cache HIT reports attempts = 0");
+    }
+
+    @Test
+    @DisplayName("InputStream return type: cache hit transforms cached bytes into fresh InputStream")
+    void streamReturnHitFromCache() throws IOException {
+        stubFor(get(urlEqualTo("/data/stream"))
+                .willReturn(aResponse()
+                        .withStatus(200)
+                        .withHeader("Content-Type", "application/octet-stream")
+                        .withHeader("Cache-Control", "max-age=60")
+                        .withBody("stream-cache-bytes".getBytes(StandardCharsets.UTF_8))));
+
+        HttpCache cache = HttpCaches.inMemory();
+        CachedResourceClient testClient = createCachedClient(cache).get(CachedResourceClient.class);
+
+        // First call populates cache
+        byte[] initial = testClient.getStreamDataBytes();
+        assertNotNull(initial);
+        assertEquals("stream-cache-bytes", new String(initial, StandardCharsets.UTF_8));
+        assertEquals(1, cache.size());
+
+        // Second call is Cache HIT for streaming method -> triggers toStreamWireResponse(cachedResp)!
+        try (InputStream in = testClient.getStream()) {
+            assertNotNull(in);
+            assertEquals("stream-cache-bytes", new String(in.readAllBytes(), StandardCharsets.UTF_8));
+        }
+
+        verify(1, getRequestedFor(urlEqualTo("/data/stream")));
+    }
+
+    @Test
+    @DisplayName("InputStream return type: conditional 304 revalidation transforms updated cached bytes into fresh InputStream")
+    void streamReturnRevalidation304FromCache() throws IOException {
+        stubFor(get(urlEqualTo("/data/stream-reval"))
+                .willReturn(aResponse()
+                        .withStatus(200)
+                        .withHeader("Content-Type", "application/octet-stream")
+                        .withHeader("Cache-Control", "max-age=1")
+                        .withHeader("ETag", "\"tag-reval\"")
+                        .withBody("stream-reval-bytes".getBytes(StandardCharsets.UTF_8))));
+
+        HttpCache cache = HttpCaches.inMemory();
+        CachedResourceClient testClient = createCachedClient(cache).get(CachedResourceClient.class);
+
+        // First call populates cache with ETag
+        byte[] initial = testClient.getStreamRevalBytes();
+        assertEquals("stream-reval-bytes", new String(initial, StandardCharsets.UTF_8));
+
+        stubFor(get(urlEqualTo("/data/stream-reval"))
+                .withHeader("If-None-Match", equalTo("\"tag-reval\""))
+                .willReturn(aResponse()
+                        .withStatus(304)
+                        .withHeader("ETag", "\"tag-reval\"")));
+
+        // Revalidation with 304 -> triggers toStreamWireResponse(updated)!
+        try (InputStream in2 = testClient.getStreamReval("no-cache")) {
+            assertEquals("stream-reval-bytes", new String(in2.readAllBytes(), StandardCharsets.UTF_8));
+        }
+
+        verify(2, getRequestedFor(urlEqualTo("/data/stream-reval")));
     }
 }

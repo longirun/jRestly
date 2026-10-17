@@ -348,6 +348,16 @@ class JRestlyClientBuilderTest {
                 .build();
         assertFalse(cApiQuerySup.getModuleInfo().getRequestInterceptors().isEmpty());
         cApiQuerySup.close();
+
+        JRestlyClient cAuthHeader = JRestlyClient.builder()
+                .baseUrl("https://api.example.com")
+                .authHeader("X-Token", "secret-value")
+                .build();
+        assertNotNull(cAuthHeader.getModuleInfo().getAuthProvider());
+        assertEquals(1, cAuthHeader.getModuleInfo().getAuthProvider().getAuthHeaders().size());
+        assertEquals("X-Token", cAuthHeader.getModuleInfo().getAuthProvider().getAuthHeaders().get(0).name());
+        assertEquals("secret-value", cAuthHeader.getModuleInfo().getAuthProvider().getAuthHeaders().get(0).value());
+        cAuthHeader.close();
     }
 
     @Test
@@ -419,5 +429,61 @@ class JRestlyClientBuilderTest {
         assertSame(retryPolicy, info.getRetryPolicy());
         assertSame(customEngine, info.getHttpEngine());
         client.close();
+    }
+
+    @Test
+    @DisplayName("ModuleInfo default methods provide expected baseline configuration")
+    void moduleInfoDefaultMethodsAndEnvironment() {
+        ModuleInfo defaultInfo = new ModuleInfo() {
+            @Override public String getName() { return "custom"; }
+            @Override public <T> Environment<T> getEnvironment() { return null; }
+            @Override public AuthProvider getAuthProvider() { return null; }
+        };
+
+        assertEquals(5_000, defaultInfo.getConnectTimeout());
+        assertEquals(30_000, defaultInfo.getSocketTimeout());
+        assertEquals(HttpClient.Version.HTTP_2, defaultInfo.getHttpVersion());
+        assertTrue(defaultInfo.isValidateControllers());
+        assertEquals(RetryPolicy.off(), defaultInfo.getRetryPolicy());
+        assertTrue(defaultInfo.getRequestInterceptors().isEmpty());
+        assertTrue(defaultInfo.getResponseInterceptors().isEmpty());
+        assertNull(defaultInfo.getSslContext());
+        assertNull(defaultInfo.getSslParameters());
+        assertTrue(defaultInfo.isDecompressionEnabled());
+        assertNull(defaultInfo.getExecutor());
+        assertFalse(defaultInfo.isVirtualThreads());
+        assertNull(defaultInfo.getCookieHandler());
+        assertNull(defaultInfo.getMetricsListener());
+        assertNull(defaultInfo.getProxySelector());
+        assertNull(defaultInfo.getAuthenticator());
+        assertNull(defaultInfo.getRequestCompressionAlgorithm());
+        assertEquals(0, defaultInfo.getRequestCompressionThreshold());
+        assertTrue(defaultInfo.getContentCompressors().isEmpty());
+        assertNull(defaultInfo.getContentCompressor("gzip"));
+        assertNull(defaultInfo.getContentCompressor(null));
+        assertNull(defaultInfo.getTracePropagator());
+        assertNull(defaultInfo.getCircuitBreaker());
+        assertNull(defaultInfo.getCircuitBreakerRegistry());
+        assertNull(defaultInfo.getRateLimiter());
+        assertNull(defaultInfo.getRateLimiterRegistry());
+        assertNull(defaultInfo.getTokenManager());
+        assertFalse(defaultInfo.isRetryOnUnauthorized());
+        assertNull(defaultInfo.getLogger());
+        assertNull(defaultInfo.getHttpEngine());
+        assertNull(defaultInfo.getHttpCache());
+        assertNotNull(defaultInfo.getJsonCodec());
+        assertNotNull(defaultInfo.getCodecRegistry());
+
+        // SimpleEnvironment mutators
+        SimpleModuleInfo simple = SimpleModuleInfo.builder()
+                .baseUrl("https://env.example.com")
+                .authHeader("Authorization", "Bearer tok")
+                .build();
+        Environment<ru.jrestly.http.Header> env = simple.getEnvironment();
+        assertEquals("https://env.example.com", env.getUrl());
+        assertNull(env.getAuthDetails());
+        ru.jrestly.http.Header customAuth = new ru.jrestly.http.Header("Authorization", "Bearer 123");
+        env.setAuthDetails(customAuth);
+        assertSame(customAuth, env.getAuthDetails());
     }
 }

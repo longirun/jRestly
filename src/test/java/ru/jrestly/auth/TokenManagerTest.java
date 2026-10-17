@@ -233,6 +233,25 @@ class TokenManagerTest {
 
         assertThrows(NullPointerException.class, () -> TokenManager.builder().refreshBuffer(null));
     }
+
+    @Test
+    @DisplayName("TokenManager.Builder stringSupplier configures TTL and validates nulls")
+    void builderStringSupplierAndPerpetualNullChecks() {
+        TokenManager tm = TokenManager.builder()
+                .stringSupplier(() -> "string-token-abc", Duration.ofMinutes(15))
+                .refreshBuffer(Duration.ofSeconds(10))
+                .build();
+        assertEquals("string-token-abc", tm.getToken());
+
+        // Null checks for stringSupplier
+        assertThrows(NullPointerException.class, () ->
+                TokenManager.builder().stringSupplier(null, Duration.ofMinutes(5)));
+        assertThrows(NullPointerException.class, () ->
+                TokenManager.builder().stringSupplier(() -> "val", null));
+
+        // Null checks for ofPerpetual
+        assertThrows(NullPointerException.class, () -> TokenManager.ofPerpetual(null));
+    }
 }
 
 

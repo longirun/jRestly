@@ -203,4 +203,39 @@ class RequestContextTest {
         assertEquals(-1, netErrCtx.statusCode());
         assertFalse(netErrCtx.isSuccess());
     }
+
+    @Test
+    @DisplayName("RequestContext default methods provide safe fallback contracts")
+    void requestContextDefaultMethods() {
+        RequestContext dummy = new RequestContext() {
+            @Override public String moduleName() { return "mod"; }
+            @Override public Class<?> controllerClass() { return SampleApi.class; }
+            @Override public Method method() { return emptyMethod(); }
+            @Override public Object[] args() { return new Object[0]; }
+            @Override public void setAttribute(String name, Object value) {}
+            @Override public Object getAttribute(String name) { return null; }
+            @Override public java.util.Map<String, Object> attributes() { return java.util.Map.of(); }
+        };
+
+        assertThrows(UnsupportedOperationException.class, () -> dummy.shortCircuit(new WireResponse(200, List.of(), null)));
+        assertTrue(dummy.shortCircuitResponse().isEmpty());
+        assertFalse(dummy.isShortCircuited());
+    }
+
+    @Test
+    @DisplayName("SimpleResponseContext delegates setAttribute, attributes, method, and args")
+    void simpleResponseContextFullDelegation() {
+        RequestContext reqCtx = new SimpleRequestContext("mod", SampleApi.class, sampleMethod(), new Object[]{"val", 123});
+        WireRequest wireReq = new WireRequest(HttpMethod.GET, URI.create("http://example.com"), List.of(), null, null, null, null);
+        SimpleResponseContext respCtx = new SimpleResponseContext(reqCtx, wireReq, null, null, Duration.ofMillis(15));
+
+        assertEquals(sampleMethod(), respCtx.method());
+        assertEquals(2, respCtx.args().length);
+        assertEquals("val", respCtx.args()[0]);
+
+        respCtx.setAttribute("customAttr", "attrVal");
+        assertEquals("attrVal", respCtx.getAttribute("customAttr"));
+        assertEquals(Optional.of("attrVal"), respCtx.getAttribute("customAttr", String.class));
+        assertEquals("attrVal", respCtx.attributes().get("customAttr"));
+    }
 }

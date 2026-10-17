@@ -25,12 +25,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertSame;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Unit tests for the synchronous streaming contract (ADR-0015, Aspect 3 + 5):
@@ -181,6 +176,68 @@ class HttpTemplateStreamContractTest {
 
         assertTrue(t.probePayloadDecode(wire));
         assertEquals(0, codec.deserializeCalls);
+    }
+
+    @Test
+    @DisplayName("HttpTemplate getters and configuration accessors")
+    void httpTemplateGettersAndAccessors() {
+        HttpTemplate t = template();
+        t.setUrl("http://localhost:1/test-url");
+        assertEquals("http://localhost:1/test-url", t.getUrl());
+
+        t.setRequestParams(List.of(new Param("p1", "v1")));
+        assertEquals(1, t.getRequestParams().size());
+        assertEquals("p1", t.getRequestParams().get(0).name());
+
+        java.util.function.Supplier<HttpRequest.BodyPublisher> sup = HttpRequest.BodyPublishers::noBody;
+        t.setBodyPublisherSupplier(sup);
+        assertSame(sup, t.getBodyPublisherSupplier());
+
+        t.setConditional(true);
+        assertTrue(t.isConditional());
+
+        OnErrorParser parser = new OnErrorParser();
+        t.setOnErrorParser(parser);
+        assertSame(parser, t.getOnErrorParser());
+
+        ResponseHeaders holder = new ResponseHeaders();
+        t.setResponseHeadersHolder(holder);
+        assertSame(holder, t.getResponseHeadersHolder());
+
+        ru.jrestly.metrics.ClientMetricsListener ml = m -> {};
+        t.setMetricsListener(ml);
+        assertSame(ml, t.getMetricsListener());
+
+        ru.jrestly.resilience.CircuitBreaker cb = ru.jrestly.resilience.CircuitBreaker.of("t");
+        t.setCircuitBreaker(cb);
+        assertSame(cb, t.getCircuitBreaker());
+
+        ru.jrestly.resilience.RateLimiter rl = ru.jrestly.resilience.RateLimiter.of("r", ru.jrestly.resilience.RateLimiterConfig.ofDefaults());
+        t.setRateLimiter(rl);
+        assertSame(rl, t.getRateLimiter());
+
+        ru.jrestly.auth.TokenManager tm = ru.jrestly.auth.TokenManager.ofPerpetual(() -> "tok");
+        t.setTokenManager(tm);
+        assertSame(tm, t.getTokenManager());
+
+        t.setRetryOnUnauthorized(true);
+        assertTrue(t.isRetryOnUnauthorized());
+
+        ru.jrestly.cache.HttpCache cache = ru.jrestly.cache.HttpCaches.inMemory();
+        t.setHttpCache(cache);
+        assertSame(cache, t.getHttpCache());
+
+        ru.jrestly.engine.HttpEngineOptions options = ru.jrestly.engine.HttpEngineOptions.defaults();
+        t.setEngineOptions(options);
+        assertSame(options, t.getEngineOptions());
+
+        assertNull(t.getHttpEngine());
+        assertNull(t.getHttpClient());
+
+        HttpClient rawClient = stubClient(List.of());
+        t.setHttpClient(rawClient);
+        assertSame(rawClient, t.getHttpClient());
+        assertNotNull(t.getHttpEngine());
     }
 
     // ------------------------------------------------------------------

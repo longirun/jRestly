@@ -1,5 +1,37 @@
 # DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
+> **Сессия #248 (free-аудит / харденинг: масштабное закрытие edge-cases в транспорте, кэшировании стримов, default-методах SPI и рекорд JaCoCo 94.53% Instruction / 99.29% Method Coverage):**
+> свободный ход развития качества и устойчивости кодовой базы.
+> 1. *Транспорт и жизненный цикл (`AbstractHttpClientLifecycleTest`):*
+>    - Верифицированы фабричные методы и акцессоры `getHttpClient()`, `getHttpEngine()` в `AbstractHttpClient`;
+>    - Протестирован 1-аргументный конструктор `JdkHttpEngine(rawHttpClient)` без владения клиентом (`close()` не закрывает внешний HTTP-клиент, `rawClient()` возвращает переданный инстанс).
+> 2. *Интерцепторы и контекст (`RequestContextTest`):*
+>    - Покрыты default-методы `RequestContext`: `shortCircuit(WireResponse)`, `shortCircuitResponse()`, `isShortCircuited()`;
+>    - Детально протестирован `SimpleResponseContext`: мутация атрибутов `setAttribute(key, value)`, `attributes()`, неизменяемость через `Collections.unmodifiableMap`, методы доступа к рефлексии `method()` и аргументам `args()`.
+> 3. *Фасад клиента и авторизация (`JRestlyClientBuilderTest`):*
+>    - Протестированы методы `authHeader(Supplier<String>)` в `JRestlyClient.Builder` и `SimpleModuleInfo.Builder`;
+>    - Верифицированы все default-методы интерфейса `ModuleInfo` (`getAuthDetails()`, `getUrl()`, `getHttpCache()`, `getRateLimiter()`, `getCircuitBreaker()`, `getRetryPolicy()`, `getTracing()`, `getCookieStore()`, `getContentCompressors()`, `getOnErrorParsers()`, `getInterceptors()`, `getCodecs()`, `getHttpEngine()`);
+>    - Протестированы мутаторы `SimpleModuleInfo.SimpleEnvironment` (`getUrl()`, `getAuthDetails()`, `setAuthDetails()`).
+> 4. *HTTP-кэш и стриминг (`HttpCacheWireMockTest`):*
+>    - Протестирована прозрачная трансформация закэшированного ответа в `InputStream` через `toStreamWireResponse`: как при мгновенном Cache HIT, так и при условной 304 Not Modified ревалидации на стриминговых методах контроллера.
+> 5. *Трейлеры и потоки (`WireResponseUnitTest`, `ProgressBodyPublisherTest`, `MultipartPartFlexibilityTest`):*
+>    - Детально протестирован `TrailerCompletingInputStream`: побайтовое чтение с CAS-триггером trailers на EOF, дефолтные null supplier/consumer;
+>    - Протестирована отмена подписки `subscription.cancel()` в `MultipartBodyPublisher`;
+>    - Верифицировано делегирование ошибок `onError(Throwable)` в downstream subscriber в `ProgressBodyPublisher`.
+> 6. *Заголовки и метрики (`ResponseHeadersTest`, `ClientMetricsValidationTest`):*
+>    - Проверен `ResponseHeaders.requestId()` с fallback на заголовок `X-Correlation-ID`;
+>    - Покрыт default-метод `ClientMetricsListener.onRetry`.
+> 7. *Контракт стриминга и акцессоры (`HttpTemplateStreamContractTest`):*
+>    - Проверены вспомогательные методы доступа и конфигурации `HttpTemplate`.
+> 8. *TDD и гейты:*
+>    - Всего тестов: **1392 / 1392** green across all 5 modules (+16 тестов, 0 failures, 0 errors, 0 warnings under `-Werror`).
+>    - **JaCoCo Coverage:**
+>      * **CLASS:** **143 / 143 (100.00%)** — абсолютное 100% покрытие всех классов библиотеки!
+>      * **METHOD:** **1408 / 1418 (99.29%)** — новый исторический рекорд (осталось лишь 10 непокрытых методов во всем проекте)!
+>      * **INSTRUCTION:** **29,492 / 31,198 (94.53%)** — новый рекорд (+0.99% за сессию)!
+>      * **LINE:** **6,423 / 6,795 (94.53%)** — новый рекорд (+1.14% за сессию)!
+>      * **BRANCH:** **3,557 / 4,407 (80.71%)** — новый рекорд (+0.54% за сессию)!
+>
 > **Сессия #246 (free-аудит / качество: верификация контрактов WireResponse, ResponseHeaders, PersistentCookieStore, TraceContext, ProblemDetail, исторический рубеж JaCoCo 80.17% Branch / 93.51% Instruction Coverage):**
 > свободный ход развития качества и устойчивости кодовой базы.
 > 1. *Сьют `WireResponseUnitTest`:*

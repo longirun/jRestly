@@ -107,4 +107,47 @@ class MultipartPartFlexibilityTest {
         assertThrows(IllegalArgumentException.class, () ->
                 MultipartPart.part("field", "text/plain\r\nX-Injected: true", new byte[0]));
     }
+
+    @Test
+    @DisplayName("MultipartPart.file creates parts from stream supplier, known length, and Path")
+    void fileStreamSupplierAndPathFactories() {
+        java.io.ByteArrayInputStream bis = new java.io.ByteArrayInputStream("streamed-bytes".getBytes(StandardCharsets.UTF_8));
+        MultipartPart streamPart = MultipartPart.file("streamField", "document.pdf", () -> bis);
+        assertEquals("streamField", streamPart.name());
+        assertEquals("document.pdf", streamPart.filename());
+        assertEquals("application/pdf", streamPart.contentType());
+        assertNull(streamPart.contentLength());
+
+        MultipartPart sizedPart = MultipartPart.file("sizedField", "image.png", () -> bis, 1024L);
+        assertEquals("sizedField", sizedPart.name());
+        assertEquals("image.png", sizedPart.filename());
+        assertEquals("image/png", sizedPart.contentType());
+        assertEquals(1024L, sizedPart.contentLength());
+
+        java.nio.file.Path testPath = java.nio.file.Path.of("test-file.json");
+        MultipartPart pathPart = MultipartPart.file("pathField", testPath);
+        assertEquals("pathField", pathPart.name());
+        assertEquals("test-file.json", pathPart.filename());
+        assertEquals("application/json", pathPart.contentType());
+        assertEquals(testPath, pathPart.content());
+
+        assertThrows(NullPointerException.class, () -> MultipartPart.file("f", (java.nio.file.Path) null));
+    }
+
+    @Test
+    @DisplayName("MultipartBodyPublisher subscription cancel() cleans up resources")
+    void multipartBodyPublisherSubscriptionCancel() {
+        var part = MultipartPart.file("stream", "test.txt", () -> new java.io.ByteArrayInputStream("data".getBytes(StandardCharsets.UTF_8)));
+        var publisher = MultipartBodyPublisher.of("boundary123", java.util.List.of(part));
+        publisher.subscribe(new java.util.concurrent.Flow.Subscriber<java.nio.ByteBuffer>() {
+            @Override
+            public void onSubscribe(java.util.concurrent.Flow.Subscription subscription) {
+                subscription.cancel();
+            }
+
+            @Override public void onNext(java.nio.ByteBuffer item) {}
+            @Override public void onError(Throwable throwable) {}
+            @Override public void onComplete() {}
+        });
+    }
 }

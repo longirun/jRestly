@@ -182,4 +182,33 @@ class ProgressBodyPublisherTest {
         @Override
         public void onComplete() {}
     }
+
+    @Test
+    @DisplayName("ProgressSubscriber delegates onError to downstream subscriber")
+    void delegatesOnErrorToDownstream() {
+        HttpRequest.BodyPublisher raw = new HttpRequest.BodyPublisher() {
+            @Override public long contentLength() { return 0; }
+            @Override
+            public void subscribe(Flow.Subscriber<? super ByteBuffer> subscriber) {
+                subscriber.onSubscribe(new Flow.Subscription() {
+                    @Override public void request(long n) {
+                        subscriber.onError(new java.io.IOException("test-error"));
+                    }
+                    @Override public void cancel() {}
+                });
+            }
+        };
+
+        java.util.concurrent.atomic.AtomicReference<Throwable> errorRef = new java.util.concurrent.atomic.AtomicReference<>();
+        ProgressBodyPublisher publisher = new ProgressBodyPublisher(raw, (sent, total) -> {});
+        publisher.subscribe(new Flow.Subscriber<>() {
+            @Override public void onSubscribe(Flow.Subscription subscription) { subscription.request(1); }
+            @Override public void onNext(ByteBuffer item) {}
+            @Override public void onError(Throwable throwable) { errorRef.set(throwable); }
+            @Override public void onComplete() {}
+        });
+
+        assertNotNull(errorRef.get());
+        assertEquals("test-error", errorRef.get().getMessage());
+    }
 }

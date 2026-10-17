@@ -51,13 +51,6 @@
 
 ---
 
-[2026-10-17 18:58] Агент (сессия #244): Антон, провел глубокий аудит и верификацию главного публичного фасада `JRestlyClient.Builder`, сериализации вложенных структур в Problem Details и периферийных компонентов:
-- Создан новый тестовый сьют `JRestlyClientBuilderTest` (+10 тестов), детально верифицирующий все методы фасада билдера (кэш, виртуальные нити, cookies, прокси, сжатие, трейсинг/correlationId, resilience CB/RL, авторизация Bearer/Basic/ApiKey, mock/short-circuit, таймауты, движки) и их трансляцию в `ModuleInfo`.
-- В `ProblemDetail` протестирована сериализация вложенных `Map<?, ?>` и `null` значений в extension properties, обработка `Long` чисел (> Integer.MAX_VALUE), парсинг escape-символов (`\/`, `\b`, `\f`, `\r`, `\t`), кавычек во вложенных структурах и строковых статусов в `ZeroDepJsonParser`.
-- Добавлены тесты для `FileCookiePersister.of(File)`, обратной последовательности сеттеров `OnErrorParser` и edge-cases `InMemoryHttpCache`.
-- Достигнут новый исторический рекорд покрытия JaCoCo: **92.02% Instructions** (28,738 / 31,231), **91.92% Lines** (6,248 / 6,797), **77.76% Branches**, **95.29% Methods** при **100.00% Class Coverage (143/143 классов)**!
-- Тестовая база выросла до **1343 / 1343** тестов (100% green across all 5 modules), javadoc чист под `-Werror`. Оформлен `ADR-0064` `## Amendment #244`.
-
 [2026-10-17 19:26] Агент (сессия #245): Антон, провел аудит адаптеров, периферийных структур и очистку мертвого кода:
 - Найдена и устранена 32-я «тихая» находка серии: в `MoshiCodec.copyValue` (форматирование токенов в `prettyPrint`) в ветке `case NULL` вызывался `writer.nullValue()`, но забывалось потребить токен `reader.nextNull()` из входного потока `JsonReader`. В результате при наличии `null` значений в массивах или объектах `reader.peek()` оставался в состоянии `NULL`, цикл `while (reader.hasNext())` зацикливался навечно, непрерывно аллоцируя буферы Okio вплоть до `java.lang.OutOfMemoryError: Java heap space`. Вызов `reader.nextNull()` добавлен. Оформлен `ADR-0007` `## Amendment #245`.
 - В `HttpTemplateBuilder` удалены мертвые неиспользуемые private методы `resolveInterfaceAccept`, `resolveMethodAccept`, `resolveInterfaceContentType`, `resolveMethodContentType`.
@@ -73,3 +66,17 @@
 - В `ProblemDetail` и `ZeroDepJsonParser`: проверены type mismatch в `getProperty(name, Class)`, `Builder.instance(URI)`, обработка ошибок при битых числах и незакрытых скобках.
 - Преодолен исторический рубеж JaCoCo: **впервые пробит рубеж 80% Branch Coverage (80.17%)**, а Instruction Coverage вырос до **93.51%** (29,174 / 31,198), Line Coverage — **93.39%**, Method Coverage — **96.76%** при **100.00% Class Coverage (143/143 классов)**!
 - База тестов достигла **1376 / 1376** тестов (100% green across all 5 modules, 0 failures, 0 errors, 0 warnings under `-Werror`). Оформлен `ADR-0064` `## Amendment #246`.
+
+[2026-10-17 21:05] Агент (сессия #248): Антон, провел глубокий аудит краевых веток транспорта, кэширования стримов и SPI контрактов:
+- В `AbstractHttpClient`: верифицированы фабрики и акцессоры транспорта `getHttpClient()`, `getHttpEngine()`, а также 1-аргументный конструктор `JdkHttpEngine(rawClient)` без владения ресурсами внешнего клиента.
+- В `RequestContext` и `ResponseContext`: покрыты default-методы шорт-циркуита (`shortCircuit`, `shortCircuitResponse`, `isShortCircuited`), а в `SimpleResponseContext` проверена мутация и unmodifiable защита атрибутов, аксессоры `method()` и `args()`.
+- В `JRestlyClient.Builder` и `ModuleInfo`: проверена конфигурация `authHeader(Supplier<String>)`, верифицированы все default-методы `ModuleInfo` и мутаторы `SimpleEnvironment`.
+- В `HttpCacheWireMockTest`: протестирована бесшовная трансформация закэшированного ответа в `InputStream` через `toStreamWireResponse` при Cache HIT и условной 304 Not Modified ревалидации на стриминговых методах.
+- В `WireResponseUnitTest`, `ProgressBodyPublisherTest`, `MultipartPartFlexibilityTest`: проверен `TrailerCompletingInputStream` (CAS-триггер на EOF), отмена подписки в `MultipartBodyPublisher`, проброс `onError` в `ProgressBodyPublisher`.
+- Достигнуты новые исторические рекорды качества JaCoCo:
+  * **100.00% Class Coverage (143/143 классов)**;
+  * **99.29% Method Coverage (1408/1418 методов)** — во всей библиотеке осталось всего 10 непокрытых методов;
+  * **94.53% Instruction Coverage** (29,492 / 31,198);
+  * **94.53% Line Coverage** (6,423 / 6,795);
+  * **80.71% Branch Coverage** (3,557 / 4,407).
+- База тестов выросла до **1392 / 1392** тестов (100% green across all 5 modules, 0 failures, 0 errors, 0 warnings under `-Werror`).

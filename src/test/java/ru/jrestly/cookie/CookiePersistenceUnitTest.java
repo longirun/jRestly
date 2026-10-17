@@ -476,6 +476,20 @@ class CookiePersistenceUnitTest {
         assertFalse(Files.exists(tempFile));
     }
 
+    @Test
+    @DisplayName("FileCookiePersister wraps IOExceptions into UncheckedIOException on load, save, and clear")
+    void fileCookiePersisterIOExceptionHandling(@TempDir Path tempDir) throws IOException {
+        Path dir = tempDir.resolve("dir-target");
+        Files.createDirectories(dir);
+        FileCookiePersister persister = FileCookiePersister.of(dir);
+
+        // Reading directory as a file throws UncheckedIOException
+        assertThrows(java.io.UncheckedIOException.class, persister::loadAll);
+
+        // Non-empty directory cannot be deleted with deleteIfExists -> throws UncheckedIOException
+        Files.createFile(dir.resolve("child.txt"));
+        assertThrows(java.io.UncheckedIOException.class, persister::clear);
+    }
 
     private static final class TestCookiePersister implements CookiePersister {
         final List<HttpCookie> preloaded = new ArrayList<>();

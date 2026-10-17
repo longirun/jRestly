@@ -167,5 +167,48 @@ class RateLimiterTest {
         return new AcquireOutcome(acquired, elapsedMillis);
     }
 
+    @Test
+    @DisplayName("RateLimiterConfig validates constructor parameters and builder methods")
+    void rateLimiterConfigValidationAndBuilder() {
+        RateLimiterConfig defaults = RateLimiterConfig.ofDefaults();
+        assertEquals(RateLimiterConfig.DEFAULT_LIMIT_FOR_PERIOD, defaults.limitForPeriod());
+        assertEquals(RateLimiterConfig.DEFAULT_LIMIT_REFRESH_PERIOD, defaults.limitRefreshPeriod());
+        assertEquals(RateLimiterConfig.DEFAULT_TIMEOUT_DURATION, defaults.timeoutDuration());
+
+        // Custom builder
+        RateLimiterConfig custom = RateLimiterConfig.builder()
+                .limitForPeriod(25)
+                .limitRefreshPeriod(Duration.ofSeconds(2))
+                .timeoutDuration(Duration.ofMillis(500))
+                .build();
+        assertEquals(25, custom.limitForPeriod());
+        assertEquals(Duration.ofSeconds(2), custom.limitRefreshPeriod());
+        assertEquals(Duration.ofMillis(500), custom.timeoutDuration());
+
+        // Parameter validations
+        assertThrows(IllegalArgumentException.class, () ->
+                new RateLimiterConfig(0, Duration.ofSeconds(1), Duration.ZERO));
+        assertThrows(IllegalArgumentException.class, () ->
+                new RateLimiterConfig(-5, Duration.ofSeconds(1), Duration.ZERO));
+
+        assertThrows(NullPointerException.class, () ->
+                new RateLimiterConfig(10, null, Duration.ZERO));
+        assertThrows(IllegalArgumentException.class, () ->
+                new RateLimiterConfig(10, Duration.ZERO, Duration.ZERO));
+        assertThrows(IllegalArgumentException.class, () ->
+                new RateLimiterConfig(10, Duration.ofMillis(-100), Duration.ZERO));
+
+        assertThrows(NullPointerException.class, () ->
+                new RateLimiterConfig(10, Duration.ofSeconds(1), null));
+        assertThrows(IllegalArgumentException.class, () ->
+                new RateLimiterConfig(10, Duration.ofSeconds(1), Duration.ofMillis(-1)));
+
+        // Builder null checks
+        assertThrows(NullPointerException.class, () ->
+                RateLimiterConfig.builder().limitRefreshPeriod(null));
+        assertThrows(NullPointerException.class, () ->
+                RateLimiterConfig.builder().timeoutDuration(null));
+    }
+
     private record AcquireOutcome(boolean acquired, long elapsedMillis) {}
 }

@@ -171,6 +171,42 @@ class ClientMetricsValidationTest {
         assertEquals(1, called[0]);
         assertEquals(1, called[1]);
         assertEquals(1, called[2]);
+
+        // Verify onCallStart, onRetry, and onAttemptComplete delegation
+        int[] lifecycleEvents = new int[]{0, 0, 0};
+        ClientMetricsListener detailed = new ClientMetricsListener() {
+            @Override
+            public void onCallComplete(CallMetrics metrics) {}
+
+            @Override
+            public void onCallStart(RequestContext ctx, WireRequest req) {
+                lifecycleEvents[0]++;
+            }
+
+            @Override
+            public void onRetry(RequestContext ctx, WireRequest req, int attempt, Throwable reason, Duration delay) {
+                lifecycleEvents[1]++;
+            }
+
+            @Override
+            public void onAttemptComplete(RequestContext ctx, WireRequest req, int attempt,
+                                          Optional<WireResponse> resp, Optional<Throwable> fail, Duration dur) {
+                lifecycleEvents[2]++;
+            }
+        };
+
+        ClientMetricsListener compositeLifecycle = ClientMetricsListener.composite(detailed);
+        compositeLifecycle.onCallStart(context, wireReq);
+        compositeLifecycle.onRetry(context, wireReq, 2, new IOException("retry-test"), Duration.ofMillis(50));
+        compositeLifecycle.onAttemptComplete(context, wireReq, 1, Optional.empty(), Optional.empty(), Duration.ofMillis(20));
+
+        assertEquals(1, lifecycleEvents[0]);
+        assertEquals(1, lifecycleEvents[1]);
+        assertEquals(1, lifecycleEvents[2]);
+
+        // Default interface onRetry is a no-op
+        ClientMetricsListener defaultListener = metrics -> {};
+        defaultListener.onRetry(context, wireReq, 1, new IOException("default-retry"), Duration.ZERO);
     }
 
     @Test
