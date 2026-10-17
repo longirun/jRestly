@@ -21,6 +21,12 @@ import java.util.concurrent.Flow;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+/**
+ * Unit tests for {@code ProgressBodySubscriber} (ADR-0033): download progress
+ * forwarding through {@code BodySubscriber}, unknown/empty content length,
+ * error delegation, buffer-position preservation and {@code Content-Length}
+ * extraction from {@code ResponseInfo}. No network.
+ */
 @DisplayName("ProgressBodySubscriber Tests")
 class ProgressBodySubscriberTest {
 

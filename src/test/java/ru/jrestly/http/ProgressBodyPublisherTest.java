@@ -13,6 +13,11 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+/**
+ * Unit tests for {@code ProgressBodyPublisher} (ADR-0030): upload progress
+ * forwarding through {@code Flow.Subscriber}, unknown/empty content length and
+ * the per-subscription counter reset relied on by retries. No network.
+ */
 @DisplayName("ProgressBodyPublisher Tests")
 class ProgressBodyPublisherTest {
 

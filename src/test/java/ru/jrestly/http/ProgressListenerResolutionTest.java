@@ -14,6 +14,12 @@ import java.net.http.HttpClient;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 
+/**
+ * Unit tests for {@code HttpTemplateBuilder} progress-listener resolution
+ * (ADR-0030 / ADR-0033): upload and download listeners are extracted from the
+ * invocation arguments, with a null argument leaving the listener unset. No
+ * network.
+ */
 class ProgressListenerResolutionTest {
 
     interface DownloadController {

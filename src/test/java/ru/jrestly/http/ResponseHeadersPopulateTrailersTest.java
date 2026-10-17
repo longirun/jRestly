@@ -15,6 +15,12 @@ import java.util.concurrent.atomic.AtomicInteger;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+/**
+ * Unit tests for {@code ResponseHeaders.populateTrailers} (ADR-0059 Ф2):
+ * safe updates of {@code trailers}/{@code firstTrailer}/{@code trailerValues},
+ * idempotence on null or empty input and thread-safety under concurrent
+ * invocation. No network.
+ */
 class ResponseHeadersPopulateTrailersTest {
 
     @Test

@@ -15,6 +15,11 @@ import java.util.concurrent.TimeUnit;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 
+/**
+ * Unit tests for timeout precedence in {@code HttpTemplateBuilder} (ADR-0027):
+ * a method-level {@code @Timeout} overrides the interface hierarchy, and with
+ * neither present the resolver returns the client default (null). No network.
+ */
 class HttpTemplateTimeoutPrecedenceTest {
 
     interface SuperApi {

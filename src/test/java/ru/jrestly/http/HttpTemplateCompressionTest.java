@@ -17,6 +17,12 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+/**
+ * In-process tests for declarative request compression (ADR-0041):
+ * {@code @Compress} wiring in {@code HttpTemplateBuilder} gzips the body and
+ * sets {@code Content-Encoding}, honouring the configured size threshold. No
+ * network.
+ */
 class HttpTemplateCompressionTest {
 
     interface CompressApi {

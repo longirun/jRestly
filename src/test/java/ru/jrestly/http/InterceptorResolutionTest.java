@@ -25,6 +25,12 @@ import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+/**
+ * Unit tests for declarative interceptor resolution (ADR-0029 / ADR-0044):
+ * Global → Super → Sub → Method pipeline order, deduplication and {@code @Order}
+ * sorting confined to each declaration (stable, implicit 0, no cross-scope
+ * leakage). No network.
+ */
 class InterceptorResolutionTest {
 
     public static class ValidRequestInterceptor implements RequestInterceptor {

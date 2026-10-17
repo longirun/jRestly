@@ -12,6 +12,11 @@ import java.util.concurrent.Executor;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 
+/**
+ * Unit tests for {@code HttpTemplateBuilder} executor resolution (ADR-0026): a
+ * custom executor passed to the builder is set on the template, while an
+ * unset builder yields no executor (null). No network.
+ */
 class ExecutorResolutionTest {
 
     @Test

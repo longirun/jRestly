@@ -16,6 +16,12 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
+/**
+ * Unit tests for {@code AuthHeaderProvider}: the authorization state always
+ * agrees with the emitted headers (a credential needs both name and value)
+ * across updates, and concurrent mutations never expose a torn name/value
+ * pair. No network.
+ */
 class AuthHeaderProviderTest {
 
     @Test

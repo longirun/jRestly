@@ -24,6 +24,12 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+/**
+ * Unit tests for {@code ResponseHeaders} (ADR-0022 / ADR-0038): case-insensitive
+ * header access and immutability, RFC 8288 {@code Link} and {@code Retry-After}
+ * parsing, caching/conditional helpers and the synchronous capture pattern
+ * (including ThreadLocal cleanup on failure). No network.
+ */
 class ResponseHeadersTest {
 
     @Test

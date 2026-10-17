@@ -11,6 +11,12 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
+/**
+ * Unit tests for the multipart part factory (ADR-0024): text parts with UTF-8
+ * or an explicit charset and null-safe handling, non-file parts with explicit
+ * MIME, filename parts and CRLF-smuggling rejection in the content type. No
+ * network.
+ */
 class MultipartPartFlexibilityTest {
 
     @Test

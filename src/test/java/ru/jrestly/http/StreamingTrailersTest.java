@@ -23,6 +23,12 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+/**
+ * In-process tests for streaming trailer completion (ADR-0059 Ф2): late
+ * trailers are captured for InputStream/Stream/ServerSentEvent and async
+ * returns, exactly once at EOF or close, and survive transparent gzip
+ * decompression (ADR-0021 × ADR-0038). No network.
+ */
 class StreamingTrailersTest {
 
     interface StreamingClient {

@@ -7,6 +7,11 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+/**
+ * Unit tests for {@code OnErrorParser} (ADR-0028): registration and resolution
+ * of per-status {@code @OnError} payload types, the default fallback type and
+ * the legacy setter API. No network.
+ */
 class OnErrorParserTest {
 
     record ErrorA(String a) {}

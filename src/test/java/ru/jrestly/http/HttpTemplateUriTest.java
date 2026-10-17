@@ -7,6 +7,11 @@ import java.net.URI;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
+/**
+ * Unit tests for {@code HttpTemplate.appendQuery}: correct {@code ?}/{@code &}
+ * joining and insertion before a {@code #fragment}, with a null/empty query
+ * leaving the URI untouched. No network.
+ */
 class HttpTemplateUriTest {
 
     @Test

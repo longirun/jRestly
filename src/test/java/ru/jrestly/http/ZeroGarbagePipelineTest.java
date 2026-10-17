@@ -29,6 +29,11 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+/**
+ * End-to-end guard for the zero-garbage dispatch pipeline (ADR-0055): a
+ * parameterless call reuses the pre-computed static params/headers/cookies and
+ * the conditional 304 fast-path, exercised over a real WireMock server.
+ */
 @WireMockTest
 class ZeroGarbagePipelineTest {
 

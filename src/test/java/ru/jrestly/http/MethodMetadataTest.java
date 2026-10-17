@@ -26,6 +26,13 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+/**
+ * Unit tests for {@code MethodMetadata} extraction and caching (ADR-0051):
+ * HTTP verb/path/expected statuses, parameter and return-type descriptors
+ * (async/optional/stream), timeout and interceptor resolution across the
+ * interface hierarchy, plus the pre-computed zero-garbage caches of ADR-0055.
+ * No network.
+ */
 class MethodMetadataTest {
 
     static class DummyError {}

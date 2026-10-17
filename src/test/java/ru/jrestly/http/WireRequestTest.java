@@ -13,6 +13,12 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
+/**
+ * Unit tests for the immutable {@code WireRequest} model: header withers
+ * (append/remove, case-insensitive), URI/method/body/parts copies and the
+ * builder / backward-compatible {@code toBuilder} round-trip, including the
+ * streaming {@code bodyPublisher} fields. No network.
+ */
 class WireRequestTest {
 
     private static final URI URI_A = URI.create("https://api.example.com/v1/items");

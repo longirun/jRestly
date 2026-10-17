@@ -1,5 +1,24 @@
 # DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
+> **Сессия #202 (кандидат №1 test-javadoc, батч №3 — `ru.jrestly.http`,
+> 18 тест-классов):** свободный ход из контекста #201. Продолжил запланированный
+> батч: наведён лаконичный class-level javadoc (стиль батчей №1/#185 и №2/#201:
+> 4–6 строк, «что покрывает + unit/e2e + ADR», без пересказа тестов) во **всех
+> 18** тест-классах пакета `ru.jrestly.http` — `WireRequestTest`, `OnErrorParserTest`,
+> `MethodMetadataTest`, `HttpTemplateUriTest`, `HttpTemplateCompressionTest`,
+> `ResponseHeadersTest`, `ZeroGarbagePipelineTest`, `WireResponseTrailersTest`,
+> `ProgressBodyPublisherTest`, `ResponseHeadersPopulateTrailersTest`,
+> `StreamingTrailersTest`, `HttpTemplateTimeoutPrecedenceTest`,
+> `ProgressListenerResolutionTest`, `AuthHeaderProviderTest`,
+> `MultipartPartFlexibilityTest`, `InterceptorResolutionTest`,
+> `ProgressBodySubscriberTest`, `ExecutorResolutionTest`. Только doc-комментарии,
+> логика не тронута. Пакет `ru.jrestly.http` **закрыт** (0 без doc). Замер:
+> 168 тест-классов в корневом `src/test/java`, без class-level javadoc осталось
+> **81** — из них `ru.jrestly` 62 (корневой, следующий батч), `ru.jrestly.fixtures`
+> 15 (вспомогательные типы, не тест-классы), `engine` 3, `json` 1.
+> `./gradlew test javadoc` — **1232/1232**, javadoc-гейт (`-Werror`, только
+> `src/main`) не затронут, 0 warnings.
+>
 > **Сессия #201 (кандидат №1 test-javadoc, батч №2 — 14 тест-классов в
 > 5 пакетах):** свободный ход из контекста #200. Сначала дожал эвристику
 > #200 («дублирующие входные пути») на оставшихся кандидатах: `int` ×
@@ -913,9 +932,11 @@
   Наведение лоска и лаконичного javadoc в тестовых классах.
   **Батч №1 (#185):** `resilience` (3) + `auth` (4) = 7 классов.
   **Батч №2 (#201):** `cookie` (2) + `codec` (2) + `compression` (3) +
-  `tracing` (3) + `interceptor` (4) = 14 классов. Осталось 88 тест-классов без
-  class-level javadoc (в основном `ru.jrestly` 62 и `ru.jrestly.http` 18) —
-  продолжать батчами.
+  `tracing` (3) + `interceptor` (4) = 14 классов.
+  **Батч №3 (#202):** `ru.jrestly.http` — все 18 классов пакета; пакет закрыт.
+  Осталось 81 тест-класс без class-level javadoc (в основном корневой
+  `ru.jrestly` 62; остальное — фикстуры 15, `engine` 3, `json` 1) —
+  продолжать батчами (следующий логично корневой `ru.jrestly`).
 
 - **Кандидат №2 — HTTP Trailers & Advanced Streaming ergonomics**:
   Расширенные сценарии работы с трейлерами и чанками в стриминге данных (LLM / SSE).

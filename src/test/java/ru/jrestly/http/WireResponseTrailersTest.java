@@ -14,6 +14,12 @@ import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+/**
+ * Unit tests for {@code WireResponse} trailer support (ADR-0059): backward
+ * compatible constructors and normalization of {@code trailersSupplier},
+ * value-equality independent of the transport hook and the builder path. No
+ * network.
+ */
 class WireResponseTrailersTest {
 
     @Test
