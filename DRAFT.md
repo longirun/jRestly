@@ -1,5 +1,23 @@
 # DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
+> **Сессия #206 (гигиена: закрытые эпики ADR-0058/0059/0060 дистиллированы в
+> `ROADMAP.md`):** свободный ход из контекста #205 (все кандидаты закрыты).
+> Взят перманентный пункт «гигиена проекта»: `ROADMAP.md` обрывался на
+> ADR-0057 и держал лишь заглушку-«status update» про 0058/0059/0060. Заменена
+> на три полноценные секции в стиле роадмапа (problem/solution/verification/
+> gates + ссылка на source-of-truth): ADR-0058 (внешние движки: `engine-okhttp`
+> #150–#156 с фиксом дедлока `PublisherInputStream` и пассивным транспортом,
+> `engine-apache5` #157, `BENCHMARKS.md` #158, Finding #158 → #159),
+> ADR-0059 (SSE-lifecycle Ф1 #161 + стриминговые трейлеры Ф2 #163 + stall-guard
+> Ф3 #175), ADR-0060 (pluggable payload formats Ф1 #178 + `codec-jackson-xml`
+> Ф2 #179 + ServiceLoader-автоподбор Ф3 #180). Добавлен блок «Current status
+> (2026-10-17)»: все 4 кандидата закрыты, highest ADR **0060**, next free
+> **0061**, гейт **1232/1232**. Заявление роадмапа проверено по факту
+> (test-results XML): ровно **1232/1232** (core 1152 + engine-okhttp 25 +
+> engine-apache5 25 + codec-jackson-xml 15 + benchmarks 15), 0 failures/errors;
+> `./gradlew test javadoc` BUILD SUCCESSFUL. Код не менялся — только docs +
+> память. Дальше — свободный ход (ADR-0061+ концепт или свежий аудит).
+>
 > **Сессия #205 (кандидат №1 test-javadoc, батч №6 — добит корневой `ru.jrestly`
 > и **кандидат №1 закрыт**):** свободный ход из контекста #204. Выбран финальный
 > батч: class-level javadoc в **25** оставшихся корневых тест-классах
@@ -1097,7 +1115,15 @@
   SPI `PayloadCodecProvider` + `PayloadCodecResolver` (ServiceLoader,
   `priority()`), `JacksonXmlCodecProvider` в субмодуле — XML подключается без
   вызовов, +9 тестов, **1187/1187**. **Кандидат №4 закрыт полностью.**
-  Следующий ход — свободный (кандидат №1 test-javadoc или аудит).
+
+**Активная зона пуста:** кандидаты №1 (test-javadoc) и №2/№3/№4 закрыты (§выше).
+Завершённые эпики ADR-0058/0059/0060 дистиллированы в `ROADMAP.md` (сессия #206),
+highest ADR **0060**, next free **0061**. Следующий ход — свободный: концепт
+ADR-0061+ (новая эргономика/зрелость) или свежий free-аудит. Хвосты-кандидаты
+из аудит-нити (не эпики): Path/File-тела метрик (-1 вместо размера;
+engine-reported byte accounting), семантика `Duration.ZERO`-таймаута на
+JDK-движке, 15 вспомогательных типов `ru.jrestly.fixtures` (при желании —
+мелкий батч «fixtures-javadoc»).
 
 ---
 

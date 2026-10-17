@@ -1970,17 +1970,95 @@ Gates (session #141):
 
 After the audit fix: candidate №1 — test-javadoc, candidate №2 — HTTP Trailers & Advanced Streaming ergonomics, candidate №3 — OkHttpEngine / ApacheHttpEngine external modules (ADR-0058). ADR number **0058** free.
 
-> **Status update (2026-10-16).** Sections above stop at ADR-0057; the
-> subsequent work lives in `docs/0.10.0/` and the live `DRAFT.md` active zone:
-> ADR-0058 external engines (`engine-okhttp`, `engine-apache5`, `BENCHMARKS.md`),
-> ADR-0059 SSE resilience & streaming trailers, ADR-0060 pluggable payload
-> formats (`ru.jrestly.codec` SPI + `codec-jackson-xml`). Highest ADR issued:
-> **0060**; next free: **0061**. Gate as of session #179: **1178/1178**
-> (core 1099 + engine-okhttp 25 + engine-apache5 25 + codec-jackson-xml 14 +
-> benchmarks 15).
+## External HTTP Engine Submodules — OkHttp & Apache HttpClient 5 (ADR-0058) — COMPLETE ✅
 
+> Source of truth: [`docs/0.10.0/ADR-0058-external-http-engine-submodules-okhttp-apache5.md`](docs/0.10.0/ADR-0058-external-http-engine-submodules-okhttp-apache5.md).
+> Concept in session #148; core in #149; submodules `engine-okhttp` (#150–#156) and `engine-apache5` (#157); public benchmark documentation + Finding #158 (#158); Finding closed (#159).
 
+**Problem:**
+1. ADR-0052 put the transport behind the `HttpEngine` SPI, but the only production-ready engine was the zero-dep `JdkHttpEngine`. Faster transports existed only as **prototypes** inside the unpublished `benchmarks` module (JMH, session #147: raw OkHttp 428 µs vs raw JDK 1364 µs on loopback, µs/op).
+2. A user who wanted the fast transport had to copy an engine or depend on the unpublished module.
+3. The prototypes did not honor the full `HttpEngineOptions` contract (timeout, streaming, progress, trailers, `close`) and relied on transport-level transparent gzip, which diverged from the JDK engine (missing `Content-Encoding`, `Content-Length` reset, `-1` progress totals).
 
+**Solution:**
+- **Core (phase 1, #149, TDD red-first):** `default int priority()` on `HttpEngineProvider` (binary-compatible, default 0), and a **stable** descending-priority sort in `HttpEngineResolver.resolveFromSpi` (ties keep `ServiceLoader` order). Explicit engine still wins; `JdkHttpEngine` stays the fallback (not a provider).
+- **`jrestly-engine-okhttp` (phase 2a, #150–#156):** OkHttp engine implementing the parity contract (call/read timeout, streaming via `executeOpen`, upload/download progress, buffered trailers, own executor for `sendAsync`, TLS/cookies/proxy/authenticator from `ModuleInfo`).
+  * Pre-existing WIP had a **deadlock** in `PublisherInputStream` — the one-shot `END_OF_STREAM` marker was consumed by a buffered `read()`, so the next `read()` polled an empty queue forever (this had hung `./gradlew test` and killed earlier sessions). Fixed and committed (#155).
+  * **Passive transport** (#156): `NoTransparentGzipInterceptor` + `StripSuppressedAcceptEncodingInterceptor` neutralize OkHttp `BridgeInterceptor`'s injected `Accept-Encoding: gzip`; an explicit caller header still passes through, and decompression stays with the core `ContentCompressor` SPI (ADR-0021/ADR-0057) — exact parity with `JdkHttpEngine`.
+- **`jrestly-engine-apache5` (phase 2b, #157):** Apache HttpClient 5.4.1 engine, same parity contract, passive transport via `disableContentCompression()` (deprecated SSL/cookie/timeout APIs migrated to `DefaultClientTlsStrategy`, `ConnectionConfig`, `Instant` cookies).
+- **Public benchmark documentation (#158):** `BENCHMARKS.md` — methodology, 10-client matrix, honest limitations, reproduction. jRestly over the OkHttp engine is within ~5% of raw OkHttp; the JDK-transport disparity is the transport itself, not the declarative layer (`DispatchOverheadBenchmark`: 5–9 µs in-memory dispatch).
+- **Finding #158 → Resolution #159:** `AbstractHttpClient.createConnection()` bypassed `HttpEngineResolver`, so ServiceLoader auto-detection never fired end-to-end; it now delegates to `resolve(moduleInfo)` (single source of truth, incl. `isVirtualThreads()` handled inside `JdkHttpEngine.create`). E2E gate `SpiEngineAutoDetectionTest`; benchmark JDK line pinned explicitly for honesty.
+
+**Automated Verification:**
+- `engine-okhttp` 23 tests, `engine-apache5` 23 tests (parity: timeout, streaming, progress, trailers), `HttpEngineResolverTest` priority/legacy/fallback cases, e2e `SpiEngineAutoDetectionTest`.
+- Benchmarks migrated to `project(':engine-okhttp')`/`project(':engine-apache5')`; prototypes deleted.
+
+Gates (sessions #149–#159):
+- `./gradlew test` **1112/1112** at close (core 1051 + engine-okhttp 23 + engine-apache5 23 + benchmarks 15), 0 failures/errors.
+- 0 warnings under permanent `-Xlint:all -Werror` / `-Xdoclint:all -Werror`.
+- Zero external runtime dependencies in the root POM; each engine submodule is `api project(':')` + its own transport.
+
+---
+
+## SSE Stream Resilience & Streaming Trailer Completion (ADR-0059) — COMPLETE ✅
+
+> Source of truth: [`docs/0.10.0/ADR-0059-sse-stream-resilience-and-streaming-trailer-completion.md`](docs/0.10.0/ADR-0059-sse-stream-resilience-and-streaming-trailer-completion.md).
+> Candidate №2 (HTTP Trailers & Advanced Streaming ergonomics). Concept in #160; Ф1 #161, Ф2 #163, Ф3 #175.
+
+**Problem:**
+1. An established SSE stream had no lifecycle: `RetryPolicy` (ADR-0040) works only up to the request body, `Last-Event-ID` was not mentioned anywhere in `src/main`, and a mid-stream drop surfaced to the consumer as an unwrapped `UncheckedIOException`.
+2. No idle-stall guard — JDK read timeouts do not cover body reading, so a hung SSE network could pin the consumer thread forever.
+3. Streaming trailers were lost: all three engines built `WireResponse` with `List.of()` before EOF (buffered paths worked; JDK is platform-limited).
+
+**Solution:**
+- **Ф1 (#161), `ServerSentEvent.reconnecting(opener, ReconnectPolicy)`:** new public `ReconnectPolicy` (maxAttempts = reconnects after the first connection, default 3; initialBackoff 3 s WHATWG; maxBackoff 30 s; multiplier; `Jitter` default `NONE` = honor the server `retry:`; `stopOnDone`; `onReconnect(Consumer<ReconnectInfo>)`) and `ReconnectInfo(attempt, lastEventId, delay, cause)`. Lazy `ServerSentEventReconnector` replays `Last-Event-ID` with the last seen event id (persisted by the parser since #142), delays from the server `retry:` → fallback, capped at `maxBackoff`, grown by multiplier, jitter last; `close()` cancels; `[DONE]` is terminal and releases the connection at once; interrupts become `UncheckedIOException(InterruptedIOException)`; other `RuntimeException`s are not retried.
+- **Ф2 (#163):** lazy trailers on the streaming path — 7th `WireResponse` component `Supplier<List<Header>> trailersSupplier` (compatible constructors, `equals`/`hashCode` ignore it), thread-safe idempotent `ResponseHeaders.populateTrailers`, package-private `TrailerCompletingInputStream` (one-shot CAS request on EOF or `close()`), `HttpTemplate.processResponse` wraps the stream for recipients, streaming decompression preserves the supplier; `engine-okhttp`/`engine-apache5` supply lazy trailers after body drain, JDK stays platform-empty.
+- **Ф3 (#175), spike-gated `stallTimeout`:** `ReconnectPolicy.stallTimeout(Duration)` (default off, validated positive) with a watchdog virtual thread (`jrestly-sse-stall-guard`) closing an idle stream outside the monitor; spike confirmed JDK `InputStream.close()` wakes a blocked reader on all three transports → guard kept.
+
+**Automated Verification (+ many unit/e2e tests across the phases):**
+- Ф1: 18 unit + 1 e2e WireMock "dropped → resumed" (second stub requires `Last-Event-ID: 2`; `findAll` proves 2 requests; `retry: 50` reaches `ReconnectInfo.delay`).
+- Ф2: 14 tests (`WireResponseTrailersTest` +3, `ResponseHeadersPopulateTrailersTest` +3, `StreamingTrailersTest` +6, `OkHttpEngineParityTest` +1, `Apache5HttpEngineParityTest` +1).
+- Ф3: `JdkStreamingCloseUnblockedTest` (real client over a raw-TCP server) + OkHttp/HC5 parity tests.
+
+Gates (sessions #161/#163/#175):
+- `./gradlew test javadoc` **1152/1152** at close (core 1087 + engine-okhttp 25 + engine-apache5 25 + benchmarks 15), 0 failures/errors, 0 warnings.
+- Later amendments: #197 (gzip × streaming × trailers seam), #199 (`Jitter.DECORRELATED` reconnect wait stays capped by `maxBackoff`).
+
+---
+
+## Pluggable Payload Formats & Media-Type-Aware Codec SPI (ADR-0060) — COMPLETE ✅
+
+> Source of truth: [`docs/0.10.0/ADR-0060-pluggable-payload-formats-and-media-type-aware-codec-spi.md`](docs/0.10.0/ADR-0060-pluggable-payload-formats-and-media-type-aware-codec-spi.md).
+> Candidate №4 (XML & pluggable payload formats, maintainer mailbox 2026-10-16: "не JSON'ом единым"). Concept in #177; Ф1 #178, Ф2 #179, Ф3 #180.
+
+**Problem:**
+1. The payload format was hard-coded to JSON **structurally**, not just by default: `RequestType` is an enum of exactly three values and a DTO body is serialized only in the `APPLICATION_JSON` branch, so `@ContentType("application/xml")` + DTO sent **JSON bytes under an XML header** (probed in #177 with WireMock). Responses were always decoded by the JSON codec, ignoring the response `Content-Type`.
+2. The codec SPI itself was JSON-shaped (`JsonCodec`/`JsonCodecResolver`/`prettyPrint`).
+
+**Solution:**
+- **Ф1 (#178), core SPI:** `ru.jrestly.codec.PayloadCodec` (media type ↔ values) + `CodecRegistry` (`resolve`/`resolveOrDefault` → JSON-by-default for backward compatibility) + `JsonCodecAdapter` bridging the untouched `JsonCodec`. Request codec selection by effective `Content-Type` (explicit header → `@ContentType` → `requestType.mime()`): an unmatched bindable DTO **fails fast** instead of silently JSON-substituting; raw types bypass the codec. Response selection across all 5 `HttpTemplate` call-sites (incl. `probePayloadDecode`/`@OnError`). Multipart picks the codec by the part media type.
+- **Ф2 (#179), submodule:** `jrestly-codec-jackson-xml` — `JacksonXmlCodec` over Jackson `XmlMapper`, claiming `application/xml`, `text/xml`, `*+xml` (RFC 6839). Core stays strictly zero-dep (`api project(':')` + `api jackson-dataformat-xml`, `compileOnly` jsr310).
+- **Ф3 (#180), auto-detection:** SPI `PayloadCodecProvider` (`isAvailable()`/`createCodec()`/`default priority()`) + `PayloadCodecResolver` (ServiceLoader, descending priority, stable ties). `JacksonXmlCodecProvider` (priority 50) means XML works with **zero calls** — `builder().baseUrl(...).build()` already speaks XML. Explicit `codec(...)` precedes discovered ones; a full `codecs(...)` replacement disables discovery.
+
+**Automated Verification:**
+- Ф1: `CodecRegistryTest` (7) + e2e `PayloadCodecWireMockTest` (4).
+- Ф2: `JacksonXmlCodecTest` (10) + e2e `JacksonXmlWireMockTest` (4: DTO → real XML, typed response by `Content-Type`, JSON default intact, fail-fast without a codec).
+- Ф3: core `PayloadCodecResolverTest` (5) + e2e `PayloadCodecAutoDetectionTest` (3) + 1 submodule test.
+- README section "Payload codecs: JSON, XML & custom formats".
+
+Gates (sessions #178–#180):
+- `./gradlew test javadoc` — Ф1 **1164/1164**, Ф2 **1178/1178**, Ф3 **1187/1187** (core + engine-okhttp 25 + engine-apache5 25 + codec-jackson-xml + benchmarks 15), 0 failures/errors, 0 warnings.
+
+---
+
+> **Current status (2026-10-17).** All four active-zone candidates are closed:
+> №1 test-javadoc (class-level javadoc across every `@Test` class in all five
+> modules, batches #185/#201–#205), №2 ADR-0059, №3 ADR-0058, №4 ADR-0060.
+> Highest ADR issued: **0060**; next free: **0061**. Live gate after the audit
+> thread (#181–#200) and the test-javadoc batches: **1232/1232** (core 1152 +
+> engine-okhttp 25 + engine-apache5 25 + codec-jackson-xml 15 + benchmarks 15),
+> 0 warnings under `-Werror`. The audit thread itself lives in `DRAFT.md` and the
+> day files; nothing is pending in this Roadmap.
 
 ## Post-0.5.0 shortlist (not scheduled — see ADR-0003)
 
