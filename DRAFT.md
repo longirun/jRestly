@@ -1,5 +1,42 @@
 # DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
+> **Сессия #212 (free-аудит: `name()`-fallback параметрных биндингов без флага
+> `-parameters` тихо уезжал как `arg0` — 22-я «тихая» находка серии, класс
+> «парная декларация» #210/#211 с другой стороны):** свободный ход из контекста
+> #211 (активная зона пуста, highest ADR 0060). Ось #210 «парные декларативные
+> конструкции» дала ещё одну жилу: имя-по-умолчанию параметрных биндингов. У
+> `@RequestParam`/`@RequestHeader`/`@Cookie`/`@PathVariable` пустой `name()`
+> резолвится в имя Java-параметра (`MethodMetadata.parse`: `name().isEmpty() ?
+> p.getName() : name`), а компилятор хранит имена параметров **только под флагом
+> `-parameters`** (README прямо называет требование). Без флага `Parameter
+> .getName()` отдаёт синтетический `arg0` — и декларация молча ломается:
+> **query-ключ/заголовок/кука уходят под именем `arg0`** (сервер их игнорирует;
+> ни ошибки, ни лога), а `@PathVariable` перестаёт матчить `${...}`-плейсхолдер
+> и в #210 давал голое `arg0`-сообщение без причины. Проверено зондом: интерфейс,
+> скомпилированный без `-parameters`, для `@RequestParam String query` даёт **0**
+> проблем валидатора — полная тишина. Тот же класс «тихой» мисконфигурации, что
+> ленивый `@Retry` (#207) и blank name-bearing (#208/#209), но здесь не «забыли
+> проверить атрибут», а **пропустили требование окружения сборки**. Fix:
+> `ControllerValidator.validateParameterNames` — для каждого параметрного
+> биндинга с пустым `name()` (и без `Map`/`HttpCookie`, у которых имена берутся
+> из записей/инстанса — не флагается) проверяет `Parameter.isNamePresent()`;
+> false → общий агрегированный `ControllerValidationException` при создании
+> прокси (`method(): @RequestParam requires an explicit name() when the controller
+> is compiled without '-parameters' …`). `@PathVariable` с недоступным fallback'ом
+> исключается из mismatch-множества Amendment #210, чтобы осталось только
+> actionable-сообщение, а не голый `arg0`. Публичный API не тронут; корректно
+> скомпилированный контроллер (`-parameters`) ведёт себя как раньше. TDD
+> red-first: `ControllerValidationTest.rejectsParameterNameFallbackWithoutParameters
+> FlagEagerly` (интерфейс компилируется **в рантайме** `ToolProvider` дважды —
+> без флага → 3 проблемы, с флагом → 0; `Map`-параметр и явный `name()` — 0) +
+> `reportsUnnamedPathVariableWithoutParametersFlagActionably` (нет `arg0` в
+> сообщениях) — красные на до-фикс коде ровно по целевым ассертам → зелёные.
+> ADR-0017 → `## Amendment #212`. Гейт **1239/1239** (core 1159 + engine-okhttp 25
+> + engine-apache5 25 + codec-jackson-xml 15 + benchmarks 15), 0 failures/errors,
+> `./gradlew test javadoc` зелёный под `-Werror`, 0 warnings. Дальше — free-аудит
+> по той же оси (приём «декларация ⇄ требование окружения сборки» — новый),
+> концепт ADR-0061+ (HTTP-кэш ждёт слова Антона) или fixtures-javadoc.
+
 > **Сессия #211 (free-аудит: `path()` глагола не проверялся на URI-легальность —
 > 21-я «тихая» находка серии, прямое продолжение оси #210 «парные декларативные
 > конструкции»):** свободный ход из контекста #210 (активная зона пуста, highest
@@ -1285,10 +1322,14 @@ JDK-движке, валидация `@ExpectStatus`/`@FollowRedirects` (инв�
 половины**: `@Get/Post/... path()` проверяется на URI-легальность той же
 проверкой, что реально скормит фреймворк (`URI.create` с маскированными
 `${...}`; ADR-0025 Amendment #211) — пробел/CRLF/`{id}`/битый `%` больше не
-доживают до отправки. Кандидаты по той же оси: `@ExpectStatus(statuses = {})`/
-`@FollowRedirects(count < 0)` (пустой/отрицательный декларативный вход —
-решение #207 «фича, не дыра»), `@PathVariable.name` ⇄ fallback-имя параметра при
-отсутствии `-parameters`.
+доживают до отправки. **#212 добавил третий виток той же оси — «декларация ⇄
+требование окружения сборки»**: `name()`-fallback параметрных биндингов
+(`@RequestParam`/`@RequestHeader`/`@Cookie`/`@PathVariable`) требует флага
+`-parameters`, иначе молча уезжает как `arg0` (ADR-0017 Amendment #212).
+Кандидаты по той же оси: `@ExpectStatus(statuses = {})`/`@FollowRedirects(count < 0)`
+(пустой/отрицательный декларативный вход — решение #207 «фича, не дыра»);
+проверить, нет ли других деклараций, чья корректность зависит от флагов
+компиляции/окружения.
 
 ---
 

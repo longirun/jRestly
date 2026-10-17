@@ -35,6 +35,7 @@ import ru.jrestly.metrics.ClientMetricsListener;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.lang.reflect.Parameter;
+import java.net.HttpCookie;
 import java.net.URI;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -68,6 +69,12 @@ import java.util.regex.Pattern;
  * path must also be a valid URI reference once placeholders are masked: a
  * space, CR/LF or a brace-style {@code {id}} placeholder fails here instead
  * of at send time inside {@code URI.create}.
+ *
+ * <p>A binding whose name falls back to the Java parameter name
+ * ({@code @PathVariable}, {@code @RequestParam}, {@code @RequestHeader},
+ * {@code @Cookie} with a blank {@code name()} on a non-{@code Map} parameter)
+ * requires the compiler's {@code -parameters} flag; without it the fallback
+ * silently becomes {@code arg0}. That misconfiguration is reported here too.
  *
  * <p>Runs at proxy creation ({@link AbstractHttpClient#createController}):
  * with the module's controller validation enabled, a non-empty result
@@ -252,6 +259,7 @@ public final class ControllerValidator {
 
         validatePathVariableMismatch(method, problems);
         validatePath(method.getName() + "()", resolvePath(method), problems);
+        validateParameterNames(method, problems);
 
         for (RequestHeader header : method.getAnnotationsByType(RequestHeader.class)) {
             if (header.name().isBlank()) {
@@ -600,6 +608,12 @@ public final class ControllerValidator {
         for (Parameter parameter : method.getParameters()) {
             if (parameter.isAnnotationPresent(PathVariable.class)) {
                 PathVariable pv = parameter.getAnnotation(PathVariable.class);
+                if (pv.name().isEmpty() && !parameter.isNamePresent()) {
+                    // the fallback name is the synthetic arg0; reported by
+                    // validateParameterNames with an actionable message, so it is
+                    // left out of the mismatch set to avoid a confusing bare-arg0 note
+                    continue;
+                }
                 pathVariables.add(pv.name().isEmpty() ? parameter.getName() : pv.name());
             }
         }
@@ -639,6 +653,49 @@ public final class ControllerValidator {
         } catch (IllegalArgumentException e) {
             problems.add(prefix + ": path must be a valid URI reference: " + e.getMessage());
         }
+    }
+
+    // A binding with a blank name() falls back to the Java parameter name, which
+    // the compiler only retains under -parameters. Without the flag the fallback
+    // silently becomes "arg0": a query/header/cookie goes out under the wrong name
+    // (the server ignores it), and a @PathVariable never matches its ${...}
+    // placeholder. Both are silent until the wire, so they are surfaced here, at
+    // proxy creation. A Map parameter (and an HttpCookie) takes its names from the
+    // entries/instance rather than the parameter name and is legitimately blank.
+    private static void validateParameterNames(Method method, List<String> problems) {
+        for (Parameter parameter : method.getParameters()) {
+            String annotation = fallbackNameAnnotation(parameter);
+            if (annotation != null && !parameter.isNamePresent()) {
+                problems.add(method.getName() + "(): @" + annotation
+                        + " requires an explicit name() when the controller is compiled without '-parameters'"
+                        + " (parameter names are not retained at runtime)");
+            }
+        }
+    }
+
+    private static String fallbackNameAnnotation(Parameter parameter) {
+        Class<?> type = parameter.getType();
+        if (parameter.isAnnotationPresent(PathVariable.class)
+                && parameter.getAnnotation(PathVariable.class).name().isEmpty()) {
+            return "PathVariable";
+        }
+        if (parameter.isAnnotationPresent(RequestParam.class)
+                && parameter.getAnnotation(RequestParam.class).name().isEmpty()
+                && !Map.class.isAssignableFrom(type)) {
+            return "RequestParam";
+        }
+        if (parameter.isAnnotationPresent(RequestHeader.class)
+                && parameter.getAnnotation(RequestHeader.class).name().isEmpty()
+                && !Map.class.isAssignableFrom(type)) {
+            return "RequestHeader";
+        }
+        if (parameter.isAnnotationPresent(Cookie.class)
+                && parameter.getAnnotation(Cookie.class).name().isEmpty()
+                && !Map.class.isAssignableFrom(type)
+                && !HttpCookie.class.isAssignableFrom(type)) {
+            return "Cookie";
+        }
+        return null;
     }
 
     private static String resolvePath(Method method) {

@@ -144,3 +144,21 @@ HTTP parameter patterns gracefully:
 4. `[ ]` **Step 4: Class-level and method-level `@RequestHeader` & `@RequestDefaultParam` (TDD)** — annotation expansion, repeatable containers, inheritance & override mechanics in `HttpTemplateBuilder`, validation in `ControllerValidator`.
 5. `[ ]` **Step 5: Documentation, WireMock end-to-end tests & README** — comprehensive test suite, complete Javadoc, README section.
 6. `[ ]` **Step 6: Distillation into ROADMAP.md & DRAFT cleanup** — update ROADMAP, clean DRAFT active zone.
+
+## Amendment #212
+
+**Missing eager validation of the parameter-name fallback — without the `-parameters` compiler flag a blank `name()` silently binds to `arg0`.**
+
+A blank `name()` on a parameter-level binding falls back to the Java parameter name (this ADR, Aspect 2/3; `@PathVariable` — ADR-0025; `@Cookie` — ADR-0032): `MethodMetadata.parse` resolves `name().isEmpty() ? parameter.getName() : name()`. The compiler only retains parameter names under `-parameters` (README states the requirement), and without the flag `Parameter.getName()` returns a synthetic `arg0`/`arg1`/… — so:
+
+- **`@RequestParam` / `@RequestHeader` / `@Cookie`** — the query key, header name, or cookie name silently becomes `arg0`; the value is sent under the wrong name and the server ignores it. No error, no log line.
+- **`@PathVariable`** — the synthetic name never matches a `${...}` placeholder, so the mismatch check of Amendment #210 fired with a bare, confusing `arg0` note instead of naming the real cause.
+
+A `Map` parameter (and an `HttpCookie`) takes its names from the entries/instance rather than the parameter name, so a blank `name()` there is legitimate and is not flagged.
+
+Fix: `ControllerValidator.validateParameterNames` reports, for every parameter-level binding whose blank `name()` resolves from the parameter name, when `Parameter.isNamePresent()` is false:
+
+- `method(): @RequestParam requires an explicit name() when the controller is compiled without '-parameters' (parameter names are not retained at runtime)`
+- (the same for `@RequestHeader`, `@Cookie`, `@PathVariable`)
+
+`@PathVariable` parameters whose fallback name is unavailable are also left out of the Amendment #210 mismatch set, so only the actionable message remains. No public API change; a controller compiled with `-parameters` (the documented requirement) behaves exactly as before. Covered by `ControllerValidationTest.rejectsParameterNameFallbackWithoutParametersFlagEagerly` and `reportsUnnamedPathVariableWithoutParametersFlagActionably` (red-first; the throwaway controller is compiled at runtime both with and without the flag to prove the guard keys on the flag, not on the declarations).

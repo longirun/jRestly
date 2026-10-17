@@ -6,7 +6,13 @@ import ru.jrestly.compression.CompressionAlgorithm;
 import ru.jrestly.fixtures.BrokenController;
 import ru.jrestly.fixtures.TestController;
 
+import javax.tools.JavaCompiler;
+import javax.tools.ToolProvider;
 import java.lang.reflect.Proxy;
+import java.net.URL;
+import java.net.URLClassLoader;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -328,6 +334,100 @@ public class ControllerValidationTest {
         // and IPv6 brackets (legal in the authority of an absolute URL)
         assertTrue(ControllerValidator.validate(ValidPathCharactersController.class).isEmpty());
         assertTrue(ControllerValidator.validate(ValidPathVariableController.class).isEmpty());
+    }
+
+    @Test
+    void rejectsParameterNameFallbackWithoutParametersFlagEagerly() throws Exception {
+        // ADR-0025 / README: a blank name() falls back to the Java parameter name,
+        // which only exists under the '-parameters' compiler flag. Without it the
+        // fallback silently becomes "arg0" -- a query/header/cookie goes out under
+        // the wrong name (the server ignores it) and a @PathVariable never matches
+        // its placeholder. The interface is compiled at runtime both ways to prove
+        // the guard keys on the compiler flag, not on the declarations themselves.
+        String bindings = """
+                    @Get(path = "/search")
+                    String search(@RequestParam String query);
+
+                    @Get(path = "/api")
+                    String fetch(@RequestHeader String token);
+
+                    @Get(path = "/session")
+                    String session(@Cookie String sid);
+                """;
+
+        Class<?> withoutFlag = compileController("NoParamsController", bindings, false);
+        List<String> problems = ControllerValidator.validate(withoutFlag);
+        assertEquals(3, problems.size());
+        assertTrue(problems.stream().anyMatch(p -> p.startsWith("search(): @RequestParam requires an explicit name()")));
+        assertTrue(problems.stream().anyMatch(p -> p.startsWith("fetch(): @RequestHeader requires an explicit name()")));
+        assertTrue(problems.stream().anyMatch(p -> p.startsWith("session(): @Cookie requires an explicit name()")));
+
+        JRestlyClient client = JRestlyClient.builder().baseUrl("http://localhost:1").build();
+        assertThrows(ControllerValidationException.class, () -> client.get(withoutFlag));
+
+        // the very same declarations are valid once the flag retains parameter names
+        assertTrue(ControllerValidator.validate(compileController("ParamsController", bindings, true)).isEmpty());
+
+        // a Map parameter takes its names from the entries, not the parameter name
+        assertTrue(ControllerValidator.validate(compileController("MapController", """
+                    @Get(path = "/search")
+                    String search(@RequestParam java.util.Map<String, String> filters);
+                """, false)).isEmpty());
+
+        // an explicit name() removes the dependency on the flag entirely
+        assertTrue(ControllerValidator.validate(compileController("ExplicitNameController", """
+                    @Get(path = "/search")
+                    String search(@RequestParam(name = "query") String q);
+                """, false)).isEmpty());
+    }
+
+    @Test
+    void reportsUnnamedPathVariableWithoutParametersFlagActionably() throws Exception {
+        Class<?> controller = compileController("NoParamsPathVarController", """
+                    @Get(path = "/items/${id}")
+                    String item(@PathVariable String id);
+                """, false);
+        List<String> problems = ControllerValidator.validate(controller);
+        assertTrue(problems.stream().anyMatch(p -> p.startsWith("item(): @PathVariable requires an explicit name()")));
+        // the synthetic fallback name is not echoed as a confusing mismatch
+        assertTrue(problems.stream().noneMatch(p -> p.contains("'arg0'")));
+    }
+
+    // Compiles a throwaway controller interface at runtime. The project itself is
+    // built with -parameters, so a class that lacks the MethodParameters attribute
+    // -- the only way to reproduce the missing flag -- must be produced here. A
+    // URLClassLoader stays open for the test's lifetime so the proxy can be built.
+    private static Class<?> compileController(String simpleName, String body, boolean parameters) throws Exception {
+        Path dir = Files.createTempDirectory("jrestly-ctrl-" + simpleName);
+        Path source = dir.resolve(simpleName + ".java");
+        Files.writeString(source, """
+                package ru.jrestly.gen;
+
+                import ru.jrestly.annotation.Get;
+                import ru.jrestly.annotation.RequestParam;
+                import ru.jrestly.annotation.RequestHeader;
+                import ru.jrestly.annotation.Cookie;
+                import ru.jrestly.annotation.PathVariable;
+
+                public interface %s {
+                %s
+                }
+                """.formatted(simpleName, body));
+
+        JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
+        assertNotNull(compiler, "the JDK compiler is required for this test");
+        List<String> options = new ArrayList<>(List.of(
+                "-classpath", System.getProperty("java.class.path"),
+                "-d", dir.toString()));
+        if (parameters) {
+            options.add("-parameters");
+        }
+        options.add(source.toString());
+        assertEquals(0, compiler.run(null, null, null, options.toArray(String[]::new)));
+
+        URLClassLoader loader = new URLClassLoader(new URL[]{dir.toUri().toURL()},
+                ControllerValidationTest.class.getClassLoader());
+        return Class.forName("ru.jrestly.gen." + simpleName, false, loader);
     }
 }
 
