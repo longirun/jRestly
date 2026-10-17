@@ -575,6 +575,176 @@ class ProblemDetailTest {
         assertEquals(422, parsed.getStatus());
         assertTrue(parsed.getProperty("list") instanceof List);
     }
+
+    @Test
+    @DisplayName("UnexpectedStatusException message formatting with various problemDetail states and rawBody null-check")
+    void unexpectedStatusExceptionMessageVariants() {
+        ru.jrestly.http.UnexpectedStatusException exNull = new ru.jrestly.http.UnexpectedStatusException(400, null, null, null);
+        assertEquals("Unexpected HTTP status 400", exNull.getMessage());
+        assertEquals("", exNull.getRawBody());
+
+        ProblemDetail pdNoTitleNoDetail = new ProblemDetail();
+        pdNoTitleNoDetail.setStatus(400);
+        ru.jrestly.http.UnexpectedStatusException exNoTitleNoDetail = new ru.jrestly.http.UnexpectedStatusException(400, "err", null, pdNoTitleNoDetail);
+        assertEquals("Unexpected HTTP status 400", exNoTitleNoDetail.getMessage());
+
+        ProblemDetail pdEmptyTitleEmptyDetail = new ProblemDetail();
+        pdEmptyTitleEmptyDetail.setStatus(400);
+        pdEmptyTitleEmptyDetail.setTitle("");
+        pdEmptyTitleEmptyDetail.setDetail("");
+        ru.jrestly.http.UnexpectedStatusException exEmptyTitleEmptyDetail = new ru.jrestly.http.UnexpectedStatusException(400, "err", null, pdEmptyTitleEmptyDetail);
+        assertEquals("Unexpected HTTP status 400", exEmptyTitleEmptyDetail.getMessage());
+
+        ProblemDetail pdOnlyTitle = new ProblemDetail();
+        pdOnlyTitle.setStatus(400);
+        pdOnlyTitle.setTitle("Bad Request");
+        ru.jrestly.http.UnexpectedStatusException exOnlyTitle = new ru.jrestly.http.UnexpectedStatusException(400, "err", null, pdOnlyTitle);
+        assertEquals("Unexpected HTTP status 400 (Bad Request)", exOnlyTitle.getMessage());
+
+        ProblemDetail pdOnlyDetail = new ProblemDetail();
+        pdOnlyDetail.setStatus(400);
+        pdOnlyDetail.setDetail("ID is required");
+        ru.jrestly.http.UnexpectedStatusException exOnlyDetail = new ru.jrestly.http.UnexpectedStatusException(400, "err", null, pdOnlyDetail);
+        assertEquals("Unexpected HTTP status 400: ID is required", exOnlyDetail.getMessage());
+    }
+
+    @Test
+    @DisplayName("ProblemDetailException 3-arg constructor handles null, ProblemDetail, and arbitrary object details")
+    void problemDetailExceptionConstructorAndMessageVariants() {
+        ProblemDetailException exNullDetails = new ProblemDetailException(null, 400, null);
+        assertEquals(400, exNullDetails.getStatusCode());
+        assertNotNull(exNullDetails.problemDetail());
+        assertEquals(400, exNullDetails.problemDetail().getStatus());
+
+        ProblemDetail customPd = ProblemDetail.forStatusAndDetail(403, "Forbidden area");
+        ProblemDetailException exPd = new ProblemDetailException(customPd, 403, null);
+        assertEquals(customPd, exPd.problemDetail());
+
+        ProblemDetailException exStringDetails = new ProblemDetailException("Invalid auth token", 401, null);
+        assertEquals("Invalid auth token", exStringDetails.problemDetail().getDetail());
+
+        ProblemDetail pdNoTitleNoDetail = new ProblemDetail();
+        pdNoTitleNoDetail.setStatus(500);
+        ProblemDetailException exNoTitleNoDetail = new ProblemDetailException(pdNoTitleNoDetail, null);
+        assertEquals("HTTP 500", exNoTitleNoDetail.getMessage());
+
+        ProblemDetail pdEmptyTitleEmptyDetail = new ProblemDetail();
+        pdEmptyTitleEmptyDetail.setStatus(500);
+        pdEmptyTitleEmptyDetail.setTitle("");
+        pdEmptyTitleEmptyDetail.setDetail("");
+        ProblemDetailException exEmptyTitleEmptyDetail = new ProblemDetailException(pdEmptyTitleEmptyDetail, null);
+        assertEquals("HTTP 500", exEmptyTitleEmptyDetail.getMessage());
+
+        ProblemDetail pdOnlyTitle = new ProblemDetail();
+        pdOnlyTitle.setStatus(500);
+        pdOnlyTitle.setTitle("Server Error");
+        ProblemDetailException exOnlyTitle = new ProblemDetailException(pdOnlyTitle, null);
+        assertEquals("HTTP 500 [Server Error]", exOnlyTitle.getMessage());
+
+        ProblemDetail pdOnlyDetail = new ProblemDetail();
+        pdOnlyDetail.setStatus(500);
+        pdOnlyDetail.setDetail("Database down");
+        ProblemDetailException exOnlyDetail = new ProblemDetailException(pdOnlyDetail, null);
+        assertEquals("HTTP 500: Database down", exOnlyDetail.getMessage());
+    }
+
+    @Test
+    @DisplayName("ProblemDetail setProperties null handling, blank property names, and toJson field permutations")
+    void problemDetailSetPropertiesAndToJsonVariants() {
+        ProblemDetail pd = ProblemDetail.forStatus(400);
+        pd.setProperty("prop1", "val1");
+        assertEquals(1, pd.getProperties().size());
+
+        pd.setProperties(null);
+        assertTrue(pd.getProperties().isEmpty());
+
+        pd.setProperty(null, "val");
+        pd.setProperty("   ", "val");
+        assertTrue(pd.getProperties().isEmpty());
+
+        // toJson field permutations with default type about:blank
+        ProblemDetail pdTitleOnly = new ProblemDetail();
+        pdTitleOnly.setTitle("Title Only");
+        assertEquals("{\"type\":\"about:blank\",\"title\":\"Title Only\"}", pdTitleOnly.toJson());
+
+        ProblemDetail pdStatusOnly = new ProblemDetail();
+        pdStatusOnly.setStatus(404);
+        assertEquals("{\"type\":\"about:blank\",\"status\":404}", pdStatusOnly.toJson());
+
+        ProblemDetail pdDetailOnly = new ProblemDetail();
+        pdDetailOnly.setDetail("Detail Only");
+        assertEquals("{\"type\":\"about:blank\",\"detail\":\"Detail Only\"}", pdDetailOnly.toJson());
+
+        ProblemDetail pdInstanceOnly = new ProblemDetail();
+        pdInstanceOnly.setInstance(URI.create("/instance/1"));
+        assertEquals("{\"type\":\"about:blank\",\"instance\":\"/instance/1\"}", pdInstanceOnly.toJson());
+
+        ProblemDetail pdPropsOnly = new ProblemDetail();
+        pdPropsOnly.setProperty("code", "E123");
+        assertEquals("{\"type\":\"about:blank\",\"code\":\"E123\"}", pdPropsOnly.toJson());
+    }
+
+    @Test
+    @DisplayName("ProblemDetail.fromJson parses null fields and ignores non-numeric status strings")
+    void problemDetailFromJsonEdgeCases() {
+        ProblemDetail pd = ProblemDetail.fromJson("{\"type\": null, \"title\": null, \"detail\": null, \"instance\": null, \"status\": \"not-a-number\"}");
+        assertEquals(ProblemDetail.DEFAULT_TYPE, pd.getType());
+        assertNull(pd.getTitle());
+        assertNull(pd.getDetail());
+        assertNull(pd.getInstance());
+        assertEquals(0, pd.getStatus());
+    }
+
+    @Test
+    @DisplayName("ProblemDetail equals and hashCode contract")
+    void problemDetailEqualsAndHashCode() {
+        ProblemDetail pd1 = ProblemDetail.forStatusAndDetail(400, "Bad Request");
+        pd1.setProperty("key", "val");
+
+        // Identity and null checks
+        assertTrue(pd1.equals(pd1));
+        assertFalse(pd1.equals(null));
+        assertFalse(pd1.equals("different type"));
+
+        // Status mismatch
+        ProblemDetail pdDiffStatus = ProblemDetail.forStatusAndDetail(500, "Bad Request");
+        pdDiffStatus.setProperty("key", "val");
+        assertFalse(pd1.equals(pdDiffStatus));
+
+        // Type mismatch
+        ProblemDetail pdDiffType = ProblemDetail.forStatusAndDetail(400, "Bad Request");
+        pdDiffType.setType("https://example.com/custom");
+        pdDiffType.setProperty("key", "val");
+        assertFalse(pd1.equals(pdDiffType));
+
+        // Title mismatch
+        ProblemDetail pdDiffTitle = ProblemDetail.forStatusAndDetail(400, "Bad Request");
+        pdDiffTitle.setTitle("Different Title");
+        pdDiffTitle.setProperty("key", "val");
+        assertFalse(pd1.equals(pdDiffTitle));
+
+        // Detail mismatch
+        ProblemDetail pdDiffDetail = ProblemDetail.forStatusAndDetail(400, "Different Detail");
+        pdDiffDetail.setProperty("key", "val");
+        assertFalse(pd1.equals(pdDiffDetail));
+
+        // Instance mismatch
+        ProblemDetail pdDiffInstance = ProblemDetail.forStatusAndDetail(400, "Bad Request");
+        pdDiffInstance.setInstance("/inst/1");
+        pdDiffInstance.setProperty("key", "val");
+        assertFalse(pd1.equals(pdDiffInstance));
+
+        // Properties mismatch
+        ProblemDetail pdDiffProps = ProblemDetail.forStatusAndDetail(400, "Bad Request");
+        pdDiffProps.setProperty("key", "otherVal");
+        assertFalse(pd1.equals(pdDiffProps));
+
+        // Identical object
+        ProblemDetail pdIdentical = ProblemDetail.forStatusAndDetail(400, "Bad Request");
+        pdIdentical.setProperty("key", "val");
+        assertTrue(pd1.equals(pdIdentical));
+        assertEquals(pd1.hashCode(), pdIdentical.hashCode());
+    }
 }
 
 

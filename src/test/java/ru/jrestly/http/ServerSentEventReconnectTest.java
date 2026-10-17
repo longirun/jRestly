@@ -641,6 +641,30 @@ class ServerSentEventReconnectTest {
                 ReconnectPolicy.builder().stallTimeout(Duration.ofMillis(-5)));
         assertThrows(IllegalStateException.class, () ->
                 ReconnectPolicy.builder().maxBackoff(Duration.ofMillis(-1)).build());
+
+        // maxAttempts < 0
+        assertThrows(IllegalStateException.class, () ->
+                ReconnectPolicy.builder().maxAttempts(-1).build());
+
+        // negative initialBackoff
+        assertThrows(IllegalStateException.class, () ->
+                ReconnectPolicy.builder().initialBackoff(Duration.ofMillis(-10)).build());
+
+        // initialBackoff > maxBackoff
+        assertThrows(IllegalStateException.class, () ->
+                ReconnectPolicy.builder().initialBackoff(Duration.ofSeconds(10)).maxBackoff(Duration.ofSeconds(1)).build());
+
+        // backoffMultiplier < 1.0 or NaN
+        assertThrows(IllegalStateException.class, () ->
+                ReconnectPolicy.builder().backoffMultiplier(0.5).build());
+        assertThrows(IllegalStateException.class, () ->
+                ReconnectPolicy.builder().backoffMultiplier(Double.NaN).build());
+
+        // null arguments in builder
+        assertThrows(NullPointerException.class, () -> ReconnectPolicy.builder().initialBackoff(null));
+        assertThrows(NullPointerException.class, () -> ReconnectPolicy.builder().maxBackoff(null));
+        assertThrows(NullPointerException.class, () -> ReconnectPolicy.builder().jitter(null));
+        assertThrows(NullPointerException.class, () -> ReconnectPolicy.builder().onReconnect(null));
     }
 
     @Test
@@ -651,6 +675,17 @@ class ServerSentEventReconnectTest {
                 .maxBackoff(Duration.ZERO)
                 .build();
         assertEquals(0, policy.nextDelayMillis(1, 0L, 0L, new java.util.Random(42L)));
+    }
+
+    @Test
+    @DisplayName("ServerSentEventReconnector next() throws NoSuchElementException on empty stream")
+    void emptyReconnectorStreamThrowsNoSuchElement() {
+        java.util.Iterator<ServerSentEvent> it = ServerSentEvent.reconnecting(
+                id -> Stream.empty(),
+                ReconnectPolicy.builder().maxAttempts(0).build()
+        ).iterator();
+        assertFalse(it.hasNext());
+        assertThrows(java.util.NoSuchElementException.class, it::next);
     }
 
 

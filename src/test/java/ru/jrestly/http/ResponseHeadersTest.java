@@ -403,5 +403,35 @@ class ResponseHeadersTest {
         ResponseHeaders r4 = new ResponseHeaders(200, List.of(), Duration.ZERO);
         assertTrue(r4.requestId().isEmpty());
     }
+
+    @Test
+    @DisplayName("Link header edge cases: quoted commas, multiple rel tokens, unquoted rel, blank headers, malformed brackets")
+    void linkHeaderEdgeCases() {
+        // Quoted comma inside rel attribute and unquoted rel
+        ResponseHeaders r1 = new ResponseHeaders(200, List.of(
+                new Header("Link", "<https://api.example.com/items?a=1,2>; rel=\"next,prev\""),
+                new Header("Link", "<https://api.example.com/items?page=1>; rel=first"),
+                new Header("Link", "<https://api.example.com/items?page=10>; rel=\"last end\""),
+                new Header("Link", "   "),
+                new Header("Link", null),
+                new Header("Link", "malformed-without-brackets"),
+                new Header("Link", ">inverted<; rel=ignored"),
+                new Header("Link", "<https://api.example.com/noparam>; rel")
+        ), Duration.ZERO);
+
+        Map<String, String> links = r1.links();
+        assertEquals("https://api.example.com/items?a=1,2", links.get("next,prev"));
+        assertEquals("https://api.example.com/items?page=1", links.get("first"));
+        assertEquals("https://api.example.com/items?page=10", links.get("last"));
+        assertEquals("https://api.example.com/items?page=10", links.get("end"));
+        assertNull(links.get("ignored"));
+    }
+
+    @Test
+    @DisplayName("locationUri returns empty when Location header is not a valid URI")
+    void locationUriInvalidReturnsEmpty() {
+        ResponseHeaders r = new ResponseHeaders(302, List.of(new Header("Location", "http://invalid uri with spaces")), Duration.ZERO);
+        assertTrue(r.locationUri().isEmpty());
+    }
 }
 

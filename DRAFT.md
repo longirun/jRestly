@@ -1,5 +1,29 @@
 # DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
+> **Сессия #251 (free-аудит / харденинг: закрытие краевых условий в 8 подсистемах и пробитие рубежа 82.94% Branch Coverage при 95.69% Instruction Coverage):**
+> свободный ход развития качества и надежности кодовой базы.
+> 1. *Харденинг и верификация краевых веток периферии:*
+>    - `CallMetrics`: верифицировано извлечение `statusCode()` из вложенного `HandledException` (`t.getCause()`), обработка пустых ответов/сбоев (`statusCode == -1`, `isSuccess == false`), и не-2xx ответов без исключения (`isSuccess == false`);
+>    - `ApiKeyAuth`: верифицирован обход методов с `@Authorization`, безопасная работа при `context == null` или `context.method() == null`, корректное добавление query-параметра при наличии И существующего query, И фрагмента URI (`https://example.com/api?tab=all#details`), а также динамические поставщики ключей (`Supplier<String>`);
+>    - `UnexpectedStatusException`: протестированы все варианты форматирования `getMessage()` при различных комбинациях null/empty `title` и `detail`, а также безопасный возврат `""` в `getRawBody()` при `rawBody == null`;
+>    - `ProblemDetailException`: протестирован 3-аргументный конструктор при `details == null`, `details instanceof ProblemDetail`, и произвольных объектах, а также все варианты сообщения `getMessage()`;
+>    - `ProblemDetail`: проверена очистка свойств в `setProperties(null)`, фильтрация null/blank имен в `setProperty`, сериализация всех комбинаций полей в `toJson()`, парсинг нечисловых статусов в `fromJson()`, а также полный контракт `equals()` и `hashCode()`;
+>    - `ResponseHeaders`: протестированы краевые случаи парсинга заголовков `Link` (запятые внутри кавычек, множественные токены `rel`, неэкранированный `rel`, пустые/битые заголовки), а также возврат `Optional.empty()` в `locationUri()` при невалидных URI со спецсимволами/пробелами;
+>    - `CacheControl`: протестированы null-элементы/имена/значения в списке заголовков, пустые токены в `Cache-Control`, кавычки вокруг значений, отрицательные/нечисловые директивы `max-age` и `stale-while-revalidate`, а также возврат `EMPTY` при отсутствии директив;
+>    - `TraceContext`: протестирован парсинг некорректных нешестнадцатеричных `traceId` и `spanId`, а также краевые биты флагов в `isSampled()`;
+>    - `ReconnectPolicy.Builder`: протестирована полная fail-fast валидация параметров (`maxAttempts < 0`, отрицательный `initialBackoff`, `initialBackoff > maxBackoff`, `backoffMultiplier < 1.0` и `NaN`, null-checks);
+>    - `ServerSentEventReconnector`: протестирован выброс `NoSuchElementException` в `next()` на пустом потоке;
+>    - `AbstractHttpClient`: протестированы безопасные дефолты акцессоров (`getCookieHandler()`, `getCookieStore()`, `getProxySelector()`, `getAuthenticator()`, `getHttpClient()`) при `moduleInfo == null`, а также поведение при кастомном не-`CookieManager` обработчике кук.
+> 2. *TDD и исторические гейты JaCoCo:*
+>    - Всего тестов: **1422 / 1422** green across all 5 modules (+10 тестов, 0 failures, 0 errors, 0 warnings under `-Werror`).
+>    - **JaCoCo Coverage:**
+>      * **CLASS:** **143 / 143 (100.00%)** — абсолютное 100% покрытие всех классов библиотеки!
+>      * **METHOD:** **1418 / 1418 (100.00%)** — абсолютное 100% покрытие ВСЕХ методов библиотеки (0 missed methods)!
+>      * **BRANCH:** **3,655 / 4,407 (82.94%)** — преодолен рубеж 82.9% (+1.14% за сессию)!
+>      * **INSTRUCTION:** **29,852 / 31,198 (95.69%)** — новый исторический рекорд (+0.04% за сессию)!
+>      * **LINE:** **6,492 / 6,795 (95.54%)** — новый исторический рекорд (+0.09% за сессию)!
+>      * **COMPLEXITY:** **2,944 / 3,654 (80.57%)** — впервые преодолён рубеж 80.5%!
+>
 > **Юбилейная сессия #250 (free-аудит / харденинг: закрытие краевых веток resilience, auth, SSE, cookie, problem-details и рекорд JaCoCo 95.65% Instruction / 81.80% Branch Coverage):**
 > свободный ход развития качества и устойчивости кодовой базы.
 > 1. *Харденинг и верификация краевых веток периферии:*

@@ -204,4 +204,40 @@ class AbstractHttpClientLifecycleTest {
         unownedEngine.close();
         assertFalse(freshClient.closed.get());
     }
+
+    @Test
+    @DisplayName("AbstractHttpClient accessors return safe defaults when moduleInfo is null or custom")
+    void testNullModuleInfoAndCustomCookieHandlerAccessors() {
+        AbstractHttpClient nullModuleClient = new AbstractHttpClient(null) {
+            @Override
+            protected void createConnection() {
+            }
+        };
+        assertNull(nullModuleClient.getCookieHandler());
+        assertTrue(nullModuleClient.getCookieStore().isEmpty());
+        assertNull(nullModuleClient.getProxySelector());
+        assertNull(nullModuleClient.getAuthenticator());
+        assertNull(nullModuleClient.getHttpClient());
+        nullModuleClient.close(); // safe no-op
+
+        // Custom non-CookieManager CookieHandler returns handler but empty cookieStore
+        java.net.CookieHandler customHandler = new java.net.CookieHandler() {
+            @Override
+            public java.util.Map<String, java.util.List<String>> get(URI uri, java.util.Map<String, java.util.List<String>> requestHeaders) {
+                return java.util.Collections.emptyMap();
+            }
+
+            @Override
+            public void put(URI uri, java.util.Map<String, java.util.List<String>> responseHeaders) {
+            }
+        };
+
+        JRestlyClient customCookieClient = JRestlyClient.builder()
+                .baseUrl("https://example.com")
+                .cookieHandler(customHandler)
+                .build();
+        assertSame(customHandler, customCookieClient.getCookieHandler());
+        assertTrue(customCookieClient.getCookieStore().isEmpty());
+        customCookieClient.close();
+    }
 }

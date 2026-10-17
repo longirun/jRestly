@@ -99,5 +99,23 @@ class CacheControlTest {
         assertTrue(s.contains("private"));
         assertTrue(s.contains("public"));
     }
+
+    @Test
+    @DisplayName("parse handles null elements, null names, null values, empty tokens, and stripped quotes")
+    void parseHeaderEdgeCases() {
+        List<Header> edgeHeaders = new java.util.ArrayList<>();
+        edgeHeaders.add(null);
+        edgeHeaders.add(new Header(null, "value"));
+        edgeHeaders.add(new Header("Cache-Control", null));
+        edgeHeaders.add(new Header("Cache-Control", " , , max-age=\"120\", stale-while-revalidate=\"300\", max-age=-5, max-age, stale-while-revalidate, "));
+
+        CacheControl cc = CacheControl.parse(edgeHeaders);
+        assertEquals(120L, cc.maxAgeSeconds());
+        assertEquals(300L, cc.staleWhileRevalidateSeconds());
+
+        // Headers list without any Cache-Control
+        CacheControl noCc = CacheControl.parse(List.of(new Header("Content-Type", "text/plain")));
+        assertEquals(CacheControl.empty(), noCc);
+    }
 }
 

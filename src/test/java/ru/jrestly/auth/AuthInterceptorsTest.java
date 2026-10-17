@@ -172,6 +172,34 @@ class AuthInterceptorsTest {
                 .build();
         WireRequest intercepted4 = queryAuth.intercept(req4, context);
         assertEquals("https://example.com/api?key=secret123#section2", intercepted4.uri().toString());
+
+        // Query location with both existing query AND URI fragment
+        WireRequest req5 = WireRequest.builder()
+                .method(HttpMethod.GET)
+                .uri(URI.create("https://example.com/api?tab=all#section2"))
+                .build();
+        WireRequest intercepted5 = queryAuth.intercept(req5, context);
+        assertEquals("https://example.com/api?tab=all&key=secret123#section2", intercepted5.uri().toString());
+
+        // Bypasses methods annotated with @Authorization
+        Method loginMethod = TestLoginApi.class.getMethod("login");
+        RequestContext authContext = mockContext(loginMethod);
+        WireRequest interceptedBypass = queryAuth.intercept(req1, authContext);
+        assertEquals(req1, interceptedBypass);
+
+        // Safe with null context or null context.method()
+        WireRequest interceptedNullContext = queryAuth.intercept(req1, null);
+        assertEquals("https://example.com/api?key=secret123", interceptedNullContext.uri().toString());
+
+        RequestContext nullMethodContext = mockContext(null);
+        WireRequest interceptedNullMethod = queryAuth.intercept(req1, nullMethodContext);
+        assertEquals("https://example.com/api?key=secret123", interceptedNullMethod.uri().toString());
+
+        // Dynamic key suppliers
+        ApiKeyAuth dynamicQuery = ApiKeyAuth.query("token", () -> "dyn123");
+        assertEquals("https://example.com/api?token=dyn123", dynamicQuery.intercept(req1, context).uri().toString());
+        ApiKeyAuth dynamicHeader = ApiKeyAuth.header("X-Dynamic", () -> "dynHdr");
+        assertEquals("dynHdr", dynamicHeader.intercept(req1, context).headers().getFirst().value());
     }
 
     @Test

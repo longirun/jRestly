@@ -310,6 +310,47 @@ class ClientMetricsValidationTest {
         );
         assertEquals(-1, transportFailedMetrics.statusCode());
         assertFalse(transportFailedMetrics.isSuccess());
+
+        Throwable wrappedHandled = new RuntimeException("wrap", new UnexpectedStatusException(503, "unavailable", List.of()));
+        CallMetrics causeMetrics = new SimpleCallMetrics(
+                context,
+                wireReq,
+                Optional.empty(),
+                Optional.of(wrappedHandled),
+                Duration.ofMillis(10),
+                1,
+                0,
+                0
+        );
+        assertEquals(503, causeMetrics.statusCode());
+        assertFalse(causeMetrics.isSuccess());
+
+        WireResponse resp404 = WireResponse.builder().statusCode(404).build();
+        CallMetrics notFoundMetrics = new SimpleCallMetrics(
+                context,
+                wireReq,
+                Optional.of(resp404),
+                Optional.empty(),
+                Duration.ofMillis(10),
+                1,
+                0,
+                0
+        );
+        assertEquals(404, notFoundMetrics.statusCode());
+        assertFalse(notFoundMetrics.isSuccess());
+
+        CallMetrics emptyMetrics = new SimpleCallMetrics(
+                context,
+                wireReq,
+                Optional.empty(),
+                Optional.empty(),
+                Duration.ofMillis(10),
+                1,
+                0,
+                0
+        );
+        assertEquals(-1, emptyMetrics.statusCode());
+        assertFalse(emptyMetrics.isSuccess());
     }
 
     @Test

@@ -159,6 +159,12 @@ class TraceContextTest {
         assertTrue(TraceContext.of(VALID_TRACE_ID, VALID_SPAN_ID, "03").isSampled());
         assertFalse(TraceContext.of(VALID_TRACE_ID, VALID_SPAN_ID, "10").isSampled());
         assertTrue(TraceContext.of(VALID_TRACE_ID, VALID_SPAN_ID, "11").isSampled());
+
+        // Parse with malformed traceId / spanId
+        assertTrue(TraceContext.parse("00-4bf92f3577b34da6a3ce929d0e0e473z-" + VALID_SPAN_ID + "-01").isEmpty());
+        assertTrue(TraceContext.parse("00-4bf92f3577b34da6a3ce929d0e0e473-" + VALID_SPAN_ID + "-01").isEmpty());
+        assertTrue(TraceContext.parse("00-" + VALID_TRACE_ID + "-00f067aa0ba902bz-01").isEmpty());
+        assertTrue(TraceContext.parse("00-" + VALID_TRACE_ID + "-00f067aa0ba902b-01").isEmpty());
     }
 }
 

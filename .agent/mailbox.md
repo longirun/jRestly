@@ -51,13 +51,6 @@
 
 ---
 
-[2026-10-17 19:26] Агент (сессия #245): Антон, провел аудит адаптеров, периферийных структур и очистку мертвого кода:
-- Найдена и устранена 32-я «тихая» находка серии: в `MoshiCodec.copyValue` (форматирование токенов в `prettyPrint`) в ветке `case NULL` вызывался `writer.nullValue()`, но забывалось потребить токен `reader.nextNull()` из входного потока `JsonReader`. В результате при наличии `null` значений в массивах или объектах `reader.peek()` оставался в состоянии `NULL`, цикл `while (reader.hasNext())` зацикливался навечно, непрерывно аллоцируя буферы Okio вплоть до `java.lang.OutOfMemoryError: Java heap space`. Вызов `reader.nextNull()` добавлен. Оформлен `ADR-0007` `## Amendment #245`.
-- В `HttpTemplateBuilder` удалены мертвые неиспользуемые private методы `resolveInterfaceAccept`, `resolveMethodAccept`, `resolveInterfaceContentType`, `resolveMethodContentType`.
-- Расширено тестовое покрытие для `CircuitBreakerConfig` (валидация параметров и кастомный предикат), `SimpleCachedResponse` (null headers/body/version, валидаторы, замена Age), `FileCookiePersister` (кастомный Charset, null-checks), `SingleFlightTokenManager` (обработка Error, null token), `JacksonCodec` (ошибки десериализации байтов и сериализации), `MethodMetadata` (аксессоры и флаги параметров), `ProblemDetail` (RFC заголовки для 20 статусов, URI в свойствах, escape управляющих символов < 0x20).
-- Новый исторический рекорд JaCoCo: **92.85% Instructions** (28,967 / 31,198), **92.73% Lines** (6,301 / 6,795), **79.08% Branches** (3,485 / 4,407), **95.91% Methods** (1,360 / 1,418) при **100.00% Class Coverage (143/143 классов)**!
-- Тестовая база выросла до **1355 / 1355** тестов (100% green across all 5 modules), javadoc чист под `-Werror`.
-
 [2026-10-17 19:48] Агент (сессия #246): Антон, провел глубокий аудит и верификацию периферийных моделей, транспорта и заголовков:
 - Создан тестовый сьют `WireResponseUnitTest` (+10 тестов), детально верифицирующий все фабрики `WireResponse.of(...)`, методы билдера, оверлоады тел (byte[], string, charset, stream), дефолты протоколов, equals/hashCode/toString.
 - В `ResponseHeaders`: верифицирован `ageSeconds()`, `captureCallable(Callable)` (в т.ч. checked exceptions, ThreadLocal cleanup и вложенные вызовы), заголовок `Set-Cookie2` и `cookieMap()` с null-значениями, `populate` и HTTP/2 trailers.
@@ -114,3 +107,24 @@
   * **100.00% Method Coverage (1418/1418)**;
   * **100.00% Class Coverage (143/143)**.
 - Тестовая база выросла до **1412 / 1412** тестов (100% green across all 5 modules, 0 failures, 0 errors, 0 warnings under `-Werror`).
+
+[2026-10-17 22:30] Агент (сессия #251): Антон, продолжил глубокий аудит и харденинг краевых условий библиотечных подсистем, взят новый рубеж Branch Coverage в JaCoCo:
+- В `CallMetrics`: верифицировано извлечение `statusCode()` из вложенного `HandledException` (`t.getCause()`), пустые ответы/сбои (`statusCode == -1`, `isSuccess == false`), и не-2xx ответы без сбоев.
+- В `ApiKeyAuth`: верифицирован обход методов с `@Authorization`, безопасная работа при `context == null` или `context.method() == null`, корректная конкатенация query при наличии И query, И фрагмента URI (`?tab=all#details`), а также динамические `Supplier<String>`.
+- В `UnexpectedStatusException`: протестированы все варианты `getMessage()` при вариациях null/empty `title` и `detail`, а также безопасный fallback в `getRawBody()`.
+- В `ProblemDetailException`: протестирован 3-аргументный конструктор при `details == null`, `details instanceof ProblemDetail`, и строковых/кастомных деталях, а также все ветки `getMessage()`.
+- В `ProblemDetail`: проверена очистка в `setProperties(null)`, фильтрация blank-имен в `setProperty`, сериализация вариаций полей в `toJson()`, парсинг нечисловых статусов в `fromJson()`, а также полный контракт `equals()` и `hashCode()`.
+- В `ResponseHeaders`: протестированы краевые случаи парсинга заголовков `Link` (запятые внутри кавычек, множественные токены `rel`, неэкранированный `rel`, пустые/битые заголовки), а также возврат `Optional.empty()` в `locationUri()` при невалидных URI с пробелами.
+- В `CacheControl`: протестированы null-элементы/имена/значения в заголовках, пустые токены в `Cache-Control`, кавычки вокруг значений, отрицательные/нечисловые директивы `max-age` и `stale-while-revalidate`, а также возврат `EMPTY` при отсутствии директив.
+- В `TraceContext`: протестирован парсинг некорректных нешестнадцатеричных `traceId` и `spanId`, а также краевые биты флагов в `isSampled()`.
+- В `ReconnectPolicy.Builder`: протестирована полная fail-fast валидация параметров (`maxAttempts < 0`, отрицательный `initialBackoff`, `initialBackoff > maxBackoff`, `backoffMultiplier < 1.0` и `NaN`, null-checks).
+- В `ServerSentEventReconnector`: протестирован выброс `NoSuchElementException` в `next()` на пустом потоке.
+- В `AbstractHttpClient`: протестированы безопасные дефолты акцессоров (`getCookieHandler()`, `getCookieStore()`, `getProxySelector()`, `getAuthenticator()`, `getHttpClient()`) при `moduleInfo == null`, а также поведение при кастомном не-`CookieManager` обработчике кук.
+- Новые исторические рекорды качества JaCoCo:
+  * **82.94% Branch Coverage** (3,655 / 4,407, +1.14% за сессию, преодолен рубеж 82.9%)!
+  * **95.69% Instruction Coverage** (29,852 / 31,198, +0.04%);
+  * **95.54% Line Coverage** (6,492 / 6,795, +0.09%);
+  * **80.57% Complexity** (2,944 / 3,654, преодолен рубеж 80.5%);
+  * **100.00% Method Coverage (1418/1418)**;
+  * **100.00% Class Coverage (143/143)**.
+- Тестовая база выросла до **1422 / 1422** тестов (100% green across all 5 modules, 0 failures, 0 errors, 0 warnings under `-Werror`).
