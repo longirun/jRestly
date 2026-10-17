@@ -309,6 +309,41 @@ public class ControllerValidationTest {
         assertTrue(ControllerValidator.validate(BodyParamOnJsonController.class).isEmpty());
     }
 
+    interface FileAndRequestParamOnSameParamController {
+        @ru.jrestly.annotation.Post(path = "/upload", requestType = ru.jrestly.http.RequestType.MULTIPART_FORM_DATA)
+        String upload(@ru.jrestly.annotation.MultipartFormFile(partName = "file")
+                      @ru.jrestly.annotation.RequestParam(name = "desc") String value);
+    }
+
+    interface ValidMultipartFieldAndFileController {
+        @ru.jrestly.annotation.Post(path = "/upload", requestType = ru.jrestly.http.RequestType.MULTIPART_FORM_DATA)
+        String upload(@ru.jrestly.annotation.RequestParam(name = "desc") String description,
+                      @ru.jrestly.annotation.MultipartFormFile(partName = "file") java.io.File file);
+    }
+
+    @Test
+    void rejectsMultipartFormFileCombinedWithRequestParamEagerly() {
+        // createMultipartParts() resolves a parameter with an if/else-if chain: a
+        // @MultipartFormFile wins, so a @RequestParam declared on the same parameter
+        // is never turned into a part. Multipart methods do not build a query string
+        // either (HttpTemplateBuilder skips createRequestParams for MULTIPART_FORM_DATA),
+        // so the @RequestParam argument is silently dropped from the wire request.
+        // Unlike the other pairings among @PathVariable/@RequestParam/@RequestHeader/
+        // @MultipartFormFile (which double-bind), this one is a silent drop, so the
+        // combination joins the eager-validation channel (ADR-0024).
+        List<String> problems = ControllerValidator.validate(FileAndRequestParamOnSameParamController.class);
+        assertEquals(1, problems.size());
+        assertTrue(problems.getFirst().contains(
+                "upload(): parameter must not combine @MultipartFormFile with @RequestParam"));
+
+        JRestlyClient client = JRestlyClient.builder().baseUrl("http://localhost:1").build();
+        assertThrows(ControllerValidationException.class,
+                () -> client.get(FileAndRequestParamOnSameParamController.class));
+
+        // no false positive on separate file and text-field parameters
+        assertTrue(ControllerValidator.validate(ValidMultipartFieldAndFileController.class).isEmpty());
+    }
+
     @Test
     void rejectsBlankHeaderOrParamNameOnClassAndMethod() {
         var classHeaderProblems = ControllerValidator.validate(BlankClassHeaderController.class);

@@ -64,6 +64,10 @@ import java.util.regex.Pattern;
  * {@code APPLICATION_JSON} path, and a {@code @MultipartFormFile} only on
  * {@code MULTIPART_FORM_DATA}; either binding on a mismatched method is
  * reported here instead of being silently dropped from the wire request.
+ * A {@code @MultipartFormFile} parameter must not also carry
+ * {@code @RequestParam}: the multipart builder turns a parameter into a
+ * single part (the file), so the request-param binding would be silently
+ * dropped.
  *
  * <p>Also validates that static {@code @RequestHeader} and
  * {@code @RequestDefaultParam} declarations on controller interfaces
@@ -417,6 +421,10 @@ public final class ControllerValidator {
                 }
                 if (!RequestType.MULTIPART_FORM_DATA.equals(requestType)) {
                     problems.add(method.getName() + "(): @MultipartFormFile parameter requires requestType = MULTIPART_FORM_DATA");
+                }
+                if (param.isAnnotationPresent(RequestParam.class)) {
+                    problems.add(method.getName() + "(): parameter must not combine @MultipartFormFile with @RequestParam"
+                            + " (only the file part is assembled, the @RequestParam binding is silently dropped)");
                 }
             }
             if (UploadProgressListener.class.equals(param.getType())) {

@@ -1,5 +1,42 @@
 # DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
+> **Сессия #216 (free-аудит: `@MultipartFormFile` + `@RequestParam` на одном
+> параметре тихо выбрасывал request-param-биндинг — 26-я «тихая» находка серии,
+> поправка наблюдения #215):** свободный ход из контекста #215 (активная зона
+> пуста, highest ADR 0060). #215 оставил наблюдение: пары среди четырёх
+> не-hub-биндингов `{@PathVariable, @RequestParam, @RequestHeader,
+> @MultipartFormFile}` «принимаются, оба биндинга срабатывают — double-binding».
+> Проверил это утверждение по коду — для трёх пар верно, но **одна пара
+> асимметрична**: `HttpTemplateBuilder.createMultipartParts` разрешает параметр
+> цепочкой `if (p.isMultipartFile()) {…} else if (p.isRequestParam()) {…}`, т.е.
+> при обеих аннотациях на одном параметре побеждает файл, а `@RequestParam`-ветка
+> **не достигается**. Второго пути для `@RequestParam` на multipart-методе нет:
+> `HttpTemplateBuilder.build` зовёт `createRequestParams()` только вне
+> form/multipart (§280), поэтому query-строки там не собирается. Итог: значение
+> `@RequestParam` **молча отсутствует** в запросе (ни ошибки, ни лога) — тот же
+> класс, что #207–#215. Не покрыт ни guard'ом обратного направления #214 (файл
+> требует MULTIPART), ни hub-guard'ом `@RequestBody`/`@Cookie` #215 (пара из двух
+> не-hub'ов). Fix: `ControllerValidator.validateMethod` для `@MultipartFormFile` +
+> `@RequestParam` на одном параметре добавляет `method(): parameter must not
+> combine @MultipartFormFile with @RequestParam (only the file part is assembled,
+> the @RequestParam binding is silently dropped)` в общий агрегированный
+> `ControllerValidationException` при создании прокси; javadoc
+> `ControllerValidator` и `@MultipartFormFile` уточнены. Публичный API не тронут;
+> раздельные file- и text-field-параметры ведут себя как раньше. TDD red-first:
+> `ControllerValidationTest.rejectsMultipartFormFileCombinedWithRequestParamEagerly`
+> (оба аннотирования на одном параметре → 1 проблема + eager исключение;
+> раздельные `@RequestParam`/`@MultipartFormFile` — no-false-positive) — красный на
+> до-фикс коде ровно по `assertEquals(1, problems.size())` (список пуст) →
+> зелёный. Риск ложных срабатываний проверен: ни один реальный параметр в дереве
+> не несёт обе аннотации — полный прогон зелёный. ADR-0024 → `## Amendment #216`.
+> Гейт **1244/1244** (core 1164 + engine-okhttp 25 + engine-apache5 25 +
+> codec-jackson-xml 15 + benchmarks 15), 0 failures/errors, `./gradlew test javadoc`
+> зелёный под `-Werror`, 0 warnings. Дальше — free-аудит по той же оси
+> (не-hub-пары: оставшиеся сочетания `@PathVariable`/`@RequestHeader` с
+> `@MultipartFormFile`/`@RequestParam` double-bind'ят — не тихий drop; либо
+> форма `payloadParamCount`, считающая `@PathVariable`) или концепт ADR-0061+
+> (HTTP-кэш RFC 9111 ждёт слова Антона; вопрос в mailbox).
+
 > **Сессия #215 (free-аудит: `@RequestBody` на form-urlencoded/multipart-методе
 > тихо выбрасывался — 25-я «тихая» находка серии, симметричное закрытие пары
 > «payload-аннотация ⇄ requestType» из #214):** свободный ход из контекста #214
@@ -1438,10 +1475,12 @@ Amendment #215). Семья «payload-аннотация ⇄ requestType» за�
 (`@RequestBody` → JSON, `@MultipartFormFile` → MULTIPART). Кандидаты по той же
 оси / нити: `@ExpectStatus(statuses = {})`/`@FollowRedirects(count < 0)`
 (пустой/отрицательный декларативный вход — решение #207 «фича, не дыра»,
-трогать лишь при тихом исходе); hub-центричный составной guard
-(`@RequestBody`/`@Cookie` ↔ остальные `{@PathVariable, @RequestParam,
-@RequestHeader, @MultipartFormFile}`) — наблюдение #215 (double-binding, не
-тихий drop); другие декларации, зависящие от окружения сборки (#212).
+трогать лишь при тихом исходе); составной guard среди не-hub-биндингов —
+поправка #216: пара `@MultipartFormFile` + `@RequestParam` **не** double-binding,
+а тихий drop (закрыта, ADR-0024 Amendment #216); оставшиеся не-hub-пары
+(`@PathVariable`/`@RequestHeader` × `@MultipartFormFile`/`@RequestParam`) реально
+double-bind'ят (оба биндинга срабатывают) — не трогали; другие декларации,
+зависящие от окружения сборки (#212).
 
 ---
 
