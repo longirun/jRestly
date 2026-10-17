@@ -1,5 +1,28 @@
 # DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
+> **Сессия #235 (free-аудит: `@ExpectStatus` и `@FollowRedirects` не валидировались eager-валидатором — 29-я «тихая» находка серии, 100% семейство аннотаций закрыто):** свободный
+> ход из контекста #234 (активная зона пуста, highest ADR 0060). Добил оставшийся хвост
+> по декларативным аннотациям: все аннотации с конфигурируемыми параметрами имели fail-fast
+> проверки в `ControllerValidator`, кроме `@ExpectStatus` и `@FollowRedirects`.
+> Факт: (1) пустой `@ExpectStatus(statuses = {})` превращал любой HTTP-ответ (включая 200 OK)
+> в `UnexpectedStatusException`, т.к. `isExpectedStatus` проверял `expectStatuses.contains(code)`
+> на пустом списке — метод становился молча неработоспособным без единой подсказки при создании контроллера;
+> статусы вне диапазона `[100, 599]` также проскакивали в отличие от `@OnError` и `@Retry`;
+> (2) отрицательный `@FollowRedirects(count < 0)` принимался на создании прокси, в рантайме
+> редиректы не выполнялись (`hopsLeft > 0` false), но при 3xx-ответе логгер выдавал ложное
+> `"Too many redirects, returning the last response"`. Fix: `ControllerValidator.validateMethod`
+> получил проверки: `@ExpectStatus statuses must not be empty`, `@ExpectStatus status must be in [100, 599], was X`,
+> и `@FollowRedirects count must not be negative, was X`. Javadoc `ControllerValidator` дополнен.
+> Публичный API не тронут. TDD red-first: +2 теста в `ControllerValidationTest`
+> (`rejectsInvalidExpectStatusConfigurationEagerly` и `rejectsInvalidFollowRedirectsConfigurationEagerly`) —
+> красные на до-фикс коде ровно по отсутствию проверок (0 проблем вместо 3 и 2) → зелёные после фикса;
+> no-false-positive на валидных значениях (`{200, 201}`, `count = 0`, `count = 3`).
+> ADR-0004 → `## Amendment #235`. Гейт **1258/1258** (core 1178 + engine-okhttp 25 + engine-apache5 25 +
+> codec-jackson-xml 15 + benchmarks 15), 0 failures/errors, `./gradlew test javadoc` зелёный под `-Werror`,
+> 0 warnings. Семейство декларативных аннотаций контроллеров закрыто на 100%. Дальше — free-аудит
+> (Path/File-тела метрик, зависимость других деклараций от окружения сборки) или концепт ADR-0061+
+> (HTTP-кэш RFC 9111 ждёт решения Антона; вопрос в mailbox).
+
 > **Сессия #234 (free-аудит: `ResponseHeaders` не валидировал HTTP-аннотации и кратность параметров listener'ов/headers — 28-я «тихая» находка серии):** свободный
 > ход из контекста #233 (активная зона пуста, highest ADR 0060). Исследовал семейство
 > side-channel параметров-хуков (`ResponseHeaders`, `UploadProgressListener`,

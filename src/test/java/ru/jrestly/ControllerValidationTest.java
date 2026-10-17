@@ -392,6 +392,84 @@ public class ControllerValidationTest {
         assertTrue(ControllerValidator.validate(PathAndMultipartParamController.class).isEmpty());
     }
 
+    interface InvalidExpectStatusController {
+        @ru.jrestly.annotation.Get(path = "/empty")
+        @ru.jrestly.annotation.ExpectStatus(statuses = {})
+        String emptyStatuses();
+
+        @ru.jrestly.annotation.Get(path = "/low")
+        @ru.jrestly.annotation.ExpectStatus(statuses = {99})
+        String lowStatus();
+
+        @ru.jrestly.annotation.Get(path = "/high")
+        @ru.jrestly.annotation.ExpectStatus(statuses = {600})
+        String highStatus();
+    }
+
+    interface ValidExpectStatusController {
+        @ru.jrestly.annotation.Get(path = "/ok")
+        @ru.jrestly.annotation.ExpectStatus(statuses = {200, 201})
+        String ok();
+
+        @ru.jrestly.annotation.Get(path = "/accepted")
+        @ru.jrestly.annotation.ExpectStatus(statuses = {202})
+        String accepted();
+    }
+
+    @Test
+    void rejectsInvalidExpectStatusConfigurationEagerly() {
+        // @ExpectStatus whitelists successful HTTP status codes. An empty array silently
+        // turns any response (even 200 OK) into an UnexpectedStatusException because no
+        // status matches. Statuses outside [100, 599] are invalid HTTP codes.
+        List<String> problems = ControllerValidator.validate(InvalidExpectStatusController.class);
+        assertEquals(3, problems.size());
+        assertTrue(problems.stream().anyMatch(p -> p.contains("emptyStatuses(): @ExpectStatus statuses must not be empty")));
+        assertTrue(problems.stream().anyMatch(p -> p.contains("lowStatus(): @ExpectStatus status must be in [100, 599], was 99")));
+        assertTrue(problems.stream().anyMatch(p -> p.contains("highStatus(): @ExpectStatus status must be in [100, 599], was 600")));
+
+        JRestlyClient client = JRestlyClient.builder().baseUrl("http://localhost:1").build();
+        assertThrows(ControllerValidationException.class, () -> client.get(InvalidExpectStatusController.class));
+
+        // no false positive on valid statuses
+        assertTrue(ControllerValidator.validate(ValidExpectStatusController.class).isEmpty());
+    }
+
+    interface InvalidFollowRedirectsController {
+        @ru.jrestly.annotation.Get(path = "/neg")
+        @ru.jrestly.annotation.FollowRedirects(count = -1)
+        String negativeCount();
+
+        @ru.jrestly.annotation.Get(path = "/neg5")
+        @ru.jrestly.annotation.FollowRedirects(count = -5)
+        String negativeFive();
+    }
+
+    interface ValidFollowRedirectsController {
+        @ru.jrestly.annotation.Get(path = "/zero")
+        @ru.jrestly.annotation.FollowRedirects(count = 0)
+        String zeroCount();
+
+        @ru.jrestly.annotation.Get(path = "/hops")
+        @ru.jrestly.annotation.FollowRedirects(count = 3)
+        String positiveCount();
+    }
+
+    @Test
+    void rejectsInvalidFollowRedirectsConfigurationEagerly() {
+        // @FollowRedirects bounds the number of redirect hops. Negative hop counts are invalid
+        // and cause spurious "Too many redirects" logs when 3xx responses arrive.
+        List<String> problems = ControllerValidator.validate(InvalidFollowRedirectsController.class);
+        assertEquals(2, problems.size());
+        assertTrue(problems.stream().anyMatch(p -> p.contains("negativeCount(): @FollowRedirects count must not be negative, was -1")));
+        assertTrue(problems.stream().anyMatch(p -> p.contains("negativeFive(): @FollowRedirects count must not be negative, was -5")));
+
+        JRestlyClient client = JRestlyClient.builder().baseUrl("http://localhost:1").build();
+        assertThrows(ControllerValidationException.class, () -> client.get(InvalidFollowRedirectsController.class));
+
+        // no false positive on 0 or positive hop counts
+        assertTrue(ControllerValidator.validate(ValidFollowRedirectsController.class).isEmpty());
+    }
+
     @Test
     void rejectsBlankHeaderOrParamNameOnClassAndMethod() {
         var classHeaderProblems = ControllerValidator.validate(BlankClassHeaderController.class);

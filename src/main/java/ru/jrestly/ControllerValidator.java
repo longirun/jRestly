@@ -6,6 +6,8 @@ import ru.jrestly.annotation.Compress;
 import ru.jrestly.annotation.ContentType;
 import ru.jrestly.annotation.Cookie;
 import ru.jrestly.annotation.Delete;
+import ru.jrestly.annotation.ExpectStatus;
+import ru.jrestly.annotation.FollowRedirects;
 import ru.jrestly.annotation.Get;
 import ru.jrestly.annotation.OnError;
 import ru.jrestly.annotation.Patch;
@@ -93,6 +95,11 @@ import java.util.regex.Pattern;
  * {@code @PathVariable}, {@code @RequestHeader}, {@code @Cookie},
  * {@code @RequestBody}, or {@code @MultipartFormFile}), and each may
  * appear at most once per method.
+ *
+ * <p>Method-level {@code @ExpectStatus} declarations must specify a non-empty
+ * array of HTTP status codes in the valid range {@code [100, 599]}.
+ * Method-level {@code @FollowRedirects} declarations must specify a
+ * non-negative redirect hop count ({@code count >= 0}).
  *
  * <p>Runs at proxy creation ({@link AbstractHttpClient#createController}):
  * with the module's controller validation enabled, a non-empty result
@@ -332,6 +339,14 @@ public final class ControllerValidator {
             if (authDetails.headerName().isBlank()) {
                 problems.add(method.getName() + "(): @SetAuthDetails headerName must not be blank");
             }
+        }
+
+        if (method.isAnnotationPresent(ExpectStatus.class)) {
+            validateExpectStatus(method.getName() + "()", method.getAnnotation(ExpectStatus.class), problems);
+        }
+
+        if (method.isAnnotationPresent(FollowRedirects.class)) {
+            validateFollowRedirects(method.getName() + "()", method.getAnnotation(FollowRedirects.class), problems);
         }
 
         for (Accept accept : method.getAnnotationsByType(Accept.class)) {
@@ -801,6 +816,24 @@ public final class ControllerValidator {
             if (status < 100 || status > 599) {
                 problems.add(prefix + ": @Retry status must be in [100, 599], was " + status);
             }
+        }
+    }
+
+    private static void validateExpectStatus(String prefix, ExpectStatus expectStatus, List<String> problems) {
+        int[] statuses = expectStatus.statuses();
+        if (statuses.length == 0) {
+            problems.add(prefix + ": @ExpectStatus statuses must not be empty");
+        }
+        for (int status : statuses) {
+            if (status < 100 || status > 599) {
+                problems.add(prefix + ": @ExpectStatus status must be in [100, 599], was " + status);
+            }
+        }
+    }
+
+    private static void validateFollowRedirects(String prefix, FollowRedirects followRedirects, List<String> problems) {
+        if (followRedirects.count() < 0) {
+            problems.add(prefix + ": @FollowRedirects count must not be negative, was " + followRedirects.count());
         }
     }
 }
