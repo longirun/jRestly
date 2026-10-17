@@ -1,5 +1,31 @@
 # DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
+> **Сессия #238 (фича: ADR-0063 Transparent RFC 9111 HTTP Cache SPI + In-Memory Store):**
+> реализация критического разрыва функциональности (Vital Gap #2 из ADR-0061).
+> 1. *SPI Package `ru.jrestly.cache`:*
+>    - `HttpCache`: `get`, `put`, `update` (304 merging), `invalidate`, `clear`, `size`.
+>    - `CachedResponse` & `SimpleCachedResponse`: thread-safe immutable entries with dynamic RFC 9111 `Age` header computation, `isFresh()`, `mustRevalidate()`, `hasValidators()`.
+>    - `CacheControl`: парсер директив заголовка (`max-age`, `no-cache`, `no-store`, `must-revalidate`, `stale-while-revalidate`, `private`, `public`).
+>    - `InMemoryHttpCache`: потокобезопасный LRU-кэш на `LinkedHashMap` + `ReentrantLock`, нормализация URI-ключей, слияние заголовков по RFC 9111 §4.3.4 (сохранение representation headers `Content-Type`/`Content-Length`), фильтрация статусов (200, 301, 404).
+>    - `HttpCaches`: фабрики `inMemory()` и `inMemory(int maxEntries)`.
+> 2. *Интеграция в конфигурацию:*
+>    - `ModuleInfo.getHttpCache()`, `SimpleModuleInfo.Builder.httpCache(...)`.
+>    - `JRestlyClient.Builder.httpCache(...)`, `inMemoryCache()`, `inMemoryCache(int maxEntries)`.
+> 3. *Диспетчеризация в `HttpTemplate` (100% паритет sync `exchange()` и async `exchangeAsync()`):*
+>    - Cache HIT: безопасный метод (`GET`), `cached.isFresh()`, `!cached.mustRevalidate()` и отсутствие `no-cache` в запросе ➔ немедленный возврат ответа с вычисленным `Age` заголовком, `attempts = 0` (шорт-циркуит в метриках, `CircuitBreaker` не задействуется).
+>    - Условная ревалидация: при устаревании или `must-revalidate`/`no-cache` инжектируются `If-None-Match` и `If-Modified-Since` (не затирая пользовательские заголовки); при получении `304 Not Modified` кэш обновляется и прозрачно синтезируется `200 OK` с кэшированным телом; при получении `200 OK` кэш сохраняет свежий ответ.
+>    - Инвалидация: при небезопасных методах (`POST`, `PUT`, `DELETE`, `PATCH`) и статусах 200..399 кэш инвалидирует целевой URI.
+>    - Директивы `Cache-Control: no-store` полностью обходят кэш на чтение и запись.
+>    - Zero-garbage hot path при отключенном кэше (`httpCache == null`).
+> 4. *Эргономика:* методы `ResponseHeaders.age()` и `ResponseHeaders.ageSeconds()`.
+> 5. *Тесты и Гейт:*
+>    - Unit-тесты: `CacheControlTest` (5 тестов), `InMemoryHttpCacheTest` (7 тестов).
+>    - WireMock e2e: `HttpCacheWireMockTest` (+10 тестов: cache hit, age header, metrics attempts=0, revalidation 304, revalidation 200, request no-cache, request no-store, response no-store, unsafe method invalidation, async CompletableFuture, byte[] return).
+>    - Гейт **1293/1293** (core 1213 + engine-okhttp 25 + engine-apache5 25 + codec-jackson-xml 15 + benchmarks 15), 0 failures/errors,
+>      `./gradlew test javadoc jacocoTestReport` зелёный под `-Werror`, 0 warnings.
+>    - JaCoCo: **90.75% Instructions**, **90.67% Lines**, **77.17% Branches**, **98.55% Classes** (136/138 классов покрыто).
+>    - Highest ADR: **0063** (next free **0064**). Следующий шаг — Gap #3: RFC 7807 / RFC 9457 Problem Details.
+>
 > **Сессия #237 (фича: ADR-0062 Dynamic Endpoint Target URL Override via `@TargetUrl`):**
 > реализация критического разрыва функциональности (Vital Gap #1 из ADR-0061).
 > 1. *Аннотация `@TargetUrl`:* добавлена в `ru.jrestly.annotation` (параметр метода, runtime retention)

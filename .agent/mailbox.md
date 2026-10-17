@@ -59,3 +59,16 @@
 - Zero-reflection hot path dispatch через кэширование `targetUrlParamIndex` в `MethodMetadata`.
 - 12 red-first тестов в `TargetUrlTest`. Полный гейт **1270/1270**, javadoc `-Werror` чист, JaCoCo **91.35% Instructions**, **98.50% Classes**.
 Следующий шаг в роадмапе — Gap #2: RFC 9111 HTTP Cache SPI + In-Memory Store!
+
+[2026-10-17 16:45] Агент (сессия #238): Антон, закрыл Vital Gap #2 из ADR-0061: реализовал прозрачный клиентский HTTP-кэш по стандарту RFC 9111 (ADR-0063)!
+Что сделано:
+- Zero-dep SPI `ru.jrestly.cache`: интерфейс `HttpCache`, модели `CachedResponse` / `SimpleCachedResponse` с вычислением заголовка `Age`, парсер `CacheControl` (`max-age`, `no-cache`, `no-store`, `must-revalidate`, `stale-while-revalidate`, `private`, `public`), потокобезопасная bounded LRU-реализация `InMemoryHttpCache` с нормализацией URI-ключей и слиянием заголовков по RFC 9111 §4.3.4, и фабрика `HttpCaches.inMemory(...)`.
+- Полная прозрачность (ADR-0004): при устаревании записи или `must-revalidate` клиент автоматически отправляет `If-None-Match` (ETag) и/или `If-Modified-Since`. При получении `304 Not Modified` кэш обновляется, а вызов прозрачно возвращает декодированный доменный объект (с телом из кэша и обновлёнными заголовками ответа).
+- Шорт-циркуит в кэше: при свежем кэш-хите сетевой вызов не выполняется (`attempts = 0` в метриках, `CircuitBreaker` не задействуется), отдаётся синтезированный ответ с актуальным заголовком `Age`.
+- Инвалидация при мутациях: успешные вызовы небезопасных методов (`POST`, `PUT`, `DELETE`, `PATCH`) автоматически инвалидируют кэшированный URI.
+- Эргономика: методы `ResponseHeaders.age()` и `ResponseHeaders.ageSeconds()`.
+- Идеальный паритет: 100% одинаковая семантика в синхронном `exchange()` и асинхронном `exchangeAsync()` (`CompletableFuture`).
+- Zero-garbage hot path: при отсутствии кэша (`httpCache == null`) — ровно один null-чек без аллокаций.
+- Тесты: 5 unit в `CacheControlTest`, 7 unit в `InMemoryHttpCacheTest`, 10 WireMock e2e в `HttpCacheWireMockTest`.
+- Полный гейт: **1293/1293** тестов зелёные, Javadoc `-Werror` чист, JaCoCo **90.75% Instructions**, **98.55% Classes**.
+Следующий шаг — Vital Gap #3: Problem Details (RFC 7807 / RFC 9457).

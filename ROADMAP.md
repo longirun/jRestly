@@ -2095,11 +2095,39 @@ Enterprise production scenarios (AWS S3 presigned URLs, HATEOAS / Link paginatio
 
 ---
 
-> **Current status (2026-10-17).** Highest ADR issued: **0062**; next free: **0063**.
-> Vital Gap #1 (Dynamic Endpoint / `@TargetUrl`) successfully implemented.
-> Quality Control baseline verified with JaCoCo (91.35% instruction coverage, 98.50% class coverage).
-> Live gate: **1270/1270** tests green across all five modules, 0 warnings under `-Werror`.
-> Strategic focus for next cycle: Gap 2 (RFC 9111 HTTP Caching SPI & Store).
+### ADR-0063: Transparent RFC 9111 HTTP Cache SPI and In-Memory Store
+
+> Source of truth: [`docs/0.10.0/ADR-0063-transparent-rfc-9111-http-cache.md`](docs/0.10.0/ADR-0063-transparent-rfc-9111-http-cache.md).
+> Implementation of Vital Gap #2 from ADR-0061.
+
+**Problem:**
+Enterprise microservices and cloud workloads repeatedly fetch reference datasets and cacheable payloads, incurring unnecessary latency, bandwidth, and origin server load. Existing clients either lack caching or require heavyweight dependencies and manual conditional code.
+
+**Solution:**
+1. Zero-dependency SPI in `ru.jrestly.cache`: `HttpCache`, `CachedResponse`, `SimpleCachedResponse`, `CacheControl`, `InMemoryHttpCache`, `HttpCaches`.
+2. Bounded in-memory LRU store (`InMemoryHttpCache`) with configurable capacity (default 100), key normalization, RFC 9111 §4.3.4 304 header merging, and status filtering (200, 301, 404).
+3. Configuration surface: `ModuleInfo.getHttpCache()`, `SimpleModuleInfo.Builder.httpCache(...)`, `JRestlyClient.Builder.httpCache(...)` / `inMemoryCache()` / `inMemoryCache(int)`.
+4. Dispatch pipeline integration (`HttpTemplate`):
+   - Safe method (`GET`): fresh entries served directly from memory with `attempts = 0` and dynamically calculated `Age` header; circuit breaker is not triggered.
+   - Conditional revalidation: stale/revalidation-required entries inject `If-None-Match` and `If-Modified-Since`; origin `304 Not Modified` updates cache headers and transparently synthesizes `200 OK` `WireResponse` containing cached body; origin `200 OK` updates cache.
+   - Unsafe methods (`POST`, `PUT`, `DELETE`, `PATCH`): non-error responses (200..399) invalidate cached URI.
+   - `Cache-Control: no-cache` forces revalidation; `Cache-Control: no-store` bypasses cache.
+   - 100% parity across synchronous `exchange()` and asynchronous `exchangeAsync()`.
+   - Zero-garbage hot-path dispatch when caching is disabled (`httpCache == null`).
+5. Ergonomics: `ResponseHeaders.age()` and `ResponseHeaders.ageSeconds()` accessors.
+
+**Tests & Live Gate:**
+- Unit tests: `CacheControlTest` (5 tests), `InMemoryHttpCacheTest` (7 tests).
+- WireMock end-to-end integration tests: `HttpCacheWireMockTest` (+10 tests).
+- Total suite: **1293/1293** tests green across all five modules (core 1213 + engine-okhttp 25 + engine-apache5 25 + codec-jackson-xml 15 + benchmarks 15), 0 failures, 0 errors.
+- Javadoc gate clean under `-Werror`. JaCoCo: **90.75% Instructions**, **90.67% Lines**, **77.17% Branches**, **98.55% Classes**.
+
+---
+
+> **Current status (2026-10-17).** Highest ADR issued: **0063**; next free: **0064**.
+> Vital Gap #1 (Dynamic Endpoint / `@TargetUrl`) and Vital Gap #2 (RFC 9111 HTTP Cache SPI + Store) successfully implemented.
+> Live gate: **1293/1293** tests green across all five modules, 0 warnings under `-Werror`.
+> Strategic focus for next cycle: Gap 3 (RFC 7807 / RFC 9457 Problem Details error ergonomics).
 
 ## Post-0.5.0 shortlist (not scheduled — see ADR-0003)
 

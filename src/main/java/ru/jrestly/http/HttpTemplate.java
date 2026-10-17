@@ -155,6 +155,15 @@ class HttpTemplate {
     private ru.jrestly.auth.TokenManager tokenManager;
     private boolean retryOnUnauthorized;
     private ru.jrestly.engine.HttpEngineOptions engineOptions;
+    private ru.jrestly.cache.HttpCache httpCache;
+
+    void setHttpCache(ru.jrestly.cache.HttpCache httpCache) {
+        this.httpCache = httpCache;
+    }
+
+    ru.jrestly.cache.HttpCache getHttpCache() {
+        return httpCache;
+    }
 
     /**
      * Creates an empty template. Not intended for direct use: instances
@@ -167,7 +176,7 @@ class HttpTemplate {
     /**
      * Executes the call and returns the decoded result. For
      * {@code CompletableFuture<T>} return types the returned value is the
-     * future itself; see {@link #exchangeAsync(WireRequest, WireRequest, long, RequestContext)}.
+     * future itself; see {@link #exchangeAsync(WireRequest, WireRequest, long, RequestContext, boolean, ru.jrestly.cache.CachedResponse)}.
      *
      * @param <T> the type the controller method declares as its return type
      * @return the payload decoded to {@code T} by the JSON codec, the raw
@@ -211,11 +220,30 @@ class HttpTemplate {
             }
         }
 
+        ru.jrestly.cache.CachedResponse cachedEntry = null;
+        if (httpCache != null && effectiveRequest.method() == HttpMethod.GET) {
+            cachedEntry = httpCache.get(effectiveRequest).orElse(null);
+        }
+        boolean requestNoCache = false;
+        if (cachedEntry != null) {
+            ru.jrestly.cache.CacheControl reqCc = ru.jrestly.cache.CacheControl.parse(effectiveRequest.headers());
+            requestNoCache = reqCc.noCache();
+        }
+        boolean isCacheHit = (cachedEntry != null && cachedEntry.isFresh() && !cachedEntry.mustRevalidate() && !requestNoCache);
+        if (cachedEntry != null && !isCacheHit && cachedEntry.hasValidators()) {
+            if (cachedEntry.etag().isPresent() && !hasHeader(effectiveRequest, "If-None-Match")) {
+                effectiveRequest = effectiveRequest.withHeader("If-None-Match", cachedEntry.etag().get());
+            }
+            if (cachedEntry.lastModified().isPresent() && !hasHeader(effectiveRequest, "If-Modified-Since")) {
+                effectiveRequest = effectiveRequest.withHeader("If-Modified-Since", cachedEntry.lastModified().get());
+            }
+        }
+
         logRequest(effectiveRequest);
         notifyCallStart(requestContext, effectiveRequest);
 
         if (async) {
-            return (T) exchangeAsync(request, effectiveRequest, start, requestContext);
+            return (T) exchangeAsync(request, effectiveRequest, start, requestContext, isCacheHit, cachedEntry);
         }
 
         WireResponse response = null;
@@ -230,6 +258,14 @@ class HttpTemplate {
                     attemptsHolder[0] = 0;
                 }
                 response = handleDecompression(shortCircuited);
+            } else if (isCacheHit) {
+                if (attemptsHolder != null) {
+                    attemptsHolder[0] = 0;
+                }
+                response = cachedEntry.toWireResponse();
+                if (streamBody && response.body() != null) {
+                    response = toStreamWireResponse(response);
+                }
             } else {
                 if (rateLimiter != null) {
                     rateLimiter.acquire();
@@ -252,6 +288,7 @@ class HttpTemplate {
                         attemptsHolder[0] = firstPhaseAttempts + attemptsHolder[0];
                     }
                 }
+                response = handleCacheResponse(effectiveRequest, response);
             }
             T result = processResponse(effectiveRequest, response, start);
             int attempts = attemptsHolder != null ? attemptsHolder[0] : 1;
@@ -312,7 +349,9 @@ class HttpTemplate {
             WireRequest initialRequest,
             WireRequest request,
             long startNanos,
-            RequestContext requestContext
+            RequestContext requestContext,
+            boolean isCacheHit,
+            ru.jrestly.cache.CachedResponse cachedEntry
     ) {
         AtomicReference<WireResponse> responseRef = new AtomicReference<>();
         AtomicReference<WireRequest> activeRequestRef = new AtomicReference<>(request);
@@ -334,6 +373,13 @@ class HttpTemplate {
                 retriesFuture = new CompletableFuture<>();
                 retriesFuture.completeExceptionally(e);
             }
+        } else if (isCacheHit) {
+            attemptsRef.set(0);
+            WireResponse cachedResp = cachedEntry.toWireResponse();
+            if (streamBody && cachedResp.body() != null) {
+                cachedResp = toStreamWireResponse(cachedResp);
+            }
+            retriesFuture = CompletableFuture.completedFuture(cachedResp);
         } else {
             if (rateLimiter != null) {
                 if (!rateLimiter.tryAcquire(rateLimiter.config().timeoutDuration())) {
@@ -366,7 +412,7 @@ class HttpTemplate {
             retriesFuture = executeAsyncWithRetries(request, requestContext, attemptsRef, 0);
         }
 
-        CompletableFuture<WireResponse> authGuardedFuture = (retryOnUnauthorized && tokenManager != null && shortCircuited == null)
+        CompletableFuture<WireResponse> authGuardedFuture = (retryOnUnauthorized && tokenManager != null && shortCircuited == null && !isCacheHit)
                 ? retriesFuture.thenCompose(response -> {
                     if (response.statusCode() == 401) {
                         closeIntermediateStream(response);
@@ -396,6 +442,10 @@ class HttpTemplate {
                 })
                 : retriesFuture;
 
+        CompletableFuture<WireResponse> cacheHandledFuture = (httpCache != null && !isCacheHit)
+                ? authGuardedFuture.thenApply(response -> handleCacheResponse(activeRequestRef.get(), response))
+                : authGuardedFuture;
+
         java.util.function.Function<WireResponse, Object> processor = response -> {
             if (hasResponseInterceptors || hasMetrics) {
                 responseRef.set(response);
@@ -413,8 +463,8 @@ class HttpTemplate {
         };
 
         CompletableFuture<Object> stage = executor != null
-                ? authGuardedFuture.thenApplyAsync(processor, executor)
-                : authGuardedFuture.thenApply(processor);
+                ? cacheHandledFuture.thenApplyAsync(processor, executor)
+                : cacheHandledFuture.thenApply(processor);
 
         CompletableFuture<Object> future = stage.exceptionally(ex -> {
             Throwable cause = unwrapCause(ex);
@@ -465,7 +515,7 @@ class HttpTemplate {
                     : future.whenComplete(interceptorAction);
         }
 
-        if (circuitBreaker != null && shortCircuited == null) {
+        if (circuitBreaker != null && shortCircuited == null && !isCacheHit) {
             java.util.function.BiConsumer<Object, Throwable> cbAction = (res, ex) -> {
                 long duration = System.nanoTime() - startNanos;
                 if (ex == null) {
@@ -483,6 +533,52 @@ class HttpTemplate {
         }
 
         return future;
+    }
+
+    private static WireResponse toStreamWireResponse(WireResponse response) {
+        return new WireResponse(
+                response.statusCode(),
+                response.headers(),
+                null,
+                new java.io.ByteArrayInputStream(response.body()),
+                response.version(),
+                response.trailers(),
+                response.trailersSupplier()
+        );
+    }
+
+    private static boolean hasHeader(WireRequest req, String name) {
+        if (req == null || req.headers() == null) {
+            return false;
+        }
+        for (Header h : req.headers()) {
+            if (h != null && h.name() != null && h.name().equalsIgnoreCase(name)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private WireResponse handleCacheResponse(WireRequest req, WireResponse resp) {
+        if (httpCache == null || resp == null || req == null) {
+            return resp;
+        }
+        if (req.method() == HttpMethod.GET) {
+            if (resp.statusCode() == 304) {
+                WireResponse updated = httpCache.update(req, resp);
+                if (updated != null) {
+                    if (streamBody && updated.body() != null) {
+                        return toStreamWireResponse(updated);
+                    }
+                    return updated;
+                }
+            } else if (resp.statusCode() == 200 || resp.statusCode() == 301 || resp.statusCode() == 404) {
+                httpCache.put(req, resp);
+            }
+        } else if (resp.statusCode() >= 200 && resp.statusCode() < 400) {
+            httpCache.invalidate(req.uri());
+        }
+        return resp;
     }
 
     private RequestContext createRequestContext() {

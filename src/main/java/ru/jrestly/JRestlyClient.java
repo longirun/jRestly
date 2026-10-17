@@ -905,6 +905,36 @@ public class JRestlyClient extends AbstractHttpClient {
         }
 
         /**
+         * Sets the custom HTTP cache conforming to RFC 9111 (ADR-0063).
+         *
+         * @param httpCache the HTTP cache, or {@code null} to disable caching
+         * @return this builder, for chaining
+         */
+        public Builder httpCache(ru.jrestly.cache.HttpCache httpCache) {
+            moduleInfoBuilder.httpCache(httpCache);
+            return this;
+        }
+
+        /**
+         * Enables the default in-memory LRU HTTP cache with capacity of 100 entries (ADR-0063).
+         *
+         * @return this builder, for chaining
+         */
+        public Builder inMemoryCache() {
+            return httpCache(ru.jrestly.cache.HttpCaches.inMemory());
+        }
+
+        /**
+         * Enables an in-memory LRU HTTP cache with the specified capacity (ADR-0063).
+         *
+         * @param maxEntries maximum cached entries before LRU eviction
+         * @return this builder, for chaining
+         */
+        public Builder inMemoryCache(int maxEntries) {
+            return httpCache(ru.jrestly.cache.HttpCaches.inMemory(maxEntries));
+        }
+
+        /**
          * Validates the settings (baseUrl must be set) and creates the
          * client for the resulting {@link SimpleModuleInfo}; an unset
          * {@code jsonCodec} is resolved from the classpath.

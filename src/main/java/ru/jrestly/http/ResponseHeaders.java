@@ -528,6 +528,34 @@ public class ResponseHeaders {
     }
 
     /**
+     * Returns the value of the {@code Age} header, if present (RFC 9111, ADR-0063).
+     *
+     * @return the Age header string, or empty if absent
+     */
+    public Optional<String> age() {
+        return firstValue("Age");
+    }
+
+    /**
+     * Parses the {@code Age} header as seconds, if present and a valid non-negative integer (RFC 9111, ADR-0063).
+     *
+     * @return optional age in seconds, or empty if absent/invalid
+     */
+    public OptionalLong ageSeconds() {
+        Optional<String> raw = age();
+        if (raw.isPresent()) {
+            try {
+                long val = Long.parseLong(raw.get().trim());
+                if (val >= 0) {
+                    return OptionalLong.of(val);
+                }
+            } catch (NumberFormatException ignored) {
+            }
+        }
+        return OptionalLong.empty();
+    }
+
+    /**
      * Extracts the target URI for the specified relation from RFC 8288 / RFC 5988
      * {@code Link} headers (e.g. {@code <https://api.example.com/items?page=2>; rel="next"}).
      *

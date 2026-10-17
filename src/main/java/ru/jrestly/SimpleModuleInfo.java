@@ -90,11 +90,13 @@ public class SimpleModuleInfo implements ModuleInfo {
     private final boolean retryOnUnauthorized;
     private final System.Logger logger;
     private final ru.jrestly.engine.HttpEngine httpEngine;
+    private final ru.jrestly.cache.HttpCache httpCache;
 
     private SimpleModuleInfo(Builder builder) {
         this.name = builder.name;
         this.baseUrl = builder.baseUrl;
         this.httpEngine = builder.httpEngine;
+        this.httpCache = builder.httpCache;
         this.authProvider = builder.authHeaderName != null
                 ? new AuthHeaderProvider(builder.authHeaderName, builder.authHeaderValue)
                 : new AuthHeaderProvider();
@@ -323,6 +325,11 @@ public class SimpleModuleInfo implements ModuleInfo {
         return httpEngine;
     }
 
+    @Override
+    public ru.jrestly.cache.HttpCache getHttpCache() {
+        return httpCache;
+    }
+
     /**
      * A builder for {@link SimpleModuleInfo}, pre-set to the defaults:
      * name {@code "default"}, 5 s connect timeout, 30 s socket timeout,
@@ -367,6 +374,18 @@ public class SimpleModuleInfo implements ModuleInfo {
         private ru.jrestly.auth.TokenManager tokenManager;
         private boolean retryOnUnauthorized = false;
         private System.Logger logger;
+        private ru.jrestly.cache.HttpCache httpCache;
+
+        /**
+         * Sets the custom HTTP cache conforming to RFC 9111 (ADR-0063).
+         *
+         * @param httpCache the HTTP cache, or {@code null} to disable caching
+         * @return this builder, for chaining
+         */
+        public Builder httpCache(ru.jrestly.cache.HttpCache httpCache) {
+            this.httpCache = httpCache;
+            return this;
+        }
 
         /**
          * Sets the custom logger for request and response logging (ADR-0049).

@@ -1,0 +1,204 @@
+package ru.jrestly.cache;
+
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import ru.jrestly.http.Header;
+import ru.jrestly.http.HttpMethod;
+import ru.jrestly.http.WireRequest;
+import ru.jrestly.http.WireResponse;
+
+import java.net.URI;
+import java.nio.charset.StandardCharsets;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
+import java.util.List;
+import java.util.Optional;
+
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+class InMemoryHttpCacheTest {
+
+    @Test
+    @DisplayName("rejects non-positive maxEntries")
+    void rejectsInvalidCapacity() {
+        assertThrows(IllegalArgumentException.class, () -> new InMemoryHttpCache(0));
+        assertThrows(IllegalArgumentException.class, () -> new InMemoryHttpCache(-1));
+    }
+
+    @Test
+    @DisplayName("basic put and get cache hit with max-age")
+    void basicPutAndGet() {
+        HttpCache cache = HttpCaches.inMemory(10);
+        URI uri = URI.create("https://api.example.com/items/1");
+        WireRequest req = new WireRequest(HttpMethod.GET, uri, List.of(), null, null);
+        WireResponse res = WireResponse.builder()
+                .statusCode(200)
+                .header("Cache-Control", "public, max-age=3600")
+                .header("ETag", "\"v1\"")
+                .body("item 1")
+                .build();
+
+        cache.put(req, res);
+        assertEquals(1, cache.size());
+
+        Optional<CachedResponse> cachedOpt = cache.get(req);
+        assertTrue(cachedOpt.isPresent());
+        CachedResponse cached = cachedOpt.get();
+        assertEquals(200, cached.statusCode());
+        assertArrayEquals("item 1".getBytes(StandardCharsets.UTF_8), cached.body());
+        assertTrue(cached.isFresh());
+        assertFalse(cached.mustRevalidate());
+        assertTrue(cached.hasValidators());
+        assertEquals("\"v1\"", cached.etag().orElse(null));
+
+        WireResponse wire = cached.toWireResponse();
+        assertEquals(200, wire.statusCode());
+        assertArrayEquals("item 1".getBytes(StandardCharsets.UTF_8), wire.body());
+        assertTrue(wire.header("Age").isPresent());
+    }
+
+    @Test
+    @DisplayName("freshness calculation with simulated elapsed time")
+    void freshnessCalculation() {
+        HttpCache cache = HttpCaches.inMemory(5);
+        URI uri = URI.create("https://api.example.com/items/1");
+        WireRequest req = new WireRequest(HttpMethod.GET, uri, List.of(), null, null);
+        WireResponse res = WireResponse.builder()
+                .statusCode(200)
+                .header("Cache-Control", "max-age=60")
+                .body("payload")
+                .build();
+
+        cache.put(req, res);
+        CachedResponse entry = cache.get(req).orElseThrow();
+
+        Instant cachedAt = entry.cachedAt();
+        assertTrue(entry.isFresh(cachedAt.plus(30, ChronoUnit.SECONDS)));
+        assertFalse(entry.isFresh(cachedAt.plus(65, ChronoUnit.SECONDS)));
+    }
+
+    @Test
+    @DisplayName("no-store in request or response prevents caching")
+    void noStorePreventsCaching() {
+        HttpCache cache = HttpCaches.inMemory();
+        URI uri = URI.create("https://api.example.com/private");
+
+        // Request with no-store
+        WireRequest reqNoStore = new WireRequest(HttpMethod.GET, uri, List.of(new Header("Cache-Control", "no-store")), null, null);
+        WireResponse res = WireResponse.builder().statusCode(200).header("Cache-Control", "max-age=100").body("data").build();
+        cache.put(reqNoStore, res);
+        assertEquals(0, cache.size());
+
+        // Response with no-store
+        WireRequest req = new WireRequest(HttpMethod.GET, uri, List.of(), null, null);
+        WireResponse resNoStore = WireResponse.builder().statusCode(200).header("Cache-Control", "no-store").body("data").build();
+        cache.put(req, resNoStore);
+        assertEquals(0, cache.size());
+    }
+
+    @Test
+    @DisplayName("unsafe methods (POST, PUT, DELETE, PATCH) are not cached")
+    void unsafeMethodsNotCached() {
+        HttpCache cache = HttpCaches.inMemory();
+        URI uri = URI.create("https://api.example.com/items");
+
+        WireRequest postReq = new WireRequest(HttpMethod.POST, uri, List.of(), "application/json", "{}".getBytes(StandardCharsets.UTF_8));
+        WireResponse res = WireResponse.builder().statusCode(200).header("Cache-Control", "max-age=100").body("data").build();
+
+        cache.put(postReq, res);
+        assertEquals(0, cache.size());
+        assertTrue(cache.get(postReq).isEmpty());
+    }
+
+    @Test
+    @DisplayName("update with 304 Not Modified merges headers and retains body")
+    void update304NotModified() {
+        HttpCache cache = HttpCaches.inMemory();
+        URI uri = URI.create("https://api.example.com/user");
+        WireRequest req = new WireRequest(HttpMethod.GET, uri, List.of(), null, null);
+
+        WireResponse initial = WireResponse.builder()
+                .statusCode(200)
+                .header("Content-Type", "application/json")
+                .header("ETag", "\"tag1\"")
+                .header("Cache-Control", "max-age=60")
+                .body("{\"id\":1}")
+                .build();
+        cache.put(req, initial);
+
+        WireResponse response304 = WireResponse.builder()
+                .statusCode(304)
+                .header("ETag", "\"tag2\"")
+                .header("Cache-Control", "max-age=3600")
+                .header("X-New-Header", "value")
+                .build();
+
+        WireResponse updated = cache.update(req, response304);
+        assertNotNull(updated);
+        assertEquals(200, updated.statusCode());
+        assertArrayEquals("{\"id\":1}".getBytes(StandardCharsets.UTF_8), updated.body());
+        assertEquals("application/json", updated.header("Content-Type").orElse(null));
+        assertEquals("\"tag2\"", updated.header("ETag").orElse(null));
+        assertEquals("max-age=3600", updated.header("Cache-Control").orElse(null));
+        assertEquals("value", updated.header("X-New-Header").orElse(null));
+
+        CachedResponse cachedEntry = cache.get(req).orElseThrow();
+        assertEquals(3600L, cachedEntry.freshnessLifetimeSeconds());
+        assertEquals("\"tag2\"", cachedEntry.etag().orElse(null));
+    }
+
+    @Test
+    @DisplayName("invalidate removes entry by URI and clear empties cache")
+    void invalidateAndClear() {
+        HttpCache cache = HttpCaches.inMemory();
+        URI uri1 = URI.create("https://api.example.com/items/1");
+        URI uri2 = URI.create("https://api.example.com/items/2");
+
+        cache.put(new WireRequest(HttpMethod.GET, uri1, List.of(), null, null),
+                WireResponse.builder().statusCode(200).header("Cache-Control", "max-age=60").body("1").build());
+        cache.put(new WireRequest(HttpMethod.GET, uri2, List.of(), null, null),
+                WireResponse.builder().statusCode(200).header("Cache-Control", "max-age=60").body("2").build());
+        assertEquals(2, cache.size());
+
+        cache.invalidate(uri1);
+        assertEquals(1, cache.size());
+        assertTrue(cache.get(new WireRequest(HttpMethod.GET, uri1, List.of(), null, null)).isEmpty());
+        assertTrue(cache.get(new WireRequest(HttpMethod.GET, uri2, List.of(), null, null)).isPresent());
+
+        cache.clear();
+        assertEquals(0, cache.size());
+    }
+
+    @Test
+    @DisplayName("LRU eviction removes eldest entry when capacity is exceeded")
+    void lruEviction() {
+        HttpCache cache = HttpCaches.inMemory(2);
+        URI uri1 = URI.create("https://api.example.com/items/1");
+        URI uri2 = URI.create("https://api.example.com/items/2");
+        URI uri3 = URI.create("https://api.example.com/items/3");
+
+        cache.put(new WireRequest(HttpMethod.GET, uri1, List.of(), null, null),
+                WireResponse.builder().statusCode(200).header("Cache-Control", "max-age=60").body("1").build());
+        cache.put(new WireRequest(HttpMethod.GET, uri2, List.of(), null, null),
+                WireResponse.builder().statusCode(200).header("Cache-Control", "max-age=60").body("2").build());
+        assertEquals(2, cache.size());
+
+        // Access uri1 to make uri2 the eldest
+        cache.get(new WireRequest(HttpMethod.GET, uri1, List.of(), null, null));
+
+        // Insert uri3 -> uri2 should be evicted
+        cache.put(new WireRequest(HttpMethod.GET, uri3, List.of(), null, null),
+                WireResponse.builder().statusCode(200).header("Cache-Control", "max-age=60").body("3").build());
+        assertEquals(2, cache.size());
+
+        assertTrue(cache.get(new WireRequest(HttpMethod.GET, uri1, List.of(), null, null)).isPresent());
+        assertTrue(cache.get(new WireRequest(HttpMethod.GET, uri2, List.of(), null, null)).isEmpty());
+        assertTrue(cache.get(new WireRequest(HttpMethod.GET, uri3, List.of(), null, null)).isPresent());
+    }
+}

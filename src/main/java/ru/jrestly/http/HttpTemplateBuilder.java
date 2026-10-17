@@ -228,6 +228,7 @@ public class HttpTemplateBuilder {
         result.setModuleInfo(moduleInfo);
         result.setJsonCodec(moduleInfo.getJsonCodec());
         result.setCodecRegistry(moduleInfo.getCodecRegistry());
+        result.setHttpCache(moduleInfo.getHttpCache());
 
         if (httpEngine != null) {
             result.setHttpEngine(httpEngine);

@@ -405,5 +405,15 @@ public interface ModuleInfo {
     default ru.jrestly.engine.HttpEngine getHttpEngine() {
         return null;
     }
+
+    /**
+     * The HTTP cache implementation conforming to RFC 9111 (ADR-0063).
+     * When {@code null} (the default), no HTTP caching is performed.
+     *
+     * @return the HTTP cache, or {@code null} if caching is disabled
+     */
+    default ru.jrestly.cache.HttpCache getHttpCache() {
+        return null;
+    }
 }
 
