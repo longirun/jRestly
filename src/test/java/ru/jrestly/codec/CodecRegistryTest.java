@@ -10,6 +10,12 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+/**
+ * Unit tests for {@link CodecRegistry} (ADR-0060): media-type resolution
+ * including {@code +suffix} structured types, normalization,
+ * first-registration-wins ordering, default fallback and the
+ * {@code JsonCodecAdapter} bridge. Pure unit tests.
+ */
 @DisplayName("CodecRegistry: media-type selection, structured suffixes, order, default fallback (ADR-0060)")
 class CodecRegistryTest {
 

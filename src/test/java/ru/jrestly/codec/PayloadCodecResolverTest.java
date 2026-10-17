@@ -9,6 +9,12 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+/**
+ * Unit tests for {@code PayloadCodecResolver} (ADR-0060 phase 3): ServiceLoader
+ * discovery, availability filtering, descending-priority ordering, null
+ * tolerance and registry assembly (explicit codecs first, then discovered).
+ * Pure unit tests.
+ */
 @DisplayName("PayloadCodecResolver: ServiceLoader discovery, priority, registry assembly (ADR-0060 phase 3)")
 class PayloadCodecResolverTest {
 

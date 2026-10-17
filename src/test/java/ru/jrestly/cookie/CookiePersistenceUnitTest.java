@@ -27,6 +27,12 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+/**
+ * Unit tests for persistent cookie storage (ADR-0039): RFC 6265
+ * {@code CookieCodec} formatting/parse/filtering, the file-backed persister
+ * save/load/clear and validation, {@code PersistentCookieStore} auto/manual
+ * modes with preload/reload, builder wiring and concurrent access. No network.
+ */
 @DisplayName("ADR-0039: Cookie Persistence & PersistentCookieStore Unit Tests")
 class CookiePersistenceUnitTest {
 

@@ -19,6 +19,11 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+/**
+ * Unit tests for tracing configuration wiring (ADR-0042): the null ModuleInfo
+ * default, SimpleModuleInfo and JRestlyClient.Builder propagation, and
+ * ControllerValidator rejecting a blank {@code @Trace} header name. No network.
+ */
 class TraceConfigTest {
 
     @Test

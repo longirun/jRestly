@@ -25,6 +25,12 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+/**
+ * Unit tests for the interceptor {@link RequestContext} and its response
+ * counterpart (ADR-0029): method metadata and arguments, null-argument
+ * normalization, attribute lifecycle, null validation, the operator adapter
+ * and response-context status/success delegation. Pure unit tests, no HTTP.
+ */
 class RequestContextTest {
 
     interface SampleApi {

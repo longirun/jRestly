@@ -1,5 +1,27 @@
 # DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
+> **Сессия #201 (кандидат №1 test-javadoc, батч №2 — 14 тест-классов в
+> 5 пакетах):** свободный ход из контекста #200. Сначала дожал эвристику
+> #200 («дублирующие входные пути») на оставшихся кандидатах: `int` ×
+> `Duration`-перегрузки в `RateLimiterConfig`/`CircuitBreakerConfig`
+> (`resilience`) — чисто (валидация в каноничном конструкторе record'а,
+> сеттеры без собственной проверки и не должны её иметь — fail-fast в
+> `build()`); `TracePropagators`/`TraceIdGenerators` — чисто (все входы
+> проверяются). Свет аудита исчерпан → запланированный кандидат №1. Наведён
+> лаконичный class-level javadoc (стиль батча №1: 4–6 строк, «что покрывает +
+> unit/e2e + ADR») в `ru.jrestly.cookie` (`CookiePersistenceUnitTest`,
+> `PersistentCookieWireMockTest`), `ru.jrestly.codec` (`CodecRegistryTest`,
+> `PayloadCodecResolverTest`), `ru.jrestly.compression` (`CompressConfigTest`,
+> `CompressionAlgorithmTest`, `ContentCompressorTest`), `ru.jrestly.tracing`
+> (`TraceConfigTest`, `TraceContextTest`, `TracePropagatorTest`),
+> `ru.jrestly.interceptor` (`InterceptorConfigurationTest`, `RequestContextTest`,
+> `ShortCircuitExecutionTest`, `ShortCircuitInterceptorTest`) — **14 классов**.
+> Только doc-комментарии, логика не тронута. Замер: 157 тест-классов, без
+> class-level javadoc осталось **88** (в основном `ru.jrestly` 62 и
+> `ru.jrestly.http` 18) — батч №3 → `http` или корневой `ru.jrestly`.
+> `./gradlew test javadoc` — **1232/1232**, javadoc-гейт (`-Werror`) не
+> затронут, 0 warnings.
+>
 > **Сессия #200 (свободный аудит: `connectTimeout(int)`/`socketTimeout(int)` без
 > fail-fast валидации — 16-я «тихая» находка, класс #190 «заявленная защита
 > отсутствует»):** свободный ход из контекста #199; вместо долгого среза взял
@@ -889,6 +911,11 @@
 
 - **Кандидат №1 — test-javadoc** (ADR-0013 Non-goals):
   Наведение лоска и лаконичного javadoc в тестовых классах.
+  **Батч №1 (#185):** `resilience` (3) + `auth` (4) = 7 классов.
+  **Батч №2 (#201):** `cookie` (2) + `codec` (2) + `compression` (3) +
+  `tracing` (3) + `interceptor` (4) = 14 классов. Осталось 88 тест-классов без
+  class-level javadoc (в основном `ru.jrestly` 62 и `ru.jrestly.http` 18) —
+  продолжать батчами.
 
 - **Кандидат №2 — HTTP Trailers & Advanced Streaming ergonomics**:
   Расширенные сценарии работы с трейлерами и чанками в стриминге данных (LLM / SSE).

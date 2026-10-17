@@ -17,6 +17,13 @@ import java.util.concurrent.CompletableFuture;
 import static com.github.tomakehurst.wiremock.client.WireMock.*;
 import static org.junit.jupiter.api.Assertions.*;
 
+/**
+ * End-to-end WireMock tests for persistent cookie sessions (ADR-0039):
+ * cookies surviving a simulated process restart, logout expiring the cookie,
+ * persistence combined with declarative {@code @Cookie}, async-circuit
+ * persistence and manual mode deferring the write until an explicit sync.
+ * Real HTTP against a stub.
+ */
 @DisplayName("ADR-0039: Persistent Cookie Store WireMock Integration Tests")
 class PersistentCookieWireMockTest extends BaseWireMockTest {
 

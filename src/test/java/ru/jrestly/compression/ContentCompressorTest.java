@@ -14,6 +14,12 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+/**
+ * Unit tests for the built-in {@code ContentCompressor} implementations and
+ * their registry (ADR-0041): GZIP/Deflate round-trips, null/empty handling,
+ * streaming decompression, the unsupported default {@code decompress} and
+ * encoding-keyed resolution. Pure unit tests.
+ */
 @DisplayName("ContentCompressor & Registry Unit Tests (ADR-0041)")
 class ContentCompressorTest {
 

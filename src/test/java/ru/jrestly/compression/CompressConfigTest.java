@@ -22,6 +22,12 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+/**
+ * Unit tests for request-compression configuration and validation (ADR-0041):
+ * ModuleInfo defaults, the SimpleModuleInfo and JRestlyClient.Builder entry
+ * points, custom {@code ContentCompressor} registration, and ControllerValidator
+ * checks (null algorithm, negative threshold). No HTTP.
+ */
 @DisplayName("Request Compression Configuration & Validation Tests (ADR-0041)")
 class CompressConfigTest {
 

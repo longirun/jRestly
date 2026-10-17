@@ -36,6 +36,13 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+/**
+ * In-process tests for short-circuit request handling (ADR-0047): mock
+ * DTO/String/byte[]/Optional returns, {@code @OnError} routing, async
+ * ({@code CompletableFuture}) support, synthesized response headers, halting
+ * subsequent interceptors, the metrics/response-interceptor lifecycle
+ * ({@code attempts == 0}) and conditional mock routing.
+ */
 class ShortCircuitExecutionTest {
 
     private JRestlyClient client;

@@ -25,6 +25,12 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+/**
+ * Unit tests for the interceptor configuration plumbing (ADR-0029): empty
+ * ModuleInfo defaults, SimpleModuleInfo.Builder order preservation, defensive
+ * copies and null rejection, operator adaptation, and JRestlyClient.Builder
+ * forwarding. No network.
+ */
 class InterceptorConfigurationTest {
 
     @Test

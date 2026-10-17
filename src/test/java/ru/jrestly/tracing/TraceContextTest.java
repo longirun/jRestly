@@ -13,6 +13,11 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+/**
+ * Unit tests for the W3C {@link TraceContext} (ADR-0042): validated
+ * construction, random generation, child contexts and {@code traceparent}
+ * parsing (valid and invalid). Pure unit tests.
+ */
 class TraceContextTest {
 
     private static final String VALID_TRACE_ID = "4bf92f3577b34da6a3ce929d0e0e4736";

@@ -15,6 +15,12 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+/**
+ * Unit tests for {@code TracePropagators} and {@code TraceIdGenerators}
+ * (ADR-0042): UUID/hex/prefixed/thread-local ID generators, correlation-ID,
+ * W3C TraceContext (static and dynamic supplier), thread-local and composite
+ * propagators, plus {@code TraceRequestContext}. Pure unit tests.
+ */
 class TracePropagatorTest {
 
     @Test

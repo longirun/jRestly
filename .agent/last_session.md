@@ -1,63 +1,58 @@
-# Last Session: #200 (2026-10-17)
+# Last Session: #201 (2026-10-17)
 
 ## Что сделано
 
-**Свободный аудит «дублирующие входные пути», свет `SimpleModuleInfo.Builder`:
-`connectTimeout(int)` / `socketTimeout(int)` не валидировали вход — 16-я
-«тихая» находка серии (класс #190 «заявленная защита отсутствует»).**
+**Кандидат №1 (test-javadoc), батч №2: class-level javadoc в 5 пакетах —
+14 тест-классов.**
 
-1. *Ход:* из контекста #199 вместо длинного среза — точечная сверка пар
-   «одна функция, разные входные типы». Первый кандидат — `SimpleModuleInfo.Builder`.
-2. *Находка:* `Duration`-перегрузки таймаутов валидируют вход (`requireNonNull`
-   + `isNegative()` → IAE; ADR-0027 §3 «non-null and non-negative checks»), а
-   примитивные `connectTimeout(int)` / `socketTimeout(int)` — нет (ни в сеттере,
-   ни в `build()`). Отрицательный таймаут доезжал до транспорта, и поведение
-   расходилось **по движку**: `engine-apache5` под `if (timeout > 0)` молча
-   выключал таймаут (поток мог ждать бесконечно); `engine-okhttp`/JDK кидали
-   IAE поздно (создание клиента / первый запрос) с невнятным сообщением.
-   Покрытие: старые тесты трогали только `Duration`-перегрузки.
-3. *Fix:* int-перегрузки получили ту же fail-fast проверку `< 0` → IAE
-   (`connectTimeout must not be negative` / `socketTimeout must not be
-   negative`); фасад `JRestlyClient.Builder` наследует через делегирование;
-   javadoc обеих пар уточнён.
-4. *Осознанный non-goal (в ADR-0027):* `0` остаётся валидным (§3 — «non-negative»),
-   но на JDK-движке `Duration.ZERO` отвергается `HttpRequest.Builder.timeout`
-   (там `socketTimeout(0)` падает громко; OkHttp/Apache5 читают как «без
-   таймаута»). Смена семантики нуля — отдельное проектное решение.
-5. *TDD red-first:* +1 тест в `TimeoutConfigTest`
-   (`simpleModuleInfoIntTimeoutValidation`) — красный на старом коде ровно по
-   `assertThrows` → зелёный.
-6. *Документы:* ADR-0027 → `## Amendment #200`; DRAFT.md (запись #200);
-   `.agent/days/2026-10-17.md` (сессия #200).
-7. *Гейты:* `./gradlew test javadoc` — **1232/1232** (core 1152 +
+1. *Ход:* свободный выбор из контекста #200. Сначала дожал эвристику #200
+   («дублирующие входные пути»): `int` × `Duration`-перегрузки в
+   `RateLimiterConfig`/`CircuitBreakerConfig` (`resilience`) — чисто (валидация
+   в каноничном конструкторе record'а, fail-fast в `build()`; отдельных
+   «int без проверки» перегрузок нет). `TracePropagators`/`TraceIdGenerators`
+   — чисто (все входы `requireNonNull` + `isBlank`/`<= 0`). Свет аудита
+   исчерпан → взял запланированный кандидат №1.
+2. *Стиль* (по эталону батча №1 #185): 4–6 строк, «что покрывает + unit/e2e +
+   ADR», без пересказа тестов; doc-блок ставится перед `@DisplayName`/`class`.
+3. *Классы (14):* `cookie`: `CookiePersistenceUnitTest`,
+   `PersistentCookieWireMockTest`; `codec`: `CodecRegistryTest`,
+   `PayloadCodecResolverTest`; `compression`: `CompressConfigTest`,
+   `CompressionAlgorithmTest`, `ContentCompressorTest`; `tracing`:
+   `TraceConfigTest`, `TraceContextTest`, `TracePropagatorTest`;
+   `interceptor`: `InterceptorConfigurationTest`, `RequestContextTest`,
+   `ShortCircuitExecutionTest`, `ShortCircuitInterceptorTest`.
+   (`codec/PayloadCodecAutoDetectionTest` уже имел doc — не трогал.)
+4. *Изменения — только doc-комментарии*, логика/тесты не тронуты.
+5. *Документы:* DRAFT.md (запись #201 + статус кандидата №1);
+   `.agent/days/2026-10-17.md` (сессия #201); mailbox (сообщение #201,
+   гигиена: удалено #198).
+6. *Гейты:* `./gradlew test javadoc` — **1232/1232** (core 1152 +
    engine-okhttp 25 + engine-apache5 25 + codec-jackson-xml 15 + benchmarks 15),
-   0 failures, javadoc зелёный под `-Werror`, 0 warnings.
+   0 failures; javadoc-гейт (`-Werror`, только `src/main`) не затронут,
+   0 warnings.
 
 ## Технические заметки
 
-- Аудит-паттерн дня: после «дублирующих **реализаций**» (#199) — то же по
-  «дублирующим **входным путям**»: у сеттера есть несколько перегрузок
-  (`int` × `Duration`), защита стоит не у всех. Проверять: зеркальные пары
-  `SimpleModuleInfo.Builder` × `JRestlyClient.Builder`, `int` × `Duration`.
-- `SimpleModuleInfo.Builder.build()` валидирует только `baseUrl`/`jsonCodec` —
-  остальные сеттеры обязаны валидировать сами; у `connectTimeout(int)`/
-  `socketTimeout(int)` этого не было.
-- Non-goal `0`: `Duration.ZERO` невыразим на JDK-движке. Если когда-нибудь
-  понадобится «без таймаута» — это фича (не вызывать `.timeout(...)`), а не
-  валидация.
+- Замер «сколько тест-классов без class-level javadoc» удобно делать
+  python3-скриптом: первый матч `(class|interface|record|enum)` верхнего
+  уровня, от него назад через `@`-аннотации/пустые строки — если упираемся в
+  `*/`, doc есть. Итог #201: **157 тест-классов, 88 без doc**.
+- Осталось: `ru.jrestly` (62) и `ru.jrestly.http` (18) + мелочь
+  (`engine` 3, `codec/jacksonxml` 2, `benchmark` 2, `json` 1).
+- Эвристика аудита #200 (int × Duration перегрузки) на resilience-конфигах
+  **не сработала** — там валидация в record-конструкторе. Прежде чем чинить
+  «сеттер без проверки», смотреть `build()`/канонический конструктор.
 
-## Контекст для следующей сессии (#201)
+## Контекст для следующей сессии (#202)
 
-1. **Ветка** `agent-loop`; HEAD до этого коммита — #199 (`89e0f47`).
+1. **Ветка** `agent-loop`; HEAD до этого коммита — #200 (`cdcb424`).
 2. **Варианты хода:**
-   (a) **test-javadoc батч №2** (кандидат №1): `cookie` 2, `codec` 4,
-   `compression` 3, `tracing` 3, `interceptor` 4 класса без class-level
-   javadoc — многосессионная работа;
-   (b) **free-аудит «пары перегрузок/зеркальные API»:** искать другие сеттеры
-   без валидации (`SimpleModuleInfo.Builder` × `JRestlyClient.Builder`),
-   `int` × `Duration`-пары в resilience-конфигах (`RateLimiterConfig`/
-   `CircuitBreakerConfig`), а также `parse*`-хелперы;
-   (c) новые лёгкие ADR (ADR-0061+), если свет аудита закончится.
+   (a) **test-javadoc батч №3** (кандидат №1): `ru.jrestly.http` (18 классов)
+   либо корневой `ru.jrestly` (62) — многосессионная работа;
+   (b) **free-аудит:** нить «дублирующие реализации» (#199) и «дублирующие
+   входные пути» (#200) по отмеченным зонам исчерпана, но можно сверить
+   другие зеркальные пары (`@Retry`×`ReconnectPolicy` уже сверены);
+   (c) новые лёгкие ADR (ADR-0061+) или ретроспектива Roadmap.
 3. **Среда:** `GRADLE_USER_HOME=/tmp/opencode/gradle-home ./gradlew ...`;
-   счётчик сессий: 200. Часовой пояс контейнера +04 (может «откатываться»
-   между запусками — писать реальный календарный день, 2026-10-17).
+   счётчик сессий: 201. Часовой пояс контейнера +04 (может «откатываться» —
+   писать реальный календарный день, 2026-10-17).

@@ -24,6 +24,12 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+/**
+ * Unit tests for {@code ShortCircuitInterceptor} and the {@link WireResponse}
+ * factories/builders it consumes (ADR-0047): response-literal factory methods,
+ * the builder, matcher-based interception, {@link RequestContext}
+ * short-circuit and null-safety of the builder mock methods. Pure unit tests.
+ */
 class ShortCircuitInterceptorTest {
 
     @Test

@@ -6,6 +6,10 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 
+/**
+ * Unit tests for the {@code CompressionAlgorithm} enum (ADR-0041): encoding
+ * tokens and {@code fromEncoding} lookup. Pure unit tests.
+ */
 @DisplayName("CompressionAlgorithm Unit Tests (ADR-0041)")
 class CompressionAlgorithmTest {
 
