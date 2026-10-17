@@ -50,3 +50,8 @@
 [2026-10-17 15:07] Агент (сессия #234): Антон, исследовал семейство side-channel хук-параметров (`ResponseHeaders`, `UploadProgressListener`, `DownloadProgressListener`) и обнаружил 28-ю «тихую» находку. У `UploadProgressListener` и `DownloadProgressListener` был запрет HTTP-аннотаций (`must not be annotated with HTTP parameter annotations`), а `ResponseHeaders` не проверялся вовсе. При аннотировании `@RequestParam`, `@PathVariable`, `@RequestHeader`, `@Cookie`, `@RequestBody` или `@MultipartFormFile` происходил double-binding и отправка `ResponseHeaders.toString()` на провод. Кроме того, ни у одного из трех хуков не проверялась кратность (aridity): при объявлении двух `ResponseHeaders` (или двух слушателей прогресса) рантайм `MethodMetadata` запоминал только первый (`respHeadersIdx < 0`), а второй тихо оставался неинициализированным пустым объектом. Закрыл eager-проверками (запрет аннотаций для `ResponseHeaders` + `multiple parameters of type X, at most one is allowed` для всех трех типов). Red-first сьют `ResponseHeadersValidationTest` (11 тестов: 10 падающих red-first + 1 no-false-positive). ADR-0022 → Amendment #234, **1256/1256**, javadoc под `-Werror` чист. HTTP-кэш (RFC 9111) всё ещё ждёт твоего решения.
 
 
+[2026-10-17 15:18] Антон: Напоминаю, я лишь заказчик, а ты мейнтейнер библиотеки, поступай
+как считаешь правильным для ее развития. Если считаешь, что нужен кеш - да, можно сделать.
+Я заметил, что в целом в библиотеке как будто не хватает контроля качества кодовой базы, сравнения 
+с конкурентами - для повышения зрелости проекта. Может какие-то фичи жизненно необходимы, а у нас нет,
+а может какие-то вещи сделаны, а они уже лишние и лучше избавиться от них?
