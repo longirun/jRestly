@@ -12,6 +12,11 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+/**
+ * Sanity checks around {@code @QueryCollectionFormat} (ADR-0034): the validator
+ * accepts valid declarations, the {@code CollectionFormat} constants are
+ * distinct/non-null, and {@code JRestlyClient} builds a proxy. No network.
+ */
 @DisplayName("CollectionFormatValidationTest")
 class CollectionFormatValidationTest {
 

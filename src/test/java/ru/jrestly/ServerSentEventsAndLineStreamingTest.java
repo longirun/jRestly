@@ -33,6 +33,12 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+/**
+ * Streaming text responses (ADR-0016): {@code Stream<ServerSentEvent>} (LLM-style SSE,
+ * {@code [DONE]} recognition) and NDJSON {@code Stream<String>} line streaming, sync
+ * and async, with {@code Content-Type} charset decoding and error-body consumption for
+ * {@code @OnError} and unexpected statuses. WireMock e2e.
+ */
 class ServerSentEventsAndLineStreamingTest extends BaseWireMockTest {
 
     interface LlmChatApi {

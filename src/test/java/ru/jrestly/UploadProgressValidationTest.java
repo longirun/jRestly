@@ -13,6 +13,13 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+/**
+ * Validation of {@code @UploadProgressListener} parameters (ADR-0030): the listener
+ * must not carry a request-binding annotation ({@code @RequestParam},
+ * {@code @PathVariable}, {@code @RequestHeader}, {@code @MultipartFormFile}) nor be a
+ * multipart method's sole parameter; an invalid controller fails proxy creation.
+ * Valid declarations pass. Unit.
+ */
 @DisplayName("UploadProgressValidationTest")
 class UploadProgressValidationTest {
 

@@ -11,6 +11,12 @@ import java.time.LocalDateTime;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+/**
+ * Unit tests for {@code JsonCodecResolver}: classpath probing (Jackson on the
+ * classpath &rarr; {@code JacksonCodec.defaults()}) and conflict resolution — an
+ * explicit {@code jsonCodec(...)} on {@code SimpleModuleInfo.Builder} wins over the
+ * probe, its absence falls back to it. No network.
+ */
 class JsonCodecResolverTest {
 
     @Test

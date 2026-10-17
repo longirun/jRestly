@@ -18,6 +18,13 @@ import java.time.LocalDateTime;
 import static com.github.tomakehurst.wiremock.client.WireMock.*;
 import static org.junit.jupiter.api.Assertions.*;
 
+/**
+ * Wire-level codec contract (ADR-0001 / ADR-0007): the default JSON codec emits
+ * compact JSON, serializes nulls, formats {@code LocalDateTime} as
+ * {@code yyyy-MM-dd HH:mm:ss} and tolerates ISO-8601 ({@code T} + fractional seconds)
+ * on the response. A custom {@code JacksonCodec} (snake_case mapper) reaches the wire
+ * as-is. WireMock e2e.
+ */
 class JsonCodecWireTest extends BaseWireMockTest {
 
     @Test

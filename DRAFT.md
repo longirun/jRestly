@@ -1,5 +1,24 @@
 # DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
+> **Сессия #204 (кандидат №1 test-javadoc, батч №5 — корневой `ru.jrestly`,
+> 19 тест-классов):** свободный ход из контекста #203. Продолжил корневой
+> пакет: лаконичный class-level javadoc (стиль батчей №1/#185 … №4/#203:
+> 4–6 строк, «что покрывает + unit/e2e + ADR», без пересказа тестов) в **19**
+> классах — кодеки/JSON (`JacksonCodecPrettyPrintTest`, `JsonCodecResolverTest`,
+> `JsonCodecWireTest`), валидация (`AcceptContentTypeValidationTest`,
+> `ClientMetricsValidationTest`, `CollectionFormatValidationTest`,
+> `ControllerValidationTest`, `CookieValidationTest`,
+> `DownloadProgressValidationTest`, `UploadProgressValidationTest`),
+> прогресс/e2e (`DownloadProgressWireMockTest`, `UploadProgressWireMockTest`),
+> стриминг (`ResponseStreamingTest`, `ServerSentEventsAndLineStreamingTest`),
+> сжатие/трассировка (`RequestCompressionWireMockTest`,
+> `RequestTracingWireMockTest`), прокси/auth (`ProxyCacheConcurrencyTest`,
+> `ProxyConfigTest`, `AuthTest`). Только doc-комментарии, логика не тронута.
+> Замер: 83 файла корневого `ru.jrestly`, без class-level javadoc было 44 →
+> стало **25** (общий счёт по дереву: 44 — корневой 25 + фикстуры 15 + `engine`
+> 3 + `json` 1). `./gradlew test javadoc` — **1232/1232**, javadoc-гейт
+> (`-Werror`, только `src/main`) не затронут, 0 warnings.
+>
 > **Сессия #203 (кандидат №1 test-javadoc, батч №4 — корневой `ru.jrestly`,
 > 18 тест-классов):** свободный ход из контекста #202. Продолжил батч:
 > наведён лаконичный class-level javadoc (стиль батчей №1/#185, №2/#201,
@@ -953,9 +972,12 @@
   **Батч №3 (#202):** `ru.jrestly.http` — все 18 классов пакета; пакет закрыт.
   **Батч №4 (#203):** корневой `ru.jrestly` — 18 классов (глаголы, редиректы,
   статусы, таймауты, ядро-фикстуры).
-  Осталось 63 тест-класса без class-level javadoc (из них корневой
-  `ru.jrestly` 44; остальное — фикстуры 15, `engine` 3, `json` 1) —
-  продолжать батчами (следующий логично корневой `ru.jrestly`).
+  **Батч №5 (#204):** корневой `ru.jrestly` — 19 классов (кодеки/JSON,
+  валидация, прогресс, стриминг, сжатие/трассировка, прокси/auth).
+  Осталось ~44 файла без class-level javadoc, из них корневой `ru.jrestly`
+  **25**; остальное — фикстуры 15 (вспомогательные типы, не тест-классы),
+  `engine` 3, `json` 1. Продолжать батчами (следующий — добить корневой
+  `ru.jrestly`).
 
 - **Кандидат №2 — HTTP Trailers & Advanced Streaming ergonomics**:
   Расширенные сценарии работы с трейлерами и чанками в стриминге данных (LLM / SSE).

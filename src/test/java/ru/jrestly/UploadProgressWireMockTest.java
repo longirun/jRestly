@@ -32,6 +32,12 @@ import static com.github.tomakehurst.wiremock.client.WireMock.*;
 import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.wireMockConfig;
 import static org.junit.jupiter.api.Assertions.*;
 
+/**
+ * Upload progress end-to-end (ADR-0030): multipart files (in-memory and disk
+ * {@code Path}), multiple parts, raw bytes and serialized JSON DTOs all drive an
+ * {@code UploadProgressListener}; unknown-length streams report {@code total = -1}
+ * and async is non-blocking. WireMock e2e.
+ */
 @DisplayName("UploadProgressWireMockTest")
 class UploadProgressWireMockTest {
 

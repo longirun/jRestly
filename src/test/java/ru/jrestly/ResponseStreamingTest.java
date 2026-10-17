@@ -24,6 +24,12 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+/**
+ * {@code InputStream} streaming responses (ADR-0015): byte-exact download (sync and
+ * async via {@code CompletableFuture<InputStream>}), plus error paths — an unexpected
+ * status drains the stream into {@code UnexpectedStatusException} and {@code @OnError}
+ * decodes it into {@code HandledException}. WireMock e2e.
+ */
 class ResponseStreamingTest extends BaseWireMockTest {
 
     interface StreamErrorApi {

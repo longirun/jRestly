@@ -19,6 +19,11 @@ import java.util.concurrent.atomic.AtomicInteger;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
 
+/**
+ * Concurrency guard for the {@code AbstractHttpClient} proxy cache: two threads
+ * calling {@code get(Api.class)} at once create the proxy exactly once and receive the
+ * same instance. Deterministic barrier; no network.
+ */
 @DisplayName("AbstractHttpClient proxy cache is safe under concurrent get()")
 class ProxyCacheConcurrencyTest {
 

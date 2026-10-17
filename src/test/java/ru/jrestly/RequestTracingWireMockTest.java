@@ -33,6 +33,12 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+/**
+ * Request tracing end-to-end (ADR-0042): {@code @Trace} injects correlation IDs
+ * (custom header, W3C {@code traceparent}, UUID v4), respects user-supplied headers and
+ * {@code forceNew}, is disabled by {@code enabled = false}, and falls back to the
+ * client-level propagator. WireMock e2e.
+ */
 @DisplayName("Request Tracing & Correlation ID Propagation Integration Tests (ADR-0042)")
 class RequestTracingWireMockTest extends BaseWireMockTest {
 

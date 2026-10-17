@@ -36,6 +36,13 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+/**
+ * Declarative request compression end-to-end (ADR-0041): {@code @Compress} GZIP/DEFLATE
+ * sets {@code Content-Encoding}, honors {@code minSizeBytes}, is inherited from the
+ * interface and overridable per method, and a client-level default covers unannotated
+ * controllers. A manual {@code Content-Encoding} prevents double compression.
+ * WireMock e2e.
+ */
 @DisplayName("Request Compression & Content-Encoding SPI Integration Tests (ADR-0041)")
 class RequestCompressionWireMockTest extends BaseWireMockTest {
 

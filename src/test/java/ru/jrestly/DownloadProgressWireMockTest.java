@@ -31,6 +31,13 @@ import static com.github.tomakehurst.wiremock.client.WireMock.*;
 import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.wireMockConfig;
 import static org.junit.jupiter.api.Assertions.*;
 
+/**
+ * Download progress end-to-end (ADR-0033): every return shape ({@code byte[]},
+ * {@code String}, JSON DTO, streaming {@code InputStream}) drives a
+ * {@code DownloadProgressListener}; unknown {@code Content-Length} reports
+ * {@code total = -1}, async is non-blocking, and retries reset the counter.
+ * WireMock e2e.
+ */
 @DisplayName("DownloadProgressWireMockTest")
 class DownloadProgressWireMockTest {
 

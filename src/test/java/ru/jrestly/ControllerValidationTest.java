@@ -15,6 +15,12 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+/**
+ * Eager controller validation: a broken controller fails proxy creation with a
+ * {@code ControllerValidationException} carrying the controller and full problem list;
+ * {@code validateControllers(false)} defers the failure to the first call; valid
+ * controllers pass (including streaming return shapes). No network.
+ */
 public class ControllerValidationTest {
 
     @Test

@@ -11,6 +11,12 @@ import java.util.List;
 import static com.github.tomakehurst.wiremock.client.WireMock.*;
 import static org.junit.jupiter.api.Assertions.*;
 
+/**
+ * Declarative authorization end-to-end (ADR-0046): {@code @Anonymous} bypasses the
+ * login, {@code @Authorization} triggers it, {@code @SetAuthDetails} captures the token
+ * from the response, and {@code updateAuthHeader} overrides the active header for the
+ * next request. WireMock e2e.
+ */
 class AuthTest extends BaseWireMockTest {
 
     @Test

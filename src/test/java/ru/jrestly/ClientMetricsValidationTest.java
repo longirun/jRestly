@@ -27,6 +27,12 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+/**
+ * Metrics SPI configuration and validation (ADR-0036 / ADR-0047): the default
+ * {@code metricsListener} is null, builders reject null, {@code composite} flattens
+ * nested listeners, {@code SimpleCallMetrics} enforces its invariants, and
+ * {@code ControllerValidator} rejects malformed {@code @WithMetrics}. No network.
+ */
 class ClientMetricsValidationTest {
 
     public static class ValidTestMetricsListener implements ClientMetricsListener {

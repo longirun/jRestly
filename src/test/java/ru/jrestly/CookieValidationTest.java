@@ -13,6 +13,12 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+/**
+ * Validation of {@code @Cookie} declarations across interface, method and parameter
+ * levels (ADR-0032): blank names and CRLF injection in name/value are rejected, valid
+ * declarations pass, and an invalid controller fails proxy creation with
+ * {@code ControllerValidationException}. No network.
+ */
 class CookieValidationTest {
 
     @Cookie(name = "   ", value = "val")

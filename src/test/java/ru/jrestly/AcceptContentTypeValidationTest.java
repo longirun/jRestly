@@ -12,6 +12,11 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+/**
+ * Validation of {@code @Accept}/{@code @ContentType} at interface and method level
+ * (ADR-0031): empty/blank values and CRLF header-injection sequences are rejected
+ * upfront by {@code ControllerValidator}. No network.
+ */
 @DisplayName("AcceptContentTypeValidationTest")
 class AcceptContentTypeValidationTest {
 

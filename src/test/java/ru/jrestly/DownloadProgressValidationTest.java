@@ -14,6 +14,13 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+/**
+ * Validation of {@code @DownloadProgressListener} parameters (ADR-0033): the listener
+ * must not carry a request-binding annotation ({@code @RequestParam},
+ * {@code @PathVariable}, {@code @RequestHeader}, {@code @Cookie},
+ * {@code @MultipartFormFile}) and cannot be a multipart method's only parameter.
+ * Valid declarations pass. Unit.
+ */
 @DisplayName("DownloadProgressValidationTest")
 class DownloadProgressValidationTest {
 

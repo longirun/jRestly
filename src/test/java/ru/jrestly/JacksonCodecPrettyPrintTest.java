@@ -6,6 +6,10 @@ import ru.jrestly.json.JacksonCodec;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+/**
+ * Unit test for {@code JacksonCodec.prettyPrint}: valid JSON is re-indented for
+ * readability while unparsable input is returned unchanged. No network.
+ */
 class JacksonCodecPrettyPrintTest {
 
     @Test

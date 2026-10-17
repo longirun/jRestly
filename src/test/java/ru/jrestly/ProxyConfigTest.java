@@ -14,6 +14,11 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
+/**
+ * Proxy configuration surface (ADR-0037): {@code ProxySelector}, host/port,
+ * {@code NO_PROXY}, proxy and universal {@code Authenticator} credentials flow from the
+ * builder into {@code ModuleInfo}, with defaults left null. No network.
+ */
 class ProxyConfigTest {
 
     @Test
