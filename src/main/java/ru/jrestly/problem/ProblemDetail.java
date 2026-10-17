@@ -373,6 +373,10 @@ public class ProblemDetail {
     /**
      * Parses a JSON string into a {@link ProblemDetail} using a built-in zero-dependency parser.
      *
+     * <p>An optional leading UTF-8 byte-order mark (U+FEFF, RFC 8259 §8.1) is tolerated
+     * and stripped — servers emitting a BOM-prefixed {@code application/problem+json}
+     * body keep their structured error (Amendment #257).
+     *
      * @param json the JSON string representing an RFC 7807 / RFC 9457 problem details payload
      * @return the parsed {@link ProblemDetail}
      * @throws IllegalArgumentException if the JSON is malformed
@@ -382,6 +386,9 @@ public class ProblemDetail {
             throw new IllegalArgumentException("JSON payload must not be null or blank");
         }
         String trimmed = json.trim();
+        if (trimmed.charAt(0) == '\uFEFF') {
+            trimmed = trimmed.substring(1).trim(); // optional BOM prefix; whitespace may follow it
+        }
         if (!trimmed.startsWith("{") || !trimmed.endsWith("}")) {
             throw new IllegalArgumentException("Problem Detail JSON must be an object starting with '{' and ending with '}'");
         }

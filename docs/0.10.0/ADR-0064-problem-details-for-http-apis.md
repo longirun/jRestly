@@ -125,6 +125,16 @@ Implements the standard members defined by RFC 9457 §3.1:
      * **LINE:** **93.39%** (6,346 / 6,795) — new historic all-time high!
      * **METHOD:** **96.76%** (1,372 / 1,418) — new historic all-time high!
 
+## Amendment #257 (2026-10-18)
+
+**Tolerance of the Optional Leading UTF-8 BOM — 35th "Quiet" Finding in Series:**
+1. *Problem:* RFC 8259 §8.1 permits a JSON text to be prefixed with an optional byte order mark (U+FEFF). A server emitting a BOM-prefixed `application/problem+json` body lost the structured error in **both** resolution paths: `ProblemDetail.fromJson` failed its `trim().startsWith("{")` shape check (Java's `trim()` does not strip U+FEFF, which is not a whitespace character), and `HttpTemplate.resolveProblemDetail` rejected the body in the same pre-check before any codec saw it. Both `fromJson` call sites wrap the parse in `catch (Throwable ignored)`, so the failure was silent: unexpected-status exceptions carried no `ProblemDetail` at all, and on a zero-dependency classpath (NoOp codec) the `@OnError` mapping fell back to a bare `ProblemDetail.forStatus(statusCode)` — title, detail, type, instance and extension members silently dropped.
+2. *Resolution:*
+   - `ProblemDetail.fromJson` strips a single leading U+FEFF after `trim()` (re-trimming whitespace that may follow it), before the object shape check — one fix covering direct calls, the `handleOnError` fromJson fallback, and the `resolveProblemDetail` fallback.
+   - `HttpTemplate.resolveProblemDetail` applies the identical one-line normalization before its pre-check, so the codec path (external JSON libraries already skip the BOM) and the built-in parser see the same clean document.
+   - At most one BOM is stripped, mirroring RFC 8259's "may be prefixed" wording — a doubled BOM is content, not a mark.
+3. *Verification:* red-first — `ProblemDetailTest.fromJsonToleratesLeadingByteOrderMark` (unit), `ProblemDetailWireMockTest` (BOM body on an unexpected status — the definite pre-check break; `@OnError` BOM mapping guard on the Jackson classpath), `ZeroDepStandaloneWireMockTest` (NoOp codec, where the `fromJson` fallback is the only route — both the `@OnError` and the unexpected-status legs red before the fix). Total test suite reached **1448 / 1448** green; JaCoCo: **83.45% Branch**, **95.88% Instruction**, **95.69% Line** — all new historic highs.
+
 
 
 

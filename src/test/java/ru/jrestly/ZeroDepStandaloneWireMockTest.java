@@ -12,8 +12,10 @@ import ru.jrestly.annotation.PathVariable;
 import ru.jrestly.annotation.Post;
 import ru.jrestly.annotation.RequestBody;
 import ru.jrestly.fixtures.TestDto;
+import ru.jrestly.http.ClientErrorException;
 import ru.jrestly.json.JsonCodec;
 import ru.jrestly.json.NoOpJsonCodec;
+import ru.jrestly.problem.ProblemDetailException;
 
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
@@ -82,6 +84,13 @@ class ZeroDepStandaloneWireMockTest {
         @OnError(statuses = {500}, errorObject = TestDto.class)
         @Get(path = "/error-dto")
         String getWithCustomErrorDto();
+
+        @OnError(statuses = {422}, errorObject = ProblemDetailException.class)
+        @Get(path = "/problem-bom-onerror")
+        String getProblemBomOnError();
+
+        @Get(path = "/problem-bom-plain")
+        String getProblemBomPlain();
     }
 
     @Test
@@ -264,5 +273,51 @@ class ZeroDepStandaloneWireMockTest {
 
         IllegalStateException ex = assertThrows(IllegalStateException.class, api::getWithCustomErrorDto);
         assertTrue(ex.getMessage().contains("jackson-databind"));
+    }
+
+    @Test
+    @DisplayName("NoOp codec: BOM-prefixed problem body still feeds the @OnError ProblemDetailException via the built-in fromJson fallback")
+    void zeroDepBomProblemFeedsOnErrorMapping(WireMockRuntimeInfo wm) {
+        stubFor(get(urlEqualTo("/problem-bom-onerror"))
+                .willReturn(aResponse()
+                        .withStatus(422)
+                        .withHeader("Content-Type", "application/problem+json")
+                        .withBody("\uFEFF{\"type\":\"https://example.org/errors/bom\",\"title\":\"BOM Validation\",\"status\":422,\"detail\":\"zero-dep fallback\"}")));
+
+        client = JRestlyClient.builder()
+                .baseUrl(wm.getHttpBaseUrl())
+                .jsonCodec(JsonCodec.noop())
+                .build();
+
+        PureZeroDepApi api = client.get(PureZeroDepApi.class);
+        ProblemDetailException ex = assertThrows(ProblemDetailException.class, api::getProblemBomOnError);
+
+        assertEquals(422, ex.getStatusCode());
+        assertNotNull(ex.problemDetail());
+        assertEquals("BOM Validation", ex.problemDetail().getTitle());
+        assertEquals("zero-dep fallback", ex.problemDetail().getDetail());
+    }
+
+    @Test
+    @DisplayName("NoOp codec: BOM-prefixed problem body still resolves on an unexpected status")
+    void zeroDepBomProblemResolvesOnUnexpectedStatus(WireMockRuntimeInfo wm) {
+        stubFor(get(urlEqualTo("/problem-bom-plain"))
+                .willReturn(aResponse()
+                        .withStatus(404)
+                        .withHeader("Content-Type", "application/problem+json")
+                        .withBody("\uFEFF{\"type\":\"about:blank\",\"title\":\"Not Found\",\"status\":404,\"detail\":\"bom missing\"}")));
+
+        client = JRestlyClient.builder()
+                .baseUrl(wm.getHttpBaseUrl())
+                .jsonCodec(JsonCodec.noop())
+                .build();
+
+        PureZeroDepApi api = client.get(PureZeroDepApi.class);
+        ClientErrorException ex = assertThrows(ClientErrorException.class, api::getProblemBomPlain);
+
+        assertEquals(404, ex.getStatusCode());
+        assertTrue(ex.getProblemDetail().isPresent());
+        assertEquals("Not Found", ex.getProblemDetail().get().getTitle());
+        assertEquals("bom missing", ex.getProblemDetail().get().getDetail());
     }
 }

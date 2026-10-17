@@ -2678,6 +2678,9 @@ class HttpTemplate {
             return null;
         }
         String trimmed = rawBody.trim();
+        if (trimmed.charAt(0) == '\uFEFF') {
+            trimmed = trimmed.substring(1).trim(); // mirror ProblemDetail.fromJson: RFC 8259 §8.1 BOM prefix
+        }
         if (!trimmed.startsWith("{") || !trimmed.endsWith("}")) {
             return null;
         }

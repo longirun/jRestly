@@ -196,6 +196,28 @@ class ProblemDetailTest {
     }
 
     @Test
+    @DisplayName("fromJson tolerates an optional leading UTF-8 byte-order mark (RFC 8259 §8.1)")
+    void fromJsonToleratesLeadingByteOrderMark() {
+        String problem = "{\"type\":\"https://example.com/probs/not-found\",\"title\":\"Not Found\",\"status\":404,\"detail\":\"Resource missing\"}";
+
+        // A single leading BOM is stripped, not treated as content
+        ProblemDetail pd = ProblemDetail.fromJson("\uFEFF" + problem);
+        assertEquals(404, pd.getStatus());
+        assertEquals("Not Found", pd.getTitle());
+        assertEquals("Resource missing", pd.getDetail());
+        assertEquals(URI.create("https://example.com/probs/not-found"), pd.getType());
+
+        // Whitespace on either side of the BOM is also normalized
+        ProblemDetail padded = ProblemDetail.fromJson("  \uFEFF  " + problem + " \n");
+        assertEquals(pd, padded);
+
+        // A BOM-only body is not blank, but is not an object either
+        assertThrows(IllegalArgumentException.class, () -> ProblemDetail.fromJson("\uFEFF"));
+        // RFC 8259 allows at most one BOM prefix; a doubled BOM is content, not a BOM
+        assertThrows(IllegalArgumentException.class, () -> ProblemDetail.fromJson("\uFEFF\uFEFF" + problem));
+    }
+
+    @Test
     @DisplayName("ZeroDepJsonParser handles escaped keys, nested objects and various number formats")
     void zeroDepJsonParserAdvanced() {
         String json = """

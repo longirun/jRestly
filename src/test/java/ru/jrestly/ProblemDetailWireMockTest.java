@@ -49,6 +49,10 @@ public class ProblemDetailWireMockTest extends BaseWireMockTest {
         @OnError(statuses = 422, errorObject = ProblemDetailException.class)
         String getWithProblemDetailException();
 
+        @Get(path = "/error-handled-bom")
+        @OnError(statuses = 422, errorObject = ProblemDetailException.class)
+        String getWithProblemDetailBom();
+
         @Get(path = "/async-error")
         CompletableFuture<String> getAsync();
     }
@@ -153,6 +157,63 @@ public class ProblemDetailWireMockTest extends BaseWireMockTest {
         assertEquals(400, pd.getStatus());
         assertEquals("Bad Request", pd.getTitle());
         assertEquals("Missing required field 'name'", pd.getDetail());
+    }
+
+    @Test
+    @DisplayName("BOM-prefixed problem body is still resolved on an unexpected status (RFC 8259 §8.1)")
+    void bomPrefixedProblemBodyResolvesOnUnexpectedStatus() {
+        String problemJson = "\uFEFF" + """
+                {
+                  "type": "https://example.com/probs/bom",
+                  "title": "BOM Not Found",
+                  "status": 404,
+                  "detail": "Body carried a UTF-8 byte-order mark"
+                }
+                """;
+
+        stubFor(get(urlEqualTo("/accounts/bom"))
+                .willReturn(aResponse()
+                        .withStatus(404)
+                        .withHeader("Content-Type", "application/problem+json")
+                        .withBody(problemJson)));
+
+        ProblemApiClient client = createClient();
+        ClientErrorException ex = assertThrows(ClientErrorException.class, () -> client.getAccount("bom"));
+
+        assertEquals(404, ex.getStatusCode());
+        assertTrue(ex.getProblemDetail().isPresent());
+        ProblemDetail pd = ex.getProblemDetail().get();
+        assertEquals(404, pd.getStatus());
+        assertEquals("BOM Not Found", pd.getTitle());
+        assertEquals("Body carried a UTF-8 byte-order mark", pd.getDetail());
+        assertEquals(URI.create("https://example.com/probs/bom"), pd.getType());
+    }
+
+    @Test
+    @DisplayName("BOM-prefixed problem body reaches the @OnError ProblemDetailException mapping")
+    void bomPrefixedProblemBodyWithOnError() {
+        String problemJson = "\uFEFF" + """
+                {
+                  "type": "https://example.org/errors/bom-validation",
+                  "title": "Unprocessable Content",
+                  "status": 422,
+                  "detail": "BOM-tolerant mapping"
+                }
+                """;
+
+        stubFor(get(urlEqualTo("/error-handled-bom"))
+                .willReturn(aResponse()
+                        .withStatus(422)
+                        .withHeader("Content-Type", "application/problem+json")
+                        .withBody(problemJson)));
+
+        ProblemApiClient client = createClient();
+        ProblemDetailException ex = assertThrows(ProblemDetailException.class, client::getWithProblemDetailBom);
+
+        assertEquals(422, ex.getStatusCode());
+        assertNotNull(ex.problemDetail());
+        assertEquals("Unprocessable Content", ex.problemDetail().getTitle());
+        assertEquals("BOM-tolerant mapping", ex.problemDetail().getDetail());
     }
 
     @Test

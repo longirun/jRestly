@@ -1,5 +1,38 @@
 # DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
+> **Сессия #257 (free-аудит `HttpTemplate`, кластер problem-detail/`@OnError`: 35-я «тихая» находка — BOM-префикс Problem Detail тела молча ронял структурированную ошибку; гейт 1448/1448, BRANCH 83.45% и INSTRUCTION 95.88% и LINE 95.69% — три новых рекорда):**
+> свободный ход по хвосту непокрытых ветвей `HttpTemplate` (201 missed), сужение
+> на кластер problem-detail: `probePayloadDecode` (20), `handleOnError` (15),
+> `isLikelyProblemDetail` (11), `resolveProblemDetail` (10),
+> `isProblemJsonContentType` (5).
+> 1. *Находка (35-я в серии):* RFC 8259 §8.1 разрешает опциональный BOM-префикс
+>    JSON-текста, но `String.trim()` не режет U+FEFF (не whitespace). Тело
+>    `application/problem+json` с BOM умирало в двух местах: pre-check
+>    `resolveProblemDetail` (тело отбрасывалось до любого codec'а → unexpected-
+>    status исключения без `ProblemDetail`) и `ProblemDetail.fromJson` (та же
+>    shape-проверка); оба call-site в `catch (Throwable ignored)` → провал тихий.
+>    На zero-dep classpath (NoOp codec) `@OnError`-маппинг падал на голый
+>    `ProblemDetail.forStatus(statusCode)` — title/detail/type/instance/
+>    properties молча терялись.
+> 2. *TDD red-first:* 4 красных + 2 guard — юнит
+>    `ProblemDetailTest.fromJsonToleratesLeadingByteOrderMark` (BOM, BOM+пробелы,
+>    BOM-only → IAE, двойной BOM → IAE: «ровно один» по формулировке RFC);
+>    `ProblemDetailWireMockTest` (unexpected status — красный, `@OnError` —
+>    guard на Jackson-classpath); `ZeroDepStandaloneWireMockTest` ×2 (NoOp codec —
+>    fromJson-fallback единственный путь, обе ноги красные).
+> 3. *Fix:* `ProblemDetail.fromJson` — после `trim()` снять один лидирующий
+>    U+FEFF + пере-`trim()`; `HttpTemplate.resolveProblemDetail` — идентичная
+>    нормализация до pre-check. `handleOnError` не тронут (fromJson-fallback
+>    покрыт, codec-путь BOM терпел всегда). ADR-0064 дополнен `## Amendment #257`.
+> 4. *TDD и исторические гейты JaCoCo:*
+>    - Всего тестов: **1448 / 1448** green across all 5 modules (+5 тестов, 0 failures, 0 errors, 0 warnings under `-Werror`).
+>    - **JaCoCo Coverage:**
+>      * **CLASS:** **143 / 143 (100.00%)**; **METHOD:** **1418 / 1418 (100.00%)** — абсолютное 100% сохранено!
+>      * **BRANCH:** **3,706 / 4,441 (83.45%)** — новый исторический рекорд!
+>      * **INSTRUCTION:** **30,032 / 31,324 (95.88%)** — новый исторический рекорд!
+>      * **LINE:** **6,525 / 6,819 (95.69%)** — новый исторический рекорд!
+>      * **COMPLEXITY:** **2,969 / 3,671 (80.88%)**.
+
 > **Сессия #256 (free-аудит `HttpTemplate`: пересечение Optional × стриминг, ADR-0023 × ADR-0015/0016 — реальный разрыв, найден и закрыт; гейт 1443/1443, BRANCH 83.34% и INSTRUCTION 95.82% — новые рекорды):**
 > свободный ход по хвосту непокрытых ветвей `HttpTemplate` (класс №1 в JaCoCo по missed
 > branches — 202, покрытие 77.95%).

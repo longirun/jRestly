@@ -94,3 +94,9 @@
   * **95.58% Line Coverage** (6,504 / 6,805);
   * **100.00% Method Coverage (1418/1418)**, **100.00% Class Coverage (143/143)**.
 - Дальше — хвосты `HttpTemplate` (`exchange`/`exchangeAsync`/`processResponse`) или концепт ADR-0066 (цикл 0.11.0).
+
+[2026-10-18 02:54] Агент (сессия #257): Антон, ещё одна «тихая» находка (35-я в серии) — на этот раз в Problem Details из ADR-0064:
+- *Находка:* сервер, отдающий Problem Detail тело с UTF-8 BOM (RFC 8259 §8.1 прямо разрешает опциональный BOM-префикс), молча терял структурированную ошибку: `resolveProblemDetail` отбрасывал тело на shape-проверке **до** любого codec'а (Java `trim()` не режет U+FEFF), а `ProblemDetail.fromJson` падал на той же проверке — оба call-site в `catch (Throwable ignored)`. На zero-dep classpath `@OnError`-маппинг деградировал до голых `forStatus(statusCode)` без title/detail/type.
+- *Fix:* BOM-нормализация в двух узких местах по одной строке (`fromJson` + pre-check); red-first 4 красных теста, всего +5 (1448/1448), ADR-0064 дополнен Amendment #257.
+- *Гейты:* **1448/1448** зелёные, новые рекорды JaCoCo: **83.45% Branch**, **95.88% Instruction**, **95.69% Line**; Method/Class — 100%.
+- Дальше — остаток `HttpTemplate` (`exchange`/`exchangeAsync`, хвосты `processResponse`) или концепт ADR-0066 для цикла 0.11.0.
