@@ -1,5 +1,33 @@
 # DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
+> **Сессия #256 (free-аудит `HttpTemplate`: пересечение Optional × стриминг, ADR-0023 × ADR-0015/0016 — реальный разрыв, найден и закрыт; гейт 1443/1443, BRANCH 83.34% и INSTRUCTION 95.82% — новые рекорды):**
+> свободный ход по хвосту непокрытых ветвей `HttpTemplate` (класс №1 в JaCoCo по missed
+> branches — 202, покрытие 77.95%).
+> 1. *Наблюдение:* ADR-0023 (Optional) и ADR-0015/0016 (стриминг) в коде и в тестах
+>    никогда не пересекались: стриминговые ветки `processResponse` возвращали сырые
+>    line/event-стримы **до** блока `if (optional)`, а тот покрывал только
+>    `Optional<InputStream>`-ногу. Итог: `Optional<Stream<String>>` /
+>    `Optional<Stream<ServerSentEvent>>` на успехе возвращали сырой `Stream` (→
+>    `ClassCastException` на типизированном присваивании у вызывающего), а на
+>    404/304 — сырой поток тела вместо `Optional.empty()`.
+> 2. *TDD red-first:* новый сьют `HttpTemplateOptionalStreamTest` (8 тестов, без
+>    WireMock — stub `HttpClient` по образцу `HttpTemplateStreamWireTest`): 5 красных
+>    (ноги бага — обёртка на 200 sync/async + события, 404/304 → `Optional.empty()`
+>    при закрытом стриме) + 3 зелёных (работающая `Optional<InputStream>`-нога +
+>    guard-тесты неизменного non-Optional поведения).
+> 3. *Fix:* в обеих стриминговых ветках `processResponse` при `optional == true`
+>    артефакт обёрнут `Optional.of(...)` на успехе; на 404/304/204 стрим закрывается
+>    (close проксируется: event-стрим → line-стрим → `closeQuietly(effectiveStream)`)
+>    и возвращается `Optional.empty()`. ADR-0023 дополнен `## Amendment #256`.
+> 4. *TDD и исторические гейты JaCoCo:*
+>    - Всего тестов: **1443 / 1443** green across all 5 modules (+8 тестов, 0 failures, 0 errors, 0 warnings under `-Werror`).
+>    - **JaCoCo Coverage:**
+>      * **CLASS:** **143 / 143 (100.00%)**; **METHOD:** **1418 / 1418 (100.00%)** — абсолютное 100% сохранено!
+>      * **BRANCH:** **3,698 / 4,437 (83.34%)** — новый исторический рекорд (+20 покрытых ветвей)!
+>      * **INSTRUCTION:** **29,996 / 31,304 (95.82%)** — новый исторический рекорд!
+>      * **LINE:** **6,516 / 6,815 (95.61%)** — новый исторический рекорд.
+>      * **COMPLEXITY:** **2,966 / 3,669 (80.84%)**.
+
 > **Сессия #255 (free-аудит `HttpTemplate` / завершение WIP прерванной #254: package-private seam `handleCacheResponse` + unit-матрица ADR-0063 cache-dispatch (11 тестов) и детерминированная zero-backoff ветвь async retry; гейт 1435/1435, Branch Coverage впервые пересёк 83% — 83.19%):**
 > свободный ход по хвосту непокрытых ветвей `HttpTemplate` (216 missed по данным #253).
 > #254 оборвалась до коммита (паттерн #155/#186): в дереве лежал WIP — main-код лишь

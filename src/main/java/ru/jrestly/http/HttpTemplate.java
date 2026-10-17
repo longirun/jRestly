@@ -853,6 +853,16 @@ class HttpTemplate {
                 Stream<String> lineStream = new BufferedReader(new InputStreamReader(effectiveStream, payloadCharset))
                         .lines()
                         .onClose(() -> closeQuietly(effectiveStream));
+                if (optional) {
+                    // ADR-0023 × ADR-0016: a missing resource is Optional.empty()
+                    // with the stream closed, never a stream to drain; success
+                    // wraps the artifact, never hands it over raw
+                    if (statusCode == 404 || statusCode == 304 || statusCode == 204) {
+                        lineStream.close();
+                        return (T) Optional.empty();
+                    }
+                    return (T) Optional.of(lineStream);
+                }
                 return (T) lineStream;
             }
             if (isStreamType(returnType, ServerSentEvent.class)) {
@@ -863,6 +873,16 @@ class HttpTemplate {
                         .lines()
                         .onClose(() -> closeQuietly(effectiveStream));
                 Stream<ServerSentEvent> eventStream = ServerSentEvent.parse(lineStream);
+                if (optional) {
+                    // ADR-0023 × ADR-0016: the same missing-resource rule as the
+                    // line stream — close propagates through the parser to the
+                    // wire stream
+                    if (statusCode == 404 || statusCode == 304 || statusCode == 204) {
+                        eventStream.close();
+                        return (T) Optional.empty();
+                    }
+                    return (T) Optional.of(eventStream);
+                }
                 return (T) eventStream;
             }
             // ADR-0015 Aspect 5: the payload line is skipped for stream

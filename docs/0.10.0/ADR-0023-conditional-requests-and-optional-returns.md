@@ -50,3 +50,14 @@ Extend `ru.jrestly.http.ResponseHeaders` with standard caching and condition con
 - **Developer Ergonomics**: Developers can declare clean `Optional<User>` query methods that naturally return `Optional.empty()` on 404 or empty responses, and perform conditional GETs with automatic 304 handling.
 - **Zero-Dependency**: Implemented purely on standard Java 21 platform classes (`java.util.Optional`, `java.time.format.DateTimeFormatter`, `java.time.Instant`).
 - **Backward Compatibility**: Existing methods returning domain types `T`, `void`, or primitive wrappers remain completely unaffected. Explicit `@ExpectStatus` and `@OnError` annotations continue to take precedence.
+
+## Amendment #256 (2026-10-18)
+
+The streaming leg of Decision 2 is now explicit: `Optional<Stream<String>>` and
+`Optional<Stream<ServerSentEvent>>` follow the same missing-resource rule — on
+`404`/`304`/`204` the body stream is closed and `Optional.empty()` is returned; on
+success the line/event stream is wrapped in `Optional.of(...)`. Previously the
+streaming branches of `HttpTemplate.processResponse` returned the raw stream before
+the `Optional` handling (which covered only the `Optional<InputStream>` leg), so the
+caller received a raw `Stream` — a `ClassCastException` at the typed assignment.
+Pinned by `HttpTemplateOptionalStreamTest`.
