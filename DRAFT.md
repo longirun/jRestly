@@ -1,5 +1,34 @@
 # DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
+> **Сессия #199 (free-аудит: `Jitter.DECORRELATED` в `ReconnectPolicy` снимал
+> `maxBackoff`):** свободный ход из контекста #198 (фонд «ADR против кода» по
+> принятым ADR'ам пройден — выбран аудит жизненного цикла/мутабельности). Под
+> фонарём оказался `ServerSentEventReconnector` (брошенный watchdog — уже
+> задокументированный non-goal ADR-0059 §3, не трогал) и его политика
+> задержек. Найден **реальный рассинхрон кода с нормативным пунктом Ф1**
+> («задержка … опционально экспоненциальный рост с `Jitter` … и `maxDelay`»)
+> и с javadoc самого `Jitter.DECORRELATED` (`min(maxBackoff, …)`):
+> `ReconnectPolicy.nextDelayMillis` строил «пол» декорализованного джиттера из
+> серверного `retry:` **до** обрезки потолком (`base = serverRetryMillis`, не
+> клампится) и при `range = ceiling - base <= 0` возвращал `base` как есть.
+> Следствие: `retry: 60000` при потолке 30 с парковал поток потребителя на всё
+> запрошенное время — тот же класс, что #184 («некапнутый Retry-After»), но в
+> джиттере реконнекта; `NONE`/`EQUAL`/`FULL` соблюдали кап (тянули из
+> клампнутого `bound`), расходился только `DECORRELATED`. Fix — пол клампится
+> (`min = min(max, base)`), розыгрыш из `[min, ceiling]`, `Math.min(max, min +
+> draw)` — зеркально уже безопасной ветке `RetryPolicy.nextDelayMillis`
+> (ADR-0040). TDD red-first: +2 теста (`decorrelatedJitterCappedByMaxBackoff`
+> — юнит-seam; `serverRetryAboveMaxBackoffDoesNotUncapReconnect` — сквозной,
+> `retry: 600` + `maxBackoff 100 мс`, `ReconnectInfo.delay() <= 100`), красные
+> на старом коде ровно по целевым ассертам (`60000 > 1000`, `600 > 100`) →
+> зелёные. ADR-0059 → Amendment #199. Гейт **1231/1231** (core 1151 +
+> engine-okhttp 25 + engine-apache5 25 + codec-jackson-xml 15 + benchmarks 15),
+> `./gradlew test javadoc` зелёный под `-Werror`, 0 warnings. Дальше —
+> test-javadoc батч №2 (`cookie`/`codec`/`compression`/`tracing`/`interceptor`)
+> или свободный аудит (`ModuleInfo`/`SimpleModuleInfo` — геттеры чисты,
+> `getEnvironment()` всегда свежий — задокументировано; `Environment`
+> `get/setAuthDetails` фактически не используются в main).
+>
 > **Сессия #198 (аудит: ADR-0035 целиком — ЧИСТЫЙ срез, пять нормативных
 > стыков закреплены предохранителями):** 17-й срез нити «ADR против кода»,
 > свет ADR-0035 (стриминг тела запроса) — последний нехоженый ADR из

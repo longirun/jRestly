@@ -210,10 +210,16 @@ public final class ReconnectPolicy {
                 yield diff > 0 ? half + random.nextLong(diff + 1) : half;
             }
             case DECORRELATED -> {
-                long prev = previousDelayMillis <= 0 ? base : previousDelayMillis;
-                long ceiling = Math.min(maxBackoff.toMillis(), Math.max(base, Math.round(prev * 3.0)));
-                long range = ceiling - base;
-                yield range > 0 ? base + random.nextLong(range + 1) : base;
+                // The decorrelated floor is the server hint (or initialBackoff), but the
+                // whole draw must stay within maxBackoff: an unbounded server retry: must
+                // never uncap the wait (ADR-0040/ADR-0059 phase 1).
+                long max = maxBackoff.toMillis();
+                long min = Math.min(max, base);
+                long prev = previousDelayMillis <= 0 ? min : previousDelayMillis;
+                long ceiling = Math.min(max, Math.max(min, Math.round(prev * 3.0)));
+                long range = ceiling - min;
+                long draw = range > 0 ? random.nextLong(range + 1) : 0;
+                yield Math.min(max, min + draw);
             }
             case FULL -> random.nextLong(bound + 1);
         };

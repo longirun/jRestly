@@ -337,3 +337,34 @@ gzip` + `Trailer: X-Checksum` + `HTTP_2` + supplier). Код ядра не ме�
 транспорта, иерархия `@HttpVersion`, инспекция `ResponseHeaders`,
 `CallMetrics.version()`, платформенные границы) — рассинхронов нет.
 
+## Amendment #199 — Ф1: `Jitter.DECORRELATED` снимал `maxBackoff` при серверном `retry:` выше потолка
+
+Свободный аудит (сессия #199, свет Ф1): найден **реальный рассинхрон
+кода с нормативным пунктом Ф1** («задержка … опционально экспоненциальный
+рост с `Jitter` … и `maxDelay`») и с javadoc самого `Jitter.DECORRELATED`
+(`sleep = min(maxBackoff, random(initialBackoff, previousSleep * 3))`).
+
+`ReconnectPolicy.nextDelayMillis` строил «пол» декорализованного джиттера
+из серверного `retry:` **до** обрезки потолком: `base =
+serverRetryMillis` (не клампится), и при `range = ceiling - base <= 0`
+возвращал `base` как есть. Следствие: сервер, попросивший `retry:` больше
+`maxBackoff` (например `retry: 60000` при потолке 30 с), парковал поток
+потребителя на **всё запрошенное время** — воспроизведение класса #184
+(«некапнутый `Retry-After`»), но в джиттере реконнекта. Для `NONE`/`EQUAL`/
+`FULL` пункт соблюдался (тянули из уже клампнутого `bound`); расходился
+только `DECORRELATED` — и только когда `retry:` > `maxBackoff`.
+
+Fix: пол клампится потолком (`min = min(maxBackoff, base)`), розыгрыш —
+из `[min, ceiling]`, результат — `Math.min(maxBackoff, min + draw)` —
+зеркально уже безопасной ветке `RetryPolicy.nextDelayMillis` (ADR-0040).
+Поведение всех остальных сочетаний не изменилось (`base <= maxBackoff` →
+`min == base`).
+
+TDD red-first: +2 теста в `ServerSentEventReconnectTest`
+(`decorrelatedJitterCappedByMaxBackoff` — юнит на seam;
+`serverRetryAboveMaxBackoffDoesNotUncapReconnect` — сквозной:
+`retry: 600` + `maxBackoff 100 мс`, `ReconnectInfo.delay() <= 100`),
+красные на старом коде ровно по целевым ассертам (`60000 > 1000`,
+`600 > 100`), зелёные после. Гейты: **1231/1231**, `./gradlew test javadoc`
+зелёный под `-Werror`, 0 warnings.
+

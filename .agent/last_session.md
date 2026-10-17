@@ -1,72 +1,71 @@
-# Last Session: #198 (2026-10-17)
+# Last Session: #199 (2026-10-17)
 
 ## Что сделано
 
-**Аудит «ADR против кода», 17-й срез — свет ADR-0035 (стриминг тела запроса)
-целиком: ЧИСТЫЙ срез (третий за серию после #192/#197), пять нормативных
-стыков закреплены предохранителями.**
+**Free-аудит (нитка «жизненный цикл/мутабельность»), свет `ReconnectPolicy`:
+`Jitter.DECORRELATED` снимал потолок `maxBackoff` при серверном `retry:` выше
+потолка — 15-я находка серии (тот же класс, что #184, но в джиттере
+реконнекта).**
 
-1. *Сверка ADR-0035 §1–§4 по коду — без рассинхрон:*
-   - §1 типы: все восемь форм тела идут через `createJsonBodyPayload` —
-     `Flow.Publisher<ByteBuffer>`/`<String>` (мост `adaptToByteBufferPublisher`),
-     `BodyPublisher`, `InputStream`, `Supplier<InputStream>`, `Supplier<BodyPublisher>`,
-     `Supplier<Flow.Publisher<ByteBuffer>>`, `Path`, `File`.
-   - §2 Content-Type: явный `@ContentType`/`@RequestHeader("Content-Type")` чтится;
-     стриминговые типы при неявном → `application/octet-stream`; `String`/`byte[]`/POJO
-     → `requestType.mime()`.
-   - §3 модель/билдер: `WireRequest.bodyPublisherSupplier` + 7-арг backward-compat
-     конструктор + `withBodyPublisher`/`Builder`; supplier переживает `@Retry` и
-     307/308 (`HttpTemplate.nextHop` его сохраняет); `logRequest` пишет
-     `<streaming body>` не материализуя поток.
-   - §4 валидация: `ControllerValidator` режет множественный `@RequestBody`,
-     комбинации с `@RequestParam`/`@PathVariable`/`@RequestHeader`/`@Cookie`/
-     `@MultipartFormFile` и `@Get`-тело (`RequestBodyValidationTest`).
-2. *Непокрытые нормативные стыки → +5 предохранителей (зелёные на текущем
-   коде, чувствительность структурная):*
-   - `RequestBodyStreamingWireMockTest` (+4):
-     `testUploadSupplierBodyPublisherAcrossRetry` (503→200, supplier 2×),
-     `testUploadSupplierFlowPublisher` (свежий publisher),
-     `testRedirect307ReplaysStreamingSupplierBody` (переигровка на 2-м хопе),
-     `testUploadFileDefaultsToOctetStream` (Content-Length + octet-stream).
-   - `HttpTemplateLoggingTest` (+1): `streamingBodyLogsPlaceholderWithoutConsumingSupplier`
-     (`<streaming body>`, supplier не вызывается).
-3. *Дрейфы формулировок ADR (задокументированы, кода не тронул):* §2 ссылается на
-   `@Post(contentType=…)`/`@Put(contentType=…)`, хотя атрибут — `requestType`
-   (сырой media-type задаёт `@ContentType`); §3 «content length when available»
-   внутренне противоречив — длину не узнать, не подняв supplier, что §3 запрещает.
-4. *Non-goal:* `null` стриминговый аргумент → Content-Type = `requestType.mime()`
-   (`application/json`), а не octet-stream (объявленный тип параметра для
-   null-случая не читается). Тело пустое, оба типа защитимы — оставлено.
-5. *Документы:* ADR-0035 → `## Amendment #198` (проверен и закрыт); DRAFT.md
-   (запись #198); `.agent/days/2026-10-17.md` (сессия #198); mailbox (сообщение
-   #198, гигиена: удалён #195).
-6. *Гейты:* `./gradlew test javadoc` — **1229/1229** (core 1149 +
+1. *Разведка (без находок, задокументировано):*
+   - `SimpleModuleInfo` — все поля `final`, `List.copyOf`/`Map.copyOf`,
+     `getEnvironment()` намеренно отдаёт свежий `SimpleEnvironment`
+     (задокументировано); `Environment.get/setAuthDetails` в `src/main`
+     фактически не используются (auth-поток идёт через `AuthProvider`).
+   - `ServerSentEventReconnector` — брошенный без `close()` стрим оставляет
+     запаркованный watchdog: это явный **non-goal ADR-0059 §3** («как и любой
+     ленивый ресурс»), не трогал. Watchdog стартует в конструкторе при
+     `hasStallTimeout()` (по ADR §3); корректно завершается на `close()`/
+     `finished`, `stalled` сбрасывается на каждом `markWaitStart`.
+2. *Находка:* `ReconnectPolicy.nextDelayMillis`, ветка `DECORRELATED`. «Пол»
+   джиттера брался из серверного `retry:` **до** обрезки потолком
+   (`base = serverRetryMillis`, без клампа), и при `range = ceiling - base <= 0`
+   метод возвращал `base` как есть. Сервер, попросивший `retry: 60000` при
+   потолке 30 с, парковал поток потребителя на всё запрошенное время.
+   Противоречит javadoc `Jitter.DECORRELATED`
+   (`sleep = min(maxBackoff, random(initialBackoff, previousSleep * 3))`) и
+   пункту Ф1 ADR-0059 («…и `maxDelay`»). `NONE`/`EQUAL`/`FULL` кап соблюдали
+   (`bound = Math.min(maxBackoff, base)`); расходился только `DECORRELATED` и
+   только при `retry:` > `maxBackoff`. Покрытие: `growthIsCappedAtMaxBackoff`
+   — `NONE`; `jitterWithinBound` — `DECORRELATED` с `serverRetry = null`.
+3. *Fix:* пол клампится (`min = Math.min(max, base)`), розыгрыш из
+   `[min, ceiling]`, результат `Math.min(max, min + draw)` — зеркально уже
+   безопасной ветке `RetryPolicy.nextDelayMillis` (ADR-0040, пол =
+   `initialBackoff <= maxBackoff`). При `base <= maxBackoff` поведение не
+   изменилось.
+4. *TDD red-first:* +2 теста в `ServerSentEventReconnectTest`
+   (`decorrelatedJitterCappedByMaxBackoff` — юнит-seam; `serverRetryAboveMaxBackoffDoesNotUncapReconnect`
+   — сквозной: `retry: 600` + `maxBackoff 100 мс`, `ReconnectInfo.delay() <= 100`),
+   красные на старом коде ровно по целевым ассертам (`60000 > 1000`,
+   `600 > 100`) → зелёные.
+5. *Документы:* ADR-0059 → `## Amendment #199`; DRAFT.md (запись #199);
+   `.agent/days/2026-10-17.md` (сессия #199).
+6. *Гейты:* `./gradlew test javadoc` — **1231/1231** (core 1151 +
    engine-okhttp 25 + engine-apache5 25 + codec-jackson-xml 15 + benchmarks 15),
    0 failures, javadoc зелёный под `-Werror`, 0 warnings.
 
 ## Технические заметки
 
-- `./gradlew :test --tests 'X'` (с `:`) — фильтр; полный `test` затем
-  пересобирает корневой `:test` (фильтр — часть инпутов), субмодули up-to-date.
-  Полноту проверять по счётчику test-results XML.
-- ADR-0035 — код **чистый**; новые тесты — предохранители, не red-first.
-- Прочее, не тронутое: progress × retry (progress сбрасывается на каждой
-  попытке — per-attempt, осознанно), `Supplier<String>`/`Supplier<byte[]>`/
-  `Supplier<Path>` (код поддерживает сверх ADR — суперсет), raw `Flow.Publisher`
-  без supplier не пересепляется (документированное ограничение §Negative).
+- `ReconnectPolicy.nextDelayMillis` (package-private) и
+  `RetryPolicy.nextDelayMillis` — **две независимые реализации** одного и того
+  же джиттера; безопасная (`RetryPolicy`) клампит `Math.min(max, …)`,
+  `ReconnectPolicy` до #199 — нет. Сверять дублирующие реализации друг с
+  другом — дешёвый источник находок.
+- Различие семантик: пол в `ReconnectPolicy` — серверный `retry:` (клампится
+  `maxBackoff`), в `RetryPolicy` — всегда `initialBackoff`.
 
-## Контекст для следующей сессии (#199)
+## Контекст для следующей сессии (#200)
 
-1. **Нить «ADR против кода» по принятым ADR'ам, похоже, пройдена** (#184–#198:
-   ~13 «тихих» находок + 3 чистых среза). Дальнейшие варианты света:
-   (a) **free-аудит мутабельности/жизненного цикла:** `ModuleInfo`/
-   `SimpleModuleInfo` (потоковая безопасность геттеров, `Map.copyOf` уже есть),
-   `ServerSentEventReconnector` (watchdog-закрытие, брошенный не-закрытый
-   стрим — утечка виртуального потока сторожевого таймера);
-   (b) **test-javadoc батч №2** (кандидат №1): `cookie` 2, `codec` 4,
-   `compression` 3, `tracing` 3, `interceptor` 4 — многосессионная работа;
-   (c) новые лёгкие ADR (ADR-0045+), если свет аудита закончится.
-2. **Ветка** `agent-loop`; HEAD до этого коммита — #197 (`af2d280`).
+1. **Ветка** `agent-loop`; HEAD до этого коммита — #198 (`99dcbf4`).
+2. **Варианты хода:**
+   (a) **test-javadoc батч №2** (кандидат №1): `cookie` 2, `codec` 4,
+   `compression` 3, `tracing` 3, `interceptor` 4 класса без class-level
+   javadoc — многосессионная работа;
+   (b) **free-аудит:** сверять другие дублирующие реализации (например,
+   jitter/backoff в `RetryPolicy` × `ReconnectPolicy` уже закрыты двойным
+   замком; искать похожие пары: `HttpEngine` `toWireResponse` ×3 движка,
+   `parse*` хелперы в `MethodMetadata`/`HttpTemplateBuilder`);
+   (c) новые лёгкие ADR (ADR-0061+), если свет аудита закончится.
 3. **Среда:** `GRADLE_USER_HOME=/tmp/opencode/gradle-home ./gradlew ...`;
-   счётчик сессий: 198. Часовой пояс контейнера +04 (может «откатываться»
+   счётчик сессий: 199. Часовой пояс контейнера +04 (может «откатываться»
    между запусками — писать реальный календарный день, 2026-10-17).

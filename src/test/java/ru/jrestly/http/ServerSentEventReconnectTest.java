@@ -270,6 +270,51 @@ class ServerSentEventReconnectTest {
     }
 
     @Test
+    @DisplayName("DECORRELATED jitter stays capped by maxBackoff when the server retry: exceeds it")
+    void decorrelatedJitterCappedByMaxBackoff() {
+        ReconnectPolicy policy = ReconnectPolicy.builder()
+                .initialBackoff(Duration.ofMillis(100))
+                .maxBackoff(Duration.ofMillis(1000))
+                .jitter(Jitter.DECORRELATED)
+                .build();
+        java.util.Random random = new java.util.Random(42);
+
+        // A server retry: of 60 s is far beyond the 1 s cap: it must never uncap the wait.
+        long first = policy.nextDelayMillis(1, 60_000L, 0L, random);
+        assertTrue(first >= 100 && first <= 1000, "decorrelated wait out of [100, 1000]: " + first);
+
+        // Even when the previous delay itself exceeded the cap, the result stays capped.
+        long second = policy.nextDelayMillis(2, 60_000L, 60_000L, random);
+        assertTrue(second >= 100 && second <= 1000, "decorrelated wait out of [100, 1000]: " + second);
+    }
+
+    @Test
+    @DisplayName("a server retry: above maxBackoff never uncaps a DECORRELATED reconnect wait")
+    void serverRetryAboveMaxBackoffDoesNotUncapReconnect() {
+        List<ReconnectInfo> infos = new ArrayList<>();
+        AtomicInteger opens = new AtomicInteger();
+        Function<String, Stream<ServerSentEvent>> opener = lastEventId -> {
+            if (opens.getAndIncrement() == 0) {
+                // The server suggests 600 ms between reconnects, then the connection dies.
+                return oneThenFail(new ServerSentEvent("1", "message", "one", 600L), "connection reset");
+            }
+            return Stream.of(ServerSentEvent.ofData("[DONE]"));
+        };
+        ReconnectPolicy policy = ReconnectPolicy.builder()
+                .maxAttempts(1)
+                .initialBackoff(Duration.ofMillis(100))
+                .maxBackoff(Duration.ofMillis(100))
+                .jitter(Jitter.DECORRELATED)
+                .onReconnect(infos::add)
+                .build();
+
+        assertEquals(List.of("one", "[DONE]"), dataOf(ServerSentEvent.reconnecting(opener, policy)));
+        assertEquals(1, infos.size());
+        assertTrue(infos.getFirst().delay().toMillis() <= 100L,
+                "decorrelated reconnect wait must honour maxBackoff, got " + infos.getFirst().delay());
+    }
+
+    @Test
     @DisplayName("[DONE] ends the stream immediately when stopOnDone is on (default)")
     void doneStopsStreamAndReconnect() {
         AtomicInteger opens = new AtomicInteger();
