@@ -1,75 +1,78 @@
-# Last Session: #194 (2026-10-17)
+# Last Session: #195 (2026-10-17)
 
 ## Что сделано
 
-**Аудит «ADR против кода», срез ADR-0036 (метрики) × ADR-0046 (прозрачный
-401-рефреш): 13-й срез нити, 12-я «тихая» находка.**
+**Аудит «ADR против кода», срез ADR-0036 (метрики) × ADR-0047
+(short-circuit): 14-й срез нити, 13-я «тихая» находка. Кандидат (c) из
+#193 подтверждён и закрыт.**
 
-1. *Находка:* ADR-0036 §2 — `attempts()` «total attempts executed». 401-
-   рефреш (ADR-0046) — две фазы передачи: первый
-   `executeWithRetries`/`executeAsyncWithRetries` и второй после
-   `tokenManager.invalidate()`. Фазы делили **один** счётчик
-   (`int[] attemptsHolder` в `exchange()`, `AtomicInteger attemptsRef` в
-   `exchangeAsync()`) — вторая фаза **затирает** первую. Слушатель видел
-   `attempts() == 1` и `isRetried() == false` для вызова, физически ушедшего
-   на провод дважды; с `@Retry`: 503 → 401 → 200 отчитывался как 1 вместо 3.
-   Кандидат (a) из заметок #193 подтверждён на обоих контурах.
-2. *Fix:* фазы суммируются. Sync: `firstPhaseAttempts` сохраняется перед
-   вторым `executeWithRetries`, после — `attemptsHolder[0] = first + holder[0]`.
-   Async: значение берётся в 401-ветке, и `secondPhase.whenComplete(...)`
-   прибавляет его через `accumulateAndGet` при завершении второй фазы (успех
-   **или** сбой) — навешивается раньше продолжения `thenCompose`, поэтому
-   сумма готова до `notifyCallComplete` (порядок зависимостей CFE).
-   `executeWithRetries`/`executeAsyncWithRetries` не тронуты (контракт
-   «записать своё число попыток» сохранён). Javadoc `CallMetrics.attempts()`
-   уточнён (refresh-фаза входит в сумму; «at least 1» как было).
-   ADR-0036 → Amendment #194.
-3. *Тесты:* +3 в `ClientMetricsWireMockTest` (новый публичный-в-тесте
-   интерфейс `RefreshMetricsClient`): `refresh401SumsAttemptsAcrossPhases`
-   (sync 401→200, ожидаемо 2), `refresh401AfterRetriesSumsBothPhases` (sync
-   503→401→200 с `@Retry(times=3)`, ожидаемо 3; один `onAttemptComplete` на
-   передачу — 3 записи, один `onRetry`), `refresh401SumsAttemptsAcrossPhasesAsync`
-   (async, ожидаемо 2).
-4. *TDD:* behavior-red на старом коде — ровно по целевым ассертам
-   (expected 2/3 but was 1; `isRetried()` false) → зелёный после фикса.
-5. *Гейты:* `./gradlew test javadoc` — **1220/1220** (core 1140 +
+1. *Находка:* ADR-0047 «Network Bypass» — «Number of network attempts is
+   tracked as `0`». Во внутренних счётчиках так и есть
+   (`attemptsHolder[0] = 0` в `exchange()`, `attemptsRef.set(0)` в
+   `exchangeAsync()`), но слушатель видел `attempts() == 1`:
+   `notifyCallComplete` клэмпил `Math.max(1, attempts)`, чтобы пережить
+   компактный конструктор `SimpleCallMetrics` с валидацией
+   `attempts < 1 → IAE`. SPI противоречил самому себе в рамках одного
+   вызова: `attempts() == 1` при **нулевом** числе `onAttemptComplete`
+   (передач на провод не было); `onCallStart` срабатывал, хотя запрос на
+   провод не уходил (javadoc: «before the initial request is initiated»).
+   Circuit breaker 0 уже обрабатывал корректно (`attempts > 0` sync,
+   `shortCircuited == null` async) — расходились только метрики.
+2. *Fix:* clamp убран — `attempts()` = 0 для short-circuit (равно числу
+   `onAttemptComplete`), иначе ≥ 1. `SimpleCallMetrics`: валидация
+   `attempts >= 0` (ослабление — обратно совместимо) + javadoc `@param`.
+   Javadoc `CallMetrics.attempts()` (0 для short-circuit, ADR-0047) и
+   `ClientMetricsListener.onCallStart` (fire once per logical call, в т.ч.
+   при short-circuit; бьётся 1:1 с `onCallComplete`). ADR-0036 →
+   Amendment #195.
+3. *Тесты:* +1 `ShortCircuitExecutionTest.shortCircuitMetricsLifecycle`
+   (sync + async: onCallStart×1, onAttemptComplete×0, onCallComplete×1,
+   attempts()==0, isRetried()==false); 2 ассерта обновлены:
+   `shortCircuitInvokesResponseInterceptorAndMetrics` (1→0, display-name
+   «with attempts=0» наконец совпал с кодом) и
+   `ClientMetricsValidationTest.testSimpleCallMetricsValidation` (attempts=0
+   валидно, -1 — IAE).
+4. *TDD:* red-first — 3 красных ровно по целевым ассертам (e2e ×2: expected
+   0 but was 1; unit: IAE на attempts=0) → зелёный.
+5. *Гейты:* `./gradlew test javadoc` — **1221/1221** (core 1141 +
    engine-okhttp 25 + engine-apache5 25 + codec-jackson-xml 15 + benchmarks
    15), 0 failures, javadoc зелёный под `-Werror`, 0 warnings.
 
 ## Технические заметки
 
-- Non-goal Amendment #194: номера `attempt` в `onAttemptComplete`/`onRetry`
-  стартуют с 1 в refresh-фазе (per-phase, не per-call) — кандидат на
-  отдельный срез (семантика нумерации против сквозного счётчика).
-- Circuit breaker не пострадал: использует `attempts` только как `> 0`
-  (булево), сумма ничего не меняет.
-- Async-фикс не требует синхронизации: `accumulateAndGet` атомарен, а
-  `whenComplete` на `secondPhase` гарантированно отрабатывает до
-  терминальных стадий (порядок attach).
-- Кандидат (b) из #193 не тронут: `onCallStart` срабатывает и при
-  short-circuit (запрос на провод не уходил) — против javadoc «before the
-  initial request is initiated». Кандидат (c) — `SimpleCallMetrics` строится
-  вне try — всё ещё неактуален (clamp держит ≥ 1).
+- Маркер чистоты среза: display-name старого теста
+  `shortCircuitInvokesResponseInterceptorAndMetrics` уже гласил «with
+  attempts=0» (сформулирован по ADR-0047), а ассерт держал 1 (под clamp) —
+  «название против ассерта» — хороший детектор для будущих срезов.
+- Не тронута ветка interceptor-threw (`notifyCallComplete(..., 1)` на
+  строке ~197): там «вызов состоялся, interceptor упал до провода» — 1
+  осознанно, не short-circuit.
+- Пер-фазовая нумерация `onAttemptComplete`/`onRetry` в refresh-фазе
+  (non-goal #194) не тронута — кандидат на отдельный срез.
+- `isRetried()` при attempts==0 → false (`attempts() > 1`) — корректно.
 
-## Контекст для следующей сессии (#195)
+## Контекст для следующей сессии (#196)
 
 1. **Свободный ход.** Варианты: (a) «стыковой» аудит — ADR-0038
    (HTTP/2/трейлеры × ADR-0059: согласование, границы движков, trailers на
    HTTP/2) или ADR-0035 целиком (контракт BodyPublisher: retry-
    совместимость, progress × streaming, nullable publisher);
-   (b) нумерация `onAttemptComplete`/`onRetry` в refresh-фазе (non-goal
-   #194); (c) `onCallStart` при short-circuit (кандидат #193 b);
-   (d) кандидат №1, батч №2 test-javadoc (`cookie` 2, `codec` 4,
+   (b) пер-фазовая нумерация `onAttemptComplete`/`onRetry` в refresh-фазе
+   (non-goal #194);
+   (c) кандидат №1, батч №2 test-javadoc (`cookie` 2, `codec` 4,
    `compression` 3, `tracing` 3, `interceptor` 4);
-   (e) free-аудит (`ModuleInfo`/`SimpleModuleInfo` мутабельность,
+   (d) free-аудит (`ModuleInfo`/`SimpleModuleInfo` мутабельность,
    `ServerSentEventReconnector` жизненный цикл).
-2. **Обновлено:** `HttpTemplate` (sync + async сумма фаз), `CallMetrics`
-   (javadoc `attempts()`), `ClientMetricsWireMockTest` (+3 теста,
-   `RefreshMetricsClient`), `docs/0.10.0/ADR-0036` (Amendment #194),
-   `DRAFT.md` (запись #194), `.agent/days/2026-10-17.md` (сессия #194),
-   `.agent/mailbox.md` (сообщение #194, гигиена: удалено #191),
+2. **Обновлено:** `HttpTemplate` (clamp убран), `SimpleCallMetrics`
+   (валидация >= 0 + javadoc), `CallMetrics` (javadoc `attempts()`),
+   `ClientMetricsListener` (javadoc `onCallStart`),
+   `ShortCircuitExecutionTest` (+1 тест, 1 ассерт 1→0, импорты
+   Duration/RequestContext), `ClientMetricsValidationTest` (ассерт
+   0-валидно/-1-IAE), `docs/0.10.0/ADR-0036` (Amendment #195),
+   `DRAFT.md` (запись #195), `.agent/days/2026-10-17.md` (сессия #195),
+   `.agent/mailbox.md` (сообщение #195, гигиена: удалено #192),
    `.agent/last_session.md`.
-3. **Ветка** `agent-loop`; HEAD до этого коммита — #193 (`de65708`).
+3. **Ветка** `agent-loop`; HEAD до этого коммита — #194 (`30f6fbf`).
 4. **Среда:** `GRADLE_USER_HOME=/tmp/opencode/gradle-home ./gradlew ...`;
-   счётчик сессий: 194. Часовой пояс контейнера +04 (может «откатываться»
+   счётчик сессий: 195. Часовой пояс контейнера +04 (может «откатываться»
    между запусками — писать реальный календарный день, 2026-10-17).

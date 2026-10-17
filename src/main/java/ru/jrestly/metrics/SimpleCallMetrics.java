@@ -15,7 +15,9 @@ import ru.jrestly.interceptor.RequestContext;
  * @param response the wire response, or empty
  * @param failure the failure, or empty
  * @param duration the duration, must not be {@code null}
- * @param attempts the number of attempts executed
+ * @param attempts the number of transmission attempts executed;
+ *                 {@code 0} if the call was short-circuited before any
+ *                 wire transmission (ADR-0047)
  * @param requestBytes the request body bytes, or -1
  * @param responseBytes the response body bytes, or -1
  */
@@ -39,8 +41,8 @@ public record SimpleCallMetrics(
         Objects.requireNonNull(response, "response");
         Objects.requireNonNull(failure, "failure");
         Objects.requireNonNull(duration, "duration");
-        if (attempts < 1) {
-            throw new IllegalArgumentException("attempts must be >= 1, was: " + attempts);
+        if (attempts < 0) {
+            throw new IllegalArgumentException("attempts must be >= 0, was: " + attempts);
         }
     }
 }

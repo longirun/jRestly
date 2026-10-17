@@ -129,3 +129,32 @@ the transparent 401-refresh phase. E2E-gated:
 `refresh401SumsAttemptsAcrossPhasesAsync` (async). Known refinement
 (non-goal here): the per-transmission `onAttemptComplete`/`onRetry`
 numbers restart at 1 in the refresh phase (per-phase, not per-call).
+
+## Amendment #195
+
+2026-10-17 · Session #195 (audit slice: ADR-0036 × ADR-0047, the
+short-circuit path under an active metrics listener).
+
+ADR-0047's Network Bypass clause declares «Number of network attempts is
+tracked as `0`» for a short-circuited call — true on the internal counters
+(`attemptsHolder[0] = 0` / `attemptsRef.set(0)`) — yet the listener-visible
+`attempts()` reported **1**: `HttpTemplate.notifyCallComplete` clamped the
+count with `Math.max(1, attempts)` to survive the `SimpleCallMetrics`
+compact constructor, which rejected `0`. The SPI contradicted itself inside
+one logical call: `attempts() == 1` while `onAttemptComplete` fired **zero**
+times (no transmission occurred), and `onCallStart` — documented
+«immediately before the initial request is initiated» — fired although the
+request never reached the wire.
+
+Resolution: the true transmission count is now reported — `attempts()` is
+`0` for a short-circuited call (matching ADR-0047 and the number of
+`onAttemptComplete` callbacks) and at least 1 otherwise. `SimpleCallMetrics`
+accepts `attempts >= 0` (relaxed validation, backward compatible); the
+`onCallStart` javadoc states it fires once per logical call, also when the
+call turns out short-circuited, pairing 1:1 with `onCallComplete` (in-flight
+gauges stay balanced). E2E-gated:
+`ShortCircuitExecutionTest.shortCircuitMetricsLifecycle` (sync + async:
+onCallStart x1, onAttemptComplete x0, onCallComplete x1, `attempts() == 0`,
+`isRetried() == false`) and the updated
+`shortCircuitInvokesResponseInterceptorAndMetrics`; unit gate:
+`ClientMetricsValidationTest` (attempts = 0 accepted, -1 rejected).

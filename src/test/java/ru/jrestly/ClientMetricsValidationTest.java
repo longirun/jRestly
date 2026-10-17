@@ -189,8 +189,14 @@ class ClientMetricsValidationTest {
         assertThrows(NullPointerException.class, () -> new SimpleCallMetrics(
                 context, wireReq, Optional.empty(), Optional.empty(), null, 1, 0, 0
         ));
-        assertThrows(IllegalArgumentException.class, () -> new SimpleCallMetrics(
+        // ADR-0036 Amendment #195: a short-circuited call (ADR-0047)
+        // executed no transmissions and reports attempts() == 0
+        CallMetrics shortCircuited = new SimpleCallMetrics(
                 context, wireReq, Optional.empty(), Optional.empty(), Duration.ofMillis(10), 0, 0, 0
+        );
+        assertEquals(0, shortCircuited.attempts());
+        assertThrows(IllegalArgumentException.class, () -> new SimpleCallMetrics(
+                context, wireReq, Optional.empty(), Optional.empty(), Duration.ofMillis(10), -1, 0, 0
         ));
     }
 

@@ -42,7 +42,10 @@ public interface ClientMetricsListener {
     void onCallComplete(CallMetrics metrics);
 
     /**
-     * Invoked immediately before the initial request is initiated.
+     * Invoked once at the start of a logical call, immediately before the
+     * first transmission is placed on the wire. Also invoked when a request
+     * interceptor short-circuits the call, so that no wire transmission ever
+     * occurs — it pairs 1:1 with {@link #onCallComplete}.
      * Useful for starting a tracing span or incrementing in-flight request gauges.
      *
      * @param context the request context containing method metadata and attributes

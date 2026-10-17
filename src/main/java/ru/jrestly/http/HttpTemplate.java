@@ -606,13 +606,15 @@ class HttpTemplate {
             Duration duration = Duration.ofNanos(System.nanoTime() - startNanos);
             long reqBytes = computeRequestBytes(request);
             long respBytes = computeResponseBytes(response);
+            // ADR-0036 Amendment #195: report the true transmission count —
+            // 0 for a short-circuited call (ADR-0047), no clamp to 1
             SimpleCallMetrics metrics = new SimpleCallMetrics(
                     context,
                     request,
                     Optional.ofNullable(response),
                     Optional.ofNullable(failure),
                     duration,
-                    Math.max(1, attempts),
+                    attempts,
                     reqBytes,
                     respBytes
             );

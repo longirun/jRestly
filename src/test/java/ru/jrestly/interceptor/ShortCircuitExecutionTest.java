@@ -2,6 +2,7 @@ package ru.jrestly.interceptor;
 
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
@@ -23,6 +24,7 @@ import ru.jrestly.http.Header;
 import ru.jrestly.http.ResponseHeaders;
 import ru.jrestly.http.WireRequest;
 import ru.jrestly.http.WireResponse;
+import ru.jrestly.interceptor.RequestContext;
 import ru.jrestly.metrics.CallMetrics;
 import ru.jrestly.metrics.ClientMetricsListener;
 
@@ -237,8 +239,58 @@ class ShortCircuitExecutionTest {
         assertEquals("Observed", user.name());
         assertNotNull(observedResponse.get());
         assertEquals("true", observedResponse.get().header("X-Synthetic").orElse(null));
-        assertEquals(1, observedAttempts.get(), "Logical call attempts should be 1");
+        assertEquals(0, observedAttempts.get(), "Short-circuited call executed no transmissions (ADR-0047)");
         assertEquals(200, observedStatus.get(), "Metrics status code should be 200");
+    }
+
+    @Test
+    @DisplayName("Short-circuit metrics lifecycle: onCallStart x1, onAttemptComplete x0, onCallComplete x1 per call (sync + async)")
+    void shortCircuitMetricsLifecycle() throws Exception {
+        AtomicInteger callStarts = new AtomicInteger();
+        AtomicInteger attemptCompletes = new AtomicInteger();
+        AtomicInteger callCompletes = new AtomicInteger();
+        AtomicInteger observedAttempts = new AtomicInteger(-1);
+        AtomicBoolean observedRetried = new AtomicBoolean(true);
+
+        client = JRestlyClient.builder()
+                .baseUrl("http://127.0.0.1:65534")
+                .mock(WireResponse.of(200, "{\"id\":5,\"name\":\"Lifecycle\"}"))
+                .metricsListener(new ClientMetricsListener() {
+                    @Override
+                    public void onCallComplete(CallMetrics metrics) {
+                        callCompletes.incrementAndGet();
+                        observedAttempts.set(metrics.attempts());
+                        observedRetried.set(metrics.isRetried());
+                    }
+
+                    @Override
+                    public void onCallStart(RequestContext context, WireRequest request) {
+                        callStarts.incrementAndGet();
+                    }
+
+                    @Override
+                    public void onAttemptComplete(
+                            RequestContext context,
+                            WireRequest request,
+                            int attempt,
+                            Optional<WireResponse> response,
+                            Optional<Throwable> failure,
+                            Duration duration
+                    ) {
+                        attemptCompletes.incrementAndGet();
+                    }
+                })
+                .build();
+
+        MockService service = client.get(MockService.class);
+        assertEquals("Lifecycle", service.getUser(5).name());
+        assertEquals("Lifecycle", service.getUserAsync(5).get().name());
+
+        assertEquals(2, callStarts.get(), "onCallStart fires once per logical call");
+        assertEquals(0, attemptCompletes.get(), "no wire transmission, hence no onAttemptComplete");
+        assertEquals(2, callCompletes.get(), "onCallComplete fires once per logical call");
+        assertEquals(0, observedAttempts.get(), "attempts() reports 0 for short-circuited calls (ADR-0047)");
+        assertFalse(observedRetried.get(), "0 attempts is not a retry");
     }
 
     public static class DeclarativeMockInterceptor implements ShortCircuitInterceptor {

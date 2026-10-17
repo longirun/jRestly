@@ -1,5 +1,37 @@
 # DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
+> **Сессия #195 (аудит: ADR-0036 × ADR-0047 — short-circuit скрывал нулевой
+> счётчик попыток: `attempts()` клэмпился до 1):** 14-й срез нити «ADR против
+> кода» — стык ADR-0036 (метрики) × ADR-0047 (short-circuit), кандидат (c) из
+> заметок #193 подтверждён. ADR-0047 «Network Bypass» прямо говорит: «Number
+> of network attempts is tracked as 0» — во внутренних счётчиках так и есть
+> (`attemptsHolder[0] = 0` / `attemptsRef.set(0)`), но слушатель видел
+> `attempts() == 1`: `notifyCallComplete` клэмпил значение
+> `Math.max(1, attempts)`, чтобы пережить компактный конструктор
+> `SimpleCallMetrics`, отбрасывавший 0. SPI противоречил самому себе в рамках
+> одного вызова: `attempts() == 1` при **нулевом** числе `onAttemptComplete`
+> (передач на провод не было) — и `onCallStart` срабатывал, хотя javadoc
+> обещает «before the initial request is initiated», а запрос на провод не
+> уходил. Зацепка, что срез нечист, нашлась в старом тесте
+> `shortCircuitInvokesResponseInterceptorAndMetrics`: display-name уже гласил
+> «with attempts=0» (по ADR-0047), а ассерт держал 1 (по коду). Fix: честный
+> счётчик — `attempts() == 0` для short-circuit (совпадает с числом
+> `onAttemptComplete`), иначе ≥ 1; `SimpleCallMetrics` принимает `attempts >=
+> 0` (ослабление валидации — обратно совместимо); javadoc `attempts()` и
+> `onCallStart` уточнены (start бьётся 1:1 с complete — в том числе при
+> short-circuit, gauge-пары не рвутся). Circuit breaker 0 уже обрабатывал
+> (`attempts > 0`, async — `shortCircuited == null`). TDD red-first: 3 красных
+> ровно по целевым ассертам (expected 0 but was 1; IAE на 0) → зелёный. +1
+> тест `shortCircuitMetricsLifecycle` (sync + async: start×1,
+> attempt×0, complete×1, attempts()==0, isRetried()==false), 2 ассерта
+> обновлены (e2e 1→0; unit: 0 — валидно, -1 — IAE). Гейт **1221/1221**
+> (core 1141 + engine-okhttp 25 + engine-apache5 25 + codec-jackson-xml 15 +
+> benchmarks 15), `./gradlew test javadoc` зелёный под `-Werror`, 0 warnings.
+> ADR-0036 → Amendment #195. Дальше — ADR-0038 (HTTP/2/трейлеры) или
+> ADR-0035 целиком; не тронуты: пер-фазовая нумерация `onAttemptComplete` в
+> refresh-фазе (non-goal #194) и `Math.max(1, …)`-аналог в ветке
+> interceptor-threw (там «вызов состоялся» — 1 осознанно).
+
 > **Сессия #194 (аудит: ADR-0036 × ADR-0046 — прозрачный 401-рефреш затирает
 > счётчик `attempts()`):** тринадцатый срез нити «ADR против кода» — 12-я
 > «тихая» находка, кандидат (a) из заметок #193 подтверждён на обоих контурах.

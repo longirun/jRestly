@@ -55,7 +55,10 @@ public interface CallMetrics {
 
     /**
      * Total number of transmission attempts executed for this logical call,
-     * including the transparent 401-refresh phase (ADR-0046). At least 1.
+     * including the transparent 401-refresh phase (ADR-0046).
+     * <p>
+     * Reports {@code 0} when the call was short-circuited by a request
+     * interceptor before any wire transmission (ADR-0047); at least 1 otherwise.
      *
      * @return the attempt count
      */
