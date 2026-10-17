@@ -1,78 +1,39 @@
-# Last Session: #233 (2026-10-17)
+# Last Session: #234 (2026-10-17)
 
 ## Что сделано
 
-**Free-аудит (закрытие подозрения #216): `payloadParamCount` в `ControllerValidator`
-считал `@PathVariable` payload-параметром — form/multipart с одним `@PathVariable`
-тихо собирал и слал пустое тело — 27-я «тихая» находка серии.**
+**Free-аудит: `ResponseHeaders` не валидировал HTTP-аннотации, а арность параметров listener'ов и headers не проверялась — 28-я «тихая» находка серии.**
 
-1. *Ход:* свободный выбор из контекста #216 (активная зона пуста, highest ADR
-   **0060**). Взял подсказку #216 («форма `payloadParamCount`, считающая
-   `@PathVariable`»).
-2. *Факт (тихий drop тела):* исторически `payloadParamCount` исключал не-payload
-   типы отрицательным фильтром (`!ResponseHeaders && !UploadProgressListener &&
-   !DownloadProgressListener && !@Cookie && !@RequestHeader`), но пропустил
-   `@PathVariable`. Метод form-urlencoded или multipart, принимающий только
-   `@PathVariable` (например, `@Post(path = "/users/${id}", requestType =
-   RequestType.APPLICATION_FORM_URLENCODED) void submit(@PathVariable("id") String id);`),
-   успешно проходил eager-валидацию (0 проблем). В рантайме же
-   `createUrlEncodedBody()` собирает тело строго из `@RequestParam`, а
-   `createMultipartParts()` — строго из `@MultipartFormFile` и `@RequestParam`. В
-   результате `createUrlEncodedBody` отдавал `new byte[0]`, `createMultipartParts` —
-   пустой список частей: запрос тихо уходил на провод с пустым телом (ни ошибки, ни
-   лога). Тот же класс, что #207–#216.
-3. *Fix:* хрупкий отрицательный фильтр заменён на позитивную проверку:
-   `MULTIPART_FORM_DATA` требует хотя бы один `@MultipartFormFile` или `@RequestParam`;
-   `APPLICATION_FORM_URLENCODED` требует хотя бы один `@RequestParam`. При отсутствии
-   выдаётся стандартное actionable-сообщение (`method(): MULTIPART_FORM_DATA method
-   must have at least one parameter` / `method(): APPLICATION_FORM_URLENCODED
-   method must have at least one parameter`) в общий агрегированный
-   `ControllerValidationException` при создании прокси. Публичный API не тронут.
-   Javadoc `ControllerValidator` уточнён.
-4. *TDD red-first:* новый
-   `ControllerValidationTest.rejectsFormOrMultipartWithoutBodyParametersEagerly`
-   (form и multipart с одним `@PathVariable` → по 1 проблеме + eager исключение;
-   сочетания `@PathVariable` с `@RequestParam` / `@MultipartFormFile` — no-false-positive).
-   Красный на до-фикс коде ровно по `assertEquals(1, formProblems.size())` (список
-   был пуст) → зелёный.
-5. *Риск ложных срабатываний проверен:* все реальные методы в дереве, использующие
-   form/multipart, содержат соответствующие `@RequestParam` или `@MultipartFormFile`
-   (в т.ч. alongside с `@PathVariable`) — полный прогон зелёный.
-6. *Документы:* ADR-0024 → `## Amendment #233`; `DRAFT.md` (блок-запись #233); дневник
-   `.agent/days/2026-10-17.md` (сессия #233 + итог дня обновлён до 1245);
-   mailbox (короткое уведомление); `last_session.md`.
-7. *Верификация:* `./gradlew test javadoc` — BUILD SUCCESSFUL; счётчик из
-   `build/test-results/**/TEST-*.xml` = ровно **1245/1245** (core 1165 +
-   engine-okhttp 25 + engine-apache5 25 + codec-jackson-xml 15 + benchmarks 15),
-   0 failures/errors, javadoc-гейт (`-Werror`) чист.
+1. *Ход:* свободный выбор из контекста #233 (активная зона пуста, highest ADR **0060**). Исследовал семейство side-channel хук-параметров (`ResponseHeaders`, `UploadProgressListener`, `DownloadProgressListener`).
+2. *Факт (два скрытых дефекта):*
+   - `ResponseHeaders` не проверялся в `ControllerValidator` вовсе (в импортах висел неиспользуемый `import ru.jrestly.http.ResponseHeaders;` после #233). Аннотирование параметра `ResponseHeaders` аннотациями `@RequestParam`, `@PathVariable`, `@RequestHeader`, `@Cookie`, `@RequestBody` или `@MultipartFormFile` приводило к double-binding: он регистрировался как response headers holder и одновременно сериализовался в запрос (в виде `ru.jrestly.http.ResponseHeaders@...`), уродуя запрос. Сиблинги `UploadProgressListener` и `DownloadProgressListener` уже имели такую проверку (ADR-0030/0033).
+   - Ни один из трех хук-параметров не проверялся на кратность (cardinality). При объявлении двух параметров одного типа (`ResponseHeaders h1, ResponseHeaders h2` или двух слушателей прогресса) рантайм `MethodMetadata` запоминал только индекс первого (`if (respHeadersIdx < 0) respHeadersIdx = i`), а второй тихо оставался неинициализированным и пустым на все время работы клиента (тихий no-op).
+3. *Fix:* `ControllerValidator.validateMethod` получил проверки:
+   - `ResponseHeaders parameter must not be annotated with HTTP parameter annotations`.
+   - `multiple parameters of type ResponseHeaders, at most one is allowed`.
+   - `multiple parameters of type UploadProgressListener, at most one is allowed`.
+   - `multiple parameters of type DownloadProgressListener, at most one is allowed`.
+   Javadoc `ControllerValidator` уточнен. Публичный API не тронут.
+4. *TDD red-first:* новый тестовый сьют `ResponseHeadersValidationTest` (11 тестов: 10 падающих red-first тестов на каждый тип невалидной декларации + проверка выброса `ControllerValidationException` на создании прокси, 1 тест no-false-positive на валидном объявлении) — 10 упали на до-фикс коде ровно по отсутствию проверок → все 11 зелёные после фикса.
+5. *Документы:* ADR-0022 → `## Amendment #234`; `DRAFT.md` (блок-запись #234); дневник `.agent/days/2026-10-17.md` (сессия #234 + итог дня обновлён до 1256); `mailbox.md`; `last_session.md`.
+6. *Верификация:* `./gradlew test javadoc` — BUILD SUCCESSFUL; счётчик из `build/test-results/**/TEST-*.xml` = ровно **1256/1256** (core 1176 + engine-okhttp 25 + engine-apache5 25 + codec-jackson-xml 15 + benchmarks 15), 0 failures/errors, javadoc-гейт (`-Werror`) чист.
 
 ## Технические заметки
 
-- `ControllerValidator` (§460) теперь использует позитивную проверку:
-  `MULTIPART_FORM_DATA` проверяет `p.isAnnotationPresent(MultipartFormFile.class) || p.isAnnotationPresent(RequestParam.class)`.
-  `APPLICATION_FORM_URLENCODED` проверяет `p.isAnnotationPresent(RequestParam.class)`.
-- Никаких раздуваний черных списков (`!ResponseHeaders && !UploadProgressListener && ...`).
-- Прогон одного класса: `./gradlew :test --tests 'ru.jrestly.ControllerValidationTest'`
-  (обязательно с `:`).
-- Счётчик тестов: python по `**/build/test-results/test/TEST-*.xml` (бакеты:
-  `core` + `engine-okhttp` + `engine-apache5` + `codec-jackson-xml` +
-  `benchmarks`). `ControllerValidationTest.xml` → 18 тестов (было 17).
-- `GRADLE_USER_HOME=/tmp/opencode/gradle-home ./gradlew ...`.
+- `ControllerValidator` проверяет `ResponseHeaders.class.equals(param.getType())` на отсутствие `@RequestParam`, `@PathVariable`, `@RequestHeader`, `@Cookie`, `@RequestBody`, `@MultipartFormFile`.
+- `ControllerValidator` проверяет кратность: `responseHeadersCount > 1`, `uploadProgressCount > 1`, `downloadProgressCount > 1`.
+- Прогон класса: `GRADLE_USER_HOME=/tmp/opencode/gradle-home ./gradlew :test --tests 'ru.jrestly.ResponseHeadersValidationTest'`.
+- Счётчик тестов: python по `**/build/test-results/test/TEST-*.xml` (бакеты: `core` + `engine-okhttp` + `engine-apache5` + `codec-jackson-xml` + `benchmarks`).
 
-## Контекст для следующей сессии (#234)
+## Контекст для следующей сессии (#235)
 
-1. **Ветка** `agent-loop`; HEAD — коммит этой сессии (родитель — #216).
+1. **Ветка** `agent-loop`; HEAD — коммит этой сессии (родитель — #233).
 2. **Активная зона пуста.** Highest ADR **0060**, next free **0061**.
-   Позитивные capability-проверки закрыли дыру блэклиста в form/multipart.
+   Side-channel хук-параметры теперь полностью валидируются (аннотации + арность).
    Варианты хода:
-   (a) **Free-аудит остатков:** Path/File-тела метрик (-1 вместо размера;
-      engine-reported byte accounting); `CallMetrics.isSuccess()` (2xx-only,
-      задокументировано) против `@ExpectStatus`-whitelist;
-      зависимость других деклараций от окружения сборки (приём #212).
-   (b) **fixtures-javadoc** — 15 вспомогательных типов `ru.jrestly.fixtures`
-      (осознанный non-goal кандидата №1).
-   (c) **Концепт ADR-0061+** — HTTP-кэш (RFC 9111) ждёт решения Антона
-      (вопрос в mailbox от #208, ответа пока нет) — не трогать без его слова.
-3. **Среда:** `GRADLE_USER_HOME=/tmp/opencode/gradle-home ./gradlew ...`;
-   счётчик сессий: 233. Часовой пояс контейнера +04 (календарный день
-   2026-10-17).
+   (a) **Free-аудит остатков:**
+       - Валидация `@ExpectStatus` (непустой массив, статусы в диапазоне 100..599) и `@FollowRedirects` (count >= 0) в `ControllerValidator`.
+       - Path/File-тела метрик (-1 вместо размера; engine-reported byte accounting).
+   (b) **fixtures-javadoc** — 15 вспомогательных типов `ru.jrestly.fixtures`.
+   (c) **Концепт ADR-0061+** — HTTP-кэш (RFC 9111) ждёт решения Антона (вопрос в mailbox от #208).
+3. **Среда:** `GRADLE_USER_HOME=/tmp/opencode/gradle-home ./gradlew ...`; счётчик сессий: 234. Часовой пояс контейнера +04 (календарный день 2026-10-17).

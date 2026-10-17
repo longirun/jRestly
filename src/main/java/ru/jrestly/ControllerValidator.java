@@ -87,6 +87,13 @@ import java.util.regex.Pattern;
  * requires the compiler's {@code -parameters} flag; without it the fallback
  * silently becomes {@code arg0}. That misconfiguration is reported here too.
  *
+ * <p>Side-channel hook parameters — {@link ResponseHeaders},
+ * {@link UploadProgressListener}, and {@link DownloadProgressListener} —
+ * must not carry HTTP request-binding annotations ({@code @RequestParam},
+ * {@code @PathVariable}, {@code @RequestHeader}, {@code @Cookie},
+ * {@code @RequestBody}, or {@code @MultipartFormFile}), and each may
+ * appear at most once per method.
+ *
  * <p>Runs at proxy creation ({@link AbstractHttpClient#createController}):
  * with the module's controller validation enabled, a non-empty result
  * fails the creation with a {@link ControllerValidationException}; with
@@ -428,6 +435,16 @@ public final class ControllerValidator {
                             + " (only the file part is assembled, the @RequestParam binding is silently dropped)");
                 }
             }
+            if (ResponseHeaders.class.equals(param.getType())) {
+                if (param.isAnnotationPresent(RequestParam.class)
+                        || param.isAnnotationPresent(PathVariable.class)
+                        || param.isAnnotationPresent(RequestHeader.class)
+                        || param.isAnnotationPresent(Cookie.class)
+                        || param.isAnnotationPresent(RequestBody.class)
+                        || param.isAnnotationPresent(MultipartFormFile.class)) {
+                    problems.add(method.getName() + "(): ResponseHeaders parameter must not be annotated with HTTP parameter annotations");
+                }
+            }
             if (UploadProgressListener.class.equals(param.getType())) {
                 if (param.isAnnotationPresent(RequestParam.class)
                         || param.isAnnotationPresent(PathVariable.class)
@@ -448,6 +465,27 @@ public final class ControllerValidator {
                     problems.add(method.getName() + "(): DownloadProgressListener parameter must not be annotated with HTTP parameter annotations");
                 }
             }
+        }
+
+        long responseHeadersCount = Arrays.stream(method.getParameters())
+                .filter(p -> ResponseHeaders.class.equals(p.getType()))
+                .count();
+        if (responseHeadersCount > 1) {
+            problems.add(method.getName() + "(): multiple parameters of type ResponseHeaders, at most one is allowed");
+        }
+
+        long uploadProgressCount = Arrays.stream(method.getParameters())
+                .filter(p -> UploadProgressListener.class.equals(p.getType()))
+                .count();
+        if (uploadProgressCount > 1) {
+            problems.add(method.getName() + "(): multiple parameters of type UploadProgressListener, at most one is allowed");
+        }
+
+        long downloadProgressCount = Arrays.stream(method.getParameters())
+                .filter(p -> DownloadProgressListener.class.equals(p.getType()))
+                .count();
+        if (downloadProgressCount > 1) {
+            problems.add(method.getName() + "(): multiple parameters of type DownloadProgressListener, at most one is allowed");
         }
 
         long requestBodyCount = Arrays.stream(method.getParameters())

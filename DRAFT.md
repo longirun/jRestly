@@ -1,5 +1,32 @@
 # DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
+> **Сессия #234 (free-аудит: `ResponseHeaders` не валидировал HTTP-аннотации и кратность параметров listener'ов/headers — 28-я «тихая» находка серии):** свободный
+> ход из контекста #233 (активная зона пуста, highest ADR 0060). Исследовал семейство
+> side-channel параметров-хуков (`ResponseHeaders`, `UploadProgressListener`,
+> `DownloadProgressListener`). У сиблингов `UploadProgressListener` и
+> `DownloadProgressListener` уже была eager-проверка на запрет HTTP-аннотаций
+> (ADR-0030/ADR-0033), а `ResponseHeaders` не проверялся вовсе. При ошибочном аннотировании
+> (`@RequestParam`, `@PathVariable`, `@RequestHeader`, `@Cookie`, `@RequestBody`,
+> `@MultipartFormFile`) метод молча проходил валидацию, а в рантайме `ResponseHeaders.toString()`
+> уходил на провод, уродуя запрос. Кроме того, ни у одного из трех хук-параметров не
+> проверялась кратность (aridity): при объявлении двух `ResponseHeaders` (или двух
+> `UploadProgressListener`/`DownloadProgressListener`) рантайм `MethodMetadata`
+> запоминал только первый (`respHeadersIdx < 0`), а второй тихо оставался пустым (тихий no-op).
+> Fix: `ControllerValidator.validateMethod` проверяет: (1) `ResponseHeaders` запрещает
+> HTTP-аннотации (`method(): ResponseHeaders parameter must not be annotated with HTTP parameter annotations`);
+> (2) `ResponseHeaders`, `UploadProgressListener` и `DownloadProgressListener` допускаются не
+> более одного раза на метод (`method(): multiple parameters of type X, at most one is allowed`).
+> Javadoc `ControllerValidator` уточнен. Публичный API не тронут. TDD red-first: новый сьют
+> `ResponseHeadersValidationTest` (11 тестов: 10 падающих red-first тестов на каждый тип
+> невалидной конфигурации + eager `ControllerValidationException` на создании прокси, 1 тест
+> no-false-positive на валидном объявлении) — красные на до-фикс коде (10 failed, 1 passed)
+> → все 11 зелёные. ADR-0022 → `## Amendment #234`.
+> Гейт **1256/1256** (core 1176 + engine-okhttp 25 + engine-apache5 25 +
+> codec-jackson-xml 15 + benchmarks 15), 0 failures/errors, `./gradlew test javadoc`
+> зелёный под `-Werror`, 0 warnings. Дальше — free-аудит (Path/File-тела метрик;
+> `@ExpectStatus`/`@FollowRedirects` валидация) или концепт ADR-0061+ (HTTP-кэш
+> RFC 9111 ждёт решения Антона; вопрос в mailbox).
+
 > **Сессия #233 (free-аудит: `payloadParamCount` в `ControllerValidator` считал
 > `@PathVariable` payload-параметром — form/multipart с одним `@PathVariable`
 > тихо собирал и слал пустое тело — 27-я «тихая» находка серии):** свободный ход из

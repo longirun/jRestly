@@ -104,3 +104,13 @@ The feature is verified by 17 tests (+18 test cases) across unit and WireMock in
    - Fault handling: `@OnError` and `UnexpectedStatusException` error response header capture.
    - Null-safety opt-out.
 
+## Amendment #234 (Session #234, 2026-10-17): Eager validation of ResponseHeaders parameter annotations and side-channel parameter cardinality
+
+- **Problem:** `ResponseHeaders` is an intrinsic side-channel hook parameter (along with `UploadProgressListener` and `DownloadProgressListener`). Unlike its siblings, `ResponseHeaders` previously lacked eager validation in `ControllerValidator`. Annotating a `ResponseHeaders` parameter with HTTP request bindings (`@RequestParam`, `@PathVariable`, `@RequestHeader`, `@Cookie`, `@RequestBody`, `@MultipartFormFile`) was silently accepted and resulted in double-binding (the `ResponseHeaders.toString()` hashcode was serialized into the URL, headers, or body). Furthermore, none of the three side-channel parameter types checked for arity/cardinality: declaring two `ResponseHeaders`, two `UploadProgressListener`, or two `DownloadProgressListener` parameters silently bound only the first parameter while silently leaving the second unpopulated.
+- **Decision:** `ControllerValidator` now eagerly enforces:
+  1. `ResponseHeaders parameter must not be annotated with HTTP parameter annotations`.
+  2. `multiple parameters of type ResponseHeaders, at most one is allowed`.
+  3. `multiple parameters of type UploadProgressListener, at most one is allowed`.
+  4. `multiple parameters of type DownloadProgressListener, at most one is allowed`.
+- **Verification:** 11 new tests in `ResponseHeadersValidationTest` (red-first on all 10 invalid combinations, green on valid declarations). Core suite at **1176**, total gate at **1256/1256** passing tests.
+
