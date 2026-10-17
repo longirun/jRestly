@@ -3,6 +3,33 @@
 User-facing changes per version. History prior to 0.7.0 (cycles 0.5.0 →
 0.6.1) lives in [ROADMAP.md](ROADMAP.md).
 
+## 0.10.0 — 2026-10-17 (unpublished)
+
+> *Unpublished — no git tag. Per the maintainer's versioning rule the
+> version lives in `build.gradle` and the release commit message; the
+> tag-based coordinates (JitPack) remain at `v0.6.1` until the maintainer
+> tags.*
+
+### Added
+
+- **Dynamic endpoint override (`@TargetUrl`)** — call runtime-determined URLs (AWS S3 presigned URLs, HATEOAS Link pagination, webhooks, multi-tenant routing) directly from interface methods with zero-reflection cached dispatch and eager validation. Details: [ADR-0062](docs/0.10.0/ADR-0062-dynamic-endpoint-target-url-override.md).
+- **Transparent RFC 9111 HTTP caching & in-memory store** — zero-dep `HttpCache` SPI with thread-safe `InMemoryHttpCache` (bounded LRU), transparent `304 Not Modified` conditional revalidation (ETag, `If-Modified-Since`), `Cache-Control` directive parsing (`max-age`, `no-cache`, `no-store`), representation header merging (§4.3.4), and zero network attempts on fresh cache hits. Details: [ADR-0063](docs/0.10.0/ADR-0063-transparent-rfc-9111-http-cache.md).
+- **Problem Details for HTTP APIs (RFC 7807 / RFC 9457)** — zero-dep `ProblemDetail` model and built-in JSON parser/serializer, automated extraction on unexpected 4xx/5xx responses into `ClientErrorException` and `ServerErrorException`, and declarative `@OnError(errorObject = ProblemDetail.class)` and `@OnError(errorObject = ProblemDetailException.class)`. Details: [ADR-0064](docs/0.10.0/ADR-0064-problem-details-for-http-apis.md).
+- **Pluggable payload formats & XML support (`jrestly-codec-jackson-xml`)** — `PayloadCodec` SPI and `CodecRegistry` for content-type aware serialization. Core remains zero-dep; XML payload support (`application/xml`, `text/xml`) available via optional published submodule with `ServiceLoader` auto-detection. Details: [ADR-0060](docs/0.10.0/ADR-0060-pluggable-payload-formats-and-media-type-aware-codec-spi.md).
+- **Pluggable HTTP engines (`jrestly-engine-okhttp`, `jrestly-engine-apache5`)** — `HttpEngine` SPI with `ServiceLoader` discovery. Switch transport from default `java.net.http.HttpClient` to OkHttp 4 or Apache HC5 with full feature parity. Details: [ADR-0052](docs/0.10.0/ADR-0052-http-engine-spi-and-jdk-engine.md), [ADR-0058](docs/0.10.0/ADR-0058-external-http-engine-submodules-okhttp-apache5.md), and [BENCHMARKS.md](BENCHMARKS.md).
+- **SSE stream resilience & streaming trailers** — `ServerSentEvent.reconnecting(...)` with `Last-Event-ID` replay, backoff jitter, idle stall guard (`stallTimeout`), and HTTP/2 lazy trailer completion on streaming responses. Details: [ADR-0059](docs/0.10.0/ADR-0059-sse-stream-resilience-and-streaming-trailer-completion.md).
+- **Resilience & observability SPIs** — built-in sliding window `CircuitBreaker`, token bucket `RateLimiter` (ADR-0043), W3C TraceContext correlation ID propagation (ADR-0042), and rich `ClientMetricsListener` / `CallMetrics` (ADR-0036).
+- **SSL / mTLS, proxy & cookie persistence** — custom certificates and mutual TLS (ADR-0020), HTTP proxy configuration with transport authentication (ADR-0037), and pluggable `CookieStore` persistence (ADR-0032, ADR-0039).
+- **Declarative enhancements** — `@Timeout` per method/interface (ADR-0027), `@WithInterceptor` with `@Order` declaration sorting (ADR-0029, ADR-0044), `@QueryCollectionFormat` (ADR-0034), `@Compress` request compression (ADR-0041), and progress listeners (ADR-0030, ADR-0033).
+- **Code quality control & JaCoCo baseline** — automated JaCoCo 0.8.12 coverage gates integrated into the Gradle lifecycle (~89.4% instruction coverage, 98.6% class coverage across 141 classes). Details: [ADR-0061](docs/0.10.0/ADR-0061-competitive-analysis-and-quality-control-baseline.md).
+
+### Changed
+
+- Hot-path dispatch pipeline completely rewritten for zero allocations and zero reflection via cached `MethodMetadata` descriptors (~5–9 µs overhead). Details: [ADR-0051](docs/0.10.0/ADR-0051-method-metadata-caching-and-proxy-dispatch-optimization.md), [ADR-0055](docs/0.10.0/ADR-0055-zero-garbage-dispatch-pipeline-and-hot-path-allocation-pruning.md).
+- Eager validation in `ControllerValidator` expanded to 100% fail-fast verification of all annotations and parameter declarations at proxy creation time.
+
+The core remains zero-dependency: the generated POM has 0 runtime `<dependency>`, and all external adapters/engines are optional submodules or `compileOnly`.
+
 ## 0.9.0 — 2026-10-14 (unpublished)
 
 > *Unpublished — no git tag. Per the maintainer's versioning rule the

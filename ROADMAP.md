@@ -2147,9 +2147,40 @@ Microservice APIs and REST frameworks standardize on RFC 7807 / RFC 9457 Problem
 
 ---
 
-> **Current status (2026-10-17).** Highest ADR issued: **0064**; next free: **0065**.
-> Vital Gap #1 (`@TargetUrl`), Vital Gap #2 (RFC 9111 HTTP Cache), and Vital Gap #3 (RFC 7807 / RFC 9457 Problem Details) are fully completed!
-> Live gate: **1311/1311** tests green across all five modules, 0 warnings under `-Werror`.
+## Cycle 0.10.0 — COMPLETE ✅ (2026-10-17, unreleased)
+
+> Source of truth (cycle shape, versioning decisions, release-notes form, gates, status):
+> [`docs/0.10.0/ADR-0065-release-0.10.0-cycle.md`](docs/0.10.0/ADR-0065-release-0.10.0-cycle.md).
+> Sessions #94–#241 (agent-loop). The cycle packaged the 45 architectural decisions (ADR-0020 through ADR-0064)
+> accumulated across enterprise hardening, pluggable engines & codecs, hot-path zero-garbage dispatch,
+> and the three Vital Gaps from the competitive analysis.
+
+Contents — the major architectural milestones of 0.10.0:
+1. **Security & Transports:** SSL / mTLS / custom certs (ADR-0020), transparent GZIP/Deflate (ADR-0021, ADR-0057), HTTP proxy & transport authenticator (ADR-0037), HTTP/2 protocol negotiation & trailers (ADR-0038), pluggable HttpEngine SPI + `engine-okhttp` & `engine-apache5` (ADR-0052, ADR-0058).
+2. **Resilience & Observability:** Sliding window `CircuitBreaker` and token bucket `RateLimiter` SPIs (ADR-0043), W3C TraceContext propagation (ADR-0042), `ClientMetricsListener` / `CallMetrics` (ADR-0036), interceptor short-circuit (ADR-0047), exponential backoff jitter & Retry-After bounds (ADR-0040), and reconnecting SSE streams with `Last-Event-ID` replay and `stallTimeout` guard (ADR-0059).
+3. **Contract Ergonomics & Zero-Garbage Dispatch:** `ResponseHeaders` metadata access (ADR-0022), conditional requests & `Optional<T>` returns (ADR-0023), multipart streaming (ADR-0024), URI template interpolation (ADR-0025), per-method timeouts (ADR-0027), declarative interceptors with `@Order` (ADR-0029, ADR-0044), progress listeners (ADR-0030, ADR-0033), cookie store persistence SPI (ADR-0032, ADR-0039), query collection formats (ADR-0034), request body streaming (ADR-0035), zero-dep auth SPI & token manager (ADR-0046), zero-garbage dispatch pipeline (~5–9 µs overhead, ADR-0051, ADR-0054, ADR-0055).
+4. **Pluggable Ecosystem & XML:** `PayloadCodec` SPI and `CodecRegistry` with published `jrestly-codec-jackson-xml` submodule (ADR-0060).
+5. **Quality Control Baseline:** Integrated **JaCoCo 0.8.12** into Gradle lifecycle (ADR-0061).
+6. **Vital Production Parity:**
+   - *Vital Gap #1:* Dynamic endpoint target URL override via `@TargetUrl` (ADR-0062).
+   - *Vital Gap #2:* Transparent RFC 9111 HTTP cache SPI & in-memory store (ADR-0063).
+   - *Vital Gap #3:* Problem Details for HTTP APIs (RFC 7807 / RFC 9457) & error ergonomics (ADR-0064).
+
+Versioning (ADR-0065 Decisions 1–3): `0.9.0` → **0.10.0** — a semver *minor*: monumental additive capabilities, 100% backward-compatible, zero runtime dependencies in core jar. Submodules (`codec-jackson-xml`, `engine-okhttp`, `engine-apache5`) aligned to `0.10.0`. Mechanics per maintainer: bump in `build.gradle`, named in release commit message, **no git tag** (coordinates remain `v0.6.1` on JitPack until maintainer tags).
+
+Release notes: [`CHANGELOG.md`](CHANGELOG.md) updated with `0.10.0` entry in navigator form.
+
+Gates (session #241):
+- `compileJava` / `compileTestJava` 0 warnings under `-Xlint:all -Werror`;
+- `javadoc` 0 warnings under `-Xdoclint:all -Werror`;
+- `./gradlew test` **1311/1311** across all 5 modules (core 1231 + engine-okhttp 25 + engine-apache5 25 + codec-jackson-xml 15 + benchmarks 15);
+- JaCoCo: ~89.4% instruction coverage, 98.6% class coverage (141/143 classes covered);
+- Generated POM **0.10.0** contains 0 runtime `<dependency>` for core.
+
+---
+
+> **Current status (2026-10-17).** Highest ADR issued: **0065**; next free: **0066**.
+> Cycle 0.10.0 is packaged and complete! Live gate: **1311/1311** tests green across all five modules, 0 warnings under `-Werror`.
 
 ## Post-0.5.0 shortlist (not scheduled — see ADR-0003)
 

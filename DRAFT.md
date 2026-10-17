@@ -1,5 +1,13 @@
 # DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
+> **Сессия #241 (релизный цикл 0.10.0: ADR-0065, версионирование, CHANGELOG.md, README.md, POM 0.10.0 и полный гейт):**
+> упаковка монументального релиза 0.10.0 (сессии #94–#241, 45 ADR от ADR-0020 до ADR-0064).
+> 1. *Документ ADR-0065:* оформлен `docs/0.10.0/ADR-0065-release-0.10.0-cycle.md` — систематизация всех направлений 0.10.0 (безопасность/SSL, движки OkHttp/Apache5, кодеки XML, Zero-Garbage hot-path, JaCoCo, три Vital Gaps: `@TargetUrl`, RFC 9111 HTTP Cache, RFC 9457 Problem Details).
+> 2. *Версионирование:* бамп версий `0.9.0` → `0.10.0` в корневом `build.gradle` и во всех субмодулях (`codec-jackson-xml`, `engine-okhttp`, `engine-apache5`).
+> 3. *CHANGELOG.md & README.md:* добавлена секция 0.10.0 в CHANGELOG.md; в README.md обновлен статус, расширен список Features и добавлены разделы с примерами для `@TargetUrl`, RFC 9111 HTTP Cache и Problem Details.
+> 4. *Гейты и POM:* `./gradlew test javadoc jacocoTestReport generatePomFileForMavenJavaPublication` — 1311/1311 тестов зелёные, Javadoc чист под `-Werror`, JaCoCo 89.4% Instructions / 98.6% Classes, POM 0.10.0 содержит 0 runtime dependencies (Zero-Dep Core нерушим).
+> 5. *Highest ADR:* **0065** (next free **0066**).
+>
 > **Сессия #240 (стабилизация и полный гейт: верификация ADR-0064, устранение doclint warning и 1311/1311 green):**
 > завершение цикла реализации трех ключевых функциональных разрывов (Vital Gaps #1–#3 из ADR-0061).
 > 1. *Диагностика и Doclint Gate:*

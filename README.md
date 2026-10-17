@@ -4,25 +4,31 @@
 
 A declarative HTTP client for Java. Define an interface, get a working client — no code generation, just a dynamic proxy over `java.net.http.HttpClient` with a zero-dependency core.
 
-> **Status:** early development, current release v0.6.1 — `LocalDateTime` round-trips with sub-second precision and accepts ISO-8601 input; 0.6.0 brought streaming multipart uploads for any number of files from disk, memory, or streams, plus a pluggable JSON codec SPI. See `ROADMAP.md`.
+> **Status:** active development (v0.10.0 development milestone; last tagged release v0.6.1) — zero-dependency core, dynamic endpoints (`@TargetUrl`), transparent RFC 9111 HTTP cache, RFC 7807/RFC 9457 Problem Details, streaming multipart uploads, pluggable transports (OkHttp, Apache HC5), and media-type codecs. See `ROADMAP.md` and `CHANGELOG.md`.
 
 ## Features
 
 - Declarative interface-based API via `java.lang.reflect.Proxy`
+- Dynamic endpoint override via `@TargetUrl`: call runtime-determined URLs (AWS S3 presigned URLs, HATEOAS Link pagination, webhooks, multi-tenant routing) directly from interface methods
 - HTTP methods: `@Get`, `@Post`, `@Put`, `@Patch`, `@Delete`
 - Path variables (`@PathVariable` + `${var}`), query params and form fields (`@RequestParam`, `@RequestDefaultParam`), headers (`@RequestHeader`), dynamic `Map<?, ?>` parameters and headers, repeatable class-level defaults and static headers, request body (`@RequestBody`)
-- Content types: `application/json` (default), `application/x-www-form-urlencoded`, `multipart/form-data`
+- Content types: `application/json` (default), `application/x-www-form-urlencoded`, `multipart/form-data`, and pluggable media types (`application/xml`)
+- Transparent RFC 9111 HTTP cache: zero-dependency `HttpCache` SPI with bounded LRU `InMemoryHttpCache`, conditional `304 Not Modified` revalidation (`ETag`, `If-Modified-Since`), `Cache-Control` directives, and zero network attempts on fresh cache hits
+- Problem Details for HTTP APIs (RFC 7807 / RFC 9457): zero-dep `ProblemDetail` model and parser, auto-recognition on unexpected 4xx/5xx responses, and declarative `@OnError(errorObject = ProblemDetail.class)`
 - Response streaming via `InputStream` (and `CompletableFuture<InputStream>`): direct streaming via `BodyHandlers.ofInputStream()` without whole-body buffering; bypasses the JSON codec on success; error responses consume the stream and preserve typed error mapping
-- Server-Sent Events & line streaming via `Stream<ServerSentEvent>` and `Stream<String>` (and `CompletableFuture<Stream<...>>`): parse real-time event streams and LLM tokens on the fly with lazy consumption and auto-closing
+- Server-Sent Events & line streaming via `Stream<ServerSentEvent>` and `Stream<String>` (and `CompletableFuture<Stream<...>>`): parse real-time event streams and LLM tokens on the fly with auto-reconnection (`Last-Event-ID` replay) and idle `stallTimeout` guards
 - Request pipeline: interceptors & hooks: `RequestInterceptor` (transform outgoing requests, inject auth tokens, correlation IDs) and `ResponseInterceptor` (metrics, latency, audit logging, failure observation), uniform sync/async twins execution with failure isolation
+- Resilience & observability: client-side `CircuitBreaker`, `RateLimiter`, W3C TraceContext correlation IDs, and rich `ClientMetricsListener`
 - Multipart uploads via `@MultipartFormFile(partName = …)`: any number of files from disk, memory, or arbitrary streams (`FileContent`), streamed with bounded buffering; per-part `Content-Type` derived from the file extension, overridable per parameter
 - Per-method typed error mapping: `@OnError(statuses = {…}, errorObject = X.class)` throws `HandledException` with the deserialized body
 - Strict status validation: any status not in `@OnError` and not in `@ExpectStatus` (or not 2xx when `@ExpectStatus` is absent) throws `UnexpectedStatusException` with the raw body. Use `@ExpectStatus(statuses = {202})` for strict 2xx contracts
 - Per-method redirect chasing: `@FollowRedirects(count = N)`
-- Retry with backoff: client-wide `retry(RetryPolicy)` (off by default) or per-method `@Retry` (self-contained override); transport failures and the transient status family retried with exponential backoff, cap and full jitter, honoring `Retry-After`, plus an opt-in payload-decode retry for a status-acceptable response the codec cannot bind — uniform across sync and `CompletableFuture` methods
+- Retry with backoff: client-wide `retry(RetryPolicy)` (off by default) or per-method `@Retry` (self-contained override); transport failures and the transient status family retried with exponential backoff, cap and full jitter, honoring `Retry-After`, plus an opt-in payload-decode retry
 - HTTP version pinning: client-wide `httpVersion(HttpClient.Version.HTTP_1_1)` on the builder, per-method override `@HttpVersion(HttpClient.Version.HTTP_1_1)` (default is `HTTP_2`)
 - Auth state machine: `@Anonymous` (skip auth refresh), `@Authorization` (this is the login call), `@SetAuthDetails(headerName = …)` (capture token from response, reuse on subsequent calls)
 - Zero-dependency core on `java.net.http.HttpClient` (`System.Logger`, no runtime dependencies); bring your own JSON codec — Jackson 2, Gson, or Moshi is autodetected from the classpath
+- Pluggable transports: optional submodules for OkHttp 4 (`jrestly-engine-okhttp`) and Apache HC5 (`jrestly-engine-apache5`) discovered via `ServiceLoader`
+- Zero-garbage hot path: cached `MethodMetadata` descriptors precomputed eagerly, resulting in ~5–9 µs dispatch latency and 0 allocations on steady-state calls
 
 ## Installation
 
@@ -126,6 +132,60 @@ Item created = api.createItem(new Item("widget", 42));
 Item fetched = api.getItem(created.id());
 List<Item> page = api.listItems(1);
 ```
+
+## Dynamic endpoints (@TargetUrl)
+
+When endpoint URLs are determined dynamically at runtime (such as Amazon S3 presigned URLs, HATEOAS Link pagination, webhooks, or dynamic tenant routing), use `@TargetUrl` to override the client's base URL per call:
+
+```java
+public interface StorageApi {
+
+    @Get
+    InputStream download(@TargetUrl URI presignedUri);
+
+    @Post(path = "/subresource")
+    void uploadToWebhook(@TargetUrl String webhookUrl, @RequestBody Payload payload);
+}
+```
+
+- **Supported types:** `java.net.URI`, `java.net.URL`, and `CharSequence`/`String`.
+- **Composition:** Path variables (`${id}`) and `@RequestParam` seamlessly append to the target URL; relative paths in `@Get(path = "...")` normalize slashes cleanly.
+- **Fail-fast:** Passing `null` immediately throws an `IllegalArgumentException`. Declaring invalid types or multiple `@TargetUrl` parameters fails fast during proxy creation.
+- **Performance:** Dynamic URL dispatch is pre-indexed in `MethodMetadata` with zero runtime reflection.
+
+## Transparent HTTP caching (RFC 9111)
+
+jRestly provides zero-dependency, RFC 9111 compliant HTTP client caching with thread-safe in-memory LRU storage and transparent conditional revalidation:
+
+```java
+JRestlyClient client = JRestlyClient.builder()
+        .baseUrl("https://api.example.com")
+        .inMemoryCache(500) // LRU cache bounded to 500 entries
+        .build();
+```
+
+- **Transparent revalidation:** When cached entries become stale, jRestly automatically dispatches `If-None-Match` (ETag) and `If-Modified-Since` headers. Upon receiving `304 Not Modified`, cache representation headers are merged (RFC 9111 §4.3.4) and the cached payload is returned transparently.
+- **Cache short-circuit:** Fresh cache hits are served directly from memory with `attempts = 0` (zero network calls, circuit breaker bypassed) and dynamically calculated `Age` headers accessible via `ResponseHeaders.age()`.
+- **Cache-Control directives:** Honors `max-age`, `no-cache` (forces revalidation), `no-store` (bypasses cache), and `must-revalidate`.
+- **Automatic invalidation:** Successful unsafe requests (`POST`, `PUT`, `DELETE`, `PATCH`) automatically invalidate cached entries for the target URI.
+- **Zero overhead:** When caching is not configured (`null`), hot-path execution has zero allocations.
+
+## Problem Details for HTTP APIs (RFC 7807 / RFC 9457)
+
+jRestly natively supports RFC 7807 / RFC 9457 Problem Details (`application/problem+json`) with zero external dependencies:
+
+```java
+public interface BillingApi {
+
+    @Post(path = "/orders")
+    @OnError(statuses = {400, 403}, errorObject = ProblemDetail.class)
+    Order createOrder(@RequestBody OrderRequest order);
+}
+```
+
+- **Zero-dep parser:** `ProblemDetail` represents standard members (`type`, `title`, `status`, `detail`, `instance`) and dynamic extension properties with a built-in JSON parser and serializer.
+- **Automatic recognition:** Unexpected 4xx/5xx responses carrying `application/problem+json` or RFC 9457 JSON fields are automatically parsed into `ClientErrorException` and `ServerErrorException`, accessible via `ex.getProblemDetail()`.
+- **Direct exception mapping:** Map errors directly to `ProblemDetailException` via `@OnError(errorObject = ProblemDetailException.class)`.
 
 ## Payload codecs: JSON, XML & custom formats
 

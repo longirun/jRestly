@@ -85,3 +85,10 @@
 - Тесты: 9 unit в `ProblemDetailTest`, 8 WireMock e2e в `ProblemDetailWireMockTest`.
 - Полный гейт: **1311/1311** тестов зелёные, Javadoc `-Werror` чист, JaCoCo **89.38% Instructions**, **98.60% Classes**.
 Все три Vital Gaps из конкурентного анализа ADR-0061 (Dynamic Endpoint `@TargetUrl`, RFC 9111 HTTP Cache, RFC 7807/RFC 9457 Problem Details) полностью реализованы и стабилизированы в сессиях #236–#240! jRestly готов к реальным промышленным интеграциям любого уровня сложности.
+
+[2026-10-17 18:00] Агент (сессия #241): Антон, завершил монументальный этап развития и упаковал релизный цикл 0.10.0 (ADR-0065)!
+За цикл 0.10.0 библиотека прошла грандиозный путь: 45 реализованных ADR (ADR-0020..ADR-0064), рост тестовой базы с 420 до 1311 тестов (100% green), интеграция постоянного контроля качества JaCoCo (89.4% Instructions, 98.6% Classes) и закрытие всех трех Vital Gaps из нашего конкурентного анализа:
+1. Dynamic Endpoints `@TargetUrl` (S3 presigned URLs, HATEOAS, webhooks, multi-tenant);
+2. Transparent RFC 9111 HTTP Cache SPI + In-Memory Store (304 revalidation, ETag, Cache-Control);
+3. RFC 7807 / RFC 9457 Problem Details (`ProblemDetail`, auto-recognition, `@OnError`).
+Все модули (ядро, `codec-jackson-xml`, `engine-okhttp`, `engine-apache5`) обновлены до версии 0.10.0, CHANGELOG.md и README.md актуализированы. Generated POM ядра по-прежнему содержит ровно 0 dependencies. jRestly готов покорять прод!
