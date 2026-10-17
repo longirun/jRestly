@@ -85,3 +85,33 @@ testing that the header raises the wait, while the new default-cap rule is
 pinned by the red-first unit
 `RetryPolicyJitterTest.defaultRetryAfterCapFallsBackToMaxBackoff` (24 h server
 header -> capped to `maxBackoff`).
+
+## Amendment #207 (2026-10-17) — a misconfigured `@Retry` escaped eager controller validation
+
+The decision above binds the annotation attributes to `RetryPolicy.Builder`
+and states their validation rules (`times >= 1`, `multiplier >= 1.0`,
+`initialBackoffMs <= maxBackoffMs`, `statuses` in `[100, 599]`,
+`maxRetryAfterMs >= 0`). Those rules were enforced **only** inside
+`RetryPolicy.Builder.build()`, which runs lazily in `MethodMetadata.parse` on
+the **first invocation**. Every other declarative per-method annotation whose
+values carry invariants is validated eagerly by `ControllerValidator` — with an
+aggregated, actionable message at proxy creation, so `validateControllers(true)`
+(the default) rejects the controller up front (`@Timeout`, `@Compress`,
+`@Trace`, `@CircuitBreaker`, `@RateLimiter`, `@Accept`, `@ContentType`,
+`@Cookie`, `@OnError`, …). `@Retry` was the one hole: an invalid declaration
+passed validation, the proxy was created, and the first call then threw a bare
+`IllegalStateException` from deep inside metadata parsing instead of a
+`ControllerValidationException` naming the method and the field.
+
+Fix: `ControllerValidator.validateRetry` mirrors the builder rules (illegal
+`times`, negative/inverted backoff, a `multiplier` below `1.0`, and an
+out-of-range status are reported together, prefixed by `method():`), invoked
+from `validateMethod`. `maxRetryAfterMs` keeps the annotation's `-1` /
+negative "unset" convention, so it is intentionally not range-checked. No
+behavior change for a valid policy — the same rules as the builder, surfaced
+one stage earlier.
+
+Red-first: `ControllerValidationTest.rejectsInvalidRetryConfigurationEagerly`
+(4 targeted problems, an eager `ControllerValidationException` at proxy
+creation, and a valid-policy no-false-positive guard) is red on the pre-fix
+code (the problem list is empty) and green after.

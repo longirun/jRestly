@@ -22,6 +22,7 @@ import ru.jrestly.annotation.MultipartFormFile;
 import ru.jrestly.annotation.PathVariable;
 import ru.jrestly.annotation.RequestBody;
 import ru.jrestly.annotation.RequestParam;
+import ru.jrestly.annotation.Retry;
 import ru.jrestly.http.RequestType;
 import ru.jrestly.http.ResponseHeaders;
 import ru.jrestly.http.DownloadProgressListener;
@@ -275,6 +276,10 @@ public final class ControllerValidator {
 
         if (method.isAnnotationPresent(ru.jrestly.annotation.RateLimiter.class)) {
             validateRateLimiter(method.getName() + "()", method.getAnnotation(ru.jrestly.annotation.RateLimiter.class), problems);
+        }
+
+        if (method.isAnnotationPresent(Retry.class)) {
+            validateRetry(method.getName() + "()", method.getAnnotation(Retry.class), problems);
         }
 
         for (Accept accept : method.getAnnotationsByType(Accept.class)) {
@@ -540,6 +545,33 @@ public final class ControllerValidator {
         }
         if (rl.timeoutDurationMs() < 0) {
             problems.add(prefix + ": @RateLimiter timeoutDurationMs must not be negative, was " + rl.timeoutDurationMs());
+        }
+    }
+
+    // Mirrors RetryPolicy.Builder.build() so a misconfigured @Retry surfaces
+    // through the eager-validation channel (aggregated, actionable) instead of
+    // a bare IllegalStateException at the first invocation (MethodMetadata.parse).
+    private static void validateRetry(String prefix, Retry retry, List<String> problems) {
+        if (retry.times() < 1) {
+            problems.add(prefix + ": @Retry times must be >= 1, was " + retry.times());
+        }
+        if (retry.initialBackoffMs() < 0) {
+            problems.add(prefix + ": @Retry initialBackoffMs must not be negative, was " + retry.initialBackoffMs());
+        }
+        if (retry.maxBackoffMs() < 0) {
+            problems.add(prefix + ": @Retry maxBackoffMs must not be negative, was " + retry.maxBackoffMs());
+        }
+        if (retry.initialBackoffMs() > retry.maxBackoffMs()) {
+            problems.add(prefix + ": @Retry initialBackoffMs must not exceed maxBackoffMs, was "
+                    + retry.initialBackoffMs() + " > " + retry.maxBackoffMs());
+        }
+        if (Double.isNaN(retry.multiplier()) || retry.multiplier() < 1.0) {
+            problems.add(prefix + ": @Retry multiplier must be >= 1.0, was " + retry.multiplier());
+        }
+        for (int status : retry.statuses()) {
+            if (status < 100 || status > 599) {
+                problems.add(prefix + ": @Retry status must be in [100, 599], was " + status);
+            }
         }
     }
 }

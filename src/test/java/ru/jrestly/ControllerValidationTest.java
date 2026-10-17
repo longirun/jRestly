@@ -134,6 +134,49 @@ public class ControllerValidationTest {
                 });
     }
 
+    interface InvalidRetryController {
+        @ru.jrestly.annotation.Get(path = "/a")
+        @ru.jrestly.annotation.Retry(times = 0)
+        String timesZero();
+
+        @ru.jrestly.annotation.Get(path = "/b")
+        @ru.jrestly.annotation.Retry(times = 3, initialBackoffMs = 5_000, maxBackoffMs = 100)
+        String invertedBackoff();
+
+        @ru.jrestly.annotation.Get(path = "/c")
+        @ru.jrestly.annotation.Retry(times = 2, multiplier = 0.5)
+        String lowMultiplier();
+
+        @ru.jrestly.annotation.Get(path = "/d")
+        @ru.jrestly.annotation.Retry(times = 2, statuses = {999})
+        String badStatus();
+    }
+
+    interface ValidRetryController {
+        @ru.jrestly.annotation.Get(path = "/ok")
+        @ru.jrestly.annotation.Retry(times = 3, initialBackoffMs = 10, maxBackoffMs = 50, statuses = {408, 429, 503})
+        String ok();
+    }
+
+    @Test
+    void rejectsInvalidRetryConfigurationEagerly() {
+        // @Retry is the only declarative annotation whose invariants lived solely in
+        // its policy builder: a misconfigured method escaped eager validation and threw
+        // a bare IllegalStateException at the first call. It now joins the same channel.
+        List<String> problems = ControllerValidator.validate(InvalidRetryController.class);
+        assertEquals(4, problems.size());
+        assertTrue(problems.stream().anyMatch(p -> p.contains("timesZero(): @Retry times must be >= 1")));
+        assertTrue(problems.stream().anyMatch(p -> p.contains("invertedBackoff(): @Retry initialBackoffMs must not exceed maxBackoffMs")));
+        assertTrue(problems.stream().anyMatch(p -> p.contains("lowMultiplier(): @Retry multiplier must be >= 1.0")));
+        assertTrue(problems.stream().anyMatch(p -> p.contains("badStatus(): @Retry status must be in [100, 599]")));
+
+        JRestlyClient client = JRestlyClient.builder().baseUrl("http://localhost:1").build();
+        assertThrows(ControllerValidationException.class, () -> client.get(InvalidRetryController.class));
+
+        // no false positive on a valid policy
+        assertTrue(ControllerValidator.validate(ValidRetryController.class).isEmpty());
+    }
+
     @Test
     void rejectsBlankHeaderOrParamNameOnClassAndMethod() {
         var classHeaderProblems = ControllerValidator.validate(BlankClassHeaderController.class);

@@ -1,5 +1,38 @@
 # DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
+> **Сессия #207 (free-аудит: невалидный `@Retry` проскакивал eager-валидацию
+> контроллера — 17-я «тихая» находка серии):** свободный ход из контекста #206
+> (активная зона пуста). Проверял «дублирующие входные пути» (#200) на уровне
+> декларативных аннотаций и нашёл дыру в **контракте `ControllerValidator`**:
+> инварианты `@Retry` (`times >= 1`, `multiplier >= 1.0`,
+> `initialBackoffMs <= maxBackoffMs`, `statuses ∈ [100,599]`) живут **только** в
+> `RetryPolicy.Builder.build()`, который вызывается лениво в
+> `MethodMetadata.parse` на **первом вызове**. Все прочие декларативные
+> аннотации с инвариантами валидируются eager'ом в `ControllerValidator`
+> (`@Timeout`, `@Compress`, `@Trace`, `@CircuitBreaker`, `@RateLimiter`,
+> `@Accept`, `@ContentType`, `@Cookie`, `@OnError`) — с агрегированным
+> actionable-сообщением при создании прокси, так что `validateControllers(true)`
+> (дефолт) отклоняет контроллер заранее. `@Retry` был **единственной дырой**:
+> битая декларация проходила валидацию, прокси создавался, и только первый
+> вызов падал голым `IllegalStateException` из недр парсинга метаданных вместо
+> `ControllerValidationException` с именем метода и поля. Fix: новый
+> `ControllerValidator.validateRetry` зеркалит правила билдера (нелегальные
+> `times`, отрицательный/инвертированный backoff, `multiplier < 1.0`,
+> out-of-range status — всё в один список, с префиксом `method():`), вызван из
+> `validateMethod`; `maxRetryAfterMs` намеренно не проверяется (сохраняет
+> конвенцию `-1`/отрицательное = unset). Поведение валидной политики не
+> изменилось. TDD red-first: новый
+> `ControllerValidationTest.rejectsInvalidRetryConfigurationEagerly` (4 целевых
+> проблем + eager `ControllerValidationException` при `client.get(...)` +
+> no-false-positive на валидной политике) — красный на до-фикс коде (список
+> проблем пуст) → зелёный. ADR-0040 → `## Amendment #207`. Гейт **1233/1233**
+> (core 1153 + engine-okhttp 25 + engine-apache5 25 + codec-jackson-xml 15 +
+> benchmarks 15), 0 failures/errors, `./gradlew test javadoc` зелёный под
+> `-Werror`, 0 warnings. Non-goals (наблюдение, не трогал): `@ExpectStatus` и
+> `@FollowRedirects` тоже не валидируются, но их инварианты нигде не объявлены
+> (нет «дыры», а новая фича — отдельное решение). Дальше — free-аудит или
+> концепт ADR-0061+.
+>
 > **Сессия #206 (гигиена: закрытые эпики ADR-0058/0059/0060 дистиллированы в
 > `ROADMAP.md`):** свободный ход из контекста #205 (все кандидаты закрыты).
 > Взят перманентный пункт «гигиена проекта»: `ROADMAP.md` обрывался на
@@ -1122,8 +1155,9 @@ highest ADR **0060**, next free **0061**. Следующий ход — своб
 ADR-0061+ (новая эргономика/зрелость) или свежий free-аудит. Хвосты-кандидаты
 из аудит-нити (не эпики): Path/File-тела метрик (-1 вместо размера;
 engine-reported byte accounting), семантика `Duration.ZERO`-таймаута на
-JDK-движке, 15 вспомогательных типов `ru.jrestly.fixtures` (при желании —
-мелкий батч «fixtures-javadoc»).
+JDK-движке, валидация `@ExpectStatus`/`@FollowRedirects` (инварианты нигде не
+объявлены — фича, не дыра; #207), 15 вспомогательных типов `ru.jrestly.fixtures`
+(при желании — мелкий батч «fixtures-javadoc»).
 
 ---
 
