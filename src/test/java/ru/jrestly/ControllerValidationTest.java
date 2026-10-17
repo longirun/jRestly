@@ -249,5 +249,43 @@ public class ControllerValidationTest {
         assertTrue(methodProblems.stream().anyMatch(p -> p.contains("blankHeader(): @RequestHeader name must not be blank")));
         assertTrue(methodProblems.stream().anyMatch(p -> p.contains("blankParam(): @RequestDefaultParam name must not be blank")));
     }
+
+    interface UnresolvedPlaceholderController {
+        @ru.jrestly.annotation.Get(path = "/users/${id}")
+        String getUser();
+    }
+
+    interface UnusedPathVariableController {
+        @ru.jrestly.annotation.Get(path = "/users")
+        String getUser(@ru.jrestly.annotation.PathVariable(name = "id") String id);
+    }
+
+    interface ValidPathVariableController {
+        @ru.jrestly.annotation.Get(path = "/users/${id}")
+        String getUser(@ru.jrestly.annotation.PathVariable(name = "id") String id);
+    }
+
+    @Test
+    void rejectsPathVariableTemplateMismatchEagerly() {
+        // ADR-0025: the path template and its @PathVariable parameters must agree.
+        // An unresolved ${id} placeholder is only rejected at send time by
+        // URI.create ("Illegal character in path"), and a @PathVariable with no
+        // matching placeholder is silently dropped from the URL. Both now join the
+        // eager-validation channel.
+        List<String> unresolved = ControllerValidator.validate(UnresolvedPlaceholderController.class);
+        assertEquals(1, unresolved.size());
+        assertTrue(unresolved.getFirst().contains("getUser(): path placeholder '${id}' has no matching @PathVariable parameter"));
+
+        List<String> unused = ControllerValidator.validate(UnusedPathVariableController.class);
+        assertEquals(1, unused.size());
+        assertTrue(unused.getFirst().contains("getUser(): @PathVariable 'id' does not match any ${...} placeholder in path '/users'"));
+
+        JRestlyClient client = JRestlyClient.builder().baseUrl("http://localhost:1").build();
+        assertThrows(ControllerValidationException.class, () -> client.get(UnresolvedPlaceholderController.class));
+        assertThrows(ControllerValidationException.class, () -> client.get(UnusedPathVariableController.class));
+
+        // no false positive on a matching template
+        assertTrue(ControllerValidator.validate(ValidPathVariableController.class).isEmpty());
+    }
 }
 

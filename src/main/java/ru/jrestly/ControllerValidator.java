@@ -34,13 +34,17 @@ import ru.jrestly.metrics.ClientMetricsListener;
 
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
+import java.lang.reflect.Parameter;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * Validates a controller interface before its proxy is created.
@@ -57,12 +61,19 @@ import java.util.Set;
  * {@code @RequestDefaultParam} declarations on controller interfaces
  * and methods have non-blank {@code name()} attributes.
  *
+ * <p>Each verb path is checked against its {@code @PathVariable} parameters
+ * (ADR-0025): every {@code ${name}} placeholder must have a matching
+ * parameter, and every {@code @PathVariable} must match a placeholder.
+ *
  * <p>Runs at proxy creation ({@link AbstractHttpClient#createController}):
  * with the module's controller validation enabled, a non-empty result
  * fails the creation with a {@link ControllerValidationException}; with
  * it disabled, the problems are only logged.
  */
 public final class ControllerValidator {
+
+    // ${name} placeholders in a verb's path template (ADR-0025)
+    private static final Pattern PATH_PLACEHOLDER = Pattern.compile("\\$\\{([^}]*)}");
 
     private ControllerValidator() {
     }
@@ -234,6 +245,8 @@ public final class ControllerValidator {
             problems.add(method.getName() + "(): " + problem);
             return problems;
         }
+
+        validatePathVariableMismatch(method, problems);
 
         for (RequestHeader header : method.getAnnotationsByType(RequestHeader.class)) {
             if (header.name().isBlank()) {
@@ -560,6 +573,65 @@ public final class ControllerValidator {
         if (rl.timeoutDurationMs() < 0) {
             problems.add(prefix + ": @RateLimiter timeoutDurationMs must not be negative, was " + rl.timeoutDurationMs());
         }
+    }
+
+    // ADR-0025: a path template and its @PathVariable parameters must agree.
+    // An unresolved ${name} placeholder never reaches the wire (URI.create throws
+    // a cryptic "Illegal character in path" at send time), and a @PathVariable
+    // with no matching placeholder is silently dropped from the URL. Both are
+    // caught here, at proxy creation, through the aggregated channel.
+    private static void validatePathVariableMismatch(Method method, List<String> problems) {
+        String path = resolvePath(method);
+        if (path == null) {
+            return;
+        }
+        Set<String> placeholders = new LinkedHashSet<>();
+        Matcher matcher = PATH_PLACEHOLDER.matcher(path);
+        while (matcher.find()) {
+            placeholders.add(matcher.group(1));
+        }
+
+        Set<String> pathVariables = new LinkedHashSet<>();
+        for (Parameter parameter : method.getParameters()) {
+            if (parameter.isAnnotationPresent(PathVariable.class)) {
+                PathVariable pv = parameter.getAnnotation(PathVariable.class);
+                pathVariables.add(pv.name().isEmpty() ? parameter.getName() : pv.name());
+            }
+        }
+
+        for (String placeholder : placeholders) {
+            if (placeholder.isBlank()) {
+                problems.add(method.getName() + "(): path placeholder '${}' must not be blank");
+            } else if (!pathVariables.contains(placeholder)) {
+                problems.add(method.getName() + "(): path placeholder '${" + placeholder
+                        + "}' has no matching @PathVariable parameter");
+            }
+        }
+        for (String pathVariable : pathVariables) {
+            if (!placeholders.contains(pathVariable)) {
+                problems.add(method.getName() + "(): @PathVariable '" + pathVariable
+                        + "' does not match any ${...} placeholder in path '" + path + "'");
+            }
+        }
+    }
+
+    private static String resolvePath(Method method) {
+        if (method.isAnnotationPresent(Get.class)) {
+            return method.getAnnotation(Get.class).path();
+        }
+        if (method.isAnnotationPresent(Post.class)) {
+            return method.getAnnotation(Post.class).path();
+        }
+        if (method.isAnnotationPresent(Put.class)) {
+            return method.getAnnotation(Put.class).path();
+        }
+        if (method.isAnnotationPresent(Patch.class)) {
+            return method.getAnnotation(Patch.class).path();
+        }
+        if (method.isAnnotationPresent(Delete.class)) {
+            return method.getAnnotation(Delete.class).path();
+        }
+        return null;
     }
 
     // Mirrors RetryPolicy.Builder.build() so a misconfigured @Retry surfaces

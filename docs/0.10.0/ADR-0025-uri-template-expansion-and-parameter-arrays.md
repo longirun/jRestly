@@ -51,3 +51,20 @@ In modern REST APIs, HTTP clients interact with complex URL structures and data 
    - Form-urlencoded body with `String[]` and primitive arrays.
 4. **Zero-dependency verification:**
    - Only `java.base` reflection and standard URL utilities used.
+
+## Amendment #210
+
+**Missing eager validation of the path template ⇄ `@PathVariable` agreement — an unresolved placeholder fails late, an unused path variable is silently dropped.**
+
+A verb's path template (`@Get`/`@Post`/`@Put`/`@Patch`/`@Delete` `path()`) and its `@PathVariable` parameters are two halves of one contract (ADR-0025), but `ControllerValidator` never checked that they agree:
+
+- **Unresolved `${name}` placeholder** — a template placeholder with no matching `@PathVariable` parameter survives into the URL, where `URI.create` rejects it at *send time* with a cryptic `IllegalArgumentException: Illegal character in path at index N` (verified: `URI.create("http://host/api/users/${id}")`). The failure is late and names neither the method nor the placeholder.
+- **`@PathVariable` without a placeholder** — `HttpTemplateBuilder.createUrl` substitutes with `path.replace("${" + name + "}", value)`; when the placeholder is absent the `replace` is a no-op, so the parameter's value is **silently dropped** from the request. No error, no log line.
+
+Fix: `ControllerValidator.validateMethod` now extracts the `${...}` placeholders from the resolved verb path and compares them (by set) against the effective `@PathVariable` names (explicit `name()`, or the Java parameter name when blank), reporting each mismatch through the aggregated `ControllerValidationException` raised at proxy creation:
+
+- `method(): path placeholder '${name}' has no matching @PathVariable parameter`
+- `method(): @PathVariable 'name' does not match any ${...} placeholder in path '...'`
+- a blank placeholder (`${}`) is rejected as well.
+
+No public API change; a matching template behaves exactly as before. Covered by `ControllerValidationTest.rejectsPathVariableTemplateMismatchEagerly` (red-first).

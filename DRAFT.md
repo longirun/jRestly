@@ -1,5 +1,34 @@
 # DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
+> **Сессия #210 (free-аудит: path-template ⇄ `@PathVariable` не сверялись eager'ом
+> — 20-я «тихая» находка серии, новая ось «декларативная пара обязана совпадать»):**
+> свободный ход из контекста #209 (активная зона пуста, highest ADR 0060). Семья
+> name-bearing атрибутов закрыта (#208/#209) — свет аудита смещён на **парные
+> декларативные конструкции**: путь глагола (`@Get/@Post/@Put/@Patch/@Delete`
+> `path()`) и его `@PathVariable`-параметры — две половины одного контракта
+> (ADR-0025), но `ControllerValidator` их никогда не сверял. Два тихих исхода:
+> (a) placeholder `${name}` без `@PathVariable`-параметра — остаётся в URL, и
+> `URI.create` режет его уже **на отправке** голым
+> `IllegalArgumentException: Illegal character in path at index N` (проверено
+> зондом), не называя ни метода, ни плейсхолдера; (b) `@PathVariable` без
+> placeholder — `createUrl` делает `path.replace("${name}", value)`, для
+> отсутствующего плейсхолдера это no-op → значение параметра **молча
+> выбрасывается** из запроса (ни ошибки, ни лога). Тот же класс, что ленивый
+> `@Retry` (#207) и blank-атрибуты (#208/#209). Fix: `ControllerValidator.
+> validateMethod` извлекает `${...}` из резолвнутого пути и сверяет множеством с
+> эффективными именами `@PathVariable` (явный `name()` либо имя Java-параметра
+> при blank), оба расхождения — в общий агрегированный
+> `ControllerValidationException` при создании прокси. Публичный API не тронут;
+> корректный шаблон ведёт себя как раньше. TDD red-first: новый
+> `ControllerValidationTest.rejectsPathVariableTemplateMismatchEagerly`
+> (unresolved placeholder → 1 проблема; unused `@PathVariable` → 1 проблема;
+> eager исключение на обоих; валидный шаблон — no-false-positive) — красный
+> ровно по `assertEquals(1, unresolved.size())` → зелёный. ADR-0025 →
+> `## Amendment #210`. Гейт **1236/1236** (core 1156 + engine-okhttp 25 +
+> engine-apache5 25 + codec-jackson-xml 15 + benchmarks 15), 0 failures/errors,
+> `./gradlew test javadoc` зелёный под `-Werror`, 0 warnings. Дальше — free-аудит
+> по новой оси или концепт ADR-0061+ (HTTP-кэш ждёт решения Антона).
+>
 > **Сессия #209 (free-аудит: `@MultipartFormFile.partName = ""` тихо уезжал на
 > провод как `name=""` — 19-я «тихая» находка серии, закрытие семьи name-bearing
 > required-атрибутов):** свободный ход из контекста #208 (активная зона пуста,
@@ -1215,7 +1244,13 @@ JDK-движке, валидация `@ExpectStatus`/`@FollowRedirects` (инв�
 объявлены — фича, не дыра; #207), 15 вспомогательных типов `ru.jrestly.fixtures`
 (при желании — мелкий батч «fixtures-javadoc»). **`@MultipartFormFile.partName`
 закрыт в #209** (был в этом списке) — семья name-bearing required-атрибутов
-теперь валидируется eagerly полностью.
+теперь валидируется eagerly полностью. **#210 открыл новую аудит-ось
+«парные декларативные конструкции»** — путь глагола ⇄ `@PathVariable` теперь
+сверяются eagerly (ADR-0025 Amendment #210); кандидаты по той же оси:
+`@Get/Post/... path()` (blank/CRLF/пробелы — падает поздно в `URI.create`),
+`@ExpectStatus(statuses = {})`/`@FollowRedirects(count < 0)` (пустой/отрицательный
+декларативный вход), `@PathVariable.name` ⇄ fallback-имя параметра при
+отсутствии `-parameters`.
 
 ---
 
