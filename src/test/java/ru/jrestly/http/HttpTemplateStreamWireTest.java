@@ -188,6 +188,36 @@ class HttpTemplateStreamWireTest {
         assertEquals(2, sends.get());
     }
 
+    @Test
+    @DisplayName("async retry with a zero backoff: the delayMillis <= 0 recursion is taken, not the scheduled path")
+    void asyncRetryZeroBackoffTakesTheDirectRecursion() {
+        // initialBackoff 0 makes nextDelayMillis short-circuit to 0 before any
+        // jitter draw, so the delayMillis <= 0 branch (the direct attemptAsync
+        // recursion) is exercised deterministically instead of only when a
+        // FULL-jitter policy draws 0 — a 1-in-11 lottery on the default 10 ms
+        // policy that left the branch saltily covered or not per suite run.
+        HttpTemplate t = template();
+        t.setStreamBody(true);
+        t.setAsync(true);
+        t.setRetryPolicy(RetryPolicy.builder()
+                .maxAttempts(2)
+                .initialBackoff(Duration.ZERO)
+                .build());
+        TrackingStream failedAttempt = new TrackingStream("failed-attempt", new byte[]{9});
+        TrackingStream finalStream = new TrackingStream("final", "final-bytes".getBytes(StandardCharsets.UTF_8));
+        t.setHttpClient(stubClient(List.of(
+                response(503, Map.of(), failedAttempt),
+                response(200, Map.of(), finalStream))));
+
+        CompletableFuture<Object> future = t.exchange();
+        assertSame(finalStream, future.join());
+
+        assertTrue(failedAttempt.closed);
+        assertFalse(finalStream.closed);
+        assertOrder("send-1", "close-failed-attempt", "send-2");
+        assertEquals(2, sends.get());
+    }
+
     // ------------------------------------------------------------------
     // builder detection: the effective return type flips the flag
     // ------------------------------------------------------------------

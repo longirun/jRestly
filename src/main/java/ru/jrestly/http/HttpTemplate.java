@@ -559,7 +559,12 @@ class HttpTemplate {
         return false;
     }
 
-    private WireResponse handleCacheResponse(WireRequest req, WireResponse resp) {
+    // ADR-0063 dispatch after the wire: a conditional 304 revalidation is
+    // resolved through the store's update (the synthesized 200 is returned),
+    // fresh 200/301/404 GETs are stored, and unsafe methods with a
+    // 200..399 outcome invalidate the target URI. Package-private seam —
+    // the unit tests exercise the branch matrix directly (no network).
+    WireResponse handleCacheResponse(WireRequest req, WireResponse resp) {
         if (httpCache == null || resp == null || req == null) {
             return resp;
         }

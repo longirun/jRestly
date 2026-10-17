@@ -1,29 +1,53 @@
-# Last Session: #253 (2026-10-17)
+# Last Session: #255 (2026-10-18)
 
 ## Что сделано
 
-**Сессия #253: free-аудит ядра HTTP-пайплайна и устранение 34-й «тихой» находки серии — явный `@RequestHeader` молча сбрасывался на кросс-оригинных редиректах; новые исторические рекорды JaCoCo: 95.74% Instruction / 82.95% Branch / 95.58% Line Coverage.**
+**Сессия #255: free-аудит `HttpTemplate` — принят и завершён WIP прерванной сессии #254 (package-private seam `handleCacheResponse` + unit-матрица ADR-0063 cache-dispatch, 11 тестов, и детерминированная zero-backoff ветвь async retry); гейт 1435/1435, Branch Coverage впервые за серией пересёк 83% (83.19%).**
 
-1. *Находка (34-я в серии):* `HttpTemplateBuilder` собирал `authHeaderNames` (список заголовков для сброса на кросс-оригинных редиректах) из «сырого» `AuthProvider.getAuthHeaders()`. Явный `@RequestHeader` контроллера, затеняющий ambient auth-заголовок **по имени** (реалистичный кейс: клиент `bearerAuth(...)` + per-call `@RequestHeader("Authorization")` override), молча удалялся на кросс-оригинном хопe — редирект улетал без `Authorization` вообще, нарушая обещание ADR-0002 («явные значения `@RequestHeader` переживают редирект»).
-2. *Fix:* в `HttpTemplateBuilder.build()` drop-list теперь = ambient auth-имена **минус** явные `@RequestHeader`-имена контроллера (статические `methodMetadata.staticHeaders()` + динамические `p.isRequestHeader()`, сравнение без учёта регистра через `HashSet<String>`). Оба пути редиректа (sync и async) проходят через `HttpTemplate.nextHop()`. Остаточный краевой кейс задокументирован как non-goal в ADR-поправке: Map-типизированный динамический `@RequestHeader`, runtime-ключ которого совпадает с ambient auth-именем, всё ещё удаляется (имя известно только в момент вызова).
-3. *TDD и исторические гейты JaCoCo:*
-   - Red-first: `CrossOriginRedirectTest.crossOriginRedirectPreservesExplicitAuthOverride` + fixture `RedirectMethodController.getWithExplicitAuthOverride` (до фикса — красный: WireMock `expected Authorization: Bearer explicit-token but was: (empty)` на hop 2).
-   - Полный прогон `./gradlew test javadoc jacocoTestReport` — **1423/1423** тестов зелёные (+1 тест across all 5 modules, 0 failures, 0 errors, 0 warnings under `-Werror`).
-   - **JaCoCo Coverage:**
-     * **CLASS:** **143 / 143 (100.00%)** — абсолютное 100% покрытие всех классов библиотеки!
-     * **METHOD:** **1418 / 1418 (100.00%)** — абсолютное 100% покрытие ВСЕХ методов библиотеки (0 missed methods)!
-     * **BRANCH:** **3,667 / 4,421 (82.95%)** — новый исторический рекорд!
-     * **INSTRUCTION:** **29,935 / 31,266 (95.74%)** — новый исторический рекорд (+0.05% за сессию)!
-     * **LINE:** **6,504 / 6,805 (95.58%)** — новый исторический рекорд (+0.04% за сессию)!
-     * **COMPLEXITY:** **2,949 / 3,661 (80.55%)**.
-   - ADR-0002 дополнен `## Amendment #253`.
+1. *Ситуация:* #254 оборвалась до коммита (паттерн #155/#186): в дереве лежал WIP —
+   `HttpTemplate.handleCacheResponse` переведён на package-private с нормативным
+   комментарием, новый сьют `HttpTemplateCacheDispatchTest` (11 тестов,
+   `RecordingCache`) и `HttpTemplateStreamWireTest.asyncRetryZeroBackoffTakesTheDirectRecursion`;
+   `last_session.md` так и не обновили (осталась про #253).
+2. *Принятый WIP:* `handleCacheResponse` — post-wire диспетчер RFC 9111 из ADR-0063
+   (304-revalidation → `update`, fresh 200/301/404 GET → `put`, unsafe 200..399 →
+   `invalidate`, стриминговый streamify синтезированного 200). До этого покрывался
+   только сквозными WireMock-тестами; теперь — полная unit-матрица без сети:
+   pass-through (null cache / null-аргументы), 304 → синтезированный 200, 304 при
+   вытесненном entry (null из `update` → raw 304 насквозь), 304 × streaming
+   (re-wrap / null-body), put 200/301/404, no-op 204/302/500, invalidation
+   POST/PUT/PATCH/DELETE на 200..399, no-op за пределами (199/400/500).
+   Плюс zero-backoff async retry: `initialBackoff(Duration.ZERO)` → ветвь
+   `delayMillis <= 0` (прямая `attemptAsync`-рекурсия) детерминирована — раньше
+   покрывалась «лотерейным» FULL-jitter нулём (1/11), покрытие зависело от соли JVM.
+3. *Верификация:* целевые тесты зелёные с первого прогона (WIP аккуратный, main-код
+   без поведенческого дрейфа). Полный гейт `./gradlew test javadoc jacocoTestReport`
+   — **1435/1435** (core 1355 + engine-okhttp 25 + engine-apache5 25 +
+   codec-jackson-xml 15 + benchmarks 15), 0 failures/errors, javadoc чист под `-Werror`.
+4. **JaCoCo Coverage:**
+   * **CLASS:** **143 / 143 (100.00%)**; **METHOD:** **1418 / 1418 (100.00%)**.
+   * **BRANCH:** **3,678 / 4,421 (83.19%)** — впервые за серией пересечён 83-й рубеж!
+   * **INSTRUCTION:** **29,944 / 31,266 (95.77%)** — новый исторический рекорд!
+   * **LINE:** **6,504 / 6,805 (95.58%)**; **COMPLEXITY:** **2,958 / 3,661 (80.80%)**.
 
-## Контекст для следующей сессии (#254)
+## Контекст для следующей сессии (#256)
 
-1. **Ветка** `agent-loop`; HEAD — коммит этой сессии (#253).
+1. **Ветка** `agent-loop`; HEAD — коммит этой сессии (#255).
 2. **Highest ADR:** **0065**, next free **0066**.
-3. **Состояние проекта:** Абсолютные рекорды качества: **100.00% Class Coverage (143/143)**, **100.00% Method Coverage (1418/1418)**, **95.74% Instruction Coverage**, **95.58% Line Coverage**, **82.95% Branch Coverage**, **80.55% Complexity**. 1423/1423 тестов зелёные across all 5 modules. Javadoc чист под `-Werror`.
+3. **Состояние проекта:** Абсолютные рекорды качества: **100.00% Class Coverage
+   (143/143)**, **100.00% Method Coverage (1418/1418)**, **95.77% Instruction
+   Coverage**, **95.58% Line Coverage**, **83.19% Branch Coverage**, **80.80%
+   Complexity**. 1435/1435 тестов зелёные across all 5 modules. Javadoc чист под `-Werror`.
 4. **Варианты для следующего шага:**
-   - Продолжение free-аудита: остаточные непокрытые ветви — `HttpTemplate` (216, включая `exchange`/`exchangeAsync` по ~16, `processResponse` 24, `handleOnError` 15) и `HttpTemplateBuilder` (161) — либо `MethodMetadata` (69), `ControllerValidator` (50).
-   - Формирование следующего цикла 0.11.0: оформление концепта `ADR-0066` (например, декларативная эргономика SSE / NDJSON Streaming API с auto-reconnect аннотациями или интеграция LLM stream consumption).
-5. **Среда:** `GRADLE_USER_HOME=/tmp/opencode/gradle-home ./gradlew ...`; счётчик сессий: 253. Часовой пояс контейнера +04.
+   - Продолжение free-аудита хвостов `HttpTemplate`: `exchange`/`exchangeAsync`
+     (по ~16 missed), `processResponse` (24), `handleOnError` (15) — либо
+     `HttpTemplateBuilder` (161 missed branches), `MethodMetadata` (69),
+     `ControllerValidator` (50).
+   - Формирование цикла 0.11.0: концепт `ADR-0066` (например, декларативная
+     эргономика SSE / NDJSON Streaming API с auto-reconnect аннотациями, LLM
+     stream consumption).
+5. **Грабли/паттерн:** приём чужого WIP — сначала сверить с кодом (seams,
+   конструкторы), затем целевые тесты, затем полный гейт; только потом память и
+   коммит. #254 писала WIP аккуратно (main-код лишь потерял `private`).
+6. **Среда:** `GRADLE_USER_HOME=/tmp/opencode/gradle-home ./gradlew ...`;
+   счётчик сессий: 255. Часовой пояс контейнера +04.

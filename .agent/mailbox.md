@@ -51,24 +51,6 @@
 
 ---
 
-[2026-10-17 22:05] Агент (сессия #250): Антон, юбилейная сессия #250! Проведен глубокий аудит и харденинг краевых веток периферийных подсистем:
-- В `RateLimiter`: протестировано восстановление флага `Thread.currentThread().isInterrupted()` и возврат `false` при прерывании нити в `tryAcquire(Duration)`.
-- В `CircuitBreaker`: проверен `remainingWaitDuration()` при не-OPEN состояниях (`Duration.ZERO`), вытеснение сбоя успехом в кольцевом буфере с декрементом `failureCount`, метрики в `HALF_OPEN` и возврат в `OPEN` при сбое пробы.
-- В `SingleFlightTokenManager`: проверен проброс checked exceptions от поставщика токенов в `RuntimeException("Failed to acquire token", t)`.
-- В `ReconnectPolicy`: проверен расчет `Jitter.EQUAL`, нулевой `bound`, и валидация `stallTimeout` / `maxBackoff` в билдере.
-- В `FileCookiePersister`: проверен перехват `IOException` с пробросом `UncheckedIOException` в `saveAll()`.
-- В `ProblemDetail` & `ZeroDepJsonParser`: проверена сериализация `Iterable<?>` (списки/множества) и спецсимволов `\b`, `\f`, `\r` в extension properties, а также ошибки парсера при незакрытых строках со слэшем `\"abc\\`, неполных `\u` кодах и пропущенных запятых в массивах.
-- В `ControllerValidator`: проверено отклонение пустых плейсхолдеров `${}` в путях методов, валидация `@CircuitBreaker` со `slidingWindowSize < minimumNumberOfCalls` и порогом `> 100%`, а также `@Retry` с отрицательными бэкоффами.
-- В `GsonCodec`: проверен перехват `JsonParseException` при сериализации с трансляцией в `JsonSyntaxException`.
-- В `HttpTemplate`: проверено создание пользовательских исключений через конструкторы `(String, int)` и `HandledException` fallback при отсутствии стандартных конструкторов в `instantiateThrowable`.
-- Достигнуты новые грандиозные исторические рекорды JaCoCo:
-  * **95.65% Instruction Coverage** (29,840 / 31,198, +0.68%);
-  * **81.80% Branch Coverage** (3,605 / 4,407, +0.61%);
-  * **95.45% Line Coverage** (6,486 / 6,795, +0.51%);
-  * **100.00% Method Coverage (1418/1418)**;
-  * **100.00% Class Coverage (143/143)**.
-- Тестовая база выросла до **1412 / 1412** тестов (100% green across all 5 modules, 0 failures, 0 errors, 0 warnings under `-Werror`).
-
 [2026-10-17 22:30] Агент (сессия #251): Антон, продолжил глубокий аудит и харденинг краевых условий библиотечных подсистем, взят новый рубеж Branch Coverage в JaCoCo:
 - В `CallMetrics`: верифицировано извлечение `statusCode()` из вложенного `HandledException` (`t.getCause()`), пустые ответы/сбои (`statusCode == -1`, `isSuccess == false`), и не-2xx ответы без сбоев.
 - В `ApiKeyAuth`: верифицирован обход методов с `@Authorization`, безопасная работа при `context == null` или `context.method() == null`, корректная конкатенация query при наличии И query, И фрагмента URI (`?tab=all#details`), а также динамические `Supplier<String>`.
@@ -101,3 +83,14 @@
   * **100.00% Method Coverage (1418/1418)**;
   * **100.00% Class Coverage (143/143)**.
 - ADR-0002 дополнен `## Amendment #253`.
+
+[2026-10-18 01:20] Агент (сессия #255): Антон, доброе утро! Сессия #254 оборвалась до коммита (знакомый паттерн #155/#186), так что #255 начала с приёма и верификации её WIP — всё сходилось с кодом и прошло гейт с первого прогона:
+- *Наблюдение:* post-wire диспетчер RFC 9111 из ADR-0063 (`HttpTemplate.handleCacheResponse`: 304-revalidation → `update`, fresh 200/301/404 GET → `put`, unsafe 200..399 → `invalidate`, стриминговый streamify синтезированного 200) покрывался только сквозными WireMock-тестами, а ветвь `delayMillis <= 0` в async retry — только «лотерейным» FULL-jitter нулём (1/11), т.е. её покрытие зависело от соли JVM.
+- *Fix/покрытие:* `handleCacheResponse` переведён на package-private (намеренный seam) + новый сьют `HttpTemplateCacheDispatchTest` (11 тестов, записывающий фейк `HttpCache`, без сети) — полная матрица dispatch: pass-through, 304 → синтезированный 200, 304 при вытесненном entry, 304 × streaming, `put` 200/301/404, no-op 204/302/500, invalidation POST/PUT/PATCH/DELETE. Плюс `initialBackoff(Duration.ZERO)` детерминизирует zero-backoff ветвь async retry.
+- *Гейты:* **1435/1435** тестов зелёные (+12), 0 failures/errors, javadoc чист под `-Werror`.
+- *Новые исторические рекорды JaCoCo:*
+  * **83.19% Branch Coverage** (3,678 / 4,421) — впервые за серией пересечён 83-й рубеж!
+  * **95.77% Instruction Coverage** (29,944 / 31,266);
+  * **95.58% Line Coverage** (6,504 / 6,805);
+  * **100.00% Method Coverage (1418/1418)**, **100.00% Class Coverage (143/143)**.
+- Дальше — хвосты `HttpTemplate` (`exchange`/`exchangeAsync`/`processResponse`) или концепт ADR-0066 (цикл 0.11.0).

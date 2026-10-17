@@ -1,5 +1,39 @@
 # DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
+> **Сессия #255 (free-аудит `HttpTemplate` / завершение WIP прерванной #254: package-private seam `handleCacheResponse` + unit-матрица ADR-0063 cache-dispatch (11 тестов) и детерминированная zero-backoff ветвь async retry; гейт 1435/1435, Branch Coverage впервые пересёк 83% — 83.19%):**
+> свободный ход по хвосту непокрытых ветвей `HttpTemplate` (216 missed по данным #253).
+> #254 оборвалась до коммита (паттерн #155/#186): в дереве лежал WIP — main-код лишь
+> лишился `private` на `handleCacheResponse` (+ нормативный комментарий о намеренном
+> package-private seam), всё остальное — тесты. Принят, верифицирован и зафиксирован.
+> 1. *Наблюдение:* post-wire диспетчер RFC 9111 из ADR-0063 (`handleCacheResponse`:
+>    304-revalidation → `update`, fresh 200/301/404 GET → `put`, unsafe 200..399 →
+>    `invalidate`, стриминговый streamify синтезированного 200) покрывался только
+>    сквозными WireMock-тестами — unit-матрицы не было. Ветвь `delayMillis <= 0` в
+>    async retry (прямая `attemptAsync`-рекурсия вместо schedule) покрывалась только
+>    «лотерейным» FULL-jitter нулём (1/11) на дефолтной 10-миллисекундной политике —
+>    покрытие ветви зависело от соли JVM.
+> 2. *Fix/покрытие:* `handleCacheResponse` переведён на package-private (seam
+>    намеренный — unit-тесты ходят по матрице без сети); новый сьют
+>    `HttpTemplateCacheDispatchTest` (11 тестов, `RecordingCache` — записывающий
+>    фейк `HttpCache`): pass-through при `httpCache == null`/null-аргументах
+>    (zero-garbage fast path), 304 → синтезированный 200, 304 при вытесненном entry
+>    (`update` → null, raw 304 насквозь), 304 на стриминговом возвращении (re-wrap в
+>    живой stream / null-body без streamify), `put` для 200/301/404, no-op для
+>    204/302/500, invalidation для POST/PUT/PATCH/DELETE на 200..399, no-op за
+>    пределами (199/400/500). Плюс
+>    `HttpTemplateStreamWireTest.asyncRetryZeroBackoffTakesTheDirectRecursion`:
+>    `initialBackoff(Duration.ZERO)` детерминирует ветвь прямой рекурсии
+>    (порядок `send-1 → close-failed-attempt → send-2`).
+> 3. *TDD и исторические гейты JaCoCo:*
+>    - Всего тестов: **1435 / 1435** green across all 5 modules (+12 тестов, 0 failures, 0 errors, 0 warnings under `-Werror`).
+>    - **JaCoCo Coverage:**
+>      * **CLASS:** **143 / 143 (100.00%)** — абсолютное 100% покрытие всех классов библиотеки!
+>      * **METHOD:** **1418 / 1418 (100.00%)** — абсолютное 100% покрытие ВСЕХ методов библиотеки (0 missed methods)!
+>      * **BRANCH:** **3,678 / 4,421 (83.19%)** — впервые за серией пересечён 83-й рубеж!
+>      * **INSTRUCTION:** **29,944 / 31,266 (95.77%)** — новый исторический рекорд!
+>      * **LINE:** **6,504 / 6,805 (95.58%)**.
+>      * **COMPLEXITY:** **2,958 / 3,661 (80.80%)**.
+
 > **Сессия #253 (free-аудит / харденинг: устранение тихого сброса явного `@RequestHeader` на кросс-оригинных редиректах — 34-я «тихая» находка серии, новые рекорды JaCoCo: 95.74% Instruction / 82.95% Branch / 95.58% Line Coverage):**
 > свободный ход развития качества и надежности кодовой базы.
 > 1. *Находка (34-я в серии):* `HttpTemplateBuilder` собирал список `authHeaderNames` (заголовки, удаляемые на кросс-оригинных редиректах) из «сырого» списка `AuthProvider.getAuthHeaders()`. Из-за этого явный `@RequestHeader` контроллера, затеняющий ambient auth-заголовок **по имени** (реалистичный кейс: клиент с `bearerAuth(...)` + per-call `@RequestHeader("Authorization")` override — merged-запрос уже несёт явное значение, см. `createHeaders`), молча удалялся на кросс-оригинном хопe, и редирект улетал **без `Authorization` вообще**, нарушая обещание ADR-0002: «явные значения `@RequestHeader` переживают редирект».
