@@ -1,6 +1,7 @@
 plugins {
     id 'java'
     id 'maven-publish'
+    id 'jacoco'
 }
 
 group = 'ru.jrestly'
@@ -68,9 +69,23 @@ jar {
     }
 }
 
+jacoco {
+    toolVersion = "0.8.12"
+}
+
 test {
     useJUnitPlatform()
     systemProperty 'java.util.logging.manager', 'org.apache.logging.log4j.jul.LogManager'
+    finalizedBy jacocoTestReport
+}
+
+jacocoTestReport {
+    dependsOn test
+    reports {
+        xml.required = true
+        html.required = true
+        csv.required = false
+    }
 }
 
 publishing {

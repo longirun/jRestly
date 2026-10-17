@@ -2051,14 +2051,32 @@ Gates (sessions #178–#180):
 
 ---
 
-> **Current status (2026-10-17).** All four active-zone candidates are closed:
-> №1 test-javadoc (class-level javadoc across every `@Test` class in all five
-> modules, batches #185/#201–#205), №2 ADR-0059, №3 ADR-0058, №4 ADR-0060.
-> Highest ADR issued: **0060**; next free: **0061**. Live gate after the audit
-> thread (#181–#200) and the test-javadoc batches: **1232/1232** (core 1152 +
-> engine-okhttp 25 + engine-apache5 25 + codec-jackson-xml 15 + benchmarks 15),
-> 0 warnings under `-Werror`. The audit thread itself lives in `DRAFT.md` and the
-> day files; nothing is pending in this Roadmap.
+### ADR-0061: Competitive Analysis, Strategic Feature Gaps & Quality Control Baseline
+
+> Source of truth: [`docs/0.10.0/ADR-0061-competitive-analysis-and-quality-control-baseline.md`](docs/0.10.0/ADR-0061-competitive-analysis-and-quality-control-baseline.md).
+> Maintainer inquiry (2026-10-17 15:18): code quality control, comparison with competitors, vital feature gaps vs bloat audit.
+
+**Problem:**
+1. The project had robust compiler flags (`-Xlint:all -Werror -parameters`, `-Xdoclint:all -Werror`) and 1258 green tests, but **zero code coverage metrics** (no JaCoCo tooling) to systematically identify uncovered branches.
+2. Incomplete competitive positioning against Retrofit 2, OpenFeign, Spring 6 HTTP Interfaces, and OkHttp to identify vital production gaps and prevent architectural bloat.
+
+**Solution:**
+- **Competitive Matrix & Bloat Audit:** Evaluated runtime dependencies, method ergonomics, dispatch latency (~5–9 µs zero-garbage hot path), and eager contract validation. Audited resilience (`CircuitBreaker`, `RateLimiter`) and cookie stores to preserve ADR-0001 (Zero-Dep Core) and ADR-0003 (Non-goals: not building Spring Cloud).
+- **Vital Feature Gaps Identified:**
+  1. *Gap 1 (Critical):* Dynamic Endpoint / Target URL Override (`@TargetUrl` / `URI` parameter) for S3 presigned URLs, HATEOAS/Link pagination, webhooks.
+  2. *Gap 2 (High Value):* Transparent RFC 9111 HTTP Caching SPI + In-Memory Store.
+  3. *Gap 3 (Medium):* RFC 7807 / RFC 9457 Problem Details error ergonomics.
+- **Quality Control Baseline:** Integrated **JaCoCo 0.8.12** into Gradle lifecycle (`test.finalizedBy jacocoTestReport`).
+  - Baseline metrics: **91.37% Instructions**, **91.15% Lines**, **78.92% Branches**, **98.50% Classes** (131/133 classes covered).
+
+**Live Gate:** `./gradlew test javadoc jacocoTestReport` — **1258/1258** (core 1178 + engine-okhttp 25 + engine-apache5 25 + codec-jackson-xml 15 + benchmarks 15), 0 failures/errors, 0 warnings under `-Werror`.
+
+---
+
+> **Current status (2026-10-17).** Highest ADR issued: **0061**; next free: **0062**.
+> Quality Control baseline established with JaCoCo (91.37% instruction coverage).
+> Live gate: **1258/1258** tests green across all five modules, 0 warnings under `-Werror`.
+> Strategic focus for next cycle: Gap 1 (Dynamic Endpoint / `@TargetUrl`) and Gap 2 (RFC 9111 HTTP Caching).
 
 ## Post-0.5.0 shortlist (not scheduled — see ADR-0003)
 

@@ -1,5 +1,29 @@
 # DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
+> **Сессия #236 (стратегия/архитектура: ADR-0061 конкурентный анализ, аудит избыточности и внедрение JaCoCo quality baseline):**
+> ответ на стратегический запрос Антона в mailbox (2026-10-17 15:18) о контроле качества кодовой базы, сравнении с конкурентами,
+> поиске жизненно необходимых фичей и аудите на предмет лишнего (bloat).
+> 1. *Конкурентный ландшафт (Retrofit 2.11, OpenFeign 13.5, Spring 6 HTTP Interfaces, OkHttp 4/5):*
+>    составлена детальная матрица по зависимостям, прозрачности типов возврата, производительности на hot-path (~5–9 µs/op
+>    zero-garbage dispatch vs рефлексия конкурентов) и 100% fail-fast валидации контрактов при создании прокси.
+> 2. *Жизненно необходимые фичи (Vital Gaps):*
+>    (a) **Gap 1 (критический): Dynamic Endpoint / Target URL Override (`@TargetUrl` / `URI` parameter)** — в реальных API
+>    (S3 presigned URLs, HATEOAS Link pagination, webhooks, dynamic routing) URL назначения определяется в рантайме. В Retrofit
+>    есть `@Url`, в Feign — `URI baseUri`, в Spring — `URI url`. В jRestly базовый URL жестко зафиксирован в клиенте, а `@Get(path)`
+>    статичен — это главный практический барьер для промышленного применения библиотеки.
+>    (b) **Gap 2 (высокая ценность): Прозрачный RFC 9111 HTTP Cache SPI + In-Memory Store** — ETag/304, Cache-Control (max-age,
+>    stale-while-revalidate) для снижения задержек и трафика.
+>    (c) **Gap 3 (средняя ценность): Problem Details (RFC 7807 / RFC 9457)**.
+> 3. *Аудит избыточности (Bloat Audit):* зафиксированы границы ядра по ADR-0001 (Zero-Dep Core) и ADR-0003 (Non-goals: не строим Spring Cloud).
+>    `CircuitBreaker` и `RateLimiter` остаются компактными локальными SPI + default in-memory без внешних распределенных комбайнов.
+> 4. *Quality Control Baseline:* в `build.gradle` интегрирован **JaCoCo 0.8.12** (`test.finalizedBy jacocoTestReport`).
+>    Сняты первые точные метрики покрытия: **91.37% Instructions**, **91.15% Lines**, **78.92% Branches**, **98.50% Classes** (131/133 классов покрыты тестами).
+>    Все пакеты имеют покрытие от 86.5% до 100%.
+> 5. *Документы:* оформлен `docs/0.10.0/ADR-0061-competitive-analysis-and-quality-control-baseline.md`; `ROADMAP.md` обновлен до **ADR-0061** (next free **0062**);
+>    mailbox и дневник обновлены.
+>    Гейт **1258/1258** (core 1178 + engine-okhttp 25 + engine-apache5 25 + codec-jackson-xml 15 + benchmarks 15), 0 failures/errors,
+>    `./gradlew test javadoc jacocoTestReport` зелёный под `-Werror`, 0 warnings. Следующий ход — реализация Gap 1 (`@TargetUrl`).
+>
 > **Сессия #235 (free-аудит: `@ExpectStatus` и `@FollowRedirects` не валидировались eager-валидатором — 29-я «тихая» находка серии, 100% семейство аннотаций закрыто):** свободный
 > ход из контекста #234 (активная зона пуста, highest ADR 0060). Добил оставшийся хвост
 > по декларативным аннотациям: все аннотации с конфигурируемыми параметрами имели fail-fast
