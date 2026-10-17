@@ -60,6 +60,12 @@ class TimeoutWireMockTest extends BaseWireMockTest {
         InputStream streamTimeout();
     }
 
+    interface ZeroTimeoutApi {
+
+        @Get(path = "/api/zero-timeout")
+        TestDto get();
+    }
+
     @Timeout(100)
     interface InterfaceTimeoutApi {
 
@@ -258,5 +264,52 @@ class TimeoutWireMockTest extends BaseWireMockTest {
         } finally {
             client.close();
         }
+    }
+
+    @Test
+    @DisplayName("connectTimeout(0) disables the connect timeout instead of failing client creation on the JDK engine")
+    void zeroConnectTimeoutDisablesConnectTimeout() {
+        stubZeroTimeoutEndpoint();
+
+        JRestlyClient client = JRestlyClient.builder()
+                .baseUrl(baseUrl())
+                .connectTimeout(0)
+                .build();
+
+        try {
+            ZeroTimeoutApi api = client.get(ZeroTimeoutApi.class);
+            assertEquals(42L, api.get().id());
+        } finally {
+            client.close();
+        }
+    }
+
+    @Test
+    @DisplayName("socketTimeout(0) disables the per-request timeout instead of rejecting the request on the JDK engine")
+    void zeroSocketTimeoutDisablesRequestTimeout() {
+        stubZeroTimeoutEndpoint();
+
+        JRestlyClient client = JRestlyClient.builder()
+                .baseUrl(baseUrl())
+                .connectTimeout(2_000)
+                .socketTimeout(0)
+                .build();
+
+        try {
+            ZeroTimeoutApi api = client.get(ZeroTimeoutApi.class);
+            assertEquals(42L, api.get().id());
+        } finally {
+            client.close();
+        }
+    }
+
+    // A small delay proves the request is genuinely unbounded (no zero-length deadline).
+    private static void stubZeroTimeoutEndpoint() {
+        stubFor(get(urlEqualTo("/api/zero-timeout"))
+                .willReturn(aResponse()
+                        .withStatus(200)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody(ITEM_JSON)
+                        .withFixedDelay(100)));
     }
 }

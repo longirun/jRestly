@@ -468,6 +468,7 @@ public class SimpleModuleInfo implements ModuleInfo {
 
         /**
          * The connect timeout in milliseconds (default 5 000). Must not be negative.
+         * A value of {@code 0} disables the timeout.
          *
          * @param ms the connect timeout in milliseconds, not negative
          * @return this builder, for chaining
@@ -483,6 +484,7 @@ public class SimpleModuleInfo implements ModuleInfo {
 
         /**
          * The connect timeout as a {@link Duration} (default 5 000 ms).
+         * A zero duration disables the timeout.
          *
          * @param duration the connect timeout, not {@code null} and not negative
          * @return this builder, for chaining
@@ -498,6 +500,7 @@ public class SimpleModuleInfo implements ModuleInfo {
 
         /**
          * The socket (request) timeout in milliseconds (default 30 000). Must not be negative.
+         * A value of {@code 0} disables the timeout.
          *
          * @param ms the socket timeout in milliseconds, not negative
          * @return this builder, for chaining
@@ -513,6 +516,7 @@ public class SimpleModuleInfo implements ModuleInfo {
 
         /**
          * The socket (request) timeout as a {@link Duration} (default 30 000 ms).
+         * A zero duration disables the timeout.
          *
          * @param duration the socket timeout, not {@code null} and not negative
          * @return this builder, for chaining

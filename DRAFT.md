@@ -1,5 +1,35 @@
 # DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
+> **Сессия #213 (free-аудит/проектное решение: `0`-таймаут был «принимаемым, но
+> невыразимым» на JDK-движке — 23-я находка серии, закрытие non-goal #200):**
+> свободный ход из контекста #212 (активная зона пуста, highest ADR 0060).
+> Взял оставшийся хвост из #200: `connectTimeout(0)`/`socketTimeout(0)`
+> валидны по ADR-0027 §3 («non-negative»), но JDK-движок отвергает
+> `Duration.ZERO` — `HttpClient.Builder.connectTimeout` **на создании клиента**
+> и `HttpRequest.Builder.timeout` **на первом запросе** — голым
+> `IllegalArgumentException: Invalid duration: PT0S`, тогда как OkHttp/Apache5
+> читают `0` как «без таймаута». Одна и та же принятая конфигурация вела себя
+> по-разному, а на дефолтном движке падала поздно и непонятно. Класс тот же,
+> что #184/#199/#200 («поведение зависит от движка/платформы»), но грань новая:
+> не валидация входа, а **недостающая семантика легального значения**.
+> Решение (архитектурное, автономия Антона): **`0` = «без таймаута» на всех
+> движках.** Fix: единый `HttpTemplate.effectiveSocketTimeout(methodTimeout,
+> moduleInfo)` — `@Timeout` всегда побеждает, иначе `socketTimeout == 0` →
+> `null`-опция (движки не ставят дедлайн; OkHttp/Apache5 и так гейтили `> 0`);
+> `JdkHttpEngine.create` применяет `connectTimeout` только при `> 0` (дефолт
+> JDK — безграничный). Негативные значения по-прежнему отбиваются билдерами
+> (#200), `@Timeout` — строго положительный. Javadoc `ModuleInfo`,
+> `SimpleModuleInfo.Builder`, `JRestlyClient.Builder`, `HttpEngineOptions`
+> уточнены. TDD red-first: 2 e2e-теста в `TimeoutWireMockTest` —
+> `zeroConnectTimeoutDisablesConnectTimeout` (создание клиента + вызов) и
+> `zeroSocketTimeoutDisablesRequestTimeout` (ответ с задержкой) — красные на
+> до-фикс коде ровно по `Invalid duration: PT0S` (оба), зелёные после.
+> ADR-0027 → `## Amendment #213`. Гейт **1241/1241** (core 1161 +
+> engine-okhttp 25 + engine-apache5 25 + codec-jackson-xml 15 + benchmarks 15),
+> 0 failures/errors, `./gradlew test javadoc` зелёный под `-Werror`, 0 warnings.
+> Дальше — free-аудит или концепт ADR-0061+ (HTTP-кэш RFC 9111 ждёт слова
+> Антона; вопрос в mailbox от #208, ответа нет).
+>
 > **Сессия #212 (free-аудит: `name()`-fallback параметрных биндингов без флага
 > `-parameters` тихо уезжал как `arg0` — 22-я «тихая» находка серии, класс
 > «парная декларация» #210/#211 с другой стороны):** свободный ход из контекста
@@ -1311,10 +1341,12 @@
 highest ADR **0060**, next free **0061**. Следующий ход — свободный: концепт
 ADR-0061+ (новая эргономика/зрелость) или свежий free-аудит. Хвосты-кандидаты
 из аудит-нити (не эпики): Path/File-тела метрик (-1 вместо размера;
-engine-reported byte accounting), семантика `Duration.ZERO`-таймаута на
-JDK-движке, валидация `@ExpectStatus`/`@FollowRedirects` (инварианты нигде не
-объявлены — фича, не дыра; #207), 15 вспомогательных типов `ru.jrestly.fixtures`
-(при желании — мелкий батч «fixtures-javadoc»). **`@MultipartFormFile.partName`
+engine-reported byte accounting), валидация `@ExpectStatus`/`@FollowRedirects`
+(инварианты нигде не объявлены — фича, не дыра; #207), 15 вспомогательных
+типов `ru.jrestly.fixtures` (при желании — мелкий батч «fixtures-javadoc»).
+**Семантика `Duration.ZERO`-таймаута закрыта в #213**: `0` формально означает
+«без таймаута» на всех движках (ADR-0027 Amendment #213), `@ExpectStatus`/
+`@FollowRedirects` остаются решением #207 «фича, не дыра». **`@MultipartFormFile.partName`
 закрыт в #209** (был в этом списке) — семья name-bearing required-атрибутов
 теперь валидируется eagerly полностью. **#210 открыл новую аудит-ось
 «парные декларативные конструкции»** — путь глагола ⇄ `@PathVariable` теперь

@@ -1,90 +1,86 @@
-# Last Session: #212 (2026-10-17)
+# Last Session: #213 (2026-10-17)
 
 ## Что сделано
 
-**Free-аудит (ось #210/#211 «парные декларативные конструкции» → третья грань
-«декларация ⇄ требование окружения сборки»): `name()`-fallback параметрных
-биндингов без флага `-parameters` тихо уезжал как `arg0` — 22-я «тихая» находка
-серии.**
+**Free-аудит/проектное решение: `0`-таймаут был «принимаемым, но невыразимым»
+на JDK-движке — 23-я находка серии, закрытие non-goal #200.**
 
-1. *Ход:* свободный выбор из контекста #211 (активная зона пуста, highest ADR
-   **0060**). #211 оставил хвост-кандидат «`@PathVariable.name` ⇄ fallback на имя
-   Java-параметра при отсутствии `-parameters`». Копнул — хвост оказался шире:
-   fallback есть у **всех** параметрных биндингов (`@RequestParam` /
-   `@RequestHeader` / `@Cookie` / `@PathVariable`; `MethodMetadata.parse`:
-   `name().isEmpty() ? p.getName() : name`), и его корректность зависит от
-   **флага компиляции** `-parameters` (README его называет, защиты не было).
-2. *Находка (зонд подтвердил):* интерфейс, скомпилированный без `-parameters`,
-   для `@RequestParam String query` даёт **0** проблем — `arg0` уходит
-   query-ключом, сервер его игнорирует, ни ошибки, ни лога. `@RequestHeader`/
-   `@Cookie` — так же тихо. `@PathVariable` #210 всё же ловит, но сообщает голое
-   `@PathVariable 'arg0' does not match any ${...} placeholder` — без причины.
-   Класс тот же, что #207–#211, но грань новая: не «забыли проверить атрибут», а
-   **пропустили требование окружения сборки**.
-3. *Fix (в `ControllerValidator`, только main + тест):* новый
-   `validateParameterNames(method, problems)` — для каждого параметрного
-   биндинга с пустым `name()` (и без `Map`/`HttpCookie`, у которых имена берутся
-   из записей/инстанса) проверяет `Parameter.isNamePresent()`; false →
-   `method(): @RequestParam requires an explicit name() when the controller is
-   compiled without '-parameters' (parameter names are not retained at runtime)`
-   в общий агрегированный `ControllerValidationException` при создании прокси.
-   `@PathVariable` с недоступным fallback'ом исключён из mismatch-множества
-   Amendment #210 (чтобы не было голого `arg0`-сообщения). Публичный API не
-   тронут; класс-javadoc `ControllerValidator` дополнен.
-4. *Почему `isNamePresent()`, а не эвристика «имя похоже на argN»:* это ровно тот
-   признак, что читает JVM (`MethodParameters` attribute), false только когда
-   флага нет — 0 ложных срабатываний; эвристика сломалась бы на пользователе,
-   назвавшем параметр `arg0` вручную.
-5. *TDD red-first:* интерфейс компилируется **в рантайме** через
-   `javax.tools.ToolProvider.getSystemJavaCompiler()` (иначе репро невозможно:
-   проект сам собирается с `-parameters`). Новые тесты:
-   `rejectsParameterNameFallbackWithoutParametersFlagEagerly` (без флага → 3
-   проблемы; те же декларации с флагом → 0; `Map`-параметр и явный `name()` → 0)
-   и `reportsUnnamedPathVariableWithoutParametersFlagActionably` (нет `arg0` в
-   тексте). Красные на до-фикс коде (stash main'а) ровно по целевым ассертам →
-   зелёные.
-6. *Грабли:* throwaway-контроллер грузится `URLClassLoader`'ом **без**
-   `try-with-resources` — закрытый лоадер ломает `Proxy.newProxyInstance` для
-   eager-исключения; temp-каталог одноразовый, утечка лоадера безвредна.
-7. *Документы:* ADR-0017 → `## Amendment #212` (Aspect 5 «Validation» — родной
-   дом для name-fallback; кросс-ссылки на ADR-0025/ADR-0032); `DRAFT.md`
-   (блок-запись #212 + хвост активной зоны); дневник
-   `.agent/days/2026-10-17.md` (сессия #212 + итог дня обновлён до 1239);
-   mailbox (уведомление #212); `last_session.md`.
-8. *Верификация:* `./gradlew test javadoc` — BUILD SUCCESSFUL; счётчик из
-   `build/test-results/**/TEST-*.xml` = ровно **1239/1239** (core 1159 +
+1. *Ход:* свободный выбор из контекста #212 (активная зона пуста, highest ADR
+   **0060**). Взял оставшийся хвост #200: `connectTimeout(0)` /
+   `socketTimeout(0)` валидны по ADR-0027 §3 («non-negative»), но JDK-движок
+   отвергает `Duration.ZERO` — `HttpClient.Builder.connectTimeout` **на
+   создании клиента**, `HttpRequest.Builder.timeout` **на первом запросе** —
+   голым `IllegalArgumentException: Invalid duration: PT0S`. OkHttp/Apache5 при
+   этом читают `0` как «без таймаута» → одна конфигурация ведёт себя
+   по-разному, на дефолтном движке падает поздно и непонятно.
+2. *Класс находки:* тот же «движко-/платформозависимый» класс, что #184/#199/
+   #200, но грань **новая**: не пробел валидации входа, а **недостающая
+   семантика легального значения**. Легальный вход, чья семантика задана только
+   реализацией транспорта.
+3. *Решение (автономия Антона):* **`0` = «без таймаута» на всех движках.**
+   Backward-compatible чтение (OkHttp/Apache и так так читали); отказ от нуля
+   сломал бы существующих пользователей. Формально закреплено в ADR-0027.
+4. *Fix:*
+   - `HttpTemplate.effectiveSocketTimeout(Duration methodTimeout, ModuleInfo)`
+     — единый источник правды для дедлайна запроса: `@Timeout` всегда
+     побеждает; иначе `getSocketTimeout() == 0` → `null` в `HttpEngineOptions`
+     (движки не ставят свой дедлайн; OkHttp/Apache5 и так гейтили `> 0`).
+     Вызывается из `HttpTemplateBuilder` и из fallback-веток
+     `HttpTemplate.send`/`sendAsync`.
+   - `JdkHttpEngine.create` применяет `connectTimeout` только при `> 0`
+     (дефолт JDK безграничный).
+   - Негативные значения по-прежнему отбиваются билдерами `SimpleModuleInfo`/
+     `JRestlyClient` (#200); `@Timeout` остаётся строго положительным.
+   - Javadoc: `ModuleInfo`, `SimpleModuleInfo.Builder` (int+Duration пары),
+     `JRestlyClient.Builder`, `HttpEngineOptions.timeout` — `0` = no timeout.
+5. *TDD red-first:* 2 e2e-теста в `TimeoutWireMockTest` (новый интерфейс
+   `ZeroTimeoutApi` + хелпер `stubZeroTimeoutEndpoint` с задержкой 100 мс):
+   `zeroConnectTimeoutDisablesConnectTimeout` (создание клиента + вызов) и
+   `zeroSocketTimeoutDisablesRequestTimeout` (запрос с `socketTimeout(0)`).
+   Оба красные на до-фикс коде ровно по `Invalid duration: PT0S`, зелёные после.
+6. *Документы:* ADR-0027 → `## Amendment #213`; `DRAFT.md` (блок-запись #213 +
+   хвост активной зоны); дневник `.agent/days/2026-10-17.md` (сессия #213 +
+   итог дня обновлён до 1241); mailbox (короткое уведомление); `last_session.md`.
+7. *Верификация:* `./gradlew test javadoc` — BUILD SUCCESSFUL; счётчик из
+   `build/test-results/**/TEST-*.xml` = ровно **1241/1241** (core 1161 +
    engine-okhttp 25 + engine-apache5 25 + codec-jackson-xml 15 + benchmarks 15),
    0 failures/errors, javadoc-гейт (`-Werror`) чист.
 
 ## Технические заметки
 
-- Рантайм-компиляция: `ToolProvider.getSystemJavaCompiler().run(null, null,
-  null, "-classpath", System.getProperty("java.class.path"), "-d", dir, src)`.
-  Без `-parameters` → `Parameter.isNamePresent()==false`, имя `arg0`.
-- `Map.class.isAssignableFrom(type)` и `HttpCookie.class.isAssignableFrom(type)`
-  — исключения из проверки: у них имя берётся из записей/инстанса
-  (`HttpTemplateBuilder` строки ~481/617 map-ветки).
-- Счётчик тестов: python по `**/build/test-results/test/TEST-*.xml`.
-  `ControllerValidationTest.xml` → «tests»=13 (было 11).
-- Прогон одного класса: `./gradlew :test --tests 'ru.jrestly.ControllerValidationTest'`
+- JDK-проверка (зонд): `HttpClient.Builder.connectTimeout(Duration.ZERO)` →
+  `Invalid duration: PT0S`; `HttpRequest.Builder.timeout(Duration.ZERO)` → то же.
+  Оба требуют строго положительное значение.
+- `engine-okhttp` принимает 0 в `connectTimeout/readTimeout/writeTimeout`
+  (OkHttp `checkDuration` пропускает 0 = без таймаута);
+  `engine-apache5` гейтит `if (socketTimeout > 0)` — оба согласны с новой
+  семантикой без правок.
+- `HttpTemplateBuilder` создаёт `HttpEngineOptions` **всегда** (не-null) с
+  `effectiveTimeout`; `HttpTemplate.send/sendAsync` fallback на
+  `effectiveSocketTimeout` — только для тестов, конструирующих шаблон напрямую.
+- Прогон одного класса: `./gradlew :test --tests 'ru.jrestly.TimeoutWireMockTest'`
   (обязательно с `:` — иначе фильтр улетает в `:benchmarks:test`).
+- Счётчик тестов: python по `**/build/test-results/test/TEST-*.xml`.
+  `TimeoutWireMockTest.xml` → «tests»=8 (было 6).
 - `GRADLE_USER_HOME=/tmp/opencode/gradle-home ./gradlew ...`.
 
-## Контекст для следующей сессии (#213)
+## Контекст для следующей сессии (#214)
 
-1. **Ветка** `agent-loop`; HEAD — коммит этой сессии (родитель — #211).
+1. **Ветка** `agent-loop`; HEAD — коммит этой сессии (родитель — #212).
 2. **Активная зона пуста.** Highest ADR **0060**, next free **0061**.
    Варианты хода:
-   (a) **Продолжить ось «парные декларативные конструкции» / #212-приём
-   «декларация ⇄ требование окружения сборки»**: поискать другие декларации,
-   чья корректность зависит от окружения (флаги сборки, runtime-тип аргумента).
-   (b) **Free-аудит по другой оси** — остатки: Path/File-тела метрик (-1),
-   семантика `Duration.ZERO`-таймаута на JDK-движке.
-   (c) **Концепт ADR-0061+** — HTTP-кэш (RFC 9111) ждёт решения Антона (вопрос в
-   mailbox от #208, ответа пока нет) — не трогать без его слова.
-   (d) **fixtures-javadoc** — 15 вспомогательных типов `ru.jrestly.fixtures`.
-   (e) `@ExpectStatus(statuses = {})` / `@FollowRedirects(count < 0)` — решение
-   #207 «фича, не дыра» (пересматривать только при реально тихом исходе).
+   (a) **Free-аудит по подклассу #213 «легальное значение без семантики»**:
+      поискать конвенции `0`/`-1`/пустых коллекций, чья семантика задана
+      только конкретным транспортом/реализацией (кандидаты: `-1`-конвенции
+      метрик/прогресса, пустые `@ExpectStatus`/`@FollowRedirects` — решение
+      #207 «фича», пересматривать только при реально тихом исходе).
+   (b) **Продолжить ось #212 «декларация ⇄ окружение сборки»** — другие
+      флаги/runtime-условия, от которых зависит корректность декларации.
+   (c) **Free-аудит остатков:** Path/File-тела метрик (-1 вместо размера;
+      engine-reported byte accounting).
+   (d) **Концепт ADR-0061+** — HTTP-кэш (RFC 9111) ждёт решения Антона
+      (вопрос в mailbox от #208, ответа пока нет) — не трогать без его слова.
+   (e) **fixtures-javadoc** — 15 вспомогательных типов `ru.jrestly.fixtures`.
 3. **Среда:** `GRADLE_USER_HOME=/tmp/opencode/gradle-home ./gradlew ...`;
-   счётчик сессий: 212. Часовой пояс контейнера +04 (календарный день
+   счётчик сессий: 213. Часовой пояс контейнера +04 (календарный день
    2026-10-17).

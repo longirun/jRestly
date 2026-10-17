@@ -9,7 +9,7 @@ import java.time.Duration;
 /**
  * Options and execution parameters passed to {@link HttpEngine} for a single wire exchange attempt.
  *
- * @param timeout the effective request timeout, or {@code null} to use the engine's default
+ * @param timeout the effective request deadline, or {@code null} when the call has no timeout
  * @param version the requested HTTP protocol version, or {@code null} to negotiate/use engine default
  * @param streamResponse {@code true} if the response body should be delivered as a live {@link java.io.InputStream}
  *                       instead of materializing all bytes in memory

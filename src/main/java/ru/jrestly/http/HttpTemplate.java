@@ -1430,9 +1430,7 @@ class HttpTemplate {
         long start = System.nanoTime();
         ru.jrestly.engine.HttpEngineOptions options = this.engineOptions;
         if (options == null) {
-            Duration effectiveTimeout = timeout != null
-                    ? timeout
-                    : Duration.ofMillis(moduleInfo.getSocketTimeout());
+            Duration effectiveTimeout = effectiveSocketTimeout(timeout, moduleInfo);
             options = new ru.jrestly.engine.HttpEngineOptions(
                     effectiveTimeout,
                     httpVersion,
@@ -1451,9 +1449,7 @@ class HttpTemplate {
         long start = System.nanoTime();
         ru.jrestly.engine.HttpEngineOptions options = this.engineOptions;
         if (options == null) {
-            Duration effectiveTimeout = timeout != null
-                    ? timeout
-                    : Duration.ofMillis(moduleInfo.getSocketTimeout());
+            Duration effectiveTimeout = effectiveSocketTimeout(timeout, moduleInfo);
             options = new ru.jrestly.engine.HttpEngineOptions(
                     effectiveTimeout,
                     httpVersion,
@@ -1472,6 +1468,18 @@ class HttpTemplate {
             }
         };
         return executor != null ? raw.thenApplyAsync(mapper, executor) : raw.thenApply(mapper);
+    }
+
+    // ADR-0027: the effective request deadline. A method-level @Timeout always wins;
+    // otherwise the client socket timeout applies, where 0 means "no timeout" and is
+    // expressed as null (engines leave their own deadline unset, while the JDK
+    // engine cannot accept Duration.ZERO at all).
+    static Duration effectiveSocketTimeout(Duration methodTimeout, ModuleInfo moduleInfo) {
+        if (methodTimeout != null) {
+            return methodTimeout;
+        }
+        int millis = moduleInfo.getSocketTimeout();
+        return millis == 0 ? null : Duration.ofMillis(millis);
     }
 
     /**

@@ -365,9 +365,7 @@ public class HttpTemplateBuilder {
         result.setMethod(method);
         result.setArgs(args);
 
-        Duration effectiveTimeout = result.getTimeout() != null
-                ? result.getTimeout()
-                : Duration.ofMillis(moduleInfo.getSocketTimeout());
+        Duration effectiveTimeout = HttpTemplate.effectiveSocketTimeout(result.getTimeout(), moduleInfo);
         ru.jrestly.engine.HttpEngineOptions options = new ru.jrestly.engine.HttpEngineOptions(
                 effectiveTimeout,
                 getHttpVersion(),

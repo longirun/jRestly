@@ -95,7 +95,8 @@ public interface ModuleInfo {
     }
 
     /**
-     * The connect timeout in milliseconds (default 5 000).
+     * The connect timeout in milliseconds (default 5 000). A value of {@code 0}
+     * disables the timeout (waits indefinitely).
      *
      * @return the connect timeout in milliseconds
      */
@@ -104,7 +105,8 @@ public interface ModuleInfo {
     }
 
     /**
-     * The socket (request) timeout in milliseconds (default 30 000).
+     * The socket (request) timeout in milliseconds (default 30 000). A value of
+     * {@code 0} disables the timeout (waits indefinitely).
      *
      * @return the socket timeout in milliseconds
      */

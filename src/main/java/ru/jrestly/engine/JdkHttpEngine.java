@@ -87,9 +87,13 @@ public class JdkHttpEngine implements HttpEngine {
     public static JdkHttpEngine create(ModuleInfo moduleInfo) {
         Objects.requireNonNull(moduleInfo, "moduleInfo");
         HttpClient.Builder builder = HttpClient.newBuilder()
-                .connectTimeout(Duration.ofMillis(moduleInfo.getConnectTimeout()))
                 .version(moduleInfo.getHttpVersion())
                 .followRedirects(HttpClient.Redirect.NEVER);
+        // ADR-0027: a zero timeout means "no timeout"; HttpClient.Builder rejects
+        // Duration.ZERO, so the default (unbounded) JDK value is left in place.
+        if (moduleInfo.getConnectTimeout() > 0) {
+            builder.connectTimeout(Duration.ofMillis(moduleInfo.getConnectTimeout()));
+        }
 
         SSLContext sslContext = moduleInfo.getSslContext();
         if (sslContext != null) {

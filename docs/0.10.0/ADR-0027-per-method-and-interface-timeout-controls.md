@@ -145,3 +145,38 @@ on the JDK engine — `HttpRequest.Builder.timeout` rejects `Duration.ZERO` — 
 timeout". Changing `0` semantics (e.g. to "no timeout", or rejecting it) is a
 separate design decision, not a validation gap, and is out of scope here.
 
+
+## Amendment #213
+
+**Decision:** a timeout of `0` formally means **"no timeout"** on every
+transport. This resolves the #200 non-goal: `0` was a valid input (§3 says
+*non-negative*) but only OkHttp/Apache5 read it as "no timeout", while both
+timeout setters of the JDK engine (`HttpClient.Builder.connectTimeout` and
+`HttpRequest.Builder.timeout`) reject `Duration.ZERO` with a bare
+`IllegalArgumentException: Invalid duration: PT0S` — at client creation for
+`connectTimeout(0)`, and at the first request (after the controller proxy was
+built and the call started) for `socketTimeout(0)`. The same accepted
+configuration therefore behaved differently per engine, and on the default
+engine it failed late and opaquely.
+
+**Implementation:**
+- `HttpTemplate.effectiveSocketTimeout(Duration, ModuleInfo)` is the single
+  source of truth for the request deadline: a method-level `@Timeout` always
+  wins; otherwise a client `socketTimeout` of `0` is expressed as a `null`
+  engine option, so every engine leaves its own deadline unset. A client
+  `socketTimeout` of `0` also leaves the OkHttp client read/write timeouts and
+  the Apache5 so-timeout unset (both already guarded by `> 0`).
+- `JdkHttpEngine.create` applies `connectTimeout` only when the configured
+  value is positive; `0` keeps the JDK default (unbounded), matching the other
+  engines.
+- Negative values remain rejected by the `SimpleModuleInfo`/`JRestlyClient`
+  builders (#200); `@Timeout` remains strictly positive on methods and
+  interfaces.
+
+**Automated verification:** `TimeoutWireMockTest` —
+`zeroConnectTimeoutDisablesConnectTimeout` (client creation succeeds and the
+call goes through with `connectTimeout(0)`) and
+`zeroSocketTimeoutDisablesRequestTimeout` (`socketTimeout(0)` + a delayed
+response succeeds). Both were red on the pre-fix code exactly at the JDK
+setter (`Invalid duration: PT0S`), green after. Positive-timeout behaviour is
+covered by the rest of the class unchanged.
