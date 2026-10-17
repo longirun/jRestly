@@ -1,5 +1,21 @@
 # DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
+> **Сессия #253 (free-аудит / харденинг: устранение тихого сброса явного `@RequestHeader` на кросс-оригинных редиректах — 34-я «тихая» находка серии, новые рекорды JaCoCo: 95.74% Instruction / 82.95% Branch / 95.58% Line Coverage):**
+> свободный ход развития качества и надежности кодовой базы.
+> 1. *Находка (34-я в серии):* `HttpTemplateBuilder` собирал список `authHeaderNames` (заголовки, удаляемые на кросс-оригинных редиректах) из «сырого» списка `AuthProvider.getAuthHeaders()`. Из-за этого явный `@RequestHeader` контроллера, затеняющий ambient auth-заголовок **по имени** (реалистичный кейс: клиент с `bearerAuth(...)` + per-call `@RequestHeader("Authorization")` override — merged-запрос уже несёт явное значение, см. `createHeaders`), молча удалялся на кросс-оригинном хопe, и редирект улетал **без `Authorization` вообще**, нарушая обещание ADR-0002: «явные значения `@RequestHeader` переживают редирект».
+> 2. *Fix:* в `HttpTemplateBuilder.build()` drop-list теперь вычисляется как ambient auth-имена **минус** явные `@RequestHeader`-имена контроллера (статические `methodMetadata.staticHeaders()` + динамические параметры `p.isRequestHeader()`, сравнение без учёта регистра). Оба пути редиректа (sync и async) проходят через `HttpTemplate.nextHop()`, поэтому покрываются одним исправлением. Остаточный краевой кейс задокументирован как non-goal в поправке: Map-типизированный динамический `@RequestHeader`, runtime-ключ которого в рантайме совпадает с ambient auth-именем, всё ещё удаляется (имя известно только в момент вызова).
+> 3. *TDD и исторические гейты JaCoCo:*
+>    - Red-first тест: `CrossOriginRedirectTest.crossOriginRedirectPreservesExplicitAuthOverride` (hop 1 несёт явный токен; hop 2, кросс-оригинный, теперь несёт его тоже) + fixture `RedirectMethodController.getWithExplicitAuthOverride`; до фикса — красный (WireMock: `expected Authorization: Bearer explicit-token but was: (empty)` на hop 2).
+>    - Всего тестов: **1423 / 1423** green across all 5 modules (+1 тест, 0 failures, 0 errors, 0 warnings under `-Werror`).
+>    - **JaCoCo Coverage:**
+>      * **CLASS:** **143 / 143 (100.00%)** — абсолютное 100% покрытие всех классов библиотеки!
+>      * **METHOD:** **1418 / 1418 (100.00%)** — абсолютное 100% покрытие ВСЕХ методов библиотеки (0 missed methods)!
+>      * **BRANCH:** **3,667 / 4,421 (82.95%)** — новый исторический рекорд!
+>      * **INSTRUCTION:** **29,935 / 31,266 (95.74%)** — новый исторический рекорд (+0.05% за сессию)!
+>      * **LINE:** **6,504 / 6,805 (95.58%)** — новый исторический рекорд (+0.04% за сессию)!
+>      * **COMPLEXITY:** **2,949 / 3,661 (80.55%)**.
+>    - ADR-0002 дополнен `## Amendment #253`.
+>
 > **Сессия #251 (free-аудит / харденинг: закрытие краевых условий в 8 подсистемах и пробитие рубежа 82.94% Branch Coverage при 95.69% Instruction Coverage):**
 > свободный ход развития качества и надежности кодовой базы.
 > 1. *Харденинг и верификация краевых веток периферии:*

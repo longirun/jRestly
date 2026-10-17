@@ -1491,8 +1491,10 @@ class HttpTemplate {
         URI nextUri = request.uri().resolve(location);
         List<Header> nextHeaders = request.headers();
         if (isCrossOrigin(request.uri(), nextUri)) {
-            // Drop default client auth headers on cross-origin redirects to prevent credential leakage.
-            // Explicit @RequestHeader values are preserved as intentionally set by the caller.
+            // Drop the ambient client auth headers (the AuthProvider names the
+            // controller does not explicitly declare) to prevent credential
+            // leakage; an explicit @RequestHeader value is the caller's
+            // intentional choice and survives the redirect (ADR-0002).
             nextHeaders = dropAuthHeaders(nextHeaders);
             logger.log(System.Logger.Level.INFO,
                     "Cross-origin redirect to " + nextUri + ", auth headers dropped");

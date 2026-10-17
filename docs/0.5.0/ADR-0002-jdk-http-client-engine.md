@@ -19,3 +19,25 @@ The engine is Apache HttpClient 4.5 (EOL maintenance branch) and the template vo
 - HC4 vocabulary disappears; redirect/multipart tests updated to the new semantics.
 - Engine quirks (malformed responses throwing instead of yielding a status) are ours to own — accepted cost of control.
 - HTTP/2 comes free where servers support it.
+
+## Amendment #253
+
+Session #253 (free-audit, 2026-10-17) — the 34th "silent" finding of the series:
+the redirect decision above promised "explicit `@RequestHeader` values survive"
+the cross-origin auth drop, but the drop was name-based only. `HttpTemplateBuilder`
+collected `authHeaderNames` from the raw `AuthProvider.getAuthHeaders()` list, so an
+explicit `@RequestHeader` (static on method/type, or a dynamic parameter) that
+shadowed an ambient auth header **by name** (the realistic case: a client
+`bearerAuth(...)` plus a per-call `@RequestHeader("Authorization")` override — the
+merged request already carries the explicit value, per `createHeaders`) was
+silently dropped on the cross-origin hop, and the redirected request went out with
+no `Authorization` at all. Fix: the drop list is now computed in
+`HttpTemplateBuilder.build()` as the ambient auth names **minus** the controller's
+explicit `@RequestHeader` names (static + declared dynamic, compared
+case-insensitively), so only genuinely ambient credentials are dropped. Residual
+edge (documented, not fixed): a dynamic `Map`-typed `@RequestHeader` argument whose
+runtime key collides with an ambient auth name is still dropped — the name is only
+known at call time, and the name-based policy predates it. Verified red-first by
+`CrossOriginRedirectTest.crossOriginRedirectPreservesExplicitAuthOverride` (hop 1
+carries the explicit token; hop 2, cross-origin, now carries it too) plus the
+existing guards (ambient drop, same-origin keep).

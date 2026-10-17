@@ -51,6 +51,37 @@ class CrossOriginRedirectTest extends BaseWireMockTest {
     }
 
     @Test
+    @DisplayName("cross-origin redirect preserves an explicit @RequestHeader auth override")
+    void crossOriginRedirectPreservesExplicitAuthOverride() {
+        otherOriginServer = new WireMockServer(WireMockConfiguration.options().dynamicPort());
+        otherOriginServer.start();
+
+        otherOriginServer.stubFor(get(urlEqualTo("/api/target"))
+                .willReturn(aResponse().withStatus(200).withBody("cross-origin-explicit")));
+
+        // ambient client auth present, but the call overrides it explicitly
+        moduleInfo.getTestAuthProvider().updateAuthHeader("Authorization", "Bearer secret-token");
+        moduleInfo.getTestAuthProvider().setAuthorized(true);
+
+        stubFor(get(urlEqualTo("/api/redirect"))
+                .willReturn(aResponse()
+                        .withStatus(302)
+                        .withHeader("Location", "http://localhost:" + otherOriginServer.port() + "/api/target")));
+
+        RedirectMethodController redirectController = client.get(RedirectMethodController.class);
+        String result = redirectController.getWithExplicitAuthOverride("Bearer explicit-token");
+
+        assertEquals("cross-origin-explicit", result);
+        // hop 1: the explicit override wins over the ambient client token
+        verify(getRequestedFor(urlEqualTo("/api/redirect"))
+                .withHeader("Authorization", equalTo("Bearer explicit-token")));
+        // hop 2: cross-origin — the value the caller intentionally set must
+        // survive the redirect, not the ambient one (ADR-0002)
+        otherOriginServer.verify(getRequestedFor(urlEqualTo("/api/target"))
+                .withHeader("Authorization", equalTo("Bearer explicit-token")));
+    }
+
+    @Test
     @DisplayName("same-origin redirect keeps the ambient auth header")
     void sameOriginRedirectKeepsAuthHeader() {
         moduleInfo.getTestAuthProvider().updateAuthHeader("Authorization", "Bearer secret-token");

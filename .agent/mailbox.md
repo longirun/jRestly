@@ -51,45 +51,6 @@
 
 ---
 
-[2026-10-17 19:48] Агент (сессия #246): Антон, провел глубокий аудит и верификацию периферийных моделей, транспорта и заголовков:
-- Создан тестовый сьют `WireResponseUnitTest` (+10 тестов), детально верифицирующий все фабрики `WireResponse.of(...)`, методы билдера, оверлоады тел (byte[], string, charset, stream), дефолты протоколов, equals/hashCode/toString.
-- В `ResponseHeaders`: верифицирован `ageSeconds()`, `captureCallable(Callable)` (в т.ч. checked exceptions, ThreadLocal cleanup и вложенные вызовы), заголовок `Set-Cookie2` и `cookieMap()` с null-значениями, `populate` и HTTP/2 trailers.
-- В `PersistentCookieStore` и `FileCookiePersister`: верифицировано делегирование `getURIs()`, `Builder.delegate(...)`, авто-нормализация `.local` доменов при preload, и пути без родительских директорий.
-- В `TraceContext` и `TracePropagators`: верифицированы 3-arg фабрика `of(...)`, 1-arg `parse(...)`, W3C forward-compatibility Level 1 с future extra metadata, дефолтные correlationId фабрики, пустые композиты и валидация аргументов.
-- В `ProblemDetail` и `ZeroDepJsonParser`: проверены type mismatch в `getProperty(name, Class)`, `Builder.instance(URI)`, обработка ошибок при битых числах и незакрытых скобках.
-- Преодолен исторический рубеж JaCoCo: **впервые пробит рубеж 80% Branch Coverage (80.17%)**, а Instruction Coverage вырос до **93.51%** (29,174 / 31,198), Line Coverage — **93.39%**, Method Coverage — **96.76%** при **100.00% Class Coverage (143/143 классов)**!
-- База тестов достигла **1376 / 1376** тестов (100% green across all 5 modules, 0 failures, 0 errors, 0 warnings under `-Werror`). Оформлен `ADR-0064` `## Amendment #246`.
-
-[2026-10-17 21:05] Агент (сессия #248): Антон, провел глубокий аудит краевых веток транспорта, кэширования стримов и SPI контрактов:
-- В `AbstractHttpClient`: верифицированы фабрики и акцессоры транспорта `getHttpClient()`, `getHttpEngine()`, а также 1-аргументный конструктор `JdkHttpEngine(rawClient)` без владения ресурсами внешнего клиента.
-- В `RequestContext` и `ResponseContext`: покрыты default-методы шорт-циркуита (`shortCircuit`, `shortCircuitResponse`, `isShortCircuited`), а в `SimpleResponseContext` проверена мутация и unmodifiable защита атрибутов, аксессоры `method()` и `args()`.
-- В `JRestlyClient.Builder` и `ModuleInfo`: проверена конфигурация `authHeader(Supplier<String>)`, верифицированы все default-методы `ModuleInfo` и мутаторы `SimpleEnvironment`.
-- В `HttpCacheWireMockTest`: протестирована бесшовная трансформация закэшированного ответа в `InputStream` через `toStreamWireResponse` при Cache HIT и условной 304 Not Modified ревалидации на стриминговых методах.
-- В `WireResponseUnitTest`, `ProgressBodyPublisherTest`, `MultipartPartFlexibilityTest`: проверен `TrailerCompletingInputStream` (CAS-триггер на EOF), отмена подписки в `MultipartBodyPublisher`, проброс `onError` в `ProgressBodyPublisher`.
-- Достигнуты новые исторические рекорды качества JaCoCo: 100.00% Class Coverage (143/143), 99.29% Method Coverage (1408/1418), 94.53% Instruction Coverage, 94.53% Line Coverage, 80.71% Branch Coverage.
-- База тестов выросла до 1392 / 1392 тестов.
-
-[2026-10-17 21:35] Агент (сессия #249): Антон, взят абсолютный рубеж качества: **100.00% Method Coverage (1418/1418 методов)** и **100.00% Class Coverage (143/143 классов)** в JaCoCo!
-- Найдена и устранена 33-я «тихая» находка серии: в `HttpTemplate.fallbackMethod()` использовался `HttpTemplate.class.getMethod("exchange")`. Метод `exchange()` в `HttpTemplate` объявлен package-private, из-за чего `Class.getMethod` безусловно выбрасывал `NoSuchMethodException: ru.jrestly.http.HttpTemplate.exchange()`, оборачивавшийся в `IllegalStateException: exchange method not found`. При вызове шаблона с `method == null` (программный/синтетический dispatch) создание `RequestContext` всегда крашилось. Заменено на `HttpTemplate.class.getDeclaredMethod("exchange")`. Оформлен `ADR-0047` `## Amendment #249`.
-- Протестированы все оставшиеся 10 краевых методов:
-  * `HttpTemplate.fallbackMethod` (разрешение `exchange()` при `method == null`);
-  * `HttpTemplate.lambda$exchangeAsync$6` (запись success и failure в `CircuitBreaker` на async CompletableFuture вызовах);
-  * `TrailerCompletingInputStream.lambda$new$0` (дефолтный no-op consumer при непустых трейлерах);
-  * `HttpTemplateBuilder.lambda$applyTracingHeaders$5` (`@Trace(w3c = true, forceNew = true)` с удалением существующего traceparent);
-  * `HttpTemplateBuilder.lambda$createHeaders$1` (слияние статических заголовков `@RequestHeader` с клиентскими auth-заголовками `authHeader`);
-  * `HttpTemplateBuilder$1.onError` (делегирование ошибок потока в `Flow.Publisher.onError`);
-  * `WireResponse.lambda$new$0` (дефолтный `trailersSupplier` при непустых трейлерах);
-  * `MultipartBodyPublisher$1.cancel` (прямая отмена стримингового чанка `ofStream`);
-  * `ClientMetricsListener.lambda$composite$0` (`onCallComplete` на пустом композите);
-  * `CompositeClientMetricsListener.onRetry` (делегирование `onRetry` в составные слушатели).
-- Достигнуты абсолютные рекорды JaCoCo:
-  * **100.00% Class Coverage (143/143 классов)**;
-  * **100.00% Method Coverage (1418/1418 методов)** — во всей библиотеке 0 непокрытых методов;
-  * **94.97% Instruction Coverage** (29,630 / 31,198);
-  * **94.94% Line Coverage** (6,451 / 6,795);
-  * **81.19% Branch Coverage** (3,578 / 4,407).
-- База тестов достигла **1399 / 1399** тестов (100% green across all 5 modules, 0 failures, 0 errors, 0 warnings under `-Werror`).
-
 [2026-10-17 22:05] Агент (сессия #250): Антон, юбилейная сессия #250! Проведен глубокий аудит и харденинг краевых веток периферийных подсистем:
 - В `RateLimiter`: протестировано восстановление флага `Thread.currentThread().isInterrupted()` и возврат `false` при прерывании нити в `tryAcquire(Duration)`.
 - В `CircuitBreaker`: проверен `remainingWaitDuration()` при не-OPEN состояниях (`Duration.ZERO`), вытеснение сбоя успехом в кольцевом буфере с декрементом `failureCount`, метрики в `HALF_OPEN` и возврат в `OPEN` при сбое пробы.
@@ -128,3 +89,15 @@
   * **100.00% Method Coverage (1418/1418)**;
   * **100.00% Class Coverage (143/143)**.
 - Тестовая база выросла до **1422 / 1422** тестов (100% green across all 5 modules, 0 failures, 0 errors, 0 warnings under `-Werror`).
+[2026-10-17 23:30] Агент (сессия #253): Антон, найден и устранён 34-й «тихий» баг серии — в ядре HTTP-пайплайна:
+- *Находка:* `HttpTemplateBuilder` собирал список заголовков для сброса на кросс-оригинных редиректах из «сырого» `AuthProvider.getAuthHeaders()`. Из-за этого явный `@RequestHeader` контроллера, затеняющий ambient auth-заголовок **по имени** (реалистичный кейс: клиент с `bearerAuth(...)` + per-call `@RequestHeader("Authorization")` override), молча удалялся на кросс-оригинном хопе — редирект улетал **без `Authorization` вообще**, нарушая обещание ADR-0002 («явные значения `@RequestHeader` переживают редирект»).
+- *Fix:* drop-list теперь вычисляется как ambient auth-имени **минус** явные `@RequestHeader`-имена контроллера (статические + динамические, case-insensitive). Оба пути (sync и async) проходят через `nextHop()`, поэтому исправление покрывает оба. Остаточный краевой кейс (Map-типизированный динамический `@RequestHeader` с runtime-ключом, совпадающим с ambient auth-именем) задокументирован как non-goal в поправке.
+- *TDD:* red-first тест `CrossOriginRedirectTest.crossOriginRedirectPreservesExplicitAuthOverride` (hop 1 несёт явный токен; hop 2, кросс-оригинный, теперь несёт его тоже) — до фикса красный, после зелёный.
+- *Гейты:* **1423/1423** тестов зелёные (0 failures, 0 errors, 0 warnings under `-Werror`), Javadoc чист.
+- *Новые исторические рекорды JaCoCo:*
+  * **95.74% Instruction Coverage** (29,935 / 31,266);
+  * **82.95% Branch Coverage** (3,667 / 4,421);
+  * **95.58% Line Coverage** (6,504 / 6,805);
+  * **100.00% Method Coverage (1418/1418)**;
+  * **100.00% Class Coverage (143/143)**.
+- ADR-0002 дополнен `## Amendment #253`.

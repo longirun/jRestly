@@ -266,14 +266,31 @@ public class HttpTemplateBuilder {
 
         result.setHeaders(headers);
         result.setConditional(isConditionalRequest(headers));
-        // Header names to drop on cross-origin redirects
+        // Header names to drop on cross-origin redirects: the ambient AuthProvider
+        // names minus the ones the controller explicitly declares (static or dynamic
+        // @RequestHeader) — an explicit value is the caller's intentional choice and
+        // must survive the redirect (ADR-0002), not be treated as an ambient credential.
         List<Header> authHeaders = moduleInfo.getAuthProvider().getAuthHeaders();
         if (authHeaders == null || authHeaders.isEmpty()) {
             result.setAuthHeaderNames(List.of());
         } else {
+            Set<String> explicitNames = new HashSet<>();
+            for (Header h : methodMetadata.staticHeaders()) {
+                if (h.name() != null) {
+                    explicitNames.add(h.name().toLowerCase(Locale.ROOT));
+                }
+            }
+            for (MethodMetadata.ParameterDescriptor p : methodMetadata.parameterDescriptors()) {
+                if (p.isRequestHeader() && p.requestHeaderName() != null) {
+                    explicitNames.add(p.requestHeaderName().toLowerCase(Locale.ROOT));
+                }
+            }
             List<String> authNames = new ArrayList<>(authHeaders.size());
             for (int i = 0, size = authHeaders.size(); i < size; i++) {
-                authNames.add(authHeaders.get(i).name());
+                String name = authHeaders.get(i).name();
+                if (name != null && !explicitNames.contains(name.toLowerCase(Locale.ROOT))) {
+                    authNames.add(name);
+                }
             }
             result.setAuthHeaderNames(authNames);
         }

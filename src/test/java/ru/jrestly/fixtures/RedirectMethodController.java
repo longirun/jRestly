@@ -25,4 +25,8 @@ public interface RedirectMethodController {
     @FollowRedirects(count = 2)
     @Get(path = "/api/same-origin")
     String getSameOriginRedirect();
+
+    @FollowRedirects(count = 1)
+    @Get(path = "/api/redirect")
+    String getWithExplicitAuthOverride(@RequestHeader(name = "Authorization") String token);
 }
