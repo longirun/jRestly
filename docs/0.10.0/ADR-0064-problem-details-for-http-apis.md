@@ -76,3 +76,14 @@ Implements the standard members defined by RFC 9457 §3.1:
    - Unclosed strings, arrays, brackets, missing colons, and missing commas throw actionable `IllegalArgumentException` fail-fast errors instead of looping or misparsing.
    - Default method coverage for `PayloadCodec` and `PayloadCodecProvider` brought class coverage across the entire library to **100.00% (143/143 classes)**.
 
+## Amendment #243 (2026-10-17)
+
+**Array Serialization in ProblemDetail Properties & Parser Hardening:**
+1. *Issue (31st "quiet" finding in series):* In `ProblemDetail.appendJsonValue`, only `Iterable<?>` was checked for array-like collection values. When callers supplied native Java arrays (e.g., `String[]`, `int[]`, `Object[]`) into extension properties via `setProperty(...)`, `appendJsonValue` fell through to the `else` branch, invoking `val.toString()` and outputting Java type tokens like `"[Ljava.lang.String;@5e265ba4"` instead of a proper JSON array `[...]`. Furthermore, in `ZeroDepJsonParser.parseString`, unicode escapes (`\uXXXX`) without 4 trailing characters or with invalid hex characters either silently swallowed the escape or threw unhandled raw `NumberFormatException`.
+2. *Resolution:*
+   - `ProblemDetail.appendJsonValue` explicitly checks `val.getClass().isArray()` and recursively formats every element using `java.lang.reflect.Array` reflections, supporting both primitive and object arrays.
+   - `ZeroDepJsonParser.parseString` enforces exact 4-character hex verification for `\uXXXX` sequences, failing fast with actionable `IllegalArgumentException`.
+   - Comprehensive unit testing for fluent setters (`withType`, `withTitle`, `withStatus`, `withDetail`, `withInstance`, `withProperty`), typed property access (`getProperty(name, Class<T>)`), `ProblemDetailException` constructors, and `CacheControl` / `InMemoryHttpCache` expiration mechanics.
+   - Total test suite expanded to **1324/1324** tests green. JaCoCo instruction coverage exceeded the **90%** threshold (**90.85% Instructions**, **90.64% Lines**, **76.92% Branches**, **100.00% Classes**).
+
+

@@ -148,6 +148,27 @@ class ProblemDetailTest {
     }
 
     @Test
+    @DisplayName("Zero-dep toJson() serializes arrays (objects and primitives) in extension properties")
+    void serializesArraysInProperties() {
+        ProblemDetail pd = ProblemDetail.builder()
+                .status(400)
+                .property("stringArray", new String[]{"first", "second"})
+                .property("intArray", new int[]{10, 20, 30})
+                .property("booleanArray", new boolean[]{true, false})
+                .build();
+
+        String json = pd.toJson();
+        assertTrue(json.contains("\"stringArray\":[\"first\",\"second\"]"), "Expected JSON array for stringArray, got: " + json);
+        assertTrue(json.contains("\"intArray\":[10,20,30]"), "Expected JSON array for intArray, got: " + json);
+        assertTrue(json.contains("\"booleanArray\":[true,false]"), "Expected JSON array for booleanArray, got: " + json);
+
+        ProblemDetail parsed = ProblemDetail.fromJson(json);
+        assertEquals(List.of("first", "second"), parsed.getProperty("stringArray"));
+        assertEquals(List.of(10, 20, 30), parsed.getProperty("intArray"));
+        assertEquals(List.of(true, false), parsed.getProperty("booleanArray"));
+    }
+
+    @Test
     @DisplayName("Special character escaping in JSON string values")
     void jsonEscaping() {
         ProblemDetail pd = ProblemDetail.builder()
@@ -254,5 +275,92 @@ class ProblemDetailTest {
         assertEquals("HTTP 404 [Not Found]: User 123 does not exist", ex.getMessage());
         assertTrue(ex.getProblemDetail().isPresent());
         assertEquals(pd, ex.getProblemDetail().get());
+    }
+
+    @Test
+    @DisplayName("ProblemDetail fluent setters, string URI setters, typed property access and toString")
+    void fluentSettersAndPropertyAccess() {
+        ProblemDetail pd = new ProblemDetail()
+                .withType(URI.create("https://example.org/probs/custom"))
+                .withTitle("Custom Problem")
+                .withStatus(418)
+                .withDetail("I'm a teapot")
+                .withInstance(URI.create("/teapot/1"))
+                .withProperty("temp", 95)
+                .withProperty("ready", true);
+
+        assertEquals(URI.create("https://example.org/probs/custom"), pd.getType());
+        assertEquals("Custom Problem", pd.getTitle());
+        assertEquals(418, pd.getStatus());
+        assertEquals("I'm a teapot", pd.getDetail());
+        assertEquals(URI.create("/teapot/1"), pd.getInstance());
+        assertEquals(Integer.valueOf(95), pd.getProperty("temp", Integer.class));
+        assertNull(pd.getProperty("temp", String.class));
+        assertNull(pd.getProperty("nonExistent", Object.class));
+        assertEquals(Boolean.TRUE, pd.getProperty("ready", Boolean.class));
+        assertTrue(pd.toString().contains("418"));
+        assertTrue(pd.toString().contains("I'm a teapot"));
+
+        // String URI setters
+        pd.setType("https://example.org/probs/updated");
+        assertEquals(URI.create("https://example.org/probs/updated"), pd.getType());
+        pd.setType((String) null);
+        assertEquals(ProblemDetail.DEFAULT_TYPE, pd.getType());
+
+        pd.setInstance("/new-instance");
+        assertEquals(URI.create("/new-instance"), pd.getInstance());
+        pd.setInstance((String) null);
+        assertNull(pd.getInstance());
+    }
+
+    @Test
+    @DisplayName("ZeroDepJsonParser parses unicode escapes and fails fast on invalid sequences")
+    void unicodeEscapesInZeroDepParser() {
+        String json = "{\"detail\": \"Letter \\u0041 and \\u0042\"}";
+        ProblemDetail pd = ProblemDetail.fromJson(json);
+        assertEquals("Letter A and B", pd.getDetail());
+
+        // Incomplete unicode escape
+        assertThrows(IllegalArgumentException.class, () -> ProblemDetail.fromJson("{\"detail\": \"\\u12\"}"));
+        // Invalid hex in unicode escape
+        assertThrows(IllegalArgumentException.class, () -> ProblemDetail.fromJson("{\"detail\": \"\\uXYZW\"}"));
+    }
+
+    @Test
+    @DisplayName("ProblemDetailException constructors and message formatting edge cases")
+    void problemDetailExceptionConstructors() {
+        // Constructor with null details
+        ProblemDetailException exNull = new ProblemDetailException(null, 500, null);
+        assertEquals(500, exNull.getStatusCode());
+        assertNotNull(exNull.problemDetail());
+        assertEquals(500, exNull.problemDetail().getStatus());
+
+        // Constructor with String details
+        ProblemDetailException exStr = new ProblemDetailException("Something failed", 400, List.of());
+        assertEquals(400, exStr.getStatusCode());
+        assertEquals("Something failed", exStr.problemDetail().getDetail());
+
+        // Constructor with existing ProblemDetail
+        ProblemDetail pd = ProblemDetail.forStatus(403);
+        ProblemDetailException exPd = new ProblemDetailException(pd, 403, List.of());
+        assertEquals(pd, exPd.problemDetail());
+
+        // getMessage formatting variations
+        ProblemDetail pdOnlyStatus = new ProblemDetail();
+        pdOnlyStatus.setStatus(502);
+        ProblemDetailException exNoTitleNoDetail = new ProblemDetailException(pdOnlyStatus, List.of());
+        assertEquals("HTTP 502", exNoTitleNoDetail.getMessage());
+
+        ProblemDetail pdTitleOnly = new ProblemDetail();
+        pdTitleOnly.setStatus(503);
+        pdTitleOnly.setTitle("Service Unavailable");
+        ProblemDetailException exTitleOnly = new ProblemDetailException(pdTitleOnly, List.of());
+        assertEquals("HTTP 503 [Service Unavailable]", exTitleOnly.getMessage());
+
+        ProblemDetail pdDetailOnly = new ProblemDetail();
+        pdDetailOnly.setStatus(504);
+        pdDetailOnly.setDetail("Gateway Timeout Occurred");
+        ProblemDetailException exDetailOnly = new ProblemDetailException(pdDetailOnly, List.of());
+        assertEquals("HTTP 504: Gateway Timeout Occurred", exDetailOnly.getMessage());
     }
 }

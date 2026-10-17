@@ -82,4 +82,22 @@ class CacheControlTest {
         assertNull(cc.maxAgeSeconds());
         assertNull(cc.staleWhileRevalidateSeconds());
     }
+
+    @Test
+    @DisplayName("toString produces formatted directives and handles empty instance")
+    void testToStringAndDirectives() {
+        assertEquals("CacheControl[]", CacheControl.empty().toString());
+
+        CacheControl cc = CacheControl.parse("no-cache, no-store, must-revalidate, max-age=60, stale-while-revalidate=120, private, public, unknown-directive");
+        String s = cc.toString();
+        assertTrue(s.startsWith("CacheControl["));
+        assertTrue(s.contains("no-cache"));
+        assertTrue(s.contains("no-store"));
+        assertTrue(s.contains("must-revalidate"));
+        assertTrue(s.contains("max-age=60"));
+        assertTrue(s.contains("stale-while-revalidate=120"));
+        assertTrue(s.contains("private"));
+        assertTrue(s.contains("public"));
+    }
 }
+

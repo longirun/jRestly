@@ -51,4 +51,36 @@ class OnErrorParserTest {
         assertEquals(ErrorA.class, parser.getErrorClass(422));
         assertEquals(ErrorA.class, parser.getErrorClass());
     }
+
+    @Test
+    @DisplayName("OnErrorParser empty parser defaults to Void and false")
+    void onErrorParserEmptyDefaults() {
+        OnErrorParser parser = new OnErrorParser();
+        assertFalse(parser.canParse(404));
+        assertEquals(Void.class, parser.getErrorClass(404));
+        assertEquals(Void.class, parser.getErrorClass());
+        assertTrue(parser.getStatuses().isEmpty());
+
+        parser.setStatuses(null);
+        parser.setErrorClass(null);
+        assertFalse(parser.canParse(500));
+        assertTrue(parser.getStatuses().isEmpty());
+    }
+
+    @Test
+    @DisplayName("OnErrorParser registerDefault only without specific statuses")
+    void onErrorParserDefaultOnly() {
+        OnErrorParser parser = new OnErrorParser();
+        parser.registerDefault(ErrorDefault.class);
+
+        assertTrue(parser.canParse(400));
+        assertTrue(parser.canParse(500));
+        assertFalse(parser.canParse(200));
+
+        assertEquals(ErrorDefault.class, parser.getErrorClass(404));
+        assertEquals(ErrorDefault.class, parser.getErrorClass(500));
+        assertEquals(ErrorDefault.class, parser.getErrorClass());
+        assertTrue(parser.getStatuses().isEmpty());
+    }
 }
+

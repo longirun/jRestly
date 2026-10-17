@@ -10,6 +10,9 @@ import ru.jrestly.http.WireResponse;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.time.ZoneOffset;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Optional;
@@ -201,4 +204,59 @@ class InMemoryHttpCacheTest {
         assertTrue(cache.get(new WireRequest(HttpMethod.GET, uri2, List.of(), null, null)).isEmpty());
         assertTrue(cache.get(new WireRequest(HttpMethod.GET, uri3, List.of(), null, null)).isPresent());
     }
+
+    @Test
+    @DisplayName("Expires and Date headers compute freshness lifetime when max-age is absent")
+    void expiresAndDateFreshnessCalculation() {
+        InMemoryHttpCache cache = new InMemoryHttpCache(10);
+        assertEquals(10, cache.maxEntries());
+
+        URI uri = URI.create("https://api.example.com/legacy-item");
+        WireRequest req = new WireRequest(HttpMethod.GET, uri, List.of(), null, null);
+
+        ZonedDateTime now = ZonedDateTime.now(ZoneOffset.UTC);
+        String dateStr = DateTimeFormatter.RFC_1123_DATE_TIME.format(now);
+        String expiresStr = DateTimeFormatter.RFC_1123_DATE_TIME.format(now.plusSeconds(300));
+
+        WireResponse res = WireResponse.builder()
+                .statusCode(200)
+                .header("Date", dateStr)
+                .header("Expires", expiresStr)
+                .header("ETag", "\"tag1\"")
+                .body("legacy body")
+                .build();
+
+        cache.put(req, res);
+        assertEquals(1, cache.size());
+
+        CachedResponse cached = cache.get(req).orElseThrow();
+        assertEquals(300L, cached.freshnessLifetimeSeconds());
+        assertTrue(cached.isFresh());
+
+        // Update 304 with newer Expires header
+        String updatedExpiresStr = DateTimeFormatter.RFC_1123_DATE_TIME.format(now.plusSeconds(1800));
+        WireResponse res304 = WireResponse.builder()
+                .statusCode(304)
+                .header("Date", dateStr)
+                .header("Expires", updatedExpiresStr)
+                .build();
+
+        WireResponse updated = cache.update(req, res304);
+        assertNotNull(updated);
+        CachedResponse updatedCached = cache.get(req).orElseThrow();
+        assertEquals(1800L, updatedCached.freshnessLifetimeSeconds());
+    }
+
+    @Test
+    @DisplayName("null and invalid arguments handled safely without exceptions")
+    void safeNullHandling() {
+        InMemoryHttpCache cache = new InMemoryHttpCache();
+        assertTrue(cache.get(null).isEmpty());
+        assertTrue(cache.get(new WireRequest(HttpMethod.GET, null, List.of(), null, null)).isEmpty());
+        assertNull(cache.update(null, null));
+        cache.put(null, null);
+        cache.invalidate(null);
+        assertEquals(0, cache.size());
+    }
 }
+

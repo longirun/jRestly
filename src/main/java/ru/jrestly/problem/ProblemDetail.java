@@ -466,6 +466,14 @@ public class ProblemDetail {
                 first = false;
             }
             sb.append("]");
+        } else if (val.getClass().isArray()) {
+            sb.append("[");
+            int len = java.lang.reflect.Array.getLength(val);
+            for (int j = 0; j < len; j++) {
+                if (j > 0) sb.append(",");
+                appendJsonValue(sb, java.lang.reflect.Array.get(val, j));
+            }
+            sb.append("]");
         } else {
             sb.append("\"").append(escapeJson(val.toString())).append("\"");
         }
@@ -755,11 +763,16 @@ public class ProblemDetail {
                         case 'r' -> sb.append('\r');
                         case 't' -> sb.append('\t');
                         case 'u' -> {
-                            if (i + 4 < len) {
-                                String hex = s.substring(i + 1, i + 5);
-                                sb.append((char) Integer.parseInt(hex, 16));
-                                i += 4;
+                            if (i + 4 >= len) {
+                                throw new IllegalArgumentException("Incomplete unicode escape sequence starting at index " + (i - 1));
                             }
+                            String hex = s.substring(i + 1, i + 5);
+                            try {
+                                sb.append((char) Integer.parseInt(hex, 16));
+                            } catch (NumberFormatException e) {
+                                throw new IllegalArgumentException("Invalid unicode escape sequence '\\u" + hex + "' at index " + (i - 1), e);
+                            }
+                            i += 4;
                         }
                         default -> sb.append(esc);
                     }

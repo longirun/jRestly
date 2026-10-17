@@ -1,5 +1,22 @@
 # DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
+> **Сессия #243 (free-аудит / харденинг: устранение искажения массивов в `ProblemDetail.toJson()` — 31-я «тихая» находка серии, рубеж 90% Instruction / Line Coverage при 100% Class Coverage):**
+> свободный ход развития качества кодовой базы.
+> 1. *Находка (31-я в серии):* в `ProblemDetail.appendJsonValue` проверка на списочные структуры поддерживала только `Iterable<?>`. При передаче в extension properties нативных массивов Java (`String[]`, `int[]`, `Object[]` и др.) сериализатор проваливался в `else` ветку, вызывал `val.toString()` и записывал в JSON имя типа `"[Ljava.lang.String;@5e265ba4"` вместо валидного JSON-массива `[...]`. Кроме того, в `ZeroDepJsonParser.parseString` последовательности `\uXXXX` без 4 шестнадцатеричных символов или с невалидным hex приводили к тихому проглатыванию или неконтролируемому `NumberFormatException`.
+> 2. *Fix:*
+>    - `ProblemDetail.appendJsonValue` проверяет `val.getClass().isArray()` и рекурсивно форматирует элементы через `java.lang.reflect.Array` (полная поддержка примитивных и объектных массивов);
+>    - `ZeroDepJsonParser.parseString` строго валидирует ровно 4 шестнадцатеричные цифры после `\u` и бросает fail-fast `IllegalArgumentException`;
+>    - Расширено покрытие fluent-сеттеров, строковых геттеров, конструкторов `ProblemDetailException`, директив `CacheControl` и расчета `freshnessLifetime` по `Expires`/`Date` в `InMemoryHttpCache`.
+> 3. *TDD и гейты:*
+>    - Новые unit-тесты: `serializesArraysInProperties` (red-first), `fluentSettersAndPropertyAccess`, `unicodeEscapesInZeroDepParser`, `problemDetailExceptionConstructors`, `testToStringAndDirectives`, `expiresAndDateFreshnessCalculation`, `safeNullHandling`, `onErrorParserEmptyDefaults`, `onErrorParserDefaultOnly` (+9 тестов, суммарно **1324/1324** тестов green across all 5 modules).
+>    - Javadoc чист под `-Werror`, 0 warnings.
+>    - **JaCoCo Coverage:**
+>      * **CLASS:** **143 / 143 (100.00%)**
+>      * **INSTRUCTION:** **90.85%** (28,373 / 31,231) — преодолён 90% рубеж!
+>      * **LINE:** **90.64%** (6,161 / 6,797) — преодолён 90% рубеж!
+>      * **BRANCH:** **76.92%** (3,396 / 4,415).
+>    - ADR-0064 дополнен `## Amendment #243`.
+>
 > **Сессия #242 (free-аудит / харденинг: устранение зависания и бесконечного цикла в `ProblemDetail$ZeroDepJsonParser` — 30-я «тихая» находка серии, 100% Class Coverage 143/143):**
 > свободный ход после упаковки релиза 0.10.0 (сессия #241, highest ADR 0065). Провел глубокий аудит парсера `ZeroDepJsonParser` и отчёта JaCoCo.
 > 1. *Находка (30-я в серии):* в `ProblemDetail$ZeroDepJsonParser.parseValue` нераспознанные токены (например, `[?]`, `[abc]`, незаполненные значения `{"key": }`) сваливались в числовой парсер, считывали 0 символов (`start == i`), бросали `NumberFormatException`, ловили его и возвращали пустую строку `""` с не сдвинутым индексом `i`. В `parseArray` это приводило к бесконечному циклу `list.add("")` с исчерпанием памяти (`OutOfMemoryError`). Кроме того, ключи с экранированными символами давали неверное смещение в `i - key.length() - 2`.
