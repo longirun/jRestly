@@ -1,6 +1,28 @@
 # DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
+> **Юбилейная сессия #250 (free-аудит / харденинг: закрытие краевых веток resilience, auth, SSE, cookie, problem-details и рекорд JaCoCo 95.65% Instruction / 81.80% Branch Coverage):**
+> свободный ход развития качества и устойчивости кодовой базы.
+> 1. *Харденинг и верификация краевых веток периферии:*
+>    - `RateLimiter`: протестировано восстановление флага `Thread.currentThread().isInterrupted()` и возврат `false` при прерывании нити в `tryAcquire(Duration)` (`RateLimiterTest`);
+>    - `CircuitBreaker`: протестирован возврат `Duration.ZERO` в `remainingWaitDuration()` при не-OPEN состояниях, вытеснение старого сбоя успехом в кольцевом буфере с декрементом `failureCount`, расчет метрик в состоянии `HALF_OPEN` и немедленный переход обратно в `OPEN` при получении сбоя (`CircuitBreakerTest`);
+>    - `SingleFlightTokenManager`: протестировано оборачивание проверяемых исключений (checked exceptions) от поставщика токенов в `RuntimeException("Failed to acquire token", t)` (`TokenManagerTest`);
+>    - `ReconnectPolicy`: протестирован расчет задержек `Jitter.EQUAL`, возврат `0` при `bound <= 0`, и валидация `stallTimeout` / `maxBackoff` в билдере (`ServerSentEventReconnectTest`);
+>    - `FileCookiePersister`: протестирован перехват `IOException` с пробросом `UncheckedIOException` в `saveAll()` (`CookiePersistenceUnitTest`);
+>    - `ProblemDetail` & `ZeroDepJsonParser`: протестирована сериализация `Iterable<?>` (списки/множества) и спецсимволов `\b`, `\f`, `\r` в properties, а также обработка ошибок парсера при незакрытых строках со слэшем `\"abc\\`, неполных `\u` кодах и пропущенных разделителях в массивах (`ProblemDetailTest`);
+>    - `ControllerValidator`: протестировано отклонение пустых плейсхолдеров `${}` в путях методов, валидация `@CircuitBreaker` со `slidingWindowSize < minimumNumberOfCalls` и порогом `> 100%`, а также `@Retry` с отрицательными таймаутами бэкоффа (`ControllerValidationTest`);
+>    - `GsonCodec`: протестирован перехват `JsonParseException` при сериализации с трансляцией в `JsonSyntaxException` (`GsonCodecTest`);
+>    - `HttpTemplate`: протестировано создание пользовательских исключений через конструкторы `(String, int)` и `HandledException` fallback при отсутствии стандартных конструкторов в `instantiateThrowable` (`OnErrorWireMockTest`).
+> 2. *TDD и исторические гейты JaCoCo:*
+>    - Всего тестов: **1412 / 1412** green across all 5 modules (+13 тестов, 0 failures, 0 errors, 0 warnings under `-Werror`).
+>    - **JaCoCo Coverage:**
+>      * **CLASS:** **143 / 143 (100.00%)** — абсолютное 100% покрытие всех классов библиотеки!
+>      * **METHOD:** **1418 / 1418 (100.00%)** — абсолютное 100% покрытие ВСЕХ методов библиотеки (0 missed methods)!
+>      * **INSTRUCTION:** **29,840 / 31,198 (95.65%)** — новый исторический рекорд (+0.68% за сессию, преодолен рубеж 95.6%)!
+>      * **LINE:** **6,486 / 6,795 (95.45%)** — новый исторический рекорд (+0.51% за сессию)!
+>      * **BRANCH:** **3,605 / 4,407 (81.80%)** — новый исторический рекорд (+0.61% за сессию, преодолен рубеж 81.8%)!
+>
 > **Сессия #249 (free-аудит / харденинг: устранение падения `HttpTemplate.fallbackMethod()` из-за package-private видимости — 33-я «тихая» находка серии, абсолютные рекорды JaCoCo: 100.00% Class Coverage (143/143) и 100.00% Method Coverage (1418/1418)):**
+
 > свободный ход развития качества и устойчивости кодовой базы.
 > 1. *Находка (33-я в серии):* в `HttpTemplate.fallbackMethod()` использовался `HttpTemplate.class.getMethod("exchange")`. Метод `exchange()` в `HttpTemplate` объявлен package-private, из-за чего `Class.getMethod` (ищущий исключительно `public` методы) безусловно выбрасывал `NoSuchMethodException: ru.jrestly.http.HttpTemplate.exchange()`, оборачивающийся в `IllegalStateException: exchange method not found`. При вызове шаблона с `method == null` попытка создать `RequestContext` всегда приводила к аварийному завершению. Fix: заменено на `HttpTemplate.class.getDeclaredMethod("exchange")`. Оформлен `ADR-0047` `## Amendment #249`.
 > 2. *Закрытие последних 10 непокрытых методов во всей библиотеке:*

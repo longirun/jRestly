@@ -623,7 +623,41 @@ public class ControllerValidationTest {
         assertTrue(problems.stream().noneMatch(p -> p.contains("'arg0'")));
     }
 
+    interface EmptyPlaceholderController {
+        @ru.jrestly.annotation.Get(path = "/users/${}")
+        String emptyPlaceholder();
+    }
+
+    interface InvalidCircuitBreakerController {
+        @ru.jrestly.annotation.Get(path = "/cb")
+        @ru.jrestly.annotation.CircuitBreaker(name = "cb", minimumNumberOfCalls = 10, slidingWindowSize = 5, failureRateThreshold = 105.0f)
+        String brokenCb();
+    }
+
+    interface NegativeRetryBackoffController {
+        @ru.jrestly.annotation.Get(path = "/retry")
+        @ru.jrestly.annotation.Retry(initialBackoffMs = -10, maxBackoffMs = -5)
+        String brokenRetry();
+    }
+
+    @Test
+    void rejectsEmptyPlaceholderAndInvalidCircuitBreakerAndRetry() {
+        List<String> placeholderProblems = ControllerValidator.validate(EmptyPlaceholderController.class);
+        assertEquals(1, placeholderProblems.size());
+        assertTrue(placeholderProblems.getFirst().contains("path placeholder '${}' must not be blank"));
+
+        List<String> cbProblems = ControllerValidator.validate(InvalidCircuitBreakerController.class);
+        assertTrue(cbProblems.stream().anyMatch(p -> p.contains("failureRateThreshold must be in (0.0, 100.0]")));
+        assertTrue(cbProblems.stream().anyMatch(p -> p.contains("slidingWindowSize (5) must be >= minimumNumberOfCalls (10)")));
+
+        List<String> retryProblems = ControllerValidator.validate(NegativeRetryBackoffController.class);
+        assertTrue(retryProblems.stream().anyMatch(p -> p.contains("initialBackoffMs must not be negative")));
+        assertTrue(retryProblems.stream().anyMatch(p -> p.contains("maxBackoffMs must not be negative")));
+    }
+
+
     // Compiles a throwaway controller interface at runtime. The project itself is
+
     // built with -parameters, so a class that lacks the MethodParameters attribute
     // -- the only way to reproduce the missing flag -- must be produced here. A
     // URLClassLoader stays open for the test's lifetime so the proxy can be built.

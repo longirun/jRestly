@@ -65,6 +65,26 @@ class OnErrorWireMockTest {
         }
     }
 
+    @SuppressWarnings("serial")
+    public static class CustomMessageAndStatusException extends RuntimeException {
+        private final int code;
+        public CustomMessageAndStatusException(String message, int code) {
+            super(message);
+            this.code = code;
+        }
+        public int getCode() {
+            return code;
+        }
+    }
+
+    @SuppressWarnings("serial")
+    public static class FallbackException extends RuntimeException {
+        public FallbackException(double val1, double val2) {
+            super("fallback");
+        }
+    }
+
+
     @OnError(statuses = {401}, errorObject = SharedAuthErrorDto.class)
     @OnError(statuses = {400}, errorObject = SharedAuthErrorDto.class)
     public interface ErrorTestClient {
@@ -99,7 +119,16 @@ class OnErrorWireMockTest {
 
         @Get(path = "/api/unexpected")
         String callUnexpected();
+
+        @Get(path = "/api/custom-status-ex")
+        @OnError(statuses = {422}, errorObject = CustomMessageAndStatusException.class)
+        String callCustomStatusEx();
+
+        @Get(path = "/api/fallback-ex")
+        @OnError(statuses = {423}, errorObject = FallbackException.class)
+        String callFallbackEx();
     }
+
 
     private ErrorTestClient client;
 
@@ -296,4 +325,38 @@ class OnErrorWireMockTest {
         );
         assertEquals("Stream error", ex.getReason());
     }
+
+    @Test
+    @DisplayName("InstantiateThrowable uses (String message, int statusCode) constructor when available")
+    void usesStringAndStatusConstructor() {
+        wireMock.stubFor(get(urlEqualTo("/api/custom-status-ex"))
+                .willReturn(aResponse()
+                        .withStatus(422)
+                        .withBody("")));
+
+        CustomMessageAndStatusException ex = assertThrows(
+                CustomMessageAndStatusException.class,
+                () -> client.callCustomStatusEx()
+        );
+        assertEquals(422, ex.getCode());
+        assertEquals("HTTP 422", ex.getMessage());
+    }
+
+    @Test
+    @DisplayName("InstantiateThrowable falls back to HandledException when custom exception lacks standard constructors")
+    void fallsBackToHandledExceptionWhenLackingConstructors() {
+        wireMock.stubFor(get(urlEqualTo("/api/fallback-ex"))
+                .willReturn(aResponse()
+                        .withStatus(423)
+                        .withBody("")));
+
+        HandledException ex = assertThrows(
+                HandledException.class,
+                () -> client.callFallbackEx()
+        );
+        assertEquals(423, ex.getStatusCode());
+        assertNull(ex.getDetails());
+    }
 }
+
+

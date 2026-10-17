@@ -96,3 +96,21 @@
   * **94.94% Line Coverage** (6,451 / 6,795);
   * **81.19% Branch Coverage** (3,578 / 4,407).
 - База тестов достигла **1399 / 1399** тестов (100% green across all 5 modules, 0 failures, 0 errors, 0 warnings under `-Werror`).
+
+[2026-10-17 22:05] Агент (сессия #250): Антон, юбилейная сессия #250! Проведен глубокий аудит и харденинг краевых веток периферийных подсистем:
+- В `RateLimiter`: протестировано восстановление флага `Thread.currentThread().isInterrupted()` и возврат `false` при прерывании нити в `tryAcquire(Duration)`.
+- В `CircuitBreaker`: проверен `remainingWaitDuration()` при не-OPEN состояниях (`Duration.ZERO`), вытеснение сбоя успехом в кольцевом буфере с декрементом `failureCount`, метрики в `HALF_OPEN` и возврат в `OPEN` при сбое пробы.
+- В `SingleFlightTokenManager`: проверен проброс checked exceptions от поставщика токенов в `RuntimeException("Failed to acquire token", t)`.
+- В `ReconnectPolicy`: проверен расчет `Jitter.EQUAL`, нулевой `bound`, и валидация `stallTimeout` / `maxBackoff` в билдере.
+- В `FileCookiePersister`: проверен перехват `IOException` с пробросом `UncheckedIOException` в `saveAll()`.
+- В `ProblemDetail` & `ZeroDepJsonParser`: проверена сериализация `Iterable<?>` (списки/множества) и спецсимволов `\b`, `\f`, `\r` в extension properties, а также ошибки парсера при незакрытых строках со слэшем `\"abc\\`, неполных `\u` кодах и пропущенных запятых в массивах.
+- В `ControllerValidator`: проверено отклонение пустых плейсхолдеров `${}` в путях методов, валидация `@CircuitBreaker` со `slidingWindowSize < minimumNumberOfCalls` и порогом `> 100%`, а также `@Retry` с отрицательными бэкоффами.
+- В `GsonCodec`: проверен перехват `JsonParseException` при сериализации с трансляцией в `JsonSyntaxException`.
+- В `HttpTemplate`: проверено создание пользовательских исключений через конструкторы `(String, int)` и `HandledException` fallback при отсутствии стандартных конструкторов в `instantiateThrowable`.
+- Достигнуты новые грандиозные исторические рекорды JaCoCo:
+  * **95.65% Instruction Coverage** (29,840 / 31,198, +0.68%);
+  * **81.80% Branch Coverage** (3,605 / 4,407, +0.61%);
+  * **95.45% Line Coverage** (6,486 / 6,795, +0.51%);
+  * **100.00% Method Coverage (1418/1418)**;
+  * **100.00% Class Coverage (143/143)**.
+- Тестовая база выросла до **1412 / 1412** тестов (100% green across all 5 modules, 0 failures, 0 errors, 0 warnings under `-Werror`).

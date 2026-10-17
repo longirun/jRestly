@@ -278,5 +278,80 @@ class CircuitBreakerTest {
         assertThrows(NullPointerException.class, () ->
                 CircuitBreakerConfig.builder().recordException(null).build());
     }
+
+    @Test
+    @DisplayName("remainingWaitDuration returns ZERO when circuit is not in OPEN state")
+    void remainingWaitDurationZeroWhenClosed() {
+        CircuitBreaker cb = CircuitBreaker.of("closed-cb");
+        assertEquals(Duration.ZERO, cb.remainingWaitDuration());
+    }
+
+    @Test
+    @DisplayName("Ring buffer evicts old failure when overwritten by success, decrementing failureCount")
+    void ringBufferEvictsOldFailureWhenOverwrittenBySuccess() {
+        CircuitBreakerConfig config = CircuitBreakerConfig.builder()
+                .slidingWindowSize(2)
+                .minimumNumberOfCalls(2)
+                .failureRateThreshold(60.0f)
+                .build();
+        CircuitBreaker cb = CircuitBreaker.of("evict-cb", config);
+
+        // Call 1: failure (failureCount=1, size=1)
+        assertTrue(cb.tryAcquirePermission());
+        cb.recordFailure(10, new IOException("call 1"));
+        assertEquals(1, cb.metrics().failedCalls());
+
+        // Call 2: success (failureCount=1, size=2, rate=50% < 60%)
+        assertTrue(cb.tryAcquirePermission());
+        cb.recordSuccess(10);
+        assertEquals(1, cb.metrics().failedCalls());
+        assertEquals(2, cb.metrics().totalCalls());
+        assertEquals(CircuitBreaker.State.CLOSED, cb.getState());
+
+        // Call 3: success overwrites Call 1 (failure) -> failureCount decrements to 0!
+        assertTrue(cb.tryAcquirePermission());
+        cb.recordSuccess(10);
+        assertEquals(0, cb.metrics().failedCalls());
+        assertEquals(2, cb.metrics().totalCalls());
+        assertEquals(0.0f, cb.metrics().failureRate());
+    }
+
+    @Test
+    @DisplayName("HALF_OPEN metrics computation and failure transition back to OPEN")
+    void halfOpenMetricsAndTripBackToOpen() throws InterruptedException {
+        CircuitBreakerConfig config = CircuitBreakerConfig.builder()
+                .slidingWindowSize(2)
+                .minimumNumberOfCalls(2)
+                .failureRateThreshold(50.0f)
+                .waitDurationInOpenState(Duration.ofMillis(50))
+                .permittedNumberOfCallsInHalfOpenState(2)
+                .build();
+        CircuitBreaker cb = CircuitBreaker.of("half-open-test", config);
+
+        // Trip to OPEN
+        cb.recordFailure(10, new IOException("err1"));
+        cb.recordFailure(10, new IOException("err2"));
+        assertEquals(CircuitBreaker.State.OPEN, cb.getState());
+
+        // Wait for waitDuration to expire
+        Thread.sleep(60);
+
+        // First probe transitions to HALF_OPEN
+        assertTrue(cb.tryAcquirePermission());
+        assertEquals(CircuitBreaker.State.HALF_OPEN, cb.getState());
+
+        // Check metrics in HALF_OPEN state before any outcome
+        CircuitBreakerMetrics m0 = cb.metrics();
+        assertEquals(CircuitBreaker.State.HALF_OPEN, m0.state());
+        assertEquals(0, m0.totalCalls());
+
+        // Record a failure in HALF_OPEN -> immediately reopens the circuit to OPEN!
+        cb.recordFailure(10, new IOException("probe failed"));
+        assertEquals(CircuitBreaker.State.OPEN, cb.getState());
+
+        // Subsequent call is rejected because circuit is OPEN
+        assertFalse(cb.tryAcquirePermission());
+    }
 }
+
 

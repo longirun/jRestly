@@ -548,8 +548,35 @@ class ProblemDetailTest {
 
         // Non-string key inside nested object
         assertThrows(IllegalArgumentException.class, () -> ProblemDetail.fromJson("{\"nested\": {123: \"val\"}}"));
+
+        // Incomplete unicode escape
+        assertThrows(IllegalArgumentException.class, () -> ProblemDetail.fromJson("{\"key\": \"\\u12\"}"));
+
+        // Missing comma or bracket in array
+        assertThrows(IllegalArgumentException.class, () -> ProblemDetail.fromJson("{\"arr\": [1 2]}"));
+
+        // Unclosed string with trailing backslash
+        assertThrows(IllegalArgumentException.class, () -> ProblemDetail.fromJson("{\"key\": \"abc\\"));
+    }
+
+    @Test
+    @DisplayName("ProblemDetail.toJson serializes Iterable (List/Set) and special escape characters in properties")
+    void serializesIterableAndSpecialEscapesInProperties() {
+        ProblemDetail pd = ProblemDetail.forStatus(422)
+                .withProperty("list", List.of("first", "second"))
+                .withProperty("specialEscapes", "backspace:\b formfeed:\f return:\r");
+        String json = pd.toJson();
+        assertTrue(json.contains("\"list\":[\"first\",\"second\"]"));
+        assertTrue(json.contains("\\b"));
+        assertTrue(json.contains("\\f"));
+        assertTrue(json.contains("\\r"));
+
+        ProblemDetail parsed = ProblemDetail.fromJson(json);
+        assertEquals(422, parsed.getStatus());
+        assertTrue(parsed.getProperty("list") instanceof List);
     }
 }
+
 
 
 

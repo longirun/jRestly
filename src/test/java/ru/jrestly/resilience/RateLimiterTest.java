@@ -210,5 +210,24 @@ class RateLimiterTest {
                 RateLimiterConfig.builder().timeoutDuration(null));
     }
 
+    @Test
+    @DisplayName("tryAcquire(timeout) restores interrupt status and returns false when interrupted")
+    void tryAcquireInterruptedRestoresFlagAndReturnsFalse() throws Exception {
+        RateLimiter limiter = RateLimiter.of("interrupt-test", 1, Duration.ofSeconds(10));
+        assertTrue(limiter.tryAcquire()); // consume single token
+
+        Thread worker = new Thread(() -> {
+            boolean acquired = limiter.tryAcquire(Duration.ofSeconds(5));
+            assertFalse(acquired);
+            assertTrue(Thread.currentThread().isInterrupted());
+        });
+        worker.start();
+        Thread.sleep(50);
+        worker.interrupt();
+        worker.join(2000);
+        assertFalse(worker.isAlive());
+    }
+
     private record AcquireOutcome(boolean acquired, long elapsedMillis) {}
 }
+

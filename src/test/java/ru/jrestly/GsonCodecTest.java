@@ -193,5 +193,21 @@ class GsonCodecTest {
         assertEquals(invalid, codec.prettyPrint(invalid), "invalid JSON must be returned unchanged");
     }
 
+    @Test
+    @DisplayName("serialize wrapping JsonParseException into JsonSyntaxException")
+    void serializeWrappingJsonParseException() {
+        com.google.gson.Gson customGson = new com.google.gson.GsonBuilder()
+                .registerTypeAdapter(Person.class, (com.google.gson.JsonSerializer<Person>) (src, typeOfSrc, context) -> {
+                    throw new com.google.gson.JsonParseException("Serialization fault");
+                })
+                .create();
+        GsonCodec customCodec = new GsonCodec(customGson);
+        JsonSyntaxException ex = assertThrows(JsonSyntaxException.class,
+                () -> customCodec.serialize(new Person("Ada", "Lovelace")));
+        assertTrue(ex.getMessage().contains("Failed to serialize"));
+        assertTrue(ex.getMessage().contains(Person.class.getName()));
+    }
+
     private record Person(String firstName, String lastName) {}
 }
+

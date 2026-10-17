@@ -252,6 +252,24 @@ class TokenManagerTest {
         // Null checks for ofPerpetual
         assertThrows(NullPointerException.class, () -> TokenManager.ofPerpetual(null));
     }
+
+    @Test
+    @DisplayName("SingleFlightTokenManager wraps checked exceptions into RuntimeException")
+    void supplierThrowingCheckedExceptionWrapsIntoRuntimeException() {
+        TokenManager tm = TokenManager.of(() -> {
+            sneakyThrow(new Exception("checked failure"));
+            return null;
+        });
+        RuntimeException ex = assertThrows(RuntimeException.class, tm::getToken);
+        assertTrue(ex.getMessage().contains("Failed to acquire token"));
+        assertEquals("checked failure", ex.getCause().getMessage());
+    }
+
+    @SuppressWarnings("unchecked")
+    private static <E extends Throwable> void sneakyThrow(Throwable t) throws E {
+        throw (E) t;
+    }
 }
+
 
 

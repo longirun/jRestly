@@ -620,7 +620,42 @@ class ServerSentEventReconnectTest {
         assertTrue(infos.isEmpty(), "no reconnects should happen for healthy stream");
     }
 
+    @Test
+    @DisplayName("ReconnectPolicy with Jitter.EQUAL calculates delay within [half, bound]")
+    void equalJitterWithinBounds() {
+        ReconnectPolicy policy = ReconnectPolicy.builder()
+                .initialBackoff(Duration.ofMillis(100))
+                .maxBackoff(Duration.ofMillis(100))
+                .jitter(Jitter.EQUAL)
+                .build();
+        long delay = policy.nextDelayMillis(1, null, 0L, new java.util.Random(42L));
+        assertTrue(delay >= 50 && delay <= 100, "delay must be in [50, 100], got " + delay);
+    }
+
+    @Test
+    @DisplayName("ReconnectPolicy validates stallTimeout and maxBackoff")
+    void reconnectPolicyValidation() {
+        assertThrows(IllegalStateException.class, () ->
+                ReconnectPolicy.builder().stallTimeout(Duration.ZERO));
+        assertThrows(IllegalStateException.class, () ->
+                ReconnectPolicy.builder().stallTimeout(Duration.ofMillis(-5)));
+        assertThrows(IllegalStateException.class, () ->
+                ReconnectPolicy.builder().maxBackoff(Duration.ofMillis(-1)).build());
+    }
+
+    @Test
+    @DisplayName("ReconnectPolicy returns 0 when bound is zero")
+    void zeroBoundReturnsZero() {
+        ReconnectPolicy policy = ReconnectPolicy.builder()
+                .initialBackoff(Duration.ZERO)
+                .maxBackoff(Duration.ZERO)
+                .build();
+        assertEquals(0, policy.nextDelayMillis(1, 0L, 0L, new java.util.Random(42L)));
+    }
+
+
     /**
+
      * Mirrors the production SSE close contract (see {@code HttpTemplate}):
      * closing the returned stream closes the underlying input stream, not the
      * {@link java.io.BufferedReader} — closing a reader from another thread

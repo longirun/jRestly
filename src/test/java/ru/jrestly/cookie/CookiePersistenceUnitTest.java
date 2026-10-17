@@ -489,7 +489,11 @@ class CookiePersistenceUnitTest {
         // Non-empty directory cannot be deleted with deleteIfExists -> throws UncheckedIOException
         Files.createFile(dir.resolve("child.txt"));
         assertThrows(java.io.UncheckedIOException.class, persister::clear);
+
+        // Moving temp file over non-empty directory throws UncheckedIOException
+        assertThrows(java.io.UncheckedIOException.class, () -> persister.saveAll(List.of(new HttpCookie("sid", "123"))));
     }
+
 
     private static final class TestCookiePersister implements CookiePersister {
         final List<HttpCookie> preloaded = new ArrayList<>();
