@@ -268,6 +268,47 @@ public class ControllerValidationTest {
         assertTrue(ControllerValidator.validate(FileParamOnMultipartController.class).isEmpty());
     }
 
+    interface BodyParamOnFormController {
+        @ru.jrestly.annotation.Post(path = "/submit", requestType = ru.jrestly.http.RequestType.APPLICATION_FORM_URLENCODED)
+        String submit(@ru.jrestly.annotation.RequestBody String payload,
+                      @ru.jrestly.annotation.RequestParam(name = "name") String name);
+    }
+
+    interface BodyParamOnMultipartController {
+        @ru.jrestly.annotation.Post(path = "/upload", requestType = ru.jrestly.http.RequestType.MULTIPART_FORM_DATA)
+        String upload(@ru.jrestly.annotation.RequestBody String payload,
+                      @ru.jrestly.annotation.MultipartFormFile(partName = "file") java.io.File file);
+    }
+
+    interface BodyParamOnJsonController {
+        @ru.jrestly.annotation.Post(path = "/submit")
+        String submit(@ru.jrestly.annotation.RequestBody String payload);
+    }
+
+    @Test
+    void rejectsRequestBodyWithoutJsonRequestTypeEagerly() {
+        // @RequestBody is serialized by the module's JSON codec and only ever consumed
+        // on the APPLICATION_JSON branch of HttpTemplateBuilder; on a form-urlencoded
+        // or multipart method the body is assembled from the parameters alone, so the
+        // @RequestBody argument is silently dropped from the wire request. The
+        // symmetric guard for @MultipartFormFile requires MULTIPART_FORM_DATA
+        // (Amendment #214); this completes the payload-annotation/requestType pair
+        // (ADR-0035).
+        List<String> formProblems = ControllerValidator.validate(BodyParamOnFormController.class);
+        assertEquals(1, formProblems.size());
+        assertTrue(formProblems.getFirst().contains("submit(): @RequestBody parameter requires requestType = APPLICATION_JSON"));
+
+        List<String> multipartProblems = ControllerValidator.validate(BodyParamOnMultipartController.class);
+        assertEquals(1, multipartProblems.size());
+        assertTrue(multipartProblems.getFirst().contains("upload(): @RequestBody parameter requires requestType = APPLICATION_JSON"));
+
+        JRestlyClient client = JRestlyClient.builder().baseUrl("http://localhost:1").build();
+        assertThrows(ControllerValidationException.class, () -> client.get(BodyParamOnFormController.class));
+
+        // no false positive on a JSON method (the default requestType)
+        assertTrue(ControllerValidator.validate(BodyParamOnJsonController.class).isEmpty());
+    }
+
     @Test
     void rejectsBlankHeaderOrParamNameOnClassAndMethod() {
         var classHeaderProblems = ControllerValidator.validate(BlankClassHeaderController.class);

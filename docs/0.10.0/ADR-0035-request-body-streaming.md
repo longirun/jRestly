@@ -80,3 +80,39 @@ Audit "ADR against code", 17th slice — light **ADR-0035** (outgoing request bo
 - §3 says log `<streaming body>` "with content length when available"; the length is only knowable by invoking the supplier, which the same sentence forbids. The placeholder is logged alone — kept as-is.
 
 **Non-goal:** a `null` streaming argument (e.g. a `null` `Flow.Publisher`) has no runtime type, so the Content-Type falls back to `requestType.mime()` (`application/json`) instead of `application/octet-stream`; the declared parameter type is not consulted for the null case. No body is sent either way, so both media types are defensible — left unchanged.
+
+## Amendment #215
+
+Free audit, the "payload annotation ⇄ requestType" pair — completing the
+symmetric half of Amendment #214. The `@MultipartFormFile` side now requires
+`requestType = MULTIPART_FORM_DATA` (ADR-0024 Amendment #214); the other
+payload binding, `@RequestBody`, was left unguarded.
+
+**Finding (silent drop, class #207–#214).** `@RequestBody` is serialized by the
+module's JSON codec and is consumed **only** on the `APPLICATION_JSON` branch of
+`HttpTemplateBuilder.build()` (`createJsonBodyPayload`, line ~292). On an
+`APPLICATION_FORM_URLENCODED` method the body is assembled by `createUrlEncodedBody`
+from the `@RequestParam` parameters alone, and on a `MULTIPART_FORM_DATA` method by
+`createMultipartParts` from the `@RequestParam`/`@MultipartFormFile` parameters
+alone; neither path ever calls `createBody`. A `@RequestBody` argument on either
+method was therefore **silently dropped from the wire request** — no error, no log.
+Probed: `ControllerValidator` reported 0 problems for such a method.
+
+**Fix.** `ControllerValidator.validateMethod` now, for every `@RequestBody`
+parameter, adds `method(): @RequestBody parameter requires requestType =
+APPLICATION_JSON` to the aggregated `ControllerValidationException` when the
+effective `RequestType` is not `APPLICATION_JSON`. `@Get` is unaffected (already
+rejected with the dedicated `@Get method must not declare @RequestBody parameter`
+message — `resolveRequestType(@Get)` is `APPLICATION_JSON`), and the normal
+JSON `@Post`/`@Put`/`@Patch`/`@Delete` path is unchanged.
+
+**TDD red-first:** `ControllerValidationTest.rejectsRequestBodyWithoutJsonRequestTypeEagerly`
+(form-urlencoded and multipart methods → 1 problem each + eager
+`ControllerValidationException`; a default JSON method → no false positive) — red
+on the pre-fix code exactly at `assertEquals(1, formProblems.size())` (the list
+was empty), green after.
+
+**Observation (untouched):** the combination guard remains hub-centric — a
+parameter combining two of `{@PathVariable, @RequestParam, @RequestHeader,
+@MultipartFormFile}` is still accepted (both bindings take effect, so it is
+double-binding rather than a silent drop; `@RequestBody`/`@Cookie` hubs stay as-is).

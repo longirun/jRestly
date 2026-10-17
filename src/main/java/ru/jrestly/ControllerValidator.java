@@ -59,6 +59,12 @@ import java.util.regex.Pattern;
  * parameters is not declared form- or multipart-typed (those request
  * types need at least one parameter to build a body from).
  *
+ * <p>A payload binding must match the verb's request type: a
+ * {@code @RequestBody} parameter is consumed only on the default
+ * {@code APPLICATION_JSON} path, and a {@code @MultipartFormFile} only on
+ * {@code MULTIPART_FORM_DATA}; either binding on a mismatched method is
+ * reported here instead of being silently dropped from the wire request.
+ *
  * <p>Also validates that static {@code @RequestHeader} and
  * {@code @RequestDefaultParam} declarations on controller interfaces
  * and methods have non-blank {@code name()} attributes.
@@ -374,6 +380,9 @@ public final class ControllerValidator {
 
         for (java.lang.reflect.Parameter param : method.getParameters()) {
             if (param.isAnnotationPresent(RequestBody.class)) {
+                if (!RequestType.APPLICATION_JSON.equals(requestType)) {
+                    problems.add(method.getName() + "(): @RequestBody parameter requires requestType = APPLICATION_JSON");
+                }
                 if (param.isAnnotationPresent(RequestParam.class)
                         || param.isAnnotationPresent(PathVariable.class)
                         || param.isAnnotationPresent(RequestHeader.class)

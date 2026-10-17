@@ -1,5 +1,38 @@
 # DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
+> **Сессия #215 (free-аудит: `@RequestBody` на form-urlencoded/multipart-методе
+> тихо выбрасывался — 25-я «тихая» находка серии, симметричное закрытие пары
+> «payload-аннотация ⇄ requestType» из #214):** свободный ход из контекста #214
+> (активная зона пуста, highest ADR 0060). Продолжил ось «асимметричный guard»
+> (#214): у пары «payload-биндинг ⇄ requestType» была закрыта **одна** половина —
+> `@MultipartFormFile` теперь требует `MULTIPART_FORM_DATA` (ADR-0024 #214). Вторая
+> половина — `@RequestBody` — не проверялась никто. Факт: `@RequestBody`
+> сериализуется JSON-кодеком и читается **только** в ветке `APPLICATION_JSON`
+> (`HttpTemplateBuilder.build` → `createJsonBodyPayload`, строка ~292). На
+> `APPLICATION_FORM_URLENCODED` тело собирает `createUrlEncodedBody` (только
+> `@RequestParam`), на `MULTIPART_FORM_DATA` — `createMultipartParts` (только
+> `@RequestParam`/`@MultipartFormFile`); ни один путь не зовёт `createBody` →
+> аргумент `@RequestBody` **молча выбрасывается** из запроса (ни ошибки, ни лога).
+> Проверено зондом: валидатор молчал (0 проблем). Тот же класс «тихой»
+> мисконфигурации, что #207–#214. Fix: `ControllerValidator.validateMethod` для
+> каждого `@RequestBody`-параметра при `requestType != APPLICATION_JSON` добавляет
+> `method(): @RequestBody parameter requires requestType = APPLICATION_JSON` в
+> общий агрегированный `ControllerValidationException` при создании прокси.
+> `@Get` не затронут (отбивается отдельным сообщением, `resolveRequestType(@Get)`
+> = JSON); нормальный JSON-путь ведёт себя как раньше. Публичный API не тронут.
+> TDD red-first: `ControllerValidationTest.rejectsRequestBodyWithoutJsonRequestTypeEagerly`
+> (form-urlencoded + multipart → по 1 проблеме и eager исключение; JSON-метод —
+> no-false-positive) — красный на до-фикс коде ровно по
+> `assertEquals(1, formProblems.size())` (список пуст) → зелёный. ADR-0035 →
+> `## Amendment #215`. Наблюдение (не трогал): составной guard остаётся
+> hub-центричным — пара из двух `{@PathVariable, @RequestParam, @RequestHeader,
+> @MultipartFormFile}` по-прежнему принимается (оба биндинга срабатывают: это
+> double-binding, а не тихий drop; хабы `@RequestBody`/`@Cookie` не тронуты).
+> Гейт **1243/1243** (core 1163 + engine-okhttp 25 + engine-apache5 25 +
+> codec-jackson-xml 15 + benchmarks 15), 0 failures/errors, `./gradlew test javadoc`
+> зелёный под `-Werror`, 0 warnings. Дальше — free-аудит или концепт ADR-0061+
+> (HTTP-кэш RFC 9111 ждёт слова Антона; вопрос в mailbox).
+
 > **Сессия #214 (free-аудит: `@MultipartFormFile` на методе без `requestType =
 > MULTIPART_FORM_DATA` тихо выбрасывал части — 24-я «тихая» находка серии,
 > обратная сторона уже проверенной пары):** свободный ход из контекста #213
@@ -1397,7 +1430,18 @@ engine-reported byte accounting), валидация `@ExpectStatus`/`@FollowRed
 была проверена лишь с одной стороны** (`MULTIPART_FORM_DATA` без параметров
 резался, а `@MultipartFormFile` без `MULTIPART_FORM_DATA` — тихо выбрасывался;
 ADR-0024 Amendment #214). Приём: у парной проверки сверять **обе** стороны —
-асимметричный guard так же опасен, как его отсутствие.
+асимметричный guard так же опасен, как его отсутствие. **#215 замкнул ту же
+пару с другой половины:** payload-биндинг `@RequestBody` читается только на
+`APPLICATION_JSON`-пути, и на form-urlencoded/multipart-методе аргумент тихо
+выбрасывался — теперь требует `requestType = APPLICATION_JSON` (ADR-0035
+Amendment #215). Семья «payload-аннотация ⇄ requestType» закрыта симметрично
+(`@RequestBody` → JSON, `@MultipartFormFile` → MULTIPART). Кандидаты по той же
+оси / нити: `@ExpectStatus(statuses = {})`/`@FollowRedirects(count < 0)`
+(пустой/отрицательный декларативный вход — решение #207 «фича, не дыра»,
+трогать лишь при тихом исходе); hub-центричный составной guard
+(`@RequestBody`/`@Cookie` ↔ остальные `{@PathVariable, @RequestParam,
+@RequestHeader, @MultipartFormFile}`) — наблюдение #215 (double-binding, не
+тихий drop); другие декларации, зависящие от окружения сборки (#212).
 
 ---
 
