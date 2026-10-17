@@ -12,6 +12,10 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+/**
+ * Unit coverage of the no-op JSON codec: singleton identity, the {@code null} literal and
+ * fail-fast errors for non-null serialization/deserialization in zero-dependency mode.
+ */
 class NoOpJsonCodecTest {
 
     @Test

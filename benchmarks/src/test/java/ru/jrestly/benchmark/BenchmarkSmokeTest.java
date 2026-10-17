@@ -20,6 +20,10 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+/**
+ * Smoke coverage of the JMH benchmark suite: every client adapter starts and returns
+ * consistent responses over the shared raw-TCP server, guarding benchmark integrity.
+ */
 @DisplayName("JMH Benchmark Suite Smoke and Consistency Tests")
 class BenchmarkSmokeTest {
 

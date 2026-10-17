@@ -18,6 +18,10 @@ import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+/**
+ * End-to-end for multipart part flexibility (ADR-0024): per-part {@code contentType} and
+ * charset on DTO, string, byte-array and collection parts, alongside a file part.
+ */
 class MultipartFlexibilityWireMockTest extends BaseWireMockTest {
 
     public record ItemDto(String name, int quantity) {}

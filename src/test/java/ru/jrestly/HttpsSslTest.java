@@ -30,6 +30,11 @@ import java.util.concurrent.CompletionException;
 import static com.github.tomakehurst.wiremock.client.WireMock.*;
 import static org.junit.jupiter.api.Assertions.*;
 
+/**
+ * End-to-end for TLS configuration (ADR-0020): custom SSL contexts and trust managers,
+ * mutual-TLS client certificates, hostname verification and failure propagation across
+ * sync and async calls.
+ */
 @DisplayName("HTTPS & SSL/TLS Integration Tests (ADR-0020)")
 class HttpsSslTest {
 

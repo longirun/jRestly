@@ -17,6 +17,11 @@ import java.util.concurrent.CompletableFuture;
 import static com.github.tomakehurst.wiremock.client.WireMock.*;
 import static org.junit.jupiter.api.Assertions.*;
 
+/**
+ * End-to-end for declarative media-type negotiation (ADR-0031): {@code @Accept} and
+ * {@code @ContentType} resolved across interface, method and runtime-header levels,
+ * multiple accepted types, custom charset, raw byte bodies and async calls.
+ */
 @DisplayName("Declarative @Accept and @ContentType WireMock integration tests (ADR-0031)")
 class AcceptContentTypeWireMockTest extends BaseWireMockTest {
 

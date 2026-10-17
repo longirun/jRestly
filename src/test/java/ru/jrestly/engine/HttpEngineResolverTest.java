@@ -16,6 +16,10 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+/**
+ * Unit coverage of engine resolution order: an explicit engine, SPI providers by priority
+ * and the JDK fallback, with a null {@code ModuleInfo} rejected.
+ */
 @DisplayName("HttpEngineResolver Tests")
 class HttpEngineResolverTest {
 

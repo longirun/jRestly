@@ -26,6 +26,11 @@ import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
 import static com.github.tomakehurst.wiremock.client.WireMock.verify;
 import static org.junit.jupiter.api.Assertions.*;
 
+/**
+ * End-to-end for the media-type-aware codec SPI (ADR-0060): a custom zero-dependency
+ * {@code PayloadCodec} binds request and response payloads by {@code Content-Type}, with
+ * the JSON default preserved for untouched media types.
+ */
 @WireMockTest
 @DisplayName("ADR-0060: a custom PayloadCodec binds request/response by Content-Type (zero-dep SPI)")
 class PayloadCodecWireMockTest {

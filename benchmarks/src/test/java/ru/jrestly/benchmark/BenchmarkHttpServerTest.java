@@ -21,6 +21,10 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+/**
+ * Unit and regression coverage of the zero-dependency raw-TCP benchmark server: HTTP/1.1
+ * request parsing, keep-alive, response framing and the {@code TCP_NODELAY} latency gate.
+ */
 @DisplayName("Raw-TCP Benchmark HTTP Server Protocol and Latency Tests")
 class BenchmarkHttpServerTest {
 

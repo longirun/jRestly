@@ -28,6 +28,11 @@ import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
 import static com.github.tomakehurst.wiremock.client.WireMock.verify;
 import static org.junit.jupiter.api.Assertions.*;
 
+/**
+ * End-to-end for XML payload binding through the {@code PayloadCodec} SPI (ADR-0060): DTOs
+ * serialize to XML and typed responses bind by {@code Content-Type}, while the JSON default
+ * stays untouched.
+ */
 @WireMockTest
 @DisplayName("ADR-0060 phase 2: JacksonXmlCodec binds request/response XML end-to-end")
 class JacksonXmlWireMockTest {

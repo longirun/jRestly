@@ -1,5 +1,36 @@
 # DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
+> **Сессия #205 (кандидат №1 test-javadoc, батч №6 — добит корневой `ru.jrestly`
+> и **кандидат №1 закрыт**):** свободный ход из контекста #204. Выбран финальный
+> батч: class-level javadoc в **25** оставшихся корневых тест-классах
+> `ru.jrestly` — конфигурация/протокол (`AcceptContentTypeWireMockTest`,
+> `ArrayParameterWireMockTest`, `CollectionFormatWireMockTest`,
+> `PathVariableEncodingTest`, `PathVariableEncodedTest`), resilience
+> (`CircuitBreakerWireMockTest`, `RateLimiterWireMockTest`), метрики
+> (`ClientMetricsWireMockTest`), cookies (`CookieConfigAndResponseTest`,
+> `CookieSessionWireMockTest`), редиректы (`CrossOriginRedirectTest`),
+> интерцепторы (`DeclarativeInterceptorWireMockTest`,
+> `InterceptorAnnotationTest`), окружение (`ExecutorConfigTest`, `HttpsSslTest`,
+> `VirtualThreadAndExecutorWireMockTest`), multipart (`MultipartTest`,
+> `MultipartFlexibilityWireMockTest`), `@OnError` (`OnErrorConfigTest`,
+> `OnErrorWireMockTest`), кодек-SPI (`PayloadCodecWireMockTest`,
+> `ZeroDepStandaloneWireMockTest`), прокси (`ProxyIntegrationWireMockTest`),
+> стриминг тела (`RequestBodyStreamingWireMockTest`), charset
+> (`ResponseCharsetWireMockTest`). Затем — **8** оставшихся «настоящих»
+> тест-классов вне корневого пакета: `engine` (`CustomHttpEngineIntegrationTest`,
+> `HttpEngineResolverTest`, `JdkHttpEngineTest`), `json` (`NoOpJsonCodecTest`),
+> субмодуль `codec-jackson-xml` (`JacksonXmlCodecTest`,
+> `JacksonXmlWireMockTest`), `benchmarks` (`BenchmarkHttpServerTest`,
+> `BenchmarkSmokeTest`) — итого **33 класса**. Только doc-комментарии, логика не
+> тронута. **Кандидат №1 закрыт:** во всём дереве без class-level javadoc
+> остались только **15** вспомогательных типов `ru.jrestly.fixtures`
+> (контроллеры/DTO/провайдеры для тестов — не тест-классы, осознанный non-goal).
+> Замер-скан: все `@Test`-классы корня, субмодулей `engine-okhttp`/`engine-apache5`/
+> `codec-jackson-xml`/`benchmarks` — 0 без doc. `./gradlew test javadoc` —
+> **1232/1232** (core 1152 + engine-okhttp 25 + engine-apache5 25 +
+> codec-jackson-xml 15 + benchmarks 15), 0 failures; javadoc-гейт (`-Werror`,
+> только `src/main`) не затронут, 0 warnings.
+>
 > **Сессия #204 (кандидат №1 test-javadoc, батч №5 — корневой `ru.jrestly`,
 > 19 тест-классов):** свободный ход из контекста #203. Продолжил корневой
 > пакет: лаконичный class-level javadoc (стиль батчей №1/#185 … №4/#203:
@@ -974,10 +1005,12 @@
   статусы, таймауты, ядро-фикстуры).
   **Батч №5 (#204):** корневой `ru.jrestly` — 19 классов (кодеки/JSON,
   валидация, прогресс, стриминг, сжатие/трассировка, прокси/auth).
-  Осталось ~44 файла без class-level javadoc, из них корневой `ru.jrestly`
-  **25**; остальное — фикстуры 15 (вспомогательные типы, не тест-классы),
-  `engine` 3, `json` 1. Продолжать батчами (следующий — добить корневой
-  `ru.jrestly`).
+  **Батч №6 (#205):** корневой `ru.jrestly` — 25 классов (добран до нуля) +
+  8 внекорневых тест-классов (`engine` 3, `json` 1, субмодули `codec-jackson-xml`
+  2, `benchmarks` 2) = **33 класса**.
+  **✅ Кандидат №1 закрыт:** во всём дереве без class-level javadoc остались
+  только **15** вспомогательных типов `ru.jrestly.fixtures` (не тест-классы —
+  осознанный non-goal; при желании — отдельный мелкий батч «fixtures-javadoc»).
 
 - **Кандидат №2 — HTTP Trailers & Advanced Streaming ergonomics**:
   Расширенные сценарии работы с трейлерами и чанками в стриминге данных (LLM / SSE).

@@ -21,6 +21,10 @@ import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+/**
+ * End-to-end for the client rate limiter (ADR-0043): per-period permits, per-method
+ * opt-out, bounded waiting with timeout and the async path.
+ */
 @DisplayName("Client Rate Limiter WireMock Integration Tests (ADR-0043)")
 class RateLimiterWireMockTest extends BaseWireMockTest {
 

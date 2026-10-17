@@ -10,6 +10,11 @@ import java.nio.charset.StandardCharsets;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+/**
+ * Unit coverage of the XML {@code PayloadCodec} adapter (ADR-0060): media-type claim
+ * including the {@code +xml} suffix, real XML serialization/deserialization and the
+ * default mapper configuration.
+ */
 @DisplayName("JacksonXmlCodec: XML binding through the PayloadCodec SPI (ADR-0060)")
 class JacksonXmlCodecTest {
 

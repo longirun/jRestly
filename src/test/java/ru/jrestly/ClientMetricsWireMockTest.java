@@ -42,6 +42,11 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+/**
+ * End-to-end for the metrics listener SPI (ADR-0036): call lifecycle, byte accounting,
+ * attempt numbering across retries and transparent 401 refresh, and zero attempts on
+ * short-circuit (ADR-0047).
+ */
 @DisplayName("ClientMetricsWireMockTest")
 class ClientMetricsWireMockTest {
 

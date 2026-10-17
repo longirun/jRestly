@@ -30,6 +30,11 @@ import static com.github.tomakehurst.wiremock.client.WireMock.*;
 import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.wireMockConfig;
 import static org.junit.jupiter.api.Assertions.*;
 
+/**
+ * End-to-end for streaming request bodies (ADR-0035): {@code Flow.Publisher},
+ * {@code InputStream} and supplier bodies, custom content types and replay across retries
+ * and redirects.
+ */
 @DisplayName("RequestBodyStreamingWireMockTest")
 class RequestBodyStreamingWireMockTest {
 

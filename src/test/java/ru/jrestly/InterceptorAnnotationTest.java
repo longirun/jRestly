@@ -14,6 +14,11 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+/**
+ * Unit coverage of {@code @WithInterceptor} validation: accepted request/response
+ * interceptors and rejected declarations (non-interceptor types, abstract classes,
+ * missing default constructor).
+ */
 class InterceptorAnnotationTest {
 
     public static class ValidRequestInterceptor implements RequestInterceptor {

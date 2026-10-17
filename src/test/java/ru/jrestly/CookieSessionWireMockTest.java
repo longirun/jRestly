@@ -17,6 +17,11 @@ import java.util.concurrent.CompletableFuture;
 import static com.github.tomakehurst.wiremock.client.WireMock.*;
 import static org.junit.jupiter.api.Assertions.*;
 
+/**
+ * End-to-end for cookies and session management (ADR-0032): a cookie store carried across
+ * calls, declarative {@code @Cookie} at interface/method level, path/map/{@code HttpCookie}
+ * parameters, repeated cookies and async calls.
+ */
 @DisplayName("Cookie handling, session management and @Cookie WireMock integration tests (ADR-0032)")
 class CookieSessionWireMockTest extends BaseWireMockTest {
 

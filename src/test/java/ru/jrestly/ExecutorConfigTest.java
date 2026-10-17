@@ -16,6 +16,11 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+/**
+ * Unit coverage of executor and virtual-thread configuration (ADR-0026): the defaults on
+ * {@code ModuleInfo}/{@code SimpleModuleInfo}, builder wiring, validation and lifecycle of
+ * managed executors.
+ */
 @DisplayName("Executor and virtual threads configuration tests (ADR-0026)")
 class ExecutorConfigTest {
 

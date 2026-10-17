@@ -22,6 +22,11 @@ import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+/**
+ * End-to-end for the client circuit breaker (ADR-0043): opening on remote failures,
+ * fast-fail without network calls, per-method {@code enabled = false} opt-out and the
+ * async path.
+ */
 @DisplayName("Circuit Breaker WireMock Integration Tests (ADR-0043)")
 class CircuitBreakerWireMockTest extends BaseWireMockTest {
 

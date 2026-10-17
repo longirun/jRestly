@@ -10,6 +10,10 @@ import ru.jrestly.fixtures.RedirectMethodController;
 import static com.github.tomakehurst.wiremock.client.WireMock.*;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
+/**
+ * End-to-end for redirect security: the ambient {@code Authorization} header is dropped
+ * when a redirect crosses origins and preserved on a same-origin hop.
+ */
 class CrossOriginRedirectTest extends BaseWireMockTest {
 
     private WireMockServer otherOriginServer;

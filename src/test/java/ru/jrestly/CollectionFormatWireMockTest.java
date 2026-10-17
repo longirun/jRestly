@@ -15,6 +15,11 @@ import java.util.concurrent.CompletableFuture;
 import static com.github.tomakehurst.wiremock.client.WireMock.*;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
+/**
+ * End-to-end for declarative query collection formats (ADR-0034): CSV, SSV, TSV, PIPES,
+ * BRACKETS and EXPLODE for lists, arrays and dynamic maps, plus per-parameter format
+ * overrides.
+ */
 class CollectionFormatWireMockTest extends BaseWireMockTest {
 
     interface QueryFormatsController {

@@ -14,6 +14,11 @@ import java.util.Map;
 import static com.github.tomakehurst.wiremock.client.WireMock.*;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
+/**
+ * End-to-end for array and map request parameters: repeated {@code @RequestParam} /
+ * {@code @RequestHeader} values, URL-encoded form arrays and fragment handling in
+ * {@code @Get} paths.
+ */
 class ArrayParameterWireMockTest extends BaseWireMockTest {
 
     interface ArrayQueryController {

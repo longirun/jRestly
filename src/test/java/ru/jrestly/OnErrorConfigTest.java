@@ -13,6 +13,10 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+/**
+ * Unit coverage of {@code @OnError} resolution and validation: status-to-error-object
+ * mapping, super/sub override semantics, custom exceptions and conflicting declarations.
+ */
 class OnErrorConfigTest {
 
     public record ErrorA(String a) {}

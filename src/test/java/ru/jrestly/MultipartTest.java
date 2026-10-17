@@ -29,6 +29,10 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+/**
+ * End-to-end for multipart/form-data requests: file and {@code Path} uploads, custom
+ * part names, dynamic maps, boundary handling and the wire format of composed bodies.
+ */
 class MultipartTest extends BaseWireMockTest {
 
     interface DynamicMultipartController {

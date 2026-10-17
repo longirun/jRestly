@@ -33,6 +33,10 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+/**
+ * End-to-end for proxy routing and transport authentication (ADR-0037): requests routed
+ * through an HTTP proxy, proxy credentials and the transport authenticator, sync and async.
+ */
 @DisplayName("HTTP Proxy and Transport Authenticator WireMock Integration Tests (ADR-0037)")
 class ProxyIntegrationWireMockTest extends BaseWireMockTest {
 

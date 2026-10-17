@@ -9,6 +9,11 @@ import static com.github.tomakehurst.wiremock.client.WireMock.*;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
+/**
+ * End-to-end for {@code @PathVariable(encoded = true)}: multi-segment paths and
+ * pre-encoded percent sequences pass through without double-encoding, while the default
+ * still encodes.
+ */
 class PathVariableEncodedTest extends BaseWireMockTest {
 
     interface StorageController {

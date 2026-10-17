@@ -35,6 +35,10 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+/**
+ * Unit coverage of the built-in JDK transport: request mapping, buffered and streaming
+ * responses, progress listeners, multipart parts and trailers.
+ */
 @DisplayName("JdkHttpEngine Tests")
 class JdkHttpEngineTest {
 

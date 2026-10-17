@@ -11,6 +11,11 @@ import java.util.Optional;
 import static com.github.tomakehurst.wiremock.client.WireMock.*;
 import static org.junit.jupiter.api.Assertions.*;
 
+/**
+ * End-to-end for response charset resolution (RFC 9110 §8.3.2): {@code String} and
+ * {@code Optional<String>} payloads decode with the {@code Content-Type} charset, with an
+ * UTF-8 fallback and covering error bodies too.
+ */
 @DisplayName("Response charset resolution for String payloads (audit, RFC 9110 §8.3.2)")
 class ResponseCharsetWireMockTest extends BaseWireMockTest {
 

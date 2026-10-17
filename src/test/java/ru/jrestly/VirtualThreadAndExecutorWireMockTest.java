@@ -26,6 +26,10 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+/**
+ * End-to-end for virtual threads and custom executors (ADR-0026): async completions,
+ * interceptors and streaming run on the configured executor, and lifecycle is respected.
+ */
 @DisplayName("Virtual threads and custom executor integration tests (ADR-0026)")
 class VirtualThreadAndExecutorWireMockTest extends BaseWireMockTest {
 

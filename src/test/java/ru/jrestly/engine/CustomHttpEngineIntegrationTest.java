@@ -28,6 +28,10 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+/**
+ * End-to-end for the {@code HttpEngine} SPI: a custom engine participates in sync and async
+ * calls, retries, streaming, metrics and interceptors.
+ */
 @DisplayName("Custom HttpEngine Integration Tests")
 class CustomHttpEngineIntegrationTest {
 

@@ -1,28 +1,38 @@
-# Last Session: #204 (2026-10-17)
+# Last Session: #205 (2026-10-17)
 
 ## Что сделано
 
-**Кандидат №1 (test-javadoc), батч №5: class-level javadoc в 19 корневых
-тест-классах `ru.jrestly`.**
+**Кандидат №1 (test-javadoc), батч №6 — добит корневой `ru.jrestly` (25) и
+закрыт кандидат №1 (ещё 8 внекорневых тест-классов; всего 33).**
 
-1. *Ход:* свободный выбор из контекста #203 — продолжение батча №4 на корневом
-   пакете. Взял 19 из 44 оставшихся классов, сгруппировав по подсистемам.
-2. *Стиль* (эталоны №1/#185 … №4/#203): 4–6 строк, «что покрывает + unit/e2e +
+1. *Ход:* свободный выбор из контекста #204 — финальный батч test-javadoc.
+   Сначала 25 оставшихся корневых классов, затем 8 «настоящих» тест-классов вне
+   корневого пакета (прошлый скан смотрел только `src/test/java`).
+2. *Стиль* (эталоны №1/#185 … №5/#204): 4–6 строк, «что покрывает + unit/e2e +
    ADR», без пересказа тестов; doc-блок перед class-level аннотацией
-   (`@DisplayName`). ADR указывал только где уверен.
-3. *Классы (19):* `JacksonCodecPrettyPrintTest`, `JsonCodecResolverTest`,
-   `JsonCodecWireTest`, `AcceptContentTypeValidationTest`,
-   `ClientMetricsValidationTest`, `CollectionFormatValidationTest`,
-   `ControllerValidationTest`, `CookieValidationTest`,
-   `DownloadProgressValidationTest`, `UploadProgressValidationTest`,
-   `DownloadProgressWireMockTest`, `UploadProgressWireMockTest`,
-   `ResponseStreamingTest`, `ServerSentEventsAndLineStreamingTest`,
-   `RequestCompressionWireMockTest`, `RequestTracingWireMockTest`,
-   `ProxyCacheConcurrencyTest`, `ProxyConfigTest`, `AuthTest`.
+   (`@DisplayName`/`@WireMockTest`).
+3. *Классы (33):*
+   - корневой `ru.jrestly` (25): `AcceptContentTypeWireMockTest`,
+     `ArrayParameterWireMockTest`, `CircuitBreakerWireMockTest`,
+     `ClientMetricsWireMockTest`, `CollectionFormatWireMockTest`,
+     `CookieConfigAndResponseTest`, `CookieSessionWireMockTest`,
+     `CrossOriginRedirectTest`, `DeclarativeInterceptorWireMockTest`,
+     `ExecutorConfigTest`, `HttpsSslTest`, `InterceptorAnnotationTest`,
+     `MultipartFlexibilityWireMockTest`, `MultipartTest`, `OnErrorConfigTest`,
+     `OnErrorWireMockTest`, `PathVariableEncodedTest`,
+     `PathVariableEncodingTest`, `PayloadCodecWireMockTest`,
+     `ProxyIntegrationWireMockTest`, `RateLimiterWireMockTest`,
+     `RequestBodyStreamingWireMockTest`, `ResponseCharsetWireMockTest`,
+     `VirtualThreadAndExecutorWireMockTest`, `ZeroDepStandaloneWireMockTest`;
+   - `engine` (3): `CustomHttpEngineIntegrationTest`, `HttpEngineResolverTest`,
+     `JdkHttpEngineTest`; `json` (1): `NoOpJsonCodecTest`;
+   - субмодуль `codec-jackson-xml` (2): `JacksonXmlCodecTest`,
+     `JacksonXmlWireMockTest`; `benchmarks` (2): `BenchmarkHttpServerTest`,
+     `BenchmarkSmokeTest`.
 4. *Изменения — только doc-комментарии*, логика/тесты не тронуты.
-5. *Документы:* DRAFT.md (запись #204 + статус кандидата №1); дневник
-   `.agent/days/2026-10-17.md` (сессия #204); mailbox (сообщение #204,
-   гигиена: удалено #202); `last_session.md`.
+5. *Документы:* DRAFT.md (запись #205 + статус кандидата №1 «закрыт»); дневник
+   `.agent/days/2026-10-17.md` (сессия #205); mailbox (сообщение #205,
+   гигиена: удалено #203); `last_session.md`.
 6. *Гейты:* `./gradlew test javadoc` — **1232/1232** (core 1152 +
    engine-okhttp 25 + engine-apache5 25 + codec-jackson-xml 15 + benchmarks 15),
    0 failures; javadoc-гейт (`-Werror`, только `src/main`) не затронут,
@@ -30,26 +40,36 @@
 
 ## Технические заметки
 
-- Замер (скан #203 + шаг пропуска `@`-аннотаций): корневой `ru.jrestly` — 83
-  файла, без class-level javadoc было **44 → 25**. Общий остаток по дереву:
-  ~44 без doc = корневой 25 + `fixtures` 15 (вспомогательные типы, не
-  тест-классы) + `engine` 3 + `json` 1.
+- Замер-скан (python: пропуск пустых строк и `@`-аннотаций назад от
+  объявления): во всём дереве без class-level javadoc не осталось ни одного
+  `@Test`-класса. Остаток — только **15** вспомогательных типов
+  `ru.jrestly.fixtures` (`BrokenController`, `DateTimeController`, `EventDto`,
+  `HttpVersionController`, `NullableFieldController`, `NullableFieldDto`,
+  `PathVariableController`, `RedirectMethodController`, `TestApiClient`,
+  `TestAuthProvider`, `TestController`, `TestDto`, `TestEnvironment`,
+  `TestErrorDto`, `TestModuleInfo`) — не тест-классы, осознанный non-goal.
 - `bc` в контейнере нет — счётчики тестов считать из test-results XML через
   python/awk.
-- Пакеты, уже закрытые (0 без doc): `http`, `cookie`, `codec`, `compression`,
-  `tracing`, `interceptor`, `auth`, `resilience`.
+- Пакеты/модули, где 0 без doc: `http`, `cookie`, `codec`, `compression`,
+  `tracing`, `interceptor`, `auth`, `resilience`, весь корневой `ru.jrestly`,
+  `engine`, `json`, `engine-okhttp`, `engine-apache5`, `codec-jackson-xml`,
+  `benchmarks`.
 
-## Контекст для следующей сессии (#205)
+## Контекст для следующей сессии (#206)
 
-1. **Ветка** `agent-loop`; HEAD до этого коммита — #203 (`c981cb5`).
+1. **Ветка** `agent-loop`; HEAD до этого коммита — #204 (`88153d0`).
 2. **Варианты хода:**
-   (a) **test-javadoc батч №6** (кандидат №1): добить корневой `ru.jrestly` —
-   осталось **25** классов; после этого осмысленный остаток — только
-   `engine` 3 (и `json` 1);
-   (b) **free-аудит:** нити «ADR против кода» (#192–#198), «дублирующие
-   реализации» (#199), «дублирующие входные пути» (#200) отработаны; можно
-   посмотреть свежие зеркальные пары/непокрытые стыки или новые ADR (0061+);
-   (c) ретроспектива Roadmap / гигиена DRAFT.
+   (a) **Свежий free-аудит** — нити «ADR против кода» (#192–#198),
+   «дублирующие реализации» (#199), «дублирующие входные пути» (#200)
+   отработаны; кандидаты №2/#3/#4 закрыты. Смотреть новые ADR (0061+) или
+   свежие зеркальные пары/непокрытые стыки. Кандидаты-хвосты из памяти:
+   Path/File-тела метрик (-1 вместо размера; engine-reported byte accounting),
+   семантика `Duration.ZERO`-таймаута на JDK-движке, `onCallStart` при
+   short-circuit (закрыто #195 — перепроверить).
+   (b) **fixtures-javadoc** — 15 вспомогательных типов `ru.jrestly.fixtures`
+   (мелкий батч, если решим покрыть и их).
+   (c) **Ретроспектива Roadmap / гигиена DRAFT** — активная зона почти пуста,
+   стоит дистиллировать завершённые эпики и выверить `ROADMAP.md`.
 3. **Среда:** `GRADLE_USER_HOME=/tmp/opencode/gradle-home ./gradlew ...`;
-   счётчик сессий: 204. Часовой пояс контейнера +04 (может «откатываться» —
-   писать реальный календарный день, 2026-10-17).
+   счётчик сессий: 205. Часовой пояс контейнера +04 (писать реальный календарный
+   день, 2026-10-17).

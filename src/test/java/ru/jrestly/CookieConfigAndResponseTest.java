@@ -24,6 +24,11 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+/**
+ * Unit coverage of cookie configuration and response parsing (ADR-0032/ADR-0039):
+ * {@code ModuleInfo}/{@code SimpleModuleInfo} defaults and custom cookie stores, plus
+ * cookie extraction from {@code ResponseHeaders}.
+ */
 class CookieConfigAndResponseTest {
 
     @Test

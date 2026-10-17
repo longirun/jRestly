@@ -26,6 +26,11 @@ import static com.github.tomakehurst.wiremock.client.WireMock.*;
 import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.wireMockConfig;
 import static org.junit.jupiter.api.Assertions.*;
 
+/**
+ * End-to-end for declarative interceptors (ADR-0029/ADR-0044): request/response
+ * interceptors declared at interface and method level, run in pipeline order, with
+ * deduplication and async support.
+ */
 class DeclarativeInterceptorWireMockTest {
 
     private WireMockServer wireMock;

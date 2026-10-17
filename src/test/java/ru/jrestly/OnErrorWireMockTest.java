@@ -23,6 +23,10 @@ import static com.github.tomakehurst.wiremock.client.WireMock.*;
 import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.wireMockConfig;
 import static org.junit.jupiter.api.Assertions.*;
 
+/**
+ * End-to-end for {@code @OnError} handling: mapping statuses to deserialized error
+ * objects, custom exception factories, interface-hierarchy fallbacks and async errors.
+ */
 class OnErrorWireMockTest {
 
     private WireMockServer wireMock;

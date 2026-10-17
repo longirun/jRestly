@@ -34,6 +34,11 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+/**
+ * End-to-end for the standalone, zero-dependency setup: a client built without an external
+ * JSON codec ({@code NoOpJsonCodec}) still handles raw strings, bytes, {@code InputStream}
+ * and error mapping across all verbs.
+ */
 @WireMockTest
 class ZeroDepStandaloneWireMockTest {
 

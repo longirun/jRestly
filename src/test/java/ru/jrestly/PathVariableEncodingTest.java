@@ -7,6 +7,10 @@ import ru.jrestly.fixtures.PathVariableController;
 import static com.github.tomakehurst.wiremock.client.WireMock.*;
 import static org.junit.jupiter.api.Assertions.*;
 
+/**
+ * End-to-end for path-variable percent-encoding: non-ASCII and reserved characters are
+ * encoded per segment, keeping the path structure intact across substitutions.
+ */
 class PathVariableEncodingTest extends BaseWireMockTest {
 
     private PathVariableController pathController() {
