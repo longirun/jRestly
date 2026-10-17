@@ -86,4 +86,19 @@ Implements the standard members defined by RFC 9457 §3.1:
    - Comprehensive unit testing for fluent setters (`withType`, `withTitle`, `withStatus`, `withDetail`, `withInstance`, `withProperty`), typed property access (`getProperty(name, Class<T>)`), `ProblemDetailException` constructors, and `CacheControl` / `InMemoryHttpCache` expiration mechanics.
    - Total test suite expanded to **1324/1324** tests green. JaCoCo instruction coverage exceeded the **90%** threshold (**90.85% Instructions**, **90.64% Lines**, **76.92% Branches**, **100.00% Classes**).
 
+## Amendment #244 (2026-10-17)
+
+**Client Facade Verification, ProblemDetail Nested Map Serialization & JaCoCo 92% Instruction Milestone:**
+1. *ProblemDetail & Parser Enhancements:*
+   - Verified that `ProblemDetail.appendJsonValue` properly handles nested `Map<?, ?>` structures and explicit `null` properties in extension members, formatting valid nested JSON objects and null literals.
+   - Tested large `long` numbers exceeding `Integer.MAX_VALUE`, string-based status recovery, escape sequences (`\/`, `\b`, `\f`, `\r`, `\t`), and nested string quote balancing in `ZeroDepJsonParser`.
+   - Verified `ProblemDetail.Builder.properties(Map)` bulk property assignment.
+2. *Core Facade Quality & Unification:*
+   - Built dedicated `JRestlyClientBuilderTest` testing all `JRestlyClient.Builder` facade shortcuts across caching, virtual threads, cookie stores, proxies, compression thresholds, tracing propagators, resilience (circuit breaker, rate limiter), authentication helpers (Bearer, Basic, API Key), mock/short-circuit mechanisms, timeouts, and engines.
+   - Closed coverage gaps in `FileCookiePersister.of(File)`, `OnErrorParser` reverse setter sequencing, and `InMemoryHttpCache` non-cacheable/unparseable date scenarios.
+3. *Quality Metrics:*
+   - Total test suite reached **1343 / 1343** tests green (+19 tests across all modules, 0 failures, 0 errors).
+   - JaCoCo coverage established a new historic high: **92.02% Instructions** (28,738 / 31,231), **91.92% Lines** (6,248 / 6,797), **77.76% Branches**, **95.29% Methods**, and **100.00% Classes (143/143)**.
+
+
 

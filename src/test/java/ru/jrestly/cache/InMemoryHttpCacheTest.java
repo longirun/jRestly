@@ -258,5 +258,56 @@ class InMemoryHttpCacheTest {
         cache.invalidate(null);
         assertEquals(0, cache.size());
     }
+
+    @Test
+    @DisplayName("update returns null when entry does not exist in cache")
+    void updateNonExistentEntry() {
+        HttpCache cache = HttpCaches.inMemory();
+        WireRequest req = new WireRequest(HttpMethod.GET, URI.create("https://api.example.com/not-cached"), List.of(), null, null);
+        WireResponse res304 = WireResponse.builder().statusCode(304).build();
+        assertNull(cache.update(req, res304));
+    }
+
+    @Test
+    @DisplayName("put ignores non-cacheable status, null body, and responses without freshness/validators")
+    void putIgnoresNonCacheableResponses() {
+        HttpCache cache = HttpCaches.inMemory();
+        URI uri = URI.create("https://api.example.com/data");
+        WireRequest req = new WireRequest(HttpMethod.GET, uri, List.of(), null, null);
+
+        // 500 status
+        WireResponse res500 = WireResponse.builder().statusCode(500).header("Cache-Control", "max-age=100").body("error").build();
+        cache.put(req, res500);
+        assertEquals(0, cache.size());
+
+        // null body
+        WireResponse resNullBody = WireResponse.builder().statusCode(200).header("Cache-Control", "max-age=100").build();
+        cache.put(req, resNullBody);
+        assertEquals(0, cache.size());
+
+        // 200 without freshness lifetime and without validators
+        WireResponse resNoDirectives = WireResponse.builder().statusCode(200).body("data").build();
+        cache.put(req, resNoDirectives);
+        assertEquals(0, cache.size());
+    }
+
+    @Test
+    @DisplayName("invalid Date or Expires header falls back safely without parsing exception")
+    void invalidHttpDateFormat() {
+        HttpCache cache = HttpCaches.inMemory();
+        URI uri = URI.create("https://api.example.com/bad-date");
+        WireRequest req = new WireRequest(HttpMethod.GET, uri, List.of(), null, null);
+        WireResponse res = WireResponse.builder()
+                .statusCode(200)
+                .header("Date", "not-a-valid-date")
+                .header("Expires", "another-invalid-date")
+                .header("ETag", "\"v1\"")
+                .body("content")
+                .build();
+        cache.put(req, res);
+        assertEquals(1, cache.size());
+        CachedResponse cached = cache.get(req).orElseThrow();
+        assertEquals(0L, cached.freshnessLifetimeSeconds());
+    }
 }
 

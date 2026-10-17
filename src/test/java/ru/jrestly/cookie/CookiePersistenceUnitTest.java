@@ -161,6 +161,15 @@ class CookiePersistenceUnitTest {
     }
 
     @Test
+    @DisplayName("FileCookiePersister of(File) factory creates persister with file path")
+    void fileCookiePersisterOfFile(@TempDir Path tempDir) {
+        java.io.File fileObj = tempDir.resolve("test-obj.cookies").toFile();
+        FileCookiePersister persister = FileCookiePersister.of(fileObj);
+        assertEquals(fileObj.toPath(), persister.getPath());
+        assertEquals(StandardCharsets.UTF_8, persister.getCharset());
+    }
+
+    @Test
     @DisplayName("PersistentCookieStore in AUTO mode persists mutations immediately")
     void persistentCookieStoreAutoMode() {
         TestCookiePersister persister = new TestCookiePersister();

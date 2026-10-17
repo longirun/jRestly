@@ -1,5 +1,29 @@
 # DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
+> **Сессия #244 (free-аудит / качество: верификация публичного фасада `JRestlyClient.Builder`, сериализация вложенных Map в `ProblemDetail`, преодоление рубежа 92% Instruction Coverage при 100% Class Coverage):**
+> свободный ход развития качества и устойчивости кодовой базы.
+> 1. *Фасад `JRestlyClient.Builder`:*
+>    - Создан специализированный сьют `JRestlyClientBuilderTest.java` (+10 тестов), детально верифицирующий все методы публичного фасада билдера и их трансляцию в `ModuleInfo`:
+>      `inMemoryCache()` и `inMemoryCache(int)` (RFC 9111 HTTP-кэш), `virtualThreads(boolean)` / `useVirtualThreads()`, `executor`, `cookieHandler`, `cookiePolicy`, `proxy`, `noProxy`, `authenticator`, `proxyCredentials`, `credentials`, `requestCompression`, `contentCompressor`, `decompression`, `tracePropagator`, `correlationId` (в т.ч. ThreadLocal и custom suppliers), `w3cTracing`, `circuitBreaker`, `circuitBreakerRegistry`, `rateLimiter`, `rateLimiterRegistry`, `tokenManager`, `retryOnUnauthorized`, `bearerAuth`, `basicAuth`, `apiKeyHeader`, `apiKeyQuery`, `shortCircuit`, `mock` (unconditional, predicate, dynamic supplier), `codecs`, `connectTimeout`, `socketTimeout`, `httpVersion`, `validateControllers`, `retry`, `httpEngine`.
+> 2. *ProblemDetail & ZeroDepJsonParser:*
+>    - Протестирована и верифицирована сериализация вложенных `Map<?, ?>` и `null` значений в extension properties для `toJson()` / `fromJson()`;
+>    - Протестированы числа `Long` (> Integer.MAX_VALUE), парсинг escape-символов (`\/`, `\b`, `\f`, `\r`, `\t`), экранированные кавычки во вложенных структурах и строковые статусы;
+>    - Протестирован `ProblemDetail.Builder.properties(Map)`.
+> 3. *Периферийные компоненты:*
+>    - `FileCookiePersister.of(File)` протестирован в `CookiePersistenceUnitTest.java`;
+>    - `OnErrorParser` получил тесты на обратный порядок вызова legacy-сеттеров (`setErrorClass` до `setStatuses`), `canParse` с `legacyStatuses` без класса и `getErrorClass()`;
+>    - `InMemoryHttpCache` получил тесты на `update` некэшированного URI, `put` некэшируемых ответов (статус 500, null body, без директив/валидаторов) и невалидный HTTP-date.
+> 4. *TDD и гейты:*
+>    - Всего тестов: **1343 / 1343** green across all 5 modules (+19 тестов, 0 failures, 0 errors).
+>    - Javadoc чист под `-Werror`, 0 warnings.
+>    - **JaCoCo Coverage:**
+>      * **CLASS:** **143 / 143 (100.00%)**
+>      * **INSTRUCTION:** **92.02%** (28,738 / 31,231) — преодолён 92% рубеж!
+>      * **LINE:** **91.92%** (6,248 / 6,797) — преодолён 91.9% рубеж!
+>      * **BRANCH:** **77.76%** (3,433 / 4,415).
+>      * **METHOD:** **95.29%** (1,355 / 1,422).
+>    - ADR-0064 дополнен `## Amendment #244`.
+>
 > **Сессия #243 (free-аудит / харденинг: устранение искажения массивов в `ProblemDetail.toJson()` — 31-я «тихая» находка серии, рубеж 90% Instruction / Line Coverage при 100% Class Coverage):**
 > свободный ход развития качества кодовой базы.
 > 1. *Находка (31-я в серии):* в `ProblemDetail.appendJsonValue` проверка на списочные структуры поддерживала только `Iterable<?>`. При передаче в extension properties нативных массивов Java (`String[]`, `int[]`, `Object[]` и др.) сериализатор проваливался в `else` ветку, вызывал `val.toString()` и записывал в JSON имя типа `"[Ljava.lang.String;@5e265ba4"` вместо валидного JSON-массива `[...]`. Кроме того, в `ZeroDepJsonParser.parseString` последовательности `\uXXXX` без 4 шестнадцатеричных символов или с невалидным hex приводили к тихому проглатыванию или неконтролируемому `NumberFormatException`.

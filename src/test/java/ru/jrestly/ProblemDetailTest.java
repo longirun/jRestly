@@ -363,4 +363,69 @@ class ProblemDetailTest {
         ProblemDetailException exDetailOnly = new ProblemDetailException(pdDetailOnly, List.of());
         assertEquals("HTTP 504: Gateway Timeout Occurred", exDetailOnly.getMessage());
     }
+
+    @Test
+    @DisplayName("Zero-dep toJson() serializes nested Maps and null values in extension properties")
+    void serializesNestedMapsInProperties() {
+        ProblemDetail pd = ProblemDetail.builder()
+                .status(400)
+                .property("errors", Map.of("field", "username", "code", "required"))
+                .property("nullProp", null)
+                .build();
+
+        String json = pd.toJson();
+        assertTrue(json.contains("\"errors\":{"), "Expected nested JSON object, got: " + json);
+        assertTrue(json.contains("\"field\":\"username\""), "Expected field key in json: " + json);
+        assertTrue(json.contains("\"nullProp\":null"), "Expected null value in json: " + json);
+
+        ProblemDetail parsed = ProblemDetail.fromJson(json);
+        assertTrue(parsed.getProperty("errors") instanceof Map);
+        Map<?, ?> errors = (Map<?, ?>) parsed.getProperty("errors");
+        assertEquals("username", errors.get("field"));
+        assertEquals("required", errors.get("code"));
+        assertNull(parsed.getProperty("nullProp"));
+    }
+
+    @Test
+    @DisplayName("ZeroDepJsonParser handles large numbers, escape sequences, string status and nested quotes")
+    void zeroDepJsonParserEscapesAndNumbers() {
+        String json = """
+                {
+                  "type": "https://example.org/probs/special",
+                  "status": "422",
+                  "title": "Unprocessable",
+                  "detail": "Escaped: \\/ slash, \\b backspace, \\f formfeed, \\r return, \\t tab",
+                  "bigNumber": 9999999999,
+                  "nestedQuoted": {
+                    "message": "value with \\"quotes\\""
+                  }
+                }
+                """;
+
+        ProblemDetail pd = ProblemDetail.fromJson(json);
+        assertEquals(422, pd.getStatus());
+        assertEquals("Unprocessable", pd.getTitle());
+        assertEquals("Escaped: / slash, \b backspace, \f formfeed, \r return, \t tab", pd.getDetail());
+        assertEquals(9999999999L, pd.getProperty("bigNumber"));
+        assertTrue(pd.getProperty("nestedQuoted") instanceof Map);
+
+        // Invalid string status falls back gracefully without error
+        ProblemDetail pdBadStatus = ProblemDetail.fromJson("{\"status\": \"not-a-number\"}");
+        assertEquals(0, pdBadStatus.getStatus());
+    }
+
+    @Test
+    @DisplayName("ProblemDetail.Builder properties(Map) copies all properties")
+    void builderPropertiesMap() {
+        ProblemDetail pd = ProblemDetail.builder()
+                .status(400)
+                .properties(Map.of("k1", "v1", "k2", 123))
+                .build();
+        assertEquals("v1", pd.getProperty("k1"));
+        assertEquals(123, pd.getProperty("k2"));
+
+        ProblemDetail pdNull = ProblemDetail.builder().properties(null).build();
+        assertNotNull(pdNull.getProperties());
+    }
 }
+

@@ -51,13 +51,6 @@
 
 ---
 
-[2026-10-17 18:00] Агент (сессия #241): Антон, завершил монументальный этап развития и упаковал релизный цикл 0.10.0 (ADR-0065)!
-За цикл 0.10.0 библиотека прошла грандиозный путь: 45 реализованных ADR (ADR-0020..ADR-0064), рост тестовой базы с 420 до 1311 тестов (100% green), интеграция постоянного контроля качества JaCoCo (89.4% Instructions, 98.6% Classes) и закрытие всех трех Vital Gaps из нашего конкурентного анализа:
-1. Dynamic Endpoints `@TargetUrl` (S3 presigned URLs, HATEOAS, webhooks, multi-tenant);
-2. Transparent RFC 9111 HTTP Cache SPI + In-Memory Store (304 revalidation, ETag, Cache-Control);
-3. RFC 7807 / RFC 9457 Problem Details (`ProblemDetail`, auto-recognition, `@OnError`).
-Все модули (ядро, `codec-jackson-xml`, `engine-okhttp`, `engine-apache5`) обновлены до версии 0.10.0, CHANGELOG.md и README.md актуализированы. Generated POM ядра по-прежнему содержит ровно 0 dependencies. jRestly готов покорять прод!
-
 [2026-10-17 18:18] Агент (сессия #242): Антон, провел аудит устойчивости парсера Problem Details и качества тестов:
 - Найдена и устранена 30-я «тихая» находка: в `ZeroDepJsonParser` невалидные токены вызывали бесконечный цикл и `OutOfMemoryError` в `parseArray`! Теперь невалидный JSON парсится строго по RFC 8259 / RFC 9457 с мгновенным fail-fast `IllegalArgumentException`.
 - Добавлены тесты default методов `PayloadCodec` и `PayloadCodecProvider`.
@@ -68,3 +61,10 @@
 - В `ZeroDepJsonParser` ужесточена валидация unicode-escape (`\uXXXX`) последовательностей (строгая проверка 4 hex-символов).
 - Расширено покрытие тестами `ProblemDetailException`, `CacheControl.toString()` и вычисления `freshnessLifetime` по `Expires`/`Date` в `InMemoryHttpCache`.
 - Зафиксирован исторический рекорд качества: преодолён 90% рубеж по инструкциям и строкам — **90.85% Instructions**, **90.64% Lines**, **76.92% Branches** при **100.00% Class Coverage (143/143 классов)**! Полный гейт **1324/1324** тестов зелёные, javadoc чист под `-Werror`. Оформлен `ADR-0064` `## Amendment #243`.
+
+[2026-10-17 18:58] Агент (сессия #244): Антон, провел глубокий аудит и верификацию главного публичного фасада `JRestlyClient.Builder`, сериализации вложенных структур в Problem Details и периферийных компонентов:
+- Создан новый тестовый сьют `JRestlyClientBuilderTest` (+10 тестов), детально верифицирующий все методы фасада билдера (кэш, виртуальные нити, cookies, прокси, сжатие, трейсинг/correlationId, resilience CB/RL, авторизация Bearer/Basic/ApiKey, mock/short-circuit, таймауты, движки) и их трансляцию в `ModuleInfo`.
+- В `ProblemDetail` протестирована сериализация вложенных `Map<?, ?>` и `null` значений в extension properties, обработка `Long` чисел (> Integer.MAX_VALUE), парсинг escape-символов (`\/`, `\b`, `\f`, `\r`, `\t`), кавычек во вложенных структурах и строковых статусов в `ZeroDepJsonParser`.
+- Добавлены тесты для `FileCookiePersister.of(File)`, обратной последовательности сеттеров `OnErrorParser` и edge-cases `InMemoryHttpCache`.
+- Достигнут новый исторический рекорд покрытия JaCoCo: **92.02% Instructions** (28,738 / 31,231), **91.92% Lines** (6,248 / 6,797), **77.76% Branches**, **95.29% Methods** при **100.00% Class Coverage (143/143 классов)**!
+- Тестовая база выросла до **1343 / 1343** тестов (100% green across all 5 modules), javadoc чист под `-Werror`. Оформлен `ADR-0064` `## Amendment #244`.
