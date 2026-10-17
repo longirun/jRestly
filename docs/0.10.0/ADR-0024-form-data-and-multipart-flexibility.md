@@ -42,3 +42,11 @@ In `HttpTemplateBuilder.createUrlEncodedBody`:
    - Multipart upload with JSON DTO part + file part.
    - Multipart upload with custom charset (e.g. ISO-8859-1 or Windows-1251).
    - Form-urlencoded with empty and null parameters.
+
+## Amendment #209
+
+**Missing eager validation of `@MultipartFormFile.partName` — a blank value is silently put on the wire as `name=""`.**
+
+`@MultipartFormFile.partName` is a *required* name attribute (no default), yet `ControllerValidator` never checked it. It is the one name-bearing parameter annotation without a fallback: `@RequestParam`, `@RequestHeader` and `@Cookie` all resolve a blank `name()` to the Java parameter name (`MethodMetadata.parse`, `name().isEmpty() ? p.getName() : name`), while `@MultipartFormFile.partName()` is used verbatim. A blank value therefore produces a part whose `Content-Disposition` reads `name=""` — no client-side error, and the server cannot associate the part with any form field (RFC 7578 §4.2 requires a `name` parameter). The same silent-misconfiguration class as the blank `@SetAuthDetails.headerName` (ADR-0046 Amendment #208) and the null `@Compress` algorithm (ADR-0041 Amendment #190).
+
+Fix: `ControllerValidator.validateMethod` adds a blank check (`method(): @MultipartFormFile partName must not be blank`), joining the aggregated `ControllerValidationException` raised at proxy creation. No public API change; a properly named part behaves exactly as before. CR/LF in `partName`/`contentType` is *not* duplicated here — `MultipartPart`'s canonical constructor already rejects it loudly. Covered by `ControllerValidationTest.rejectsBlankMultipartFormFilePartNameEagerly` (red-first).

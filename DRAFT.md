@@ -1,5 +1,34 @@
 # DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
+> **Сессия #209 (free-аудит: `@MultipartFormFile.partName = ""` тихо уезжал на
+> провод как `name=""` — 19-я «тихая» находка серии, закрытие семьи name-bearing
+> required-атрибутов):** свободный ход из контекста #208 (активная зона пуста,
+> highest ADR 0060). Продолжил приём #207/#208 — «сверять состав семьи
+> декларативных аннотаций» — до последнего незакрытого члена. `@MultipartFormFile
+> .partName` — required-атрибут (без дефолта), единственная name-bearing
+> аннотация **без fallback на имя Java-параметра**: `@RequestParam`/`@RequestHeader`/
+> `@Cookie` в `MethodMetadata.parse` резолвят `name().isEmpty() ? p.getName() :
+> name`, а `partName()` берётся как есть. Blank ничего не роняет: часть уходит с
+> `Content-Disposition: form-data; name=""` — без ошибки на клиенте и без
+> возможности сервера связать часть с полем формы (RFC 7578 §4.2 требует `name`).
+> Тот же класс тихой мисконфигурации, что `@SetAuthDetails.headerName` (#208) и
+> null `@Compress` (#190). В #208 я отложил этот пункт как «серверная семантика
+> неоднозначна» — пересмотрел: отличие от сиблингов (нет fallback) делает пустое
+> значение именно **дырой валидации**, а не спорной семантикой. Fix:
+> `ControllerValidator.validateMethod` — blank-проверка параметра
+> (`method(): @MultipartFormFile partName must not be blank`) в общий
+> агрегированный `ControllerValidationException` при создании прокси; CRLF не
+> дублирую (его уже громко режет канонический конструктор `MultipartPart`).
+> Публичный API не тронут. TDD red-first: новый
+> `ControllerValidationTest.rejectsBlankMultipartFormFilePartNameEagerly`
+> (blank → 1 проблема + eager исключение; валидное имя — no-false-positive) —
+> красный ровно по `assertEquals(1, problems.size())` → зелёный. ADR-0024 →
+> `## Amendment #209`. Гейт **1235/1235** (core 1155 + engine-okhttp 25 +
+> engine-apache5 25 + codec-jackson-xml 15 + benchmarks 15), 0 failures/errors,
+> `./gradlew test javadoc` зелёный под `-Werror`, 0 warnings. Семья name-bearing
+> атрибутов закрыта полностью. Дальше — free-аудит или концепт ADR-0061+
+> (HTTP-кэш ждёт решения Антона — вопрос в mailbox от #208).
+>
 > **Сессия #208 (free-аудит: `@SetAuthDetails(headerName = "")` тихо отключал
 > захват креды — 18-я «тихая» находка серии, прямое продолжение #207):** свободный
 > ход из контекста #207 (активная зона пуста, highest ADR 0060). Продолжил приём
@@ -1184,7 +1213,9 @@ ADR-0061+ (новая эргономика/зрелость) или свежий
 engine-reported byte accounting), семантика `Duration.ZERO`-таймаута на
 JDK-движке, валидация `@ExpectStatus`/`@FollowRedirects` (инварианты нигде не
 объявлены — фича, не дыра; #207), 15 вспомогательных типов `ru.jrestly.fixtures`
-(при желании — мелкий батч «fixtures-javadoc»).
+(при желании — мелкий батч «fixtures-javadoc»). **`@MultipartFormFile.partName`
+закрыт в #209** (был в этом списке) — семья name-bearing required-атрибутов
+теперь валидируется eagerly полностью.
 
 ---
 

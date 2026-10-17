@@ -373,6 +373,12 @@ public final class ControllerValidator {
                     problems.add(method.getName() + "(): parameter must not combine @Cookie with other HTTP parameter annotations");
                 }
             }
+            if (param.isAnnotationPresent(MultipartFormFile.class)) {
+                MultipartFormFile part = param.getAnnotation(MultipartFormFile.class);
+                if (part.partName().isBlank()) {
+                    problems.add(method.getName() + "(): @MultipartFormFile partName must not be blank");
+                }
+            }
             if (UploadProgressListener.class.equals(param.getType())) {
                 if (param.isAnnotationPresent(RequestParam.class)
                         || param.isAnnotationPresent(PathVariable.class)

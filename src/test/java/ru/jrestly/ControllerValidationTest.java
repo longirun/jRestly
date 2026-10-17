@@ -206,6 +206,34 @@ public class ControllerValidationTest {
         assertTrue(ControllerValidator.validate(ValidAuthDetailsController.class).isEmpty());
     }
 
+    interface BlankMultipartPartNameController {
+        @ru.jrestly.annotation.Post(path = "/upload", requestType = ru.jrestly.http.RequestType.MULTIPART_FORM_DATA)
+        String upload(@ru.jrestly.annotation.MultipartFormFile(partName = "  ") java.io.File file);
+    }
+
+    interface ValidMultipartPartNameController {
+        @ru.jrestly.annotation.Post(path = "/upload", requestType = ru.jrestly.http.RequestType.MULTIPART_FORM_DATA)
+        String upload(@ru.jrestly.annotation.MultipartFormFile(partName = "file") java.io.File file);
+    }
+
+    @Test
+    void rejectsBlankMultipartFormFilePartNameEagerly() {
+        // @MultipartFormFile.partName is a required name attribute (no default) and,
+        // unlike its siblings @RequestParam/@RequestHeader/@Cookie, a blank value does
+        // NOT fall back to the Java parameter name: it is put on the wire verbatim as
+        // name="", so the server silently cannot associate the part with a form field.
+        // It now joins the eager-validation channel (ADR-0024).
+        List<String> problems = ControllerValidator.validate(BlankMultipartPartNameController.class);
+        assertEquals(1, problems.size());
+        assertTrue(problems.getFirst().contains("upload(): @MultipartFormFile partName must not be blank"));
+
+        JRestlyClient client = JRestlyClient.builder().baseUrl("http://localhost:1").build();
+        assertThrows(ControllerValidationException.class, () -> client.get(BlankMultipartPartNameController.class));
+
+        // no false positive on a properly named part
+        assertTrue(ControllerValidator.validate(ValidMultipartPartNameController.class).isEmpty());
+    }
+
     @Test
     void rejectsBlankHeaderOrParamNameOnClassAndMethod() {
         var classHeaderProblems = ControllerValidator.validate(BlankClassHeaderController.class);
