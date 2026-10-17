@@ -220,6 +220,25 @@ class MoshiCodecTest {
         assertNull(codec.deserializeBytes(null, TestDto.class));
         assertNull(codec.deserializeBytes(new byte[0], TestDto.class));
         assertArrayEquals("null".getBytes(java.nio.charset.StandardCharsets.UTF_8), codec.serializeToBytes(null));
+
+        assertThrows(JsonDataException.class, () ->
+                codec.deserializeBytes("{broken".getBytes(java.nio.charset.StandardCharsets.UTF_8), TestDto.class));
+        assertThrows(JsonDataException.class, () ->
+                codec.serializeToBytes(new Date()));
+    }
+
+    @Test
+    @DisplayName("prettyPrint formats arrays, booleans, and nulls properly")
+    void prettyPrintTokensHandling() {
+        String input = "[1,true,false,null,\"string\",{\"k\":2}]";
+        String pretty = codec.prettyPrint(input);
+
+        assertTrue(pretty.contains("[\n"));
+        assertTrue(pretty.contains("true"));
+        assertTrue(pretty.contains("false"));
+        assertTrue(pretty.contains("null"));
+        assertTrue(pretty.contains("\"string\""));
+        assertTrue(pretty.contains("\"k\": 2"));
     }
 
     private record Person(String firstName, String lastName) {}

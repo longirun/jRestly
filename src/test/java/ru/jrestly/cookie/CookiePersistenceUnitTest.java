@@ -148,6 +148,20 @@ class CookiePersistenceUnitTest {
     }
 
     @Test
+    @DisplayName("FileCookiePersister constructor, custom charset, and null checks")
+    void fileCookiePersisterConstructorsAndNullChecks(@TempDir Path tempDir) {
+        Path file = tempDir.resolve("cookies-iso.txt");
+        FileCookiePersister persister = new FileCookiePersister(file, StandardCharsets.ISO_8859_1);
+        assertEquals(file, persister.getPath());
+        assertEquals(StandardCharsets.ISO_8859_1, persister.getCharset());
+
+        assertThrows(NullPointerException.class, () -> new FileCookiePersister(null));
+        assertThrows(NullPointerException.class, () -> new FileCookiePersister(file, null));
+        assertThrows(NullPointerException.class, () -> FileCookiePersister.of((java.io.File) null));
+        assertThrows(NullPointerException.class, () -> persister.saveAll(null));
+    }
+
+    @Test
     @DisplayName("FileCookiePersister factory and null validations")
     void fileCookiePersisterValidations() {
         assertThrows(NullPointerException.class, () -> new FileCookiePersister(null));

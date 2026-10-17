@@ -207,4 +207,32 @@ class TokenManagerTest {
             throw new IllegalStateException(e);
         }
     }
+
+    @Test
+    @DisplayName("SingleFlightTokenManager throws IllegalStateException when supplier returns null")
+    void supplierReturningNullThrowsIllegalStateException() {
+        TokenManager tm = TokenManager.of(() -> null);
+        IllegalStateException ex = assertThrows(IllegalStateException.class, tm::getToken);
+        assertTrue(ex.getMessage().contains("returned null Token"));
+    }
+
+    @Test
+    @DisplayName("SingleFlightTokenManager propagates Errors directly")
+    void supplierThrowingErrorPropagatesError() {
+        TokenManager tm = TokenManager.of(() -> {
+            throw new AssertionError("assertion failed");
+        });
+        assertThrows(AssertionError.class, tm::getToken);
+    }
+
+    @Test
+    @DisplayName("SingleFlightTokenManager accepts null refreshBuffer defaulting to ZERO")
+    void nullRefreshBufferDefaultsToZero() {
+        TokenManager tm = new SingleFlightTokenManager(() -> Token.of("token-val", Duration.ofMinutes(5)), null);
+        assertEquals("token-val", tm.getToken());
+
+        assertThrows(NullPointerException.class, () -> TokenManager.builder().refreshBuffer(null));
+    }
 }
+
+

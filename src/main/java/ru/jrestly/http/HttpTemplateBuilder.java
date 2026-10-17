@@ -1169,21 +1169,6 @@ public class HttpTemplateBuilder {
         return methodMetadata != null ? methodMetadata.timeout() : null;
     }
 
-    private String resolveInterfaceAccept() {
-        return methodMetadata != null ? methodMetadata.interfaceAccept() : null;
-    }
-
-    private String resolveMethodAccept() {
-        return methodMetadata != null ? methodMetadata.methodAccept() : null;
-    }
-
-    private String resolveInterfaceContentType() {
-        return methodMetadata != null ? methodMetadata.interfaceContentType() : null;
-    }
-
-    private String resolveMethodContentType() {
-        return methodMetadata != null ? methodMetadata.methodContentType() : null;
-    }
 
     private static void appendHeaderValues(List<Header> result, String name, Object value) {
         if (value == null) {

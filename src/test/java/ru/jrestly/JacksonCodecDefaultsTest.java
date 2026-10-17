@@ -251,6 +251,8 @@ class JacksonCodecDefaultsTest {
 
         assertNull(codec.deserializeBytes(null, TestDto.class));
         assertNull(codec.deserializeBytes(new byte[0], TestDto.class));
+        assertThrows(UncheckedIOException.class, () ->
+                codec.deserializeBytes("{broken".getBytes(java.nio.charset.StandardCharsets.UTF_8), TestDto.class));
     }
 
     @Test
@@ -266,7 +268,17 @@ class JacksonCodecDefaultsTest {
         assertEquals(dto, roundtrip);
 
         assertArrayEquals("null".getBytes(java.nio.charset.StandardCharsets.UTF_8), codec.serializeToBytes(null));
+
+        class FailingDto {
+            public String getFails() {
+                throw new IllegalStateException("failing serializer");
+            }
+        }
+
+        assertThrows(UncheckedIOException.class, () -> codec.serialize(new FailingDto()));
+        assertThrows(UncheckedIOException.class, () -> codec.serializeToBytes(new FailingDto()));
     }
 
     private record Person(String firstName, String lastName) {}
 }
+

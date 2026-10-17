@@ -427,5 +427,93 @@ class ProblemDetailTest {
         ProblemDetail pdNull = ProblemDetail.builder().properties(null).build();
         assertNotNull(pdNull.getProperties());
     }
+
+    @Test
+    @DisplayName("Default titles for all RFC status codes and custom statuses")
+    void allStatusTitles() {
+        assertEquals("Unauthorized", ProblemDetail.forStatus(401).getTitle());
+        assertEquals("Payment Required", ProblemDetail.forStatus(402).getTitle());
+        assertEquals("Method Not Allowed", ProblemDetail.forStatus(405).getTitle());
+        assertEquals("Not Acceptable", ProblemDetail.forStatus(406).getTitle());
+        assertEquals("Request Timeout", ProblemDetail.forStatus(408).getTitle());
+        assertEquals("Conflict", ProblemDetail.forStatus(409).getTitle());
+        assertEquals("Gone", ProblemDetail.forStatus(410).getTitle());
+        assertEquals("Precondition Failed", ProblemDetail.forStatus(412).getTitle());
+        assertEquals("Content Too Large", ProblemDetail.forStatus(413).getTitle());
+        assertEquals("Unsupported Media Type", ProblemDetail.forStatus(415).getTitle());
+        assertEquals("Too Many Requests", ProblemDetail.forStatus(429).getTitle());
+        assertEquals("Not Implemented", ProblemDetail.forStatus(501).getTitle());
+        assertEquals("Bad Gateway", ProblemDetail.forStatus(502).getTitle());
+        assertEquals("Gateway Timeout", ProblemDetail.forStatus(504).getTitle());
+        assertEquals("HTTP 418", ProblemDetail.forStatus(418).getTitle());
+        assertEquals("HTTP 999", ProblemDetail.forStatus(999).getTitle());
+    }
+
+    @Test
+    @DisplayName("ProblemDetail.Builder and Model edge cases for type, instance and null handling")
+    void builderAndModelEdgeCases() {
+        URI typeUri = URI.create("https://example.com/err");
+        ProblemDetail pd = ProblemDetail.builder()
+                .type(typeUri)
+                .type("https://example.com/err-str")
+                .instance("https://example.com/inst-str")
+                .build();
+        assertEquals(URI.create("https://example.com/err-str"), pd.getType());
+        assertEquals(URI.create("https://example.com/inst-str"), pd.getInstance());
+
+        ProblemDetail pdNulls = ProblemDetail.builder()
+                .type((URI) null)
+                .type((String) null)
+                .instance((String) null)
+                .build();
+        assertEquals(ProblemDetail.DEFAULT_TYPE, pdNulls.getType());
+        assertNull(pdNulls.getInstance());
+
+        pd.setType((URI) null);
+        assertEquals(ProblemDetail.DEFAULT_TYPE, pd.getType());
+
+        pd.setType("  ");
+        assertEquals(ProblemDetail.DEFAULT_TYPE, pd.getType());
+
+        pd.setInstance("  ");
+        assertNull(pd.getInstance());
+    }
+
+    @Test
+    @DisplayName("Serialization of URI and custom objects in properties, plus control characters escaping")
+    void serializationUriAndCustomObjects() {
+        ProblemDetail pd = ProblemDetail.forStatusAndDetail(400, "Contains \u0001 bell \u001f units");
+        pd.setProperty("uriProp", URI.create("https://api.example.com/docs"));
+        pd.setProperty("customObj", new Object() {
+            @Override
+            public String toString() {
+                return "custom-val";
+            }
+        });
+
+        String json = pd.toJson();
+        assertTrue(json.contains("\"uriProp\":\"https://api.example.com/docs\""));
+        assertTrue(json.contains("\"customObj\":\"custom-val\""));
+        assertTrue(json.contains("\\u0001"));
+        assertTrue(json.contains("\\u001f"));
+
+        ProblemDetail roundtrip = ProblemDetail.fromJson(json);
+        assertEquals(400, roundtrip.getStatus());
+        assertEquals("https://api.example.com/docs", roundtrip.getProperty("uriProp"));
+        assertEquals("custom-val", roundtrip.getProperty("customObj"));
+    }
+
+    @Test
+    @DisplayName("ProblemDetailException constructor with headers and message without detail")
+    void problemDetailExceptionHeadersAndMessage() {
+        ProblemDetail pd = ProblemDetail.forStatus(404);
+        ProblemDetailException ex = new ProblemDetailException(pd, List.of(new ru.jrestly.http.Header("X-Err", "1")));
+        assertEquals(404, ex.getStatusCode());
+        assertEquals("HTTP 404 [Not Found]", ex.getMessage());
+        assertEquals(1, ex.getResponseHeaders().size());
+        assertEquals("1", ex.getResponseHeaders().getFirst().value());
+    }
 }
+
+
 

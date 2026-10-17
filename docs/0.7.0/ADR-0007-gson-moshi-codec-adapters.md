@@ -220,3 +220,18 @@ Implementation per library:
   collection interfaces by default)" (pinned against 1.15.2 in Step 3,
   2026-10-13). A Moshi host that serializes collection values brings an
   explicit `Moshi` with an adapter registered for the concrete type.
+
+---
+
+## Amendment #245 (2026-10-17) — 32nd Silent Finding: `MoshiCodec.copyValue` OOM on null tokens
+
+- **Context & Defect:**
+  In `MoshiCodec.copyValue(JsonReader, JsonWriter)` (used for token-by-token formatting in `prettyPrint`),
+  the `case NULL` branch called `writer.nullValue()` but failed to consume the token from the underlying reader
+  (`reader.nextNull()` was omitted). When formatting JSON arrays or objects containing `null` values
+  (e.g., `[1, null, 2]`), `reader.peek()` remained stuck on `NULL`, resulting in an infinite loop that repeatedly
+  allocated buffer segments until terminating with `java.lang.OutOfMemoryError: Java heap space`.
+- **Resolution:**
+  Updated `case NULL` in `MoshiCodec.copyValue` to invoke `reader.nextNull()` before `writer.nullValue()`.
+- **Verification:**
+  Covered by `MoshiCodecTest.prettyPrintTokensHandling` verifying arrays, booleans, and nulls.

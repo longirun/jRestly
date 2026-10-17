@@ -238,4 +238,45 @@ class CircuitBreakerTest {
         assertEquals("custom", cbCustom.name());
         assertEquals(30.0f, cbCustom.config().failureRateThreshold());
     }
+
+    @Test
+    @DisplayName("CircuitBreakerConfig validates input and supports custom recordException")
+    void configValidationAndCustomRecordException() {
+        CircuitBreakerConfig config = CircuitBreakerConfig.builder()
+                .failureRateThreshold(25.0f)
+                .minimumNumberOfCalls(4)
+                .slidingWindowSize(8)
+                .waitDurationInOpenState(Duration.ofSeconds(2))
+                .permittedNumberOfCallsInHalfOpenState(2)
+                .recordException(t -> t instanceof IllegalStateException)
+                .build();
+
+        assertEquals(25.0f, config.failureRateThreshold());
+        assertEquals(4, config.minimumNumberOfCalls());
+        assertEquals(8, config.slidingWindowSize());
+        assertEquals(Duration.ofSeconds(2), config.waitDurationInOpenState());
+        assertEquals(2, config.permittedNumberOfCallsInHalfOpenState());
+        assertTrue(config.recordException().test(new IllegalStateException("custom")));
+        assertFalse(config.recordException().test(new IOException("not tracked")));
+
+        assertThrows(IllegalArgumentException.class, () ->
+                CircuitBreakerConfig.builder().failureRateThreshold(0.0f).build());
+        assertThrows(IllegalArgumentException.class, () ->
+                CircuitBreakerConfig.builder().failureRateThreshold(100.1f).build());
+        assertThrows(IllegalArgumentException.class, () ->
+                CircuitBreakerConfig.builder().minimumNumberOfCalls(0).build());
+        assertThrows(IllegalArgumentException.class, () ->
+                CircuitBreakerConfig.builder().minimumNumberOfCalls(10).slidingWindowSize(5).build());
+        assertThrows(NullPointerException.class, () ->
+                CircuitBreakerConfig.builder().waitDurationInOpenState(null).build());
+        assertThrows(IllegalArgumentException.class, () ->
+                CircuitBreakerConfig.builder().waitDurationInOpenState(Duration.ZERO).build());
+        assertThrows(IllegalArgumentException.class, () ->
+                CircuitBreakerConfig.builder().waitDurationInOpenState(Duration.ofSeconds(-1)).build());
+        assertThrows(IllegalArgumentException.class, () ->
+                CircuitBreakerConfig.builder().permittedNumberOfCallsInHalfOpenState(0).build());
+        assertThrows(NullPointerException.class, () ->
+                CircuitBreakerConfig.builder().recordException(null).build());
+    }
 }
+

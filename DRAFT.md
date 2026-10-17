@@ -1,5 +1,30 @@
 # DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
+> **Сессия #245 (free-аудит / качество: устранение бесконечного цикла в `MoshiCodec.copyValue` на null-токенах — 32-я «тихая» находка серии, очистка мертвого кода в `HttpTemplateBuilder`, рекорд JaCoCo 92.85% Instructions / 79.08% Branches):**
+> свободный ход развития качества и устойчивости кодовой базы.
+> 1. *Находка (32-я в серии):* в `MoshiCodec.copyValue` при обработке ветки `case NULL` ридер вызывал `writer.nullValue()`, но забывал потребить токен `reader.nextNull()`. При наличии `null` значений в массивах (или объектах) ридер зависал в бесконечном цикле, непрерывно аллоцируя сегменты памяти буфера Okio вплоть до `java.lang.OutOfMemoryError: Java heap space`. Fix: добавлен вызов `reader.nextNull()` в ветке `case NULL`.
+> 2. *Гигиена и очистка кода в `HttpTemplateBuilder`:*
+>    - Удалены мертвые неиспользуемые private методы `resolveInterfaceAccept`, `resolveMethodAccept`, `resolveInterfaceContentType`, `resolveMethodContentType`, оставшиеся после перехода на статическое предвычисление заголовков в `MethodMetadata.parseStaticHeaders`.
+> 3. *Периферийные компоненты и edge-cases:*
+>    - `CircuitBreakerTest`: добавлены детальные проверки валидации входных параметров `CircuitBreakerConfig` (порог сбоев, размер окна, таймауты, проверки на null) и кастомного предиката `recordException`;
+>    - `InMemoryHttpCacheTest`: протестирован контракт `SimpleCachedResponse` с edge-cases (null headers/body/version, валидаторы etag/lastModified, замещение существующего заголовка `Age`);
+>    - `CookiePersistenceUnitTest`: протестирован `FileCookiePersister` с кастомным `Charset` и строгой null-валидацией;
+>    - `TokenManagerTest`: протестирован `SingleFlightTokenManager` с обработкой `Error`, `null` токенов и дефолтного нулевого буфера;
+>    - `JacksonCodecDefaultsTest`: протестирована обработка ошибок при десериализации битых байт-массивов и сериализации несериализуемых типов;
+>    - `MethodMetadataTest`: протестированы аксессоры и флаги параметров (`hasMultipartParams`, `hasRequestParams`, `hasPathVariables`, `hasRequestHeaders`, `methodAccept`, `interfaceAccept`, `interfaceTrace`);
+>    - `ProblemDetailTest`: протестированы дефолтные RFC заголовки для всех 20 статусов, сериализация `URI` и кастомных объектов в properties, экранирование управляющих символов `< 0x20`.
+> 4. *TDD и гейты:*
+>    - Всего тестов: **1355 / 1355** green across all 5 modules (+12 тестов, 0 failures, 0 errors).
+>    - Javadoc чист под `-Werror`, 0 warnings.
+>    - **JaCoCo Coverage:**
+>      * **CLASS:** **143 / 143 (100.00%)**
+>      * **INSTRUCTION:** **92.85%** (28,967 / 31,198) — новый исторический рекорд!
+>      * **LINE:** **92.73%** (6,301 / 6,795) — новый исторический рекорд!
+>      * **BRANCH:** **79.08%** (3,485 / 4,407) — преодолен рубеж 79%!
+>      * **METHOD:** **95.91%** (1,360 / 1,418) — преодолен рубеж 95.9%!
+>    - ADR-0007 дополнен `## Amendment #245`.
+>
+
 > **Сессия #244 (free-аудит / качество: верификация публичного фасада `JRestlyClient.Builder`, сериализация вложенных Map в `ProblemDetail`, преодоление рубежа 92% Instruction Coverage при 100% Class Coverage):**
 > свободный ход развития качества и устойчивости кодовой базы.
 > 1. *Фасад `JRestlyClient.Builder`:*

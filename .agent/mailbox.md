@@ -51,11 +51,6 @@
 
 ---
 
-[2026-10-17 18:18] Агент (сессия #242): Антон, провел аудит устойчивости парсера Problem Details и качества тестов:
-- Найдена и устранена 30-я «тихая» находка: в `ZeroDepJsonParser` невалидные токены вызывали бесконечный цикл и `OutOfMemoryError` в `parseArray`! Теперь невалидный JSON парсится строго по RFC 8259 / RFC 9457 с мгновенным fail-fast `IllegalArgumentException`.
-- Добавлены тесты default методов `PayloadCodec` и `PayloadCodecProvider`.
-- JaCoCo: достигли абсолютного рубежа — **100.00% Class Coverage (143/143 классов покрыты тестами)** и ~90% Instructions! Гейт **1315/1315** тестов зелёные. Оформлен `ADR-0064` `## Amendment #242`.
-
 [2026-10-17 18:38] Агент (сессия #243): Антон, провел еще один шаг глубокого аудита кодовой базы и периферии новых фичей:
 - Найдена и устранена 31-я «тихая» находка: `ProblemDetail.toJson()` искажал нативные массивы Java (`String[]`, `int[]`, `Object[]` и др.) в extension properties — они форматировались как строковые токены `"[Ljava.lang.String;@5e265ba4"` вместо JSON-массивов `[...]`. Добавлена рекурсивная поддержка массивов любого типа.
 - В `ZeroDepJsonParser` ужесточена валидация unicode-escape (`\uXXXX`) последовательностей (строгая проверка 4 hex-символов).
@@ -68,3 +63,10 @@
 - Добавлены тесты для `FileCookiePersister.of(File)`, обратной последовательности сеттеров `OnErrorParser` и edge-cases `InMemoryHttpCache`.
 - Достигнут новый исторический рекорд покрытия JaCoCo: **92.02% Instructions** (28,738 / 31,231), **91.92% Lines** (6,248 / 6,797), **77.76% Branches**, **95.29% Methods** при **100.00% Class Coverage (143/143 классов)**!
 - Тестовая база выросла до **1343 / 1343** тестов (100% green across all 5 modules), javadoc чист под `-Werror`. Оформлен `ADR-0064` `## Amendment #244`.
+
+[2026-10-17 19:26] Агент (сессия #245): Антон, провел аудит адаптеров, периферийных структур и очистку мертвого кода:
+- Найдена и устранена 32-я «тихая» находка серии: в `MoshiCodec.copyValue` (форматирование токенов в `prettyPrint`) в ветке `case NULL` вызывался `writer.nullValue()`, но забывалось потребить токен `reader.nextNull()` из входного потока `JsonReader`. В результате при наличии `null` значений в массивах или объектах `reader.peek()` оставался в состоянии `NULL`, цикл `while (reader.hasNext())` зацикливался навечно, непрерывно аллоцируя буферы Okio вплоть до `java.lang.OutOfMemoryError: Java heap space`. Вызов `reader.nextNull()` добавлен. Оформлен `ADR-0007` `## Amendment #245`.
+- В `HttpTemplateBuilder` удалены мертвые неиспользуемые private методы `resolveInterfaceAccept`, `resolveMethodAccept`, `resolveInterfaceContentType`, `resolveMethodContentType`.
+- Расширено тестовое покрытие для `CircuitBreakerConfig` (валидация параметров и кастомный предикат), `SimpleCachedResponse` (null headers/body/version, валидаторы, замена Age), `FileCookiePersister` (кастомный Charset, null-checks), `SingleFlightTokenManager` (обработка Error, null token), `JacksonCodec` (ошибки десериализации байтов и сериализации), `MethodMetadata` (аксессоры и флаги параметров), `ProblemDetail` (RFC заголовки для 20 статусов, URI в свойствах, escape управляющих символов < 0x20).
+- Новый исторический рекорд JaCoCo: **92.85% Instructions** (28,967 / 31,198), **92.73% Lines** (6,301 / 6,795), **79.08% Branches** (3,485 / 4,407), **95.91% Methods** (1,360 / 1,418) при **100.00% Class Coverage (143/143 классов)**!
+- Тестовая база выросла до **1355 / 1355** тестов (100% green across all 5 modules), javadoc чист под `-Werror`.

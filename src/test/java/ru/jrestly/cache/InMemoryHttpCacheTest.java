@@ -309,5 +309,61 @@ class InMemoryHttpCacheTest {
         CachedResponse cached = cache.get(req).orElseThrow();
         assertEquals(0L, cached.freshnessLifetimeSeconds());
     }
+
+    @Test
+    @DisplayName("SimpleCachedResponse contract and edge cases: null headers/body/version, validator combinations, existing Age replacement")
+    void simpleCachedResponseContractAndEdgeCases() {
+        Instant now = Instant.now();
+        SimpleCachedResponse resp = new SimpleCachedResponse(
+                200,
+                null,
+                null,
+                now,
+                -10, // negative freshness clamps to 0
+                false,
+                false,
+                null,
+                null,
+                null // defaults to HTTP_1_1
+        );
+
+        assertEquals(200, resp.statusCode());
+        assertEquals(List.of(), resp.headers());
+        assertNull(resp.body());
+        assertEquals(0L, resp.freshnessLifetimeSeconds());
+        assertFalse(resp.hasValidators());
+        assertTrue(resp.etag().isEmpty());
+        assertTrue(resp.lastModified().isEmpty());
+        assertFalse(resp.mustRevalidate());
+
+        WireResponse wire = resp.toWireResponse();
+        assertNull(wire.body());
+        assertEquals(java.net.http.HttpClient.Version.HTTP_1_1, wire.version());
+
+        // null cachedAt throws NPE
+        assertThrows(NullPointerException.class, () ->
+                new SimpleCachedResponse(200, List.of(), new byte[0], null, 60, false, false, null, null, null));
+
+        // validator combinations
+        SimpleCachedResponse etagOnly = new SimpleCachedResponse(
+                200, List.of(), "b".getBytes(StandardCharsets.UTF_8), now, 60, false, false, "\"etag\"", null, null);
+        assertTrue(etagOnly.hasValidators());
+        assertEquals("\"etag\"", etagOnly.etag().orElse(null));
+
+        SimpleCachedResponse lastModOnly = new SimpleCachedResponse(
+                200, List.of(), "b".getBytes(StandardCharsets.UTF_8), now, 60, false, false, null, "Wed, 21 Oct 2026 07:28:00 GMT", null);
+        assertTrue(lastModOnly.hasValidators());
+        assertEquals("Wed, 21 Oct 2026 07:28:00 GMT", lastModOnly.lastModified().orElse(null));
+
+        // replacement of existing Age header
+        List<Header> existingHeaders = List.of(new Header("Age", "999"), new Header("Content-Type", "text/plain"));
+        SimpleCachedResponse withExistingAge = new SimpleCachedResponse(
+                200, existingHeaders, "body".getBytes(StandardCharsets.UTF_8), now.minusSeconds(15), 60, false, false, null, null, null);
+        WireResponse wireWithAge = withExistingAge.toWireResponse(now);
+        List<Header> ageHeaders = wireWithAge.headers().stream().filter(h -> h.name().equalsIgnoreCase("Age")).toList();
+        assertEquals(1, ageHeaders.size());
+        assertEquals("15", ageHeaders.getFirst().value());
+    }
 }
+
 

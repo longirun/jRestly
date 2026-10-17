@@ -23,6 +23,7 @@ import java.util.concurrent.TimeUnit;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -80,7 +81,22 @@ class MethodMetadataTest {
         @Get(path = "/traced")
         @ru.jrestly.annotation.Trace(enabled = true)
         String withTrace();
+
+        @ru.jrestly.annotation.Accept("application/json")
+        @ru.jrestly.annotation.Trace(enabled = true)
+        @Get(path = "/accept-test")
+        String withAcceptAndTrace();
+
+        @Post(path = "/multipart-test", requestType = RequestType.MULTIPART_FORM_DATA)
+        void withMultipart(@ru.jrestly.annotation.MultipartFormFile(partName = "file") byte[] file,
+                           @ru.jrestly.annotation.RequestParam(name = "desc") String desc);
+
+        @Get(path = "/params-test/${id}")
+        void withParams(@ru.jrestly.annotation.PathVariable(name = "id") String id,
+                        @ru.jrestly.annotation.RequestHeader("X-Custom") String header);
     }
+
+
 
     @BeforeEach
     void setUp() {
@@ -221,4 +237,27 @@ class MethodMetadataTest {
         MethodMetadata streamMeta = MethodMetadata.of(stream, SampleController.class);
         assertFalse(streamMeta.hasTrace());
     }
+
+    @Test
+    @DisplayName("MethodMetadata accessors for accept, trace, and parameter flags")
+    void testAcceptTraceAndParameterFlags() throws NoSuchMethodException {
+        Method acceptMethod = SampleController.class.getMethod("withAcceptAndTrace");
+        MethodMetadata acceptMeta = MethodMetadata.of(acceptMethod, SampleController.class);
+        assertEquals("application/json", acceptMeta.methodAccept());
+        assertNull(acceptMeta.interfaceAccept());
+        assertNull(acceptMeta.interfaceTrace());
+
+        Method multiMethod = SampleController.class.getMethod("withMultipart", byte[].class, String.class);
+        MethodMetadata multiMeta = MethodMetadata.of(multiMethod, SampleController.class);
+        assertTrue(multiMeta.hasMultipartParams());
+        assertTrue(multiMeta.hasRequestParams());
+        assertFalse(multiMeta.hasPathVariables());
+
+        Method paramsMethod = SampleController.class.getMethod("withParams", String.class, String.class);
+        MethodMetadata paramsMeta = MethodMetadata.of(paramsMethod, SampleController.class);
+        assertTrue(paramsMeta.hasPathVariables());
+        assertTrue(paramsMeta.hasRequestHeaders());
+        assertFalse(paramsMeta.hasMultipartParams());
+    }
 }
+

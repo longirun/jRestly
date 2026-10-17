@@ -193,7 +193,10 @@ public class MoshiCodec implements JsonCodec {
                 writer.value(literal);
             }
             case BOOLEAN -> writer.value(reader.nextBoolean());
-            case NULL -> writer.nullValue();
+            case NULL -> {
+                reader.nextNull();
+                writer.nullValue();
+            }
             default -> throw new JsonDataException("Unexpected token at path " + reader.getPath());
         }
     }
