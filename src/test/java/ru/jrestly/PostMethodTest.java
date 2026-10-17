@@ -15,6 +15,12 @@ import java.util.Map;
 import static com.github.tomakehurst.wiremock.client.WireMock.*;
 import static org.junit.jupiter.api.Assertions.*;
 
+/**
+ * POST semantics: JSON {@code @RequestBody} request/response round-trip and
+ * form-urlencoded bodies built from {@code @RequestParam} (single, dynamic Map,
+ * prefixed and collection maps) with UTF-8 percent-encoding and null-element
+ * omission. WireMock e2e.
+ */
 class PostMethodTest extends BaseWireMockTest {
 
     interface DynamicFormController {

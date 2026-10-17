@@ -8,6 +8,11 @@ import ru.jrestly.http.UnexpectedStatusException;
 import static com.github.tomakehurst.wiremock.client.WireMock.*;
 import static org.junit.jupiter.api.Assertions.*;
 
+/**
+ * {@code @FollowRedirects} behaviour: 301/302 following, 303 downgrading POST to
+ * GET and dropping the body, 307 preserving method and body, and the redirect-hop
+ * counter surfacing the last response instead of looping. WireMock e2e.
+ */
 class RedirectTest extends BaseWireMockTest {
 
     @Test

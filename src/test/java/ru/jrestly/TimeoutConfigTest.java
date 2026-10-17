@@ -15,6 +15,12 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+/**
+ * Declarative timeout configuration (ADR-0027): the 30s default socket timeout,
+ * the Duration and int builder overloads of {@code SimpleModuleInfo} /
+ * {@code JRestlyClient} with fail-fast validation, and {@code ControllerValidator}
+ * rejecting non-positive {@code @Timeout} on methods and interfaces. Pure unit tests.
+ */
 class TimeoutConfigTest {
 
     interface InvalidMethodTimeoutApi {

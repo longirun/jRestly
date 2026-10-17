@@ -8,6 +8,11 @@ import ru.jrestly.fixtures.TestDto;
 import static com.github.tomakehurst.wiremock.client.WireMock.*;
 import static org.junit.jupiter.api.Assertions.*;
 
+/**
+ * Method- and body-preserving redirects: 307 after PUT and 308 after PATCH replay
+ * the method, payload and Content-Type, and a relative {@code Location} header is
+ * resolved against the current request URI. WireMock e2e.
+ */
 class RedirectMethodTest extends BaseWireMockTest {
 
     @Test

@@ -15,6 +15,13 @@ import java.util.function.Supplier;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+/**
+ * Static validation of {@code @RequestBody} usage: rejecting it on {@code @Get}
+ * methods, multiple body parameters, or a parameter combined with another binding
+ * annotation, while all supported streaming body types ({@code Flow.Publisher},
+ * {@code InputStream}, {@code Supplier}, {@code Path}, {@code BodyPublisher}) pass
+ * and can be proxied (ADR-0035). Pure unit tests.
+ */
 @DisplayName("RequestBodyValidationTest")
 class RequestBodyValidationTest {
 

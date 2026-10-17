@@ -10,6 +10,12 @@ import ru.jrestly.fixtures.TestModuleInfo;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.configureFor;
 
+/**
+ * Abstract harness for WireMock e2e tests: boots a dynamic-port
+ * {@code WireMockServer} per test and wires the shared {@code TestModuleInfo},
+ * {@code TestApiClient} and {@code TestController} fixtures bound to that port.
+ * Extended by most {@code ru.jrestly} integration tests.
+ */
 public abstract class BaseWireMockTest {
 
     protected WireMockServer wireMockServer;

@@ -10,6 +10,12 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 
+/**
+ * Custom {@code System.Logger} configuration (ADR-0049): {@code ModuleInfo}
+ * defaults to {@code null} (JUL), while {@code SimpleModuleInfo.Builder} and the
+ * {@code JRestlyClient.Builder} facade store and forward a caller-supplied logger.
+ * Pure unit tests using a recording logger.
+ */
 @DisplayName("Client and ModuleInfo custom logger configuration (ADR-0049)")
 class ClientLoggerConfigTest {
 

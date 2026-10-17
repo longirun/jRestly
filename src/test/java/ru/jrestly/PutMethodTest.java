@@ -14,6 +14,11 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import static com.github.tomakehurst.wiremock.client.WireMock.*;
 import static org.junit.jupiter.api.Assertions.*;
 
+/**
+ * PUT semantics: JSON {@code @RequestBody} request/response round-trip and the
+ * accepted-with-body path where the outgoing payload is surfaced in the request
+ * log (ADR-0009). WireMock e2e.
+ */
 class PutMethodTest extends BaseWireMockTest {
 
     @Test

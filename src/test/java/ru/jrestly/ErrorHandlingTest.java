@@ -8,6 +8,12 @@ import ru.jrestly.http.HandledException;
 import static com.github.tomakehurst.wiremock.client.WireMock.*;
 import static org.junit.jupiter.api.Assertions.*;
 
+/**
+ * Error-path ergonomics of {@code @OnError}: a listed HTTP status becomes a
+ * {@code HandledException} whose typed {@code getDetails()} carries the decoded
+ * error body; non-listed statuses fall through to the default strict handling.
+ * WireMock e2e.
+ */
 class ErrorHandlingTest extends BaseWireMockTest {
 
     @Test

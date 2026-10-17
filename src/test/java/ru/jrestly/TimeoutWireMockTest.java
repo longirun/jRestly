@@ -25,6 +25,12 @@ import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
+/**
+ * Per-method and interface-level timeout enforcement (ADR-0027): method-level
+ * {@code @Timeout} beats interface level, budgets succeed when met and throw
+ * {@code HttpTimeoutException} when exceeded (sync, async and streaming), and a
+ * retry policy can recover from a transport timeout. WireMock e2e.
+ */
 @DisplayName("Per-method and interface timeout WireMock integration tests (ADR-0027)")
 class TimeoutWireMockTest extends BaseWireMockTest {
 

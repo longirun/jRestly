@@ -1,5 +1,22 @@
 # DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
+> **Сессия #203 (кандидат №1 test-javadoc, батч №4 — корневой `ru.jrestly`,
+> 18 тест-классов):** свободный ход из контекста #202. Продолжил батч:
+> наведён лаконичный class-level javadoc (стиль батчей №1/#185, №2/#201,
+> №3/#202: 4–6 строк, «что покрывает + unit/e2e + ADR», без пересказа тестов)
+> в **18** корневых тест-классах — глаголы/редиректы/статусы/таймауты/ядро:
+> `GetMethodTest`, `PostMethodTest`, `PutMethodTest`, `PatchMethodTest`,
+> `DeleteMethodTest`, `RedirectTest`, `RedirectMethodTest`, `RedirectNoFollowTest`,
+> `StatusHandlingTest`, `ErrorHandlingTest`, `TimeoutConfigTest`,
+> `TimeoutWireMockTest`, `RequestBodyValidationTest`, `RequestHeadersTest`,
+> `StaticHeadersAndParamsTest`, `ClientLoggerConfigTest`,
+> `AbstractHttpClientLifecycleTest`, `BaseWireMockTest`. Только doc-комментарии,
+> логика не тронута. Замер: 168 тест-классов в корневом `src/test/java`, без
+> class-level javadoc осталось **63** — из них корневой `ru.jrestly` (следующий
+> батч, ещё 44) и вспомогательные `ru.jrestly.fixtures` 15 (не тест-классы) +
+> `engine` 3, `json` 1. `./gradlew test javadoc` — **1232/1232**, javadoc-гейт
+> (`-Werror`, только `src/main`) не затронут, 0 warnings.
+>
 > **Сессия #202 (кандидат №1 test-javadoc, батч №3 — `ru.jrestly.http`,
 > 18 тест-классов):** свободный ход из контекста #201. Продолжил запланированный
 > батч: наведён лаконичный class-level javadoc (стиль батчей №1/#185 и №2/#201:
@@ -934,8 +951,10 @@
   **Батч №2 (#201):** `cookie` (2) + `codec` (2) + `compression` (3) +
   `tracing` (3) + `interceptor` (4) = 14 классов.
   **Батч №3 (#202):** `ru.jrestly.http` — все 18 классов пакета; пакет закрыт.
-  Осталось 81 тест-класс без class-level javadoc (в основном корневой
-  `ru.jrestly` 62; остальное — фикстуры 15, `engine` 3, `json` 1) —
+  **Батч №4 (#203):** корневой `ru.jrestly` — 18 классов (глаголы, редиректы,
+  статусы, таймауты, ядро-фикстуры).
+  Осталось 63 тест-класса без class-level javadoc (из них корневой
+  `ru.jrestly` 44; остальное — фикстуры 15, `engine` 3, `json` 1) —
   продолжать батчами (следующий логично корневой `ru.jrestly`).
 
 - **Кандидат №2 — HTTP Trailers & Advanced Streaming ergonomics**:

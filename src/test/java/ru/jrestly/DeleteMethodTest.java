@@ -7,6 +7,10 @@ import ru.jrestly.fixtures.TestDto;
 import static com.github.tomakehurst.wiremock.client.WireMock.*;
 import static org.junit.jupiter.api.Assertions.*;
 
+/**
+ * DELETE semantics: {@code @PathVariable} targeting plus JSON and form-urlencoded
+ * request bodies — DELETE is not treated as body-less. WireMock e2e.
+ */
 class DeleteMethodTest extends BaseWireMockTest {
 
     @Test

@@ -9,6 +9,11 @@ import ru.jrestly.http.UnexpectedStatusException;
 import static com.github.tomakehurst.wiremock.client.WireMock.*;
 import static org.junit.jupiter.api.Assertions.*;
 
+/**
+ * Opt-in redirects: without {@code @FollowRedirects} a 302 (for GET and POST) is
+ * not followed and is surfaced to the caller as {@code UnexpectedStatusException}.
+ * WireMock e2e.
+ */
 class RedirectNoFollowTest extends BaseWireMockTest {
 
     @Test

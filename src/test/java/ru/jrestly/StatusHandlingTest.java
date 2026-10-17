@@ -9,6 +9,12 @@ import ru.jrestly.http.UnexpectedStatusException;
 import static com.github.tomakehurst.wiremock.client.WireMock.*;
 import static org.junit.jupiter.api.Assertions.*;
 
+/**
+ * Status-code contract: {@code @ExpectStatus} matching (including 204/void), the
+ * default strict handling turning an unexpected status into
+ * {@code UnexpectedStatusException} with the raw body, and {@code @OnError}
+ * taking precedence over it. WireMock e2e.
+ */
 class StatusHandlingTest extends BaseWireMockTest {
 
     @Test

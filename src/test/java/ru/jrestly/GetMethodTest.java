@@ -15,6 +15,12 @@ import java.util.Map;
 import static com.github.tomakehurst.wiremock.client.WireMock.*;
 import static org.junit.jupiter.api.Assertions.*;
 
+/**
+ * GET semantics: {@code @PathVariable} substitution and encoding, {@code @RequestParam}
+ * (single, collection, dynamic {@code Map}, prefixed maps) with null/empty omission,
+ * {@code @RequestDefaultParam}, and the String/void/Void return shapes (ADR-0004, ADR-0025).
+ * WireMock e2e.
+ */
 class GetMethodTest extends BaseWireMockTest {
 
     interface DynamicQueryController {

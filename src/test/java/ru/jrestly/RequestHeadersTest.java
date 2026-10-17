@@ -15,6 +15,11 @@ import java.util.Map;
 import static com.github.tomakehurst.wiremock.client.WireMock.*;
 import static org.junit.jupiter.api.Assertions.*;
 
+/**
+ * Binding of {@code @RequestHeader} at method and parameter level (ADR-0017):
+ * single values, collections (repeated headers), maps, auth-header injection and
+ * the omission rules for {@code null}/empty inputs. WireMock e2e.
+ */
 class RequestHeadersTest extends BaseWireMockTest {
 
     interface HeaderFeatureController {

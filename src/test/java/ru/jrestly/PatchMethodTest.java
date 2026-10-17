@@ -7,6 +7,10 @@ import ru.jrestly.fixtures.TestDto;
 import static com.github.tomakehurst.wiremock.client.WireMock.*;
 import static org.junit.jupiter.api.Assertions.*;
 
+/**
+ * PATCH semantics: JSON {@code @RequestBody} request/response round-trip and a
+ * form-urlencoded body built from parameters. WireMock e2e.
+ */
 class PatchMethodTest extends BaseWireMockTest {
 
     @Test

@@ -21,6 +21,11 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+/**
+ * Lifecycle safety of {@code AbstractHttpClient}: {@code close()} shuts down the
+ * internal JDK {@code HttpClient} and any pluggable {@code HttpEngine} without
+ * leaking sockets or threads. Unit tests with stub engines (ADR-0053).
+ */
 @DisplayName("AbstractHttpClient Lifecycle and Resource Management Tests")
 class AbstractHttpClientLifecycleTest {
 

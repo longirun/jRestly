@@ -14,6 +14,12 @@ import java.util.Map;
 import static com.github.tomakehurst.wiremock.client.WireMock.*;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
+/**
+ * Static, class-level {@code @RequestHeader} and {@code @RequestDefaultParam}
+ * declarations: repeatable annotations, interface inheritance and the
+ * method/parameter/Map override precedence (case-insensitive header names) in
+ * both query strings and form bodies. WireMock e2e (ADR-0017).
+ */
 class StaticHeadersAndParamsTest extends BaseWireMockTest {
 
     @RequestHeader(name = "X-Api-Key", value = "secret-123")
