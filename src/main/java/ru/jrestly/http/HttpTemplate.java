@@ -271,11 +271,21 @@ class HttpTemplate {
                     response = toStreamWireResponse(response);
                 }
             } else {
-                if (rateLimiter != null) {
-                    rateLimiter.acquire();
-                }
-                if (circuitBreaker != null) {
-                    circuitBreaker.acquirePermission();
+                try {
+                    if (rateLimiter != null) {
+                        rateLimiter.acquire();
+                    }
+                    if (circuitBreaker != null) {
+                        circuitBreaker.acquirePermission();
+                    }
+                } catch (Throwable preWireFailure) {
+                    // ADR-0036 Amendment #259: the call died before any wire
+                    // transmission — report the true count, 0, so attempts()
+                    // equals the number of onAttemptComplete callbacks.
+                    if (attemptsHolder != null) {
+                        attemptsHolder[0] = 0;
+                    }
+                    throw preWireFailure;
                 }
                 response = executeWithRetries(effectiveRequest, requestContext, attemptsHolder, 0);
                 if (response.statusCode() == 401 && retryOnUnauthorized && tokenManager != null) {
@@ -392,7 +402,9 @@ class HttpTemplate {
                         invokeResponseInterceptors(requestContext, request, null, t, startNanos);
                     }
                     if (hasMetrics) {
-                        notifyCallComplete(requestContext, request, null, t, startNanos, 1);
+                        // ADR-0036 Amendment #259: no wire transmission happened —
+                        // report the true count, 0.
+                        notifyCallComplete(requestContext, request, null, t, startNanos, 0);
                     }
                     CompletableFuture<Object> failed = new CompletableFuture<>();
                     failed.completeExceptionally(t);
@@ -406,7 +418,9 @@ class HttpTemplate {
                         invokeResponseInterceptors(requestContext, request, null, t, startNanos);
                     }
                     if (hasMetrics) {
-                        notifyCallComplete(requestContext, request, null, t, startNanos, 1);
+                        // ADR-0036 Amendment #259: no wire transmission happened —
+                        // report the true count, 0.
+                        notifyCallComplete(requestContext, request, null, t, startNanos, 0);
                     }
                     CompletableFuture<Object> failed = new CompletableFuture<>();
                     failed.completeExceptionally(t);

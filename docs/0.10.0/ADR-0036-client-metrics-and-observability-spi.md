@@ -226,3 +226,36 @@ completes the future with a *checked* interceptor exception as-is, while the
 sync circuit wraps it in `RuntimeException`; in practice
 `RequestInterceptor.intercept` declares no checked exceptions, so only unchecked
 throwers reach this path today.
+
+## Amendment #259
+
+2026-10-18 · Session #259 (free-audit slice: ADR-0036 × the pre-wire
+rate-limiter / circuit-breaker rejection paths of `HttpTemplate.exchange` /
+`exchangeAsync`).
+
+Amendments #195 and #258 established the invariant «`attempts()` equals the
+number of `onAttemptComplete` callbacks» for the short-circuit and
+interceptor-failure paths, but two pre-wire rejection paths still reported
+`attempts() = 1` for a call that never touched the wire: a rate-limiter timeout
+(`RateLimiter.acquire()` throwing / `tryAcquire` false) and an open circuit
+breaker (`acquirePermission()` throwing / `tryAcquirePermission` false). Both
+circuits fired `onCallStart` (1:1, already paired) and `onCallComplete` with a
+stale count of `1` (the sync `attemptsHolder` placeholder and the async
+`notifyCallComplete(..., 1)` literal) while `onAttemptComplete` fired zero
+times — the same self-contradiction #195/#258 eliminated, on the last two
+uncovered pre-wire branches.
+
+Resolution: on both circuits the true transmission count `0` is now reported.
+Sync: the two pre-wire `acquire` calls are wrapped so that a pre-wire failure
+resets `attemptsHolder[0] = 0` before the `finally` reads it. Async: the two
+`notifyCallComplete` rejections pass `0`. The `CallMetrics.attempts()` javadoc
+now states the full contract — `0` for any call that never reached the wire
+(short-circuit, failing interceptor, pre-wire rate-limiter / circuit-breaker
+rejection), at least 1 otherwise, and equal to the number of
+`onAttemptComplete` callbacks. Circuit-breaker recording is untouched (pre-wire
+rejections were already excluded from `recordFailure` by exception type on both
+circuits). Unit-gated (sync + async, 4 tests):
+`RequestPipelineTest.rateLimiterRejectionPairedMetricsLifecycle`,
+`RequestPipelineTest.circuitBreakerOpenRejectionPairedMetricsLifecycle`, and
+their async twins (onCallStart x1 before onCallComplete x1, no
+`onAttemptComplete`, `attempts() == 0`, no wire request captured).

@@ -100,3 +100,9 @@
 - *Fix:* BOM-нормализация в двух узких местах по одной строке (`fromJson` + pre-check); red-first 4 красных теста, всего +5 (1448/1448), ADR-0064 дополнен Amendment #257.
 - *Гейты:* **1448/1448** зелёные, новые рекорды JaCoCo: **83.45% Branch**, **95.88% Instruction**, **95.69% Line**; Method/Class — 100%.
 - Дальше — остаток `HttpTemplate` (`exchange`/`exchangeAsync`, хвосты `processResponse`) или концепт ADR-0066 для цикла 0.11.0.
+
+[2026-10-18 04:45] Агент (сессия #259): Антон, ещё одна «тихая» находка (37-я в серии) — в метриках ADR-0036:
+- *Находка:* pre-wire rejection (rate-limiter timeout / open circuit breaker до провода) сообщал `attempts() == 1` при **0** вызовах `onAttemptComplete` — sync-путь падал в общий `catch` с `attemptsHolder`, инициализированным `1` (перезапись только внутри `executeWithRetries`, до которой не доходило), а async-ветки передавали литерал `1` в `notifyCallComplete`. Нарушен инвариант «attempts() == количество onAttemptComplete», установленный #195/#258 для short-circuit и interceptor-failure.
+- *Fix:* sync — acquire в try/catch, `attemptsHolder[0] = 0` перед перебросом; async — обе rejection-ветки `notifyCallComplete(..., 0)`. Javadoc `CallMetrics.attempts()` переформулирован (полный контракт: 0 — любой вызов, не дошедший до провода). ADR-0036 дополнен Amendment #259; red-first 4 красных (2 rejection × sync/async).
+- *Гейты:* **1454/1454** зелёные (+4), новые рекорды JaCoCo: **83.48% Branch**, **95.95% Instruction**, **95.74% Line**; Method/Class — 100%.
+- Дальше — `ControllerValidator#validateMethod` (25 missed) или остаток `HttpTemplate` (`processResponse` 23, `probePayloadDecode` 20).

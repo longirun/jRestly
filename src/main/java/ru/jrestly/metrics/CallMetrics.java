@@ -57,8 +57,10 @@ public interface CallMetrics {
      * Total number of transmission attempts executed for this logical call,
      * including the transparent 401-refresh phase (ADR-0046).
      * <p>
-     * Reports {@code 0} when the call was short-circuited by a request
-     * interceptor before any wire transmission (ADR-0047); at least 1 otherwise.
+     * Always equals the number of {@code onAttemptComplete} callbacks for the
+     * call. Reports {@code 0} when the call never reached the wire — a
+     * short-circuit (ADR-0047), a failing request interceptor, or a pre-wire
+     * rate-limiter / circuit-breaker rejection; at least 1 otherwise.
      *
      * @return the attempt count
      */

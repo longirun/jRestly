@@ -1,5 +1,49 @@
 # DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
+> **Сессия #259 (free-аудит `HttpTemplate`, хвост `exchange()`/`exchangeAsync()`, ADR-0036 метрики × pre-wire rejection (rate-limiter timeout / open circuit breaker): 37-я «тихая» находка — `attempts()` сообщал 1 при нулевых `onAttemptComplete`-колбэках на pre-wire rejection; гейт 1454/1454, BRANCH 83.48% и INSTRUCTION 95.95% и LINE 95.74% — новые рекорды):**
+> свободный ход по хвосту непокрытых ветвей `HttpTemplate` (195 missed по
+> данным #258, покрытие ветвей 79.12%), сужение на pre-wire rejection-путь
+> `exchange()`/`exchangeAsync()`: timeout rate-limiter и open circuit breaker —
+> оба бросают исключение **до** первой передачи на провод.
+> 1. *Находка (37-я в серии):* ADR-0036 Amendment #195/#258 починили
+>    short-circuit- и interceptor-failure-пути, но оставшийся pre-wire путь —
+>    когда `rateLimiter.acquire()` (timeout) или `circuitBreaker.
+>    acquirePermission()` (open) бросают до провода — всё ещё нарушал
+>    инвариант «`attempts()` == количество `onAttemptComplete`-колбэков»:
+>    sync-путь падал в общий `catch` с `attemptsHolder`, который инициализируется
+>    `1` (строка 255) и перезаписывается только внутри `executeWithRetries` —
+>    а та до rejection-исключения не доходит, так что `notifyCallComplete`
+>    получал `1`; async-ветки rejection передавали в `notifyCallComplete`
+>    литерал `1`. Слушатель видел `attempts() == 1` при **0** вызовах
+>    `onAttemptComplete` — вызов физически не касался провода, но метрики
+>    сообщали «одна передача».
+> 2. *TDD red-first:* 4 красных (2 реjections × sync/async) —
+>    `RequestPipelineTest.rateLimiterRejectionPairedMetricsLifecycle`,
+>    `circuitBreakerOpenRejectionPairedMetricsLifecycle` и async-близнецы
+>    `asyncTwinRateLimiterRejectionPairedMetricsLifecycle` /
+>    `asyncTwinCircuitBreakerOpenRejectionPairedMetricsLifecycle`: фейки
+>    `RejectionRateLimiter` / `OpenCircuitBreaker` (синглтон-классы —
+>    `Enum.name()` final, enum не подошёл) + `RecordingMetrics` с переопределённым
+>    `onAttemptComplete` (запись «attempt»). До фикса:
+>    `expected: <[0]> but was: <[1]>`.
+> 3. *Fix:* sync — `rateLimiter.acquire()` + `circuitBreaker.acquirePermission()`
+>    в try/catch: перед перебросом `attemptsHolder[0] = 0`; async — обе ветки
+>    rejection передают `0` вместо `1` в `notifyCallComplete(...)`.
+>    Запись circuit breaker не тронута (уже исключает исключение по типу).
+>    Javadoc `CallMetrics.attempts()` переформулирован: всегда равен числу
+>    `onAttemptComplete`-колбэков; `0` — short-circuit (ADR-0047), упавший
+>    request-интерцептор или pre-wire rejection rate-limiter/CB. ADR-0036
+>    дополнен `## Amendment #259`.
+> 4. *TDD и исторические гейты JaCoCo:*
+>    - Всего тестов: **1454 / 1454** green across all 5 modules (+4 тестов, 0 failures, 0 errors, 0 warnings under `-Werror`).
+>    - **JaCoCo Coverage:**
+>      * **CLASS:** **143 / 143 (100.00%)**; **METHOD:** **1418 / 1418 (100.00%)** — абсолютное 100% сохранено!
+>      * **BRANCH:** **3,709 / 4,443 (83.48%)** — новый исторический рекорд!
+>      * **INSTRUCTION:** **30,070 / 31,338 (95.95%)** — новый исторический рекорд!
+>      * **LINE:** **6,534 / 6,825 (95.74%)** — новый исторический рекорд!
+>      * **COMPLEXITY:** **2,971 / 3,672 (80.91%)**.
+>    - `HttpTemplate`: missed branches 195 → **193** (ветви 79.38%).
+
 > **Сессия #258 (free-аудит `HttpTemplate`, хвост `exchange()`/`exchangeAsync()`, ADR-0036 метрики × pre-wire сбой request-интерцептора: 36-я «тихая» находка — жизненный цикл метрик ломался на пути сбоя request-интерцептора до провода; гейт 1450/1450, BRANCH 83.47% и INSTRUCTION 95.90% и LINE 95.70% — новые рекорды):**
 > свободный ход по хвосту непокрытых ветвей `HttpTemplate` (196 missed по данным #257,
 > покрытие ветвей 79.12%), сужение на tail `exchange()`/`exchangeAsync()` — путь

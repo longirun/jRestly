@@ -13,6 +13,14 @@ import ru.jrestly.interceptor.ResponseInterceptor;
 import ru.jrestly.json.JsonCodec;
 import ru.jrestly.metrics.CallMetrics;
 import ru.jrestly.metrics.ClientMetricsListener;
+import ru.jrestly.resilience.CircuitBreaker;
+import ru.jrestly.resilience.CircuitBreakerConfig;
+import ru.jrestly.resilience.CircuitBreakerMetrics;
+import ru.jrestly.resilience.CircuitBreakerOpenException;
+import ru.jrestly.resilience.RateLimitExceededException;
+import ru.jrestly.resilience.RateLimiter;
+import ru.jrestly.resilience.RateLimiterConfig;
+import ru.jrestly.resilience.RateLimiterMetrics;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
@@ -41,6 +49,7 @@ import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -444,6 +453,87 @@ class RequestPipelineTest {
     }
 
     @Test
+    @DisplayName("ADR-0036 #259: rate-limiter rejection reports 0 attempts with paired start/complete (sync)")
+    void rateLimiterRejectionPairedMetricsLifecycle() throws Exception {
+        AtomicReference<HttpRequest> lastRequest = new AtomicReference<>();
+        StubHttpClient client = new StubHttpClient(new ArrayDeque<>(), lastRequest);
+        HttpTemplate t = createTemplate("hello", new Object[]{"Anton"}, String.class);
+        t.setHttpClient(client);
+
+        RecordingMetrics metrics = new RecordingMetrics();
+        t.setMetricsListener(metrics);
+        t.setRateLimiter(RejectionRateLimiter.INSTANCE);
+
+        assertThrows(RateLimitExceededException.class, t::exchange);
+
+        // 1:1 pairing, no onAttemptComplete (nothing reached the wire), true count 0.
+        assertEquals(List.of("start", "complete"), metrics.events);
+        assertEquals(List.of(0), metrics.attempts);
+        assertNull(lastRequest.get(), "the call never reached the wire");
+    }
+
+    @Test
+    @DisplayName("ADR-0036 #259: open circuit-breaker rejection reports 0 attempts with paired start/complete (sync)")
+    void circuitBreakerOpenRejectionPairedMetricsLifecycle() throws Exception {
+        AtomicReference<HttpRequest> lastRequest = new AtomicReference<>();
+        StubHttpClient client = new StubHttpClient(new ArrayDeque<>(), lastRequest);
+        HttpTemplate t = createTemplate("hello", new Object[]{"Anton"}, String.class);
+        t.setHttpClient(client);
+
+        RecordingMetrics metrics = new RecordingMetrics();
+        t.setMetricsListener(metrics);
+        t.setCircuitBreaker(OpenCircuitBreaker.INSTANCE);
+
+        assertThrows(CircuitBreakerOpenException.class, t::exchange);
+
+        assertEquals(List.of("start", "complete"), metrics.events);
+        assertEquals(List.of(0), metrics.attempts);
+        assertNull(lastRequest.get(), "the call never reached the wire");
+    }
+
+    @Test
+    @DisplayName("ADR-0036 #259: rate-limiter rejection reports 0 attempts with paired start/complete (async)")
+    void asyncTwinRateLimiterRejectionPairedMetricsLifecycle() throws Exception {
+        AtomicReference<HttpRequest> lastRequest = new AtomicReference<>();
+        StubHttpClient client = new StubHttpClient(new ArrayDeque<>(), lastRequest);
+        HttpTemplate t = createTemplate("helloAsync", new Object[]{"Anton"}, String.class);
+        t.setHttpClient(client);
+
+        RecordingMetrics metrics = new RecordingMetrics();
+        t.setMetricsListener(metrics);
+        t.setRateLimiter(RejectionRateLimiter.INSTANCE);
+
+        CompletableFuture<String> future = t.exchange();
+        RateLimitExceededException ex = causeOf(future::join);
+        assertNotNull(ex);
+
+        assertEquals(List.of("start", "complete"), metrics.events);
+        assertEquals(List.of(0), metrics.attempts);
+        assertNull(lastRequest.get(), "the call never reached the wire");
+    }
+
+    @Test
+    @DisplayName("ADR-0036 #259: open circuit-breaker rejection reports 0 attempts with paired start/complete (async)")
+    void asyncTwinCircuitBreakerOpenRejectionPairedMetricsLifecycle() throws Exception {
+        AtomicReference<HttpRequest> lastRequest = new AtomicReference<>();
+        StubHttpClient client = new StubHttpClient(new ArrayDeque<>(), lastRequest);
+        HttpTemplate t = createTemplate("helloAsync", new Object[]{"Anton"}, String.class);
+        t.setHttpClient(client);
+
+        RecordingMetrics metrics = new RecordingMetrics();
+        t.setMetricsListener(metrics);
+        t.setCircuitBreaker(OpenCircuitBreaker.INSTANCE);
+
+        CompletableFuture<String> future = t.exchange();
+        CircuitBreakerOpenException ex = causeOf(future::join);
+        assertNotNull(ex);
+
+        assertEquals(List.of("start", "complete"), metrics.events);
+        assertEquals(List.of(0), metrics.attempts);
+        assertNull(lastRequest.get(), "the call never reached the wire");
+    }
+
+    @Test
     @DisplayName("stream response interceptor inspects metadata without consuming the live body stream")
     void streamResponseInterceptorReceivesMetadataWithoutConsumingBody() throws Exception {
         byte[] payload = "streaming-pipe-data".getBytes(StandardCharsets.UTF_8);
@@ -544,8 +634,8 @@ class RequestPipelineTest {
 
     /**
      * Records the metrics lifecycle events in invocation order: "start" on
-     * {@code onCallStart}, "complete" on {@code onCallComplete} (capturing the
-     * reported {@code attempts()}).
+     * {@code onCallStart}, "attempt" on {@code onAttemptComplete}, "complete"
+     * on {@code onCallComplete} (capturing the reported {@code attempts()}).
      */
     private static final class RecordingMetrics implements ClientMetricsListener {
         final List<String> events = new ArrayList<>();
@@ -557,9 +647,105 @@ class RequestPipelineTest {
         }
 
         @Override
+        public void onAttemptComplete(
+                RequestContext context,
+                WireRequest request,
+                int attempt,
+                Optional<WireResponse> response,
+                Optional<Throwable> failure,
+                Duration duration
+        ) {
+            events.add("attempt");
+        }
+
+        @Override
         public void onCallComplete(CallMetrics metrics) {
             events.add("complete");
             attempts.add(metrics.attempts());
+        }
+    }
+
+    /**
+     * Rate limiter that always rejects, pinning the pre-wire rejection paths.
+     */
+    private static final class RejectionRateLimiter implements RateLimiter {
+        static final RejectionRateLimiter INSTANCE = new RejectionRateLimiter();
+
+        @Override
+        public String name() {
+            return "rejection";
+        }
+
+        @Override
+        public boolean tryAcquire(Duration timeout) {
+            return false;
+        }
+
+        @Override
+        public RateLimiterConfig config() {
+            return RateLimiterConfig.ofDefaults();
+        }
+
+        @Override
+        public RateLimiterMetrics metrics() {
+            throw new UnsupportedOperationException();
+        }
+    }
+
+    /**
+     * Circuit breaker that is always open, pinning the pre-wire rejection paths.
+     */
+    private static final class OpenCircuitBreaker implements CircuitBreaker {
+        static final OpenCircuitBreaker INSTANCE = new OpenCircuitBreaker();
+
+        @Override
+        public String name() {
+            return "open-cb";
+        }
+
+        @Override
+        public State getState() {
+            return State.OPEN;
+        }
+
+        @Override
+        public boolean tryAcquirePermission() {
+            return false;
+        }
+
+        @Override
+        public void recordSuccess(long durationNanos) {
+        }
+
+        @Override
+        public void recordFailure(long durationNanos, Throwable throwable) {
+        }
+
+        @Override
+        public Duration remainingWaitDuration() {
+            return Duration.ofSeconds(1);
+        }
+
+        @Override
+        public CircuitBreakerConfig config() {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public CircuitBreakerMetrics metrics() {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public void transitionToClosedState() {
+        }
+
+        @Override
+        public void transitionToOpenState() {
+        }
+
+        @Override
+        public void transitionToHalfOpenState() {
         }
     }
 
