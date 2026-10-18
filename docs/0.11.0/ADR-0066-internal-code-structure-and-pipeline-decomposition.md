@@ -5,7 +5,7 @@
 Accepted — план закрыт: все шесть шагов декомпозиции `HttpTemplate` выполнены
 (№1 RetryAfter #270, №2 Redirects #271, №3 ProblemDetailResolver #274,
 №4 CacheDispatch #275, №5 ResponseBody 5a/5b/5c #276/#277/#281,
-№6 MetricsNotifier #283). Осталось: дистилляция в `ROADMAP.md`.
+№6 MetricsNotifier #283). Дистиллирован в `ROADMAP.md` (сессия #284).
 
 ## Context
 

@@ -2180,73 +2180,45 @@ Gates (session #241):
 ---
 
 > **Current status (2026-10-18).** Highest ADR issued: **0066**; next free: **0067**.
-> Cycle 0.10.0 packaged and verified. Live gate: **1598/1598** tests green across all five modules, 0 warnings under `-Werror`. JaCoCo: 100% Class Coverage (148/148), 100% Method Coverage (1440/1440), 97.69% Instructions, 97.40% Lines, **89.11% Branches** (historical record).
+> Cycle 0.10.0 packaged and verified; the 0.11.0 internal-structure epic (ADR-0066) is closed and distilled below.
+> Live gate: **1636/1636** tests green across all five modules, 0 warnings under `-Werror`. JaCoCo: 100% Class Coverage (149/149), 100% Method Coverage (1444/1444), **97.91% Instructions**, **97.62% Lines**, **89.63% Branches**, **87.74% Complexity** (historical records). The former 2825-line god-class `HttpTemplate` is decomposed into six package-private collaborators; `HttpTemplate` missed branches 132 → 82 over the epic.
 
-### Cycle 0.11.0 — internal structure
+## Internal Code Structure: HttpTemplate Decomposition (ADR-0066) — COMPLETE ✅ (2026-10-18, unreleased)
 
-- **ADR-0066 (§session #270):** аудит внутренней структуры кода по вопросу Антона
-  (mailbox, 2026-10-18). Таксономия пакетов признана осмысленной, SPI-границы и
-  направление зависимостей — предсказуемыми; единственный существенный долг —
-  god-класс `HttpTemplate` (2825 строк, 48 полей, 63 метода). Решение:
-  документировать каждый пакет через `package-info.java` (сделано) и
-  декомпозировать `HttpTemplate` инкрементально, по одной когезивной
-  ответственности на сессию. Первый шаг — `RetryAfter` (парсер заголовка
-  `Retry-After`, все три даты RFC 9110), извлечён из `HttpTemplate` в
-  package-private `ru.jrestly.http.RetryAfter`; публичный API не изменён.
-- **ADR-0066 (§session #271):** второй шаг — политика редиректов вынесена из
-  `HttpTemplate` в package-private коллаборатор `ru.jrestly.http.Redirects`
-  (`nextHop`/`dropAuthHeaders`/`logExhausted`/`location`/`isCrossOrigin`/
-  `effectivePort`). Коллаборатор — value-объект конфигурации (три неизменяемых
-  настройки), строится лениво, так что zero-redirect hot-path не аллоцирует;
-  швы `isCrossOrigin`/`effectivePort` переехали на `Redirects` (тест
-  `HttpTemplateCrossOriginTest` → `RedirectsCrossOriginTest`). Новый
-  безсетевой `RedirectsTest` (8 тестов) покрывает ветви коллаборатора на 100%.
-  Публичный API не изменён.
-- **ADR-0066 (§session #274):** третий шаг — resolver Problem Details вынесен в
-  package-private `ru.jrestly.http.ProblemDetailResolver` (`resolve`,
-  `isProblemJsonContentType`, `isLikelyProblemDetail`, `instantiateThrowable`) —
-  чистый `static`-хелпер, выбранный кодек/media-тип передаются аргументами.
-  Завершение WIP прерванных #272–#273 с находкой: вынос вынул `responseCodec(...)` из
-  охранного `try` резолвера, и bare-template стал ронять unexpected-status
-  голым `NPE: jsonCodec`; фикс — best-effort `responseCodecOrNull`. `HttpTemplate`
-  128 → 122 missed; +1 unit-тест (null codec → built-in parser).
-- **ADR-0066 (§session #275):** четвёртый шаг — dispatch кэша вынесен из
-  `HttpTemplate` в package-private `ru.jrestly.http.CacheDispatch` (`handle`,
-  `toStreamWireResponse`) — чистый `static`-хелпер (запрос, ответ, store и
-  `streamBody`-флаг передаются аргументами). Швы переехали, а не продублированы:
-  `HttpTemplateCacheDispatchTest` → `CacheDispatchTest` (12 тестов, своя
-  безсетевая матрица). `CacheDispatch` — 0 missed ветвей; CLASS 146 → 147,
-  BRANCH 88.78% → **88.82%**. Публичный API не изменён.
-- **ADR-0066 (§session #276):** пятый шаг, первый под-шаг (5a) — примитивы
-  декодирования тела ответа вынесены из `HttpTemplate` в package-private
-  `ru.jrestly.http.ResponseBody` (`resolveCharset`, `isStreamType`,
-  `consumePayload`, `extractText` + приватный `parseCharsetFromContentType`) —
-  чистый `static`-хелпер (charset-резолюция RFC 9110 §8.3.2 / ADR-0056,
-  классификация `Stream<String>`/`Stream<ServerSentEvent>` ADR-0016,
-  потребление стримингового payload ADR-0015 Aspect 3). Швы переехали, а не
-  продублированы: charset-матрица ушла из `HttpTemplateLineAndEventStreamTest`
-  в свой безсетевой `ResponseBodyTest` (8 тестов; `isStreamType`/`consumePayload`/
-  `extractText` — прямые матрицы). `ResponseBody` — 0 missed ветвей; `HttpTemplate`
-  122 → **115** missed; CLASS 147 → 148, BRANCH 88.82% → **88.98%**, COMPLEXITY
-  86.79% → **86.98%**. Публичный API не изменён.
-- **ADR-0066 (§session #277):** второй под-шаг шага №5 (5b) — стриминговые
-  артефакты вынесены из `processResponse` в тот же `ResponseBody`:
-  `lineStream` (дублировавшаяся конструкция BufferedReader/lines в line- и
-  SSE-ветках), `eventStream` (`ServerSentEvent.parse` поверх lineStream —
-  close проксируется до провода), `wrapForTrailers` (трейлер-хук ADR-0059),
-  `isMissingResource` (названо правило Optional 404/304/204 — единый источник
-  правды для пяти call-site'ов: 3 стриминговых ветки, буферная
-  optional-ветка, probePayloadDecode), `streamingPayloadLine`, `closeQuietly`.
-  TDD-находка №38: NPE при `Content-Length` без значения (`Stream.findFirst()`
-  не проглатывает null) — фикс фильтром `h.value() != null`. `ResponseBodyTest`
-  8 → 20 тестов, `ResponseBody` — **68/68 ветвей, 0 missed**; `HttpTemplate`
-  115 → **108** missed; BRANCH **89.11%**, COMPLEXITY **87.16%** — рекорды.
-  Публичный API не изменён.
-- **Беклог от Антона (2026-10-18):** кандидаты №6 (лаконичность публичного
-  API, без обязательств обратной совместимости), №7 (бенчмарк на движке
-  rss/atom: ops/sec, CPU, mem против конкурентов), №8 (ревизия старого
-  синтетического «типового метода» — не убежали ли мы от главного) —
-  стартуют **после закрытия ADR-0066** (его же формулировка).
+> Source of truth (audit, decision, step plan, amendments, status):
+> [`docs/0.11.0/ADR-0066-internal-code-structure-and-pipeline-decomposition.md`](docs/0.11.0/ADR-0066-internal-code-structure-and-pipeline-decomposition.md).
+> Candidate №5 — the answer to the maintainer's direct question (mailbox, 2026-10-18): "is our internal code organization OK?".
+> Concept + step №1 in session #270; №2 #271; №3 #274; №4 #275; №5a #276, №5b #277 (+ #279 accepted the WIP), №5c #281; №6 #283. Public API untouched across the whole epic.
+
+**Problem:**
+1. The structural audit (#270) confirmed the package taxonomy, the SPI boundaries and the dependency direction are healthy (ServiceLoader connectors in submodules, zero-dep core, "capability → wire-model" layering) — but found one real debt: **god-class `HttpTemplate`** (2,825 lines / 48 fields / 63 methods) holding dispatch + the sync/async circuits + redirects + retry and `Retry-After` parsing + streaming/charset/decompression + cache dispatch + Problem Details + exception instantiation + metrics + logging — and the #1 class by missed JaCoCo branches (132).
+2. Two smaller debts: the deliberate package ring `ru.jrestly` ⇄ `ru.jrestly.http`, and no per-package documentation.
+
+**Solution (incremental; one cohesive responsibility per session; no public API or test seams churned):**
+- **Package documentation (#270):** `package-info.java` in all 15 `ru.jrestly.*` packages — responsibility, key types, ADR links; javadoc gate under `-Werror` stays clean.
+- **Step №1 (#270), `RetryAfter`:** the `Retry-After` parser (delta-seconds + all three RFC 9110 date forms) extracted to the package-private `ru.jrestly.http.RetryAfter`; `HttpTemplateRetryAfterTest` → `RetryAfterTest` (11 tests).
+- **Step №2 (#271), `Redirects`:** the redirect policy (`nextHop`/`dropAuthHeaders`/`logExhausted`/`location`/`isCrossOrigin`/`effectivePort`) as a **value object of configuration** (three immutable settings), built lazily only under `@FollowRedirects` — the zero-redirect hot path allocates nothing (ADR-0055); `RedirectsTest` (8) covers the collaborator's branches 100%, `HttpTemplateCrossOriginTest` → `RedirectsCrossOriginTest` (10).
+- **Step №3 (#274), `ProblemDetailResolver`:** RFC 9457 resolution as a **pure static helper** (codec + media type passed as arguments, no template-state reads). Lesson: hoisting `responseCodec(...)` out of the resolver's guarded `try` made the bare template fail unexpected statuses with a raw `NPE: jsonCodec` — fixed with best-effort `responseCodecOrNull`; `HttpTemplateProblemDetailResolutionTest` (30).
+- **Step №4 (#275), `CacheDispatch`:** the RFC 9111 dispatch (`handle`, `toStreamWireResponse`) as a pure static helper (request/response/store/`streamBody` as arguments — removes the concern about the mutable `httpCache` field too); seams moved, not duplicated: `HttpTemplateCacheDispatchTest` → `CacheDispatchTest` (12 tests), 0 missed branches.
+- **Step №5 (5a/5b/5c, #276–#281), `ResponseBody`:** response decoding moved wholesale: primitives (charset resolution per ADR-0056, stream classification per ADR-0016, `consumePayload`, `extractText`); streaming artifacts (`lineStream`, `eventStream`, `wrapForTrailers`, `isMissingResource` — named single source of truth for 404/304/204 across five call-sites, `streamingPayloadLine`, `closeQuietly`); and **both buffered legs** (`bufferedOptional`/`bufferedRaw`) with a **lazy codec supplier** — raw bindings never resolve the codec at all (the bare template survives, lesson #274), the DTO leg resolves twice per use exactly as before. TDD finding №38: `Stream.findFirst()` does not swallow `null` — NPE on a valueless `Content-Length` header, fixed by filter. `ResponseBodyTest` 8 → 33 tests, **118/118 branches, 0 missed**.
+- **Step №6 (#283), `MetricsNotifier`:** the four metric dispatch points (`callStart`/`attemptComplete`/`retry`/`callComplete`, 17 call-sites across sync+async) plus the byte-accounting seam of ADR-0036 Amendment #193 (`requestBytes`/`responseBytes`) as a pure static helper — `(listener, logger)` passed at every call-site, because both template fields are mutable setters and a lazily-derived value object would need invalidation (lesson #281); `MetricsNotifierTest` (22) + `MetricsNotifierBytesTest` (8); one documented structurally-unreachable defensive branch remains.
+
+**Patterns recorded (Amendment #283, transferable):**
+- Lesson #271 held six times in a row: an extracted collaborator gets its own offline suite until **0 missed branches**.
+- JaCoCo quirk: the built-in report filter drops only **private** empty no-arg constructors — a package-private `<init>` counts as a missed method.
+- Choose static-helper vs value-object by the mutate-profile of the template's fields (mutable setters ⇒ pure statics with arguments).
+
+**Automated Verification:**
+- Six collaborators, each with its own offline suite; `HttpTemplate` missed branches 132 → **82** with byte-for-byte behavior.
+- WIP discipline honored: interrupted sessions #272–#273 and #279 were accepted by diff verification, then completed and committed.
+
+Gates (sessions #270–#283):
+- `./gradlew test javadoc` **1636/1636** at close (core + engine-okhttp 25 + engine-apache5 25 + codec-jackson-xml 15 + benchmarks 15), 0 failures/errors, javadoc clean under `-Werror`.
+- JaCoCo at close: **CLASS 149/149 (100%)**, **METHOD 1444/1444 (100%)**, **INSTRUCTION 97.91%**, **LINE 97.62%**, **BRANCH 89.63%**, **COMPLEXITY 87.74%** — all historical records.
+
+---
+
+After the epic: the maintainer's backlog №6–№8 (2026-10-18) is unlocked — №6 (public-API conciseness research vs Retrofit/OpenFeign/Spring HTTP Interfaces; no backward-compatibility obligations) goes first, №7 (rss/atom benchmark engine — scope to be agreed with the maintainer before start) and №8 (revision of the old synthetic "typical method" benchmark: did the zero-garbage/coverage pursuit drift from the main goal?) follow.
 
 ## Post-0.5.0 shortlist (not scheduled — see ADR-0003)
 
