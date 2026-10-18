@@ -1,5 +1,32 @@
 # DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
+> **Сессия #263 (free-аудит `HttpTemplateBuilder`: исчерпывающий coverage-срез сборщика шаблонов HTTP-запросов; пробит рубеж 85% Branch Coverage — 85.93%, закрыто 44 ветви класса `HttpTemplateBuilder`, 19 новых тестов, гейт 1494/1494, INSTRUCTION 97.23% и LINE 96.83% — новые исторические рекорды библиотеки):**
+> свободный ход по классам ядра с наибольшим хвостом непокрытых ветвей;
+> сужение на `HttpTemplateBuilder` (164 missed branches на входе, 74.8% coverage — второй класс в библиотеке по missed branches):
+> аудит выявил кластеры непокрытых веток сборщика запросов:
+> 1. *Аудит (кластеры `HttpTemplateBuilder`):*
+>    - URL & `@TargetUrl`: все 4 перестановки слэшей в `joinUrlPath` (base/path), резолюция `@TargetUrl` при наличии query (`?`), fragment (`#`), обоих (`?` и `#`), и без них, пустой путь метода, абсолютные пути методов (`http://`/`https://`), fail-fast валидация null-значений (`@TargetUrl` и `@PathVariable`), кодирование путей (`pathVariableEncoded = true` vs URL encoding);
+>    - Заголовки & авторизация: слияние статических `@RequestHeader` и ambient `AuthProvider`, приоритет явных заголовков над ambient, расчёт drop-list для кросс-оригинных редиректов (ADR-0002), поддержка `Map<String, Object>`, коллекций и массивов заголовков с фильтрацией null-значений, декомпрессия `Accept-Encoding: gzip, deflate` с сохранением заголовка вызывающего;
+>    - Куки: извлечение статических и динамических кук, удаление по null-значению, слияние через `Map`, поддержка `HttpCookie`, слияние с существующим заголовком `Cookie` через `; `;
+>    - Трассировка: `@Trace` W3C (`traceparent`) и кастомные заголовки, поведение `forceNew = true` vs `false`;
+>    - Условные запросы: обнаружение `If-None-Match`, `If-Match`, `If-Modified-Since`, `If-Unmodified-Since`;
+>    - Параметры запроса: форматирование коллекций и массивов (`CSV`, `SSV`, `TSV`, `PIPES`, `BRACKETS`, `EXPLODE`), слияние с `staticDefaultParams`, динамические карты (`prefix[key]` и плоские);
+>    - Тело запроса & стриминг: `createJsonBodyPayload` для `byte[]`, `String`, `InputStream`, `HttpRequest.BodyPublisher`, `Supplier<?>` (полная матрица типов: null, stream, BodyPublisher, Flow.Publisher, Path, File, byte[], String, unsupported type, missing files), адаптация `Flow.Publisher<?>` к `ByteBuffer` через `adaptToByteBufferPublisher` (передача типов, onComplete, onError), валидация отсутствия кодека при кастомных DTO (`IllegalStateException`);
+>    - Multipart: валидация типа запроса, поддержка `FileContent`, `File`, `Path`, `String`, массивов и коллекций файлов, fail-fast валидация bare `byte[]`, неподдерживаемых типов и путей без имени файла, параметры в multipart во всех форматах коллекций;
+>    - Urlencoded: кодирование параметров, обработка пустых и null-значений, валидация методов без параметров;
+>    - Сжатие & Resilience: сжатие тела выше порога, обработка ошибок компрессора (`IOException`), резолюция `@CircuitBreaker` и `@RateLimiter` с кастомными реестрами, перехват исключений инстанцирования интерцепторов;
+>    - Опции билдера: кастомный логгер, конструкторы с `HttpClient == null` и `HttpEngine`.
+> 2. *TDD и гейты:*
+>    - Создан исчерпывающий сьют `HttpTemplateBuilderTest` (19 тестов, без сети, быстрые unit-проверки): 1,494/1494 green across all 5 modules (+19 тестов, 0 failures, 0 errors, 0 warnings under `-Werror`).
+>    - `HttpTemplateBuilder`: missed branches 164 → **120** (покрытие ветвей выросло с 74.8% до **81.60%**, закрыто 44 ветви)!
+>    - **JaCoCo Coverage:**
+>      * **CLASS:** **143 / 143 (100.00%)**; **METHOD:** **1432 / 1432 (100.00%)** — абсолютные 100% сохранены!
+>      * **BRANCH:** **3,818 / 4,443 (85.93%)** — новый исторический рекорд (+47 покрытых ветвей, впервые перейдён рубеж 85%)!
+>      * **INSTRUCTION:** **30,511 / 31,380 (97.23%)** — новый исторический рекорд (впервые преодолён рубеж 97%)!
+>      * **LINE:** **6,622 / 6,839 (96.83%)** — новый исторический рекорд (+0.84%)!
+>      * **COMPLEXITY:** **3,074 / 3,686 (83.40%)** — новый исторический рекорд!
+>    - ADR не тронут — чистый coverage-срез по контракту.
+> 
 > **Сессия #262 (free-аудит `MethodMetadata`: исчерпывающий coverage-срез контракта декларативного парсинга контроллеров; пробит рубеж 84% Branch Coverage — 84.88%, закрыто 42 ветви класса `MethodMetadata`, 14 новых тестов, гейт 1475/1475, INSTRUCTION 96.37% и LINE 95.99% — новые рекорды):**
 > свободный ход по классам ядра с наибольшим хвостом непокрытых ветвей;
 > сужение на `MethodMetadata` (69 missed branches на входе, 80.4% coverage):

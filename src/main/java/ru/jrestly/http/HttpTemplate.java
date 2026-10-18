@@ -1927,6 +1927,10 @@ class HttpTemplate {
         this.logger = logger;
     }
 
+    System.Logger getLogger() {
+        return logger;
+    }
+
     /**
      * The HTTP transport engine the call is dispatched through (ADR-0052).
      *
@@ -2040,6 +2044,10 @@ class HttpTemplate {
         this.httpMethod = httpMethod;
     }
 
+    HttpMethod getHttpMethod() {
+        return httpMethod;
+    }
+
     /**
      * The Content-Type of the request body, or {@code null} for a
      * body-less call. For multipart requests it carries the
@@ -2049,6 +2057,10 @@ class HttpTemplate {
      */
     void setContentType(String contentType) {
         this.contentType = contentType;
+    }
+
+    String getContentType() {
+        return contentType;
     }
 
     /**
@@ -2081,6 +2093,10 @@ class HttpTemplate {
         this.authHeaderNames = authHeaderNames;
     }
 
+    List<String> getAuthHeaderNames() {
+        return authHeaderNames;
+    }
+
     /**
      * The callback that captures the auth details from each response (an
      * {@code @SetAuthDetails} token), or {@code null} when the method
@@ -2090,6 +2106,10 @@ class HttpTemplate {
      */
     void setAuthDetailsConsumer(Consumer<List<Header>> authDetailsConsumer) {
         this.authDetailsConsumer = authDetailsConsumer;
+    }
+
+    Consumer<List<Header>> getAuthDetailsConsumer() {
+        return authDetailsConsumer;
     }
 
     /**
@@ -2122,6 +2142,10 @@ class HttpTemplate {
         this.multipartFormParts = multipartFormParts;
     }
 
+    List<MultipartPart> getMultipartFormParts() {
+        return multipartFormParts;
+    }
+
     /**
      * The boundary of the multipart body, or {@code null} for
      * non-multipart calls.
@@ -2130,6 +2154,10 @@ class HttpTemplate {
      */
     void setMultipartBoundary(String multipartBoundary) {
         this.multipartBoundary = multipartBoundary;
+    }
+
+    String getMultipartBoundary() {
+        return multipartBoundary;
     }
 
     /**
@@ -2182,6 +2210,10 @@ class HttpTemplate {
         this.returnType = returnType;
     }
 
+    Type getReturnType() {
+        return returnType;
+    }
+
     /**
      * Whether the method returns {@code CompletableFuture<T>}: the call is
      * dispatched non-blockingly via {@code sendAsync} and {@link #exchange()}
@@ -2195,6 +2227,10 @@ class HttpTemplate {
         this.async = async;
     }
 
+    boolean isAsync() {
+        return async;
+    }
+
     /**
      * Whether the method's return type is {@code Optional<T>} (or {@code CompletableFuture<Optional<T>>}).
      *
@@ -2202,6 +2238,10 @@ class HttpTemplate {
      */
     void setOptional(boolean optional) {
         this.optional = optional;
+    }
+
+    boolean isOptional() {
+        return optional;
     }
 
     /**
@@ -2272,6 +2312,10 @@ class HttpTemplate {
         this.expectStatuses = expectStatuses;
     }
 
+    List<Integer> getExpectStatuses() {
+        return expectStatuses;
+    }
+
     /**
      * The maximum number of redirect hops the call follows, or
      * {@code null} to follow none.
@@ -2280,6 +2324,10 @@ class HttpTemplate {
      */
     void setFollowRedirectsNumber(Integer followRedirectsNumber) {
         this.followRedirectsNumber = followRedirectsNumber;
+    }
+
+    Integer getFollowRedirectsNumber() {
+        return followRedirectsNumber;
     }
 
     /**
@@ -2292,6 +2340,10 @@ class HttpTemplate {
         this.httpVersion = httpVersion;
     }
 
+    HttpClient.Version getHttpVersion() {
+        return httpVersion;
+    }
+
     /**
      * The retry policy of the call — the method's {@code @Retry} policy
      * when the method declares one, otherwise the client-level policy.
@@ -2300,6 +2352,10 @@ class HttpTemplate {
      */
     void setRetryPolicy(RetryPolicy retryPolicy) {
         this.retryPolicy = retryPolicy;
+    }
+
+    RetryPolicy getRetryPolicy() {
+        return retryPolicy;
     }
 
     /**

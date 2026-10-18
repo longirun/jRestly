@@ -503,7 +503,7 @@ public class HttpTemplateBuilder {
                 : path;
     }
 
-    private static String joinUrlPath(String base, String path) {
+    static String joinUrlPath(String base, String path) {
         if (base.endsWith("/") && path.startsWith("/")) {
             return base + path.substring(1);
         } else if (!base.endsWith("/") && !path.startsWith("/")) {
@@ -884,7 +884,7 @@ public class HttpTemplateBuilder {
         return new BodyPayload(bodyBytes, null, effectiveContentType);
     }
 
-    private static Flow.Publisher<ByteBuffer> adaptToByteBufferPublisher(Flow.Publisher<?> source, Charset charset) {
+    static Flow.Publisher<ByteBuffer> adaptToByteBufferPublisher(Flow.Publisher<?> source, Charset charset) {
         if (source == null) {
             return null;
         }
@@ -927,7 +927,7 @@ public class HttpTemplateBuilder {
         return idx < args.length ? args[idx] : null;
     }
 
-    private List<MultipartPart> createMultipartParts() {
+    List<MultipartPart> createMultipartParts() {
         if (!RequestType.MULTIPART_FORM_DATA.equals(requestMeta.requestType())) {
             throw new UnsupportedOperationException("Cannot create multipart entity");
         }
@@ -1065,7 +1065,7 @@ public class HttpTemplateBuilder {
                 value != null ? value.toString().getBytes(charset) : new byte[0]);
     }
 
-    private static Charset parseCharset(String contentType, Charset defaultCharset) {
+    static Charset parseCharset(String contentType, Charset defaultCharset) {
         if (contentType == null || contentType.isEmpty()) {
             return defaultCharset;
         }
@@ -1130,7 +1130,7 @@ public class HttpTemplateBuilder {
         return List.of(arg);
     }
 
-    private byte[] createUrlEncodedBody() {
+    byte[] createUrlEncodedBody() {
         if (!RequestType.APPLICATION_FORM_URLENCODED.equals(requestMeta.requestType())) {
             throw new UnsupportedOperationException("Cannot create urlencoded entity");
         }

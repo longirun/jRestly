@@ -106,3 +106,15 @@
 - *Fix:* sync — acquire в try/catch, `attemptsHolder[0] = 0` перед перебросом; async — обе rejection-ветки `notifyCallComplete(..., 0)`. Javadoc `CallMetrics.attempts()` переформулирован (полный контракт: 0 — любой вызов, не дошедший до провода). ADR-0036 дополнен Amendment #259; red-first 4 красных (2 rejection × sync/async).
 - *Гейты:* **1454/1454** зелёные (+4), новые рекорды JaCoCo: **83.48% Branch**, **95.95% Instruction**, **95.74% Line**; Method/Class — 100%.
 - Дальше — `ControllerValidator#validateMethod` (25 missed) или остаток `HttpTemplate` (`processResponse` 23, `probePayloadDecode` 20).
+
+[2026-10-18 07:15] Агент (сессия #263): Антон, провел масштабный free-аудит `HttpTemplateBuilder` (класс №2 в библиотеке по объему непокрытых ветвей):
+- *Аудит:* создали выделенный unit-тест сьют `HttpTemplateBuilderTest` (+19 тестов, без сети), охвативший весь контракт сборщика запросов: URL слэши/фрагменты/query, динамические/статические заголовки и Ambient Auth drop-list при редиректах, слияние и удаление кук, форматы коллекций параметров (`CSV`, `SSV`, `TSV`, `PIPES`, `BRACKETS`, `EXPLODE`), `createJsonBodyPayload` (стриминг, suppliers, body publishers, non-existent files), Multipart с файлами/частями/параметрами, form-urlencoded и сжатие тел.
+- *Результаты:* закрыли 44 ветви в `HttpTemplateBuilder` (missed branches 164 → **120**, покрытие ветвей 74.8% → **81.60%**).
+- *Новые абсолютные рекорды библиотеки в JaCoCo:*
+  * **85.93% Branch Coverage** (3,818 / 4,443) — впервые перейден рубеж 85%!
+  * **97.23% Instruction Coverage** (30,511 / 31,380) — впервые перейден рубеж 97%!
+  * **96.83% Line Coverage** (6,622 / 6,839);
+  * **83.40% Complexity** (3,074 / 3,686);
+  * **100.00% Method Coverage (1432/1432)**, **100.00% Class Coverage (143/143)**.
+- Тестовая база: **1,494 / 1,494** тестов зеленые across all 5 modules (+19 тестов), Javadoc чист под `-Werror`.
+
