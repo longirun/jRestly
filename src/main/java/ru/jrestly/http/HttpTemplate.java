@@ -256,7 +256,7 @@ class HttpTemplate {
                 }
                 response = cachedEntry.toWireResponse();
                 if (streamBody && response.body() != null) {
-                    response = toStreamWireResponse(response);
+                    response = CacheDispatch.toStreamWireResponse(response);
                 }
             } else {
                 try {
@@ -290,7 +290,7 @@ class HttpTemplate {
                         attemptsHolder[0] = firstPhaseAttempts + attemptsHolder[0];
                     }
                 }
-                response = handleCacheResponse(effectiveRequest, response);
+                response = CacheDispatch.handle(effectiveRequest, response, httpCache, streamBody);
             }
             T result = processResponse(effectiveRequest, response, start);
             int attempts = attemptsHolder != null ? attemptsHolder[0] : 1;
@@ -379,7 +379,7 @@ class HttpTemplate {
             attemptsRef.set(0);
             WireResponse cachedResp = cachedEntry.toWireResponse();
             if (streamBody && cachedResp.body() != null) {
-                cachedResp = toStreamWireResponse(cachedResp);
+                cachedResp = CacheDispatch.toStreamWireResponse(cachedResp);
             }
             retriesFuture = CompletableFuture.completedFuture(cachedResp);
         } else {
@@ -449,7 +449,7 @@ class HttpTemplate {
                 : retriesFuture;
 
         CompletableFuture<WireResponse> cacheHandledFuture = (httpCache != null && !isCacheHit)
-                ? authGuardedFuture.thenApply(response -> handleCacheResponse(activeRequestRef.get(), response))
+                ? authGuardedFuture.thenApply(response -> CacheDispatch.handle(activeRequestRef.get(), response, httpCache, streamBody))
                 : authGuardedFuture;
 
         java.util.function.Function<WireResponse, Object> processor = response -> {
@@ -541,18 +541,6 @@ class HttpTemplate {
         return future;
     }
 
-    private static WireResponse toStreamWireResponse(WireResponse response) {
-        return new WireResponse(
-                response.statusCode(),
-                response.headers(),
-                null,
-                new java.io.ByteArrayInputStream(response.body()),
-                response.version(),
-                response.trailers(),
-                response.trailersSupplier()
-        );
-    }
-
     // Package-private seam: unit tests verify all defensive branches
     static boolean hasHeader(WireRequest req, String name) {
         if (req == null || req.headers() == null) {
@@ -564,33 +552,6 @@ class HttpTemplate {
             }
         }
         return false;
-    }
-
-    // ADR-0063 dispatch after the wire: a conditional 304 revalidation is
-    // resolved through the store's update (the synthesized 200 is returned),
-    // fresh 200/301/404 GETs are stored, and unsafe methods with a
-    // 200..399 outcome invalidate the target URI. Package-private seam —
-    // the unit tests exercise the branch matrix directly (no network).
-    WireResponse handleCacheResponse(WireRequest req, WireResponse resp) {
-        if (httpCache == null || resp == null || req == null) {
-            return resp;
-        }
-        if (req.method() == HttpMethod.GET) {
-            if (resp.statusCode() == 304) {
-                WireResponse updated = httpCache.update(req, resp);
-                if (updated != null) {
-                    if (streamBody && updated.body() != null) {
-                        return toStreamWireResponse(updated);
-                    }
-                    return updated;
-                }
-            } else if (resp.statusCode() == 200 || resp.statusCode() == 301 || resp.statusCode() == 404) {
-                httpCache.put(req, resp);
-            }
-        } else if (resp.statusCode() >= 200 && resp.statusCode() < 400) {
-            httpCache.invalidate(req.uri());
-        }
-        return resp;
     }
 
     private RequestContext createRequestContext() {

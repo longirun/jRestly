@@ -154,3 +154,30 @@ package-private `ru.jrestly.http.ProblemDetailResolver`.
   5 структурно недостижимых); METHOD 1436 → **1437**, CLASS 145 → **146**
   (100% сохранены); LIVE-гейт 1,578/1,578, javadoc чист под `-Werror`. JaCoCo:
   INSTRUCTION 97.67%, LINE 97.38%, BRANCH 88.78%, COMPLEXITY 86.73%.
+
+## Amendment #275
+
+Шаг №4 плана выполнен: dispatch кэша вынесен из `HttpTemplate` в package-private
+`ru.jrestly.http.CacheDispatch`.
+
+- **Извлечено:** `handleCacheResponse` (→ `CacheDispatch.handle`) и
+  `toStreamWireResponse` (→ `CacheDispatch.toStreamWireResponse`). Логика
+  перенесена байт-в-байт; поведение обоих контуров (sync-ветка `exchange` и
+  async-ветка `thenApply` над `authGuardedFuture`) не изменилось.
+- **Коллаборатор — чистый `static`-хелпер** (как `RetryAfter`/`ProblemDetailResolver`):
+  он не владеет состоянием шаблона — store (`HttpCache`), `streamBody`-флаг и
+  сам запрос/ответ передаются аргументами. Это снимает вопрос мутабельного поля
+  `httpCache` (`setHttpCache`): коллаборатор читает переданный store, а не поле.
+- **Швы переехали, а не продублированы:** `HttpTemplateCacheDispatchTest` →
+  `CacheDispatchTest` (12 тестов, включая новый прямой тест
+  `toStreamWireResponse`); тонких делегатов на `HttpTemplate` не оставлено.
+- **Юнит-матрица:** stop-path при `cache == null`/`null`-аргументах (zero-garbage
+  fast path), 304 → синтезированный 200 и проход сырого 304 при вытесненной
+  записи, стриминг-компакция (re-wrap в `ByteArrayInputStream` и отсутствие
+  re-wrap при `null`-теле), `put` для 200/301/404, no-op для прочих статусов,
+  invalidation для POST/PUT/PATCH/DELETE на 200..399 и no-op за пределами
+  диапазона. `CacheDispatch` — 0 missed ветвей.
+- **Эффект:** CLASS 146 → **147** (100% сохранены); LIVE-гейт **1,579/1,579**,
+  javadoc чист под `-Werror`. JaCoCo: INSTRUCTION 30,703/31,436 (97.67%),
+  LINE 6,677/6,857 (97.37%), BRANCH 3,950/4,447 (**88.82%** — новый рекорд),
+  COMPLEXITY 3,205/3,693 (86.79% — новый рекорд), METHOD 1437/1437.

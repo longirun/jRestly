@@ -2180,7 +2180,7 @@ Gates (session #241):
 ---
 
 > **Current status (2026-10-18).** Highest ADR issued: **0066**; next free: **0067**.
-> Cycle 0.10.0 packaged and verified. Live gate: **1578/1578** tests green across all five modules, 0 warnings under `-Werror`. JaCoCo: 100% Class Coverage (146/146), 100% Method Coverage (1437/1437), 97.67% Instructions, 97.38% Lines, 88.78% Branches.
+> Cycle 0.10.0 packaged and verified. Live gate: **1579/1579** tests green across all five modules, 0 warnings under `-Werror`. JaCoCo: 100% Class Coverage (147/147), 100% Method Coverage (1437/1437), 97.67% Instructions, 97.37% Lines, 88.82% Branches.
 
 ### Cycle 0.11.0 — internal structure
 
@@ -2210,6 +2210,13 @@ Gates (session #241):
   охранного `try` резолвера, и bare-template стал ронять unexpected-status
   голым `NPE: jsonCodec`; фикс — best-effort `responseCodecOrNull`. `HttpTemplate`
   128 → 122 missed; +1 unit-тест (null codec → built-in parser).
+- **ADR-0066 (§session #275):** четвёртый шаг — dispatch кэша вынесен из
+  `HttpTemplate` в package-private `ru.jrestly.http.CacheDispatch` (`handle`,
+  `toStreamWireResponse`) — чистый `static`-хелпер (запрос, ответ, store и
+  `streamBody`-флаг передаются аргументами). Швы переехали, а не продублированы:
+  `HttpTemplateCacheDispatchTest` → `CacheDispatchTest` (12 тестов, своя
+  безсетевая матрица). `CacheDispatch` — 0 missed ветвей; CLASS 146 → 147,
+  BRANCH 88.78% → **88.82%**. Публичный API не изменён.
 
 ## Post-0.5.0 shortlist (not scheduled — see ADR-0003)
 

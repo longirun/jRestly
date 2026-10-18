@@ -17,25 +17,20 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Unit tests for {@code HttpTemplate.handleCacheResponse} — the ADR-0063
- * RFC 9111 dispatch after the wire: a conditional 304 revalidation resolves
- * through the store's {@code update} (the synthesized 200 is returned, or
- * the raw 304 passes through when the entry vanished), fresh 200/301/404
- * GETs are stored, and unsafe methods with a 200..399 outcome invalidate
- * the target URI. No network — the seam is package-private on purpose and
- * the cache is a recording fake, so the store contract and the dispatch
- * contract are pinned separately.
+ * Unit tests for {@code CacheDispatch} — the ADR-0063 RFC 9111 dispatch after
+ * the wire: a conditional 304 revalidation resolves through the store's
+ * {@code update} (the synthesized 200 is returned, or the raw 304 passes
+ * through when the entry vanished), fresh 200/301/404 GETs are stored, and
+ * unsafe methods with a 200..399 outcome invalidate the target URI. No
+ * network — the collaborator is package-private on purpose and the cache is a
+ * recording fake, so the store contract and the dispatch contract are pinned
+ * separately.
  */
-class HttpTemplateCacheDispatchTest {
+class CacheDispatchTest {
 
     private static final URI TARGET = URI.create("http://example.com/items/1");
 
     private final RecordingCache cache = new RecordingCache();
-    private final HttpTemplate template = new HttpTemplate();
-
-    HttpTemplateCacheDispatchTest() {
-        template.setHttpCache(cache);
-    }
 
     @BeforeEach
     void reset() {
@@ -49,10 +44,9 @@ class HttpTemplateCacheDispatchTest {
     @Test
     @DisplayName("absent cache: the response passes through untouched (zero-garbage fast path)")
     void absentCachePassesThrough() {
-        template.setHttpCache(null);
         WireResponse resp = WireResponse.of(200, "fresh");
 
-        assertSame(resp, template.handleCacheResponse(request(HttpMethod.GET), resp));
+        assertSame(resp, CacheDispatch.handle(request(HttpMethod.GET), resp, null, false));
     }
 
     @Test
@@ -60,8 +54,8 @@ class HttpTemplateCacheDispatchTest {
     void nullsPassThrough() {
         WireResponse resp = WireResponse.of(200, "fresh");
 
-        assertNull(template.handleCacheResponse(request(HttpMethod.GET), null));
-        assertSame(resp, template.handleCacheResponse(null, resp));
+        assertNull(CacheDispatch.handle(request(HttpMethod.GET), null, cache, false));
+        assertSame(resp, CacheDispatch.handle(null, resp, cache, false));
         assertTrue(cache.puts.isEmpty() && cache.updates.isEmpty() && cache.invalidations.isEmpty());
     }
 
@@ -71,7 +65,7 @@ class HttpTemplateCacheDispatchTest {
         cache.updateResult = WireResponse.of(200, "cached-body");
         WireResponse raw304 = WireResponse.of(304, "");
 
-        WireResponse out = template.handleCacheResponse(request(HttpMethod.GET), raw304);
+        WireResponse out = CacheDispatch.handle(request(HttpMethod.GET), raw304, cache, false);
 
         assertEquals(1, cache.updates.size());
         assertSame(raw304, cache.updatedWith);
@@ -85,7 +79,7 @@ class HttpTemplateCacheDispatchTest {
         cache.updateResult = null;
         WireResponse raw304 = WireResponse.of(304, "");
 
-        WireResponse out = template.handleCacheResponse(request(HttpMethod.GET), raw304);
+        WireResponse out = CacheDispatch.handle(request(HttpMethod.GET), raw304, cache, false);
 
         assertSame(raw304, out);
         assertEquals(304, out.statusCode());
@@ -96,9 +90,8 @@ class HttpTemplateCacheDispatchTest {
     void get304StreamingReturnIsStreamified() {
         cache.updateResult = new WireResponse(200, List.of(new Header("Content-Type", "text/plain")),
                 "cached-body".getBytes(java.nio.charset.StandardCharsets.UTF_8));
-        template.setStreamBody(true);
 
-        WireResponse out = template.handleCacheResponse(request(HttpMethod.GET), WireResponse.of(304, ""));
+        WireResponse out = CacheDispatch.handle(request(HttpMethod.GET), WireResponse.of(304, ""), cache, true);
 
         assertEquals(200, out.statusCode());
         assertNull(out.body());
@@ -109,12 +102,25 @@ class HttpTemplateCacheDispatchTest {
     @DisplayName("GET 304 streaming return with a body-less synthesized response: no streamify, returned as-is")
     void get304StreamingWithNullBodyIsReturnedPlain() {
         cache.updateResult = new WireResponse(200, List.of(), null);
-        template.setStreamBody(true);
 
-        WireResponse out = template.handleCacheResponse(request(HttpMethod.GET), WireResponse.of(304, ""));
+        WireResponse out = CacheDispatch.handle(request(HttpMethod.GET), WireResponse.of(304, ""), cache, true);
 
         assertSame(cache.updateResult, out);
         assertNull(out.stream());
+    }
+
+    @Test
+    @DisplayName("streaming compaction: a byte-payload response is re-wrapped as a live body stream")
+    void toStreamWireResponseCarriesHeadersAndVersion() {
+        WireResponse resp = WireResponse.of(200, "payload");
+
+        WireResponse streamed = CacheDispatch.toStreamWireResponse(resp);
+
+        assertEquals(200, streamed.statusCode());
+        assertNull(streamed.body());
+        assertTrue(streamed.stream() instanceof java.io.ByteArrayInputStream);
+        assertEquals(resp.headers(), streamed.headers());
+        assertEquals(resp.version(), streamed.version());
     }
 
     @Test
@@ -124,7 +130,7 @@ class HttpTemplateCacheDispatchTest {
             reset();
             WireResponse resp = WireResponse.of(status, "body");
 
-            assertSame(resp, template.handleCacheResponse(request(HttpMethod.GET), resp));
+            assertSame(resp, CacheDispatch.handle(request(HttpMethod.GET), resp, cache, false));
             assertEquals(1, cache.puts.size(), "status " + status);
             assertSame(resp, cache.putResponse);
             assertTrue(cache.updates.isEmpty() && cache.invalidations.isEmpty());
@@ -138,7 +144,7 @@ class HttpTemplateCacheDispatchTest {
             reset();
             WireResponse resp = WireResponse.of(status, "body");
 
-            assertSame(resp, template.handleCacheResponse(request(HttpMethod.GET), resp));
+            assertSame(resp, CacheDispatch.handle(request(HttpMethod.GET), resp, cache, false));
             assertTrue(cache.puts.isEmpty() && cache.updates.isEmpty() && cache.invalidations.isEmpty(),
                     "status " + status);
         }
@@ -151,7 +157,7 @@ class HttpTemplateCacheDispatchTest {
             reset();
             WireResponse resp = WireResponse.of(status, "body");
 
-            assertSame(resp, template.handleCacheResponse(request(HttpMethod.POST), resp));
+            assertSame(resp, CacheDispatch.handle(request(HttpMethod.POST), resp, cache, false));
             assertEquals(List.of(TARGET), cache.invalidations, "status " + status);
             assertTrue(cache.puts.isEmpty() && cache.updates.isEmpty());
         }
@@ -164,7 +170,7 @@ class HttpTemplateCacheDispatchTest {
             reset();
             WireResponse resp = WireResponse.of(status, "body");
 
-            assertSame(resp, template.handleCacheResponse(request(HttpMethod.PUT), resp));
+            assertSame(resp, CacheDispatch.handle(request(HttpMethod.PUT), resp, cache, false));
             assertTrue(cache.invalidations.isEmpty() && cache.puts.isEmpty() && cache.updates.isEmpty(),
                     "status " + status);
         }
@@ -177,7 +183,7 @@ class HttpTemplateCacheDispatchTest {
             reset();
             WireResponse resp = WireResponse.of(204, "");
 
-            assertSame(resp, template.handleCacheResponse(request(method), resp));
+            assertSame(resp, CacheDispatch.handle(request(method), resp, cache, false));
             assertEquals(List.of(TARGET), cache.invalidations);
         }
     }

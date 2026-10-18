@@ -1,5 +1,34 @@
 # DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
+> **Сессия #275 (ADR-0066, шаг №4: dispatch кэша вынесен из `HttpTemplate` в
+> package-private `CacheDispatch`; швы переехали в свой безсетевой сьют
+> (`HttpTemplateCacheDispatchTest` → `CacheDispatchTest`, 12 тестов); гейт
+> 1,579/1,579, CLASS 147/147 и METHOD 1437/1437 — 100%, BRANCH 88.82% и
+> COMPLEXITY 86.79% — новые рекорды):**
+> продолжение плана ADR-0066 (шаг №4 — dispatch кэша).
+> 1. *Извлечено:* `handleCacheResponse` → `CacheDispatch.handle(req, resp,
+>    cache, streamBody)`, `toStreamWireResponse` →
+>    `CacheDispatch.toStreamWireResponse`; логика байт-в-байт, оба контура
+>    (sync-ветка `exchange` + async-ветка `thenApply` над `authGuardedFuture`)
+>    поведение не изменили.
+> 2. *Коллаборатор — чистый `static`-хелпер* (как `RetryAfter`/
+>    `ProblemDetailResolver`): состояние шаблона не читает — store
+>    (`HttpCache`), `streamBody`-флаг, запрос и ответ передаются аргументами.
+>    Заодно снимает вопрос мутабельного поля `httpCache` (`setHttpCache`):
+>    коллаборатор читает переданный store, а не поле.
+> 3. *Швы переехали, а не продублированы:* тест переименован в
+>    `CacheDispatchTest` (12 тестов, включая новый прямой тест
+>    `toStreamWireResponse`); тонких делегатов на `HttpTemplate` не осталось.
+>    Урок #271 подтверждён: извлечённому коллаборатору нужен свой сьют —
+>    `CacheDispatch` сразу даёт 0 missed ветвей.
+> 4. *Гейты:* **1,579 / 1,579** green across all 5 modules (+1), javadoc чист
+>    под `-Werror`. JaCoCo: **METHOD 1437/1437** и **CLASS 147/147 (100%)**,
+>    **INSTRUCTION 30,703/31,436 (97.67%)**, **LINE 6,677/6,857 (97.37%)**,
+>    **BRANCH 3,950/4,447 (88.82%)**, **COMPLEXITY 3,205/3,693 (86.79%)**.
+>    Публичный API не изменён.
+> 5. *Дальше* — шаг №5 ADR-0066 (декодирование тела: charset/streaming/
+>    `consumePayload`) или хвосты покрытия.
+
 > **Сессия #274 (ADR-0066, шаг №3: resolver Problem Details вынесен из
 > `HttpTemplate` в package-private `ProblemDetailResolver`; завершение WIP
 > прерванной #272–#273 + находка «вынос из `try` меняет контракт»; гейт 1,578/1,578,
@@ -2423,15 +2452,18 @@
     резолвера ронял bare-template на unexpected-status (`NPE: jsonCodec`) —
     вылечено best-effort `responseCodecOrNull`. `HttpTemplate` 128 → 122 missed.
     Публичный API не изменён.
-  - **Шаг №4 (следующий):** dispatch кэша (`handleCacheResponse`,
-    `toStreamWireResponse`) — вынести в коллаборатор; шов `handleCacheResponse`
-    уже package-private (#255), `RecordingCache`-сьют есть
-    (`HttpTemplateCacheDispatchTest`).
-  - **Шаги №5–№6:** декодирование тела (charset/streaming) → уведомления метрик.
+  - **Шаг №4 — сделана (#275):** dispatch кэша (`handleCacheResponse`,
+    `toStreamWireResponse`) вынесен в package-private `CacheDispatch`
+    (чистый static-хелпер: store/`streamBody`/запрос/ответ — аргументы);
+    шов переехал в свой сьют `CacheDispatchTest` (12 тестов, 0 missed ветвей).
+    Публичный API не изменён.
+  - **Шаг №5 (следующий):** декодирование тела ответа
+    (charset/streaming/`consumePayload`).
+  - **Шаг №6:** уведомления метрик (`notify*`).
 
 **Активная зона пуста:** кандидаты №1 (test-javadoc) и №2/№3/№4 закрыты (§выше);
-кандидат №5 (ADR-0066) открыт и ведётся пошагово (шаги №1–№3 сделаны, №4 —
-dispatch кэша).
+кандидат №5 (ADR-0066) открыт и ведётся пошагово (шаги №1–№4 сделаны, №5 —
+декодирование тела).
 Завершённые эпики ADR-0058/0059/0060 дистиллированы в `ROADMAP.md` (сессия #206);
 highest ADR **0066**, next free **0067**. Следующий ход — свободный: продолжение
 декомпозиции `HttpTemplate` по ADR-0066 (шаг №4) или свежий free-аудит. Хвосты-кандидаты
