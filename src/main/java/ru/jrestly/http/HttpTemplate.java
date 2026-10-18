@@ -853,71 +853,16 @@ class HttpTemplate {
             throw createUnexpectedStatusException(statusCode, errorPayload, responseHeaders);
         }
 
+        // ADR-0066 step 5c: the buffered decode legs live on ResponseBody. The
+        // codec is supplied lazily — on the byte[]/String/Void legs it must not
+        // be resolved at all (a bare template used to survive those), and on
+        // the DTO leg it is resolved once per use (log preview, deserialize).
         if (optional) {
-            if (ResponseBody.isMissingResource(statusCode) || bytes == null || bytes.length == 0) {
-                if (logger.isLoggable(System.Logger.Level.INFO)) {
-                    logger.log(System.Logger.Level.INFO, "No response or empty/status for Optional return.");
-                }
-                return (T) Optional.empty();
-            }
-            if (byte[].class.equals(returnType)) {
-                if (logger.isLoggable(System.Logger.Level.INFO)) {
-                    logger.log(System.Logger.Level.INFO, "Response size: " + bytes.length + " bytes");
-                }
-                return (T) Optional.of(bytes);
-            }
-            if (String.class.equals(returnType)) {
-                String payload = new String(bytes, payloadCharset);
-                if (logger.isLoggable(System.Logger.Level.INFO)) {
-                    logger.log(System.Logger.Level.INFO, "Response size: " + payload.length() + " bytes\n" + payload);
-                }
-                return (T) Optional.of(payload);
-            }
-            if (Void.class.equals(returnType) || void.class.equals(returnType)) {
-                return (T) Optional.empty();
-            }
-            if (logger.isLoggable(System.Logger.Level.INFO)) {
-                String payload = new String(bytes, StandardCharsets.UTF_8);
-                logger.log(System.Logger.Level.INFO, "Response size: " + payload.length() + " bytes\n"
-                        + responseCodec(responseHeaders).prettyPrint(bytes, contentTypeOf(responseHeaders), payloadCharset));
-            }
-            Object deserialized = responseCodec(responseHeaders).deserialize(bytes, returnType, contentTypeOf(responseHeaders));
-            return (T) Optional.ofNullable(deserialized);
+            return (T) ResponseBody.bufferedOptional(statusCode, bytes, returnType, payloadCharset,
+                    ResponseBody.contentTypeOf(responseHeaders), () -> responseCodec(responseHeaders), logger);
         }
-
-        if (bytes == null || bytes.length == 0) {
-            if (logger.isLoggable(System.Logger.Level.INFO)) {
-                logger.log(System.Logger.Level.INFO, "No response.");
-            }
-            return null;
-        }
-
-        if (byte[].class.equals(returnType)) {
-            if (logger.isLoggable(System.Logger.Level.INFO)) {
-                logger.log(System.Logger.Level.INFO, "Response size: " + bytes.length + " bytes");
-            }
-            return (T) bytes;
-        }
-
-        if (String.class.equals(returnType)) {
-            String payload = new String(bytes, payloadCharset);
-            if (logger.isLoggable(System.Logger.Level.INFO)) {
-                logger.log(System.Logger.Level.INFO, "Response size: " + payload.length() + " bytes\n" + payload);
-            }
-            return (T) payload;
-        }
-
-        if (Void.class.equals(returnType) || void.class.equals(returnType)) {
-            return null;
-        }
-
-        if (logger.isLoggable(System.Logger.Level.INFO)) {
-            String payload = new String(bytes, StandardCharsets.UTF_8);
-            logger.log(System.Logger.Level.INFO, "Response size: " + payload.length() + " bytes\n"
-                    + responseCodec(responseHeaders).prettyPrint(bytes, contentTypeOf(responseHeaders), payloadCharset));
-        }
-
-        return responseCodec(responseHeaders).deserialize(bytes, returnType, contentTypeOf(responseHeaders));
+        return (T) ResponseBody.bufferedRaw(bytes, returnType, payloadCharset,
+                ResponseBody.contentTypeOf(responseHeaders), () -> responseCodec(responseHeaders), logger);
     }
 
     // Handles redirects according to HTTP spec:
@@ -1126,7 +1071,7 @@ class HttpTemplate {
             if (String.class.equals(returnType) || byte[].class.equals(returnType) || Void.class.equals(returnType) || void.class.equals(returnType)) {
                 return true;
             }
-            responseCodec(response.headers()).deserialize(bytes, returnType, contentTypeOf(response.headers()));
+            responseCodec(response.headers()).deserialize(bytes, returnType, ResponseBody.contentTypeOf(response.headers()));
             return true;
         }
         if (payload == null) {
@@ -1138,7 +1083,7 @@ class HttpTemplate {
         if (Void.class.equals(returnType) || void.class.equals(returnType)) {
             return true; // body discarded (ADR-0009 candidate 2)
         }
-        responseCodec(response.headers()).deserialize(bytes, returnType, contentTypeOf(response.headers()));
+        responseCodec(response.headers()).deserialize(bytes, returnType, ResponseBody.contentTypeOf(response.headers()));
         return true;
     }
 
@@ -2078,7 +2023,7 @@ class HttpTemplate {
     // ADR-0060: pick the response codec by the response Content-Type, falling
     // back to the default (JSON) — a server without a Content-Type keeps working.
     private PayloadCodec responseCodec(List<Header> responseHeaders) {
-        return effectiveCodecRegistry().resolveOrDefault(contentTypeOf(responseHeaders));
+        return effectiveCodecRegistry().resolveOrDefault(ResponseBody.contentTypeOf(responseHeaders));
     }
 
     // Best-effort codec lookup for bare unexpected-status bodies: the lookup is
@@ -2090,18 +2035,6 @@ class HttpTemplate {
         } catch (Throwable ignored) {
             return null;
         }
-    }
-
-    private static String contentTypeOf(List<Header> headers) {
-        if (headers == null) {
-            return null;
-        }
-        for (Header header : headers) {
-            if (header.name() != null && header.name().equalsIgnoreCase("Content-Type")) {
-                return header.value();
-            }
-        }
-        return null;
     }
 
     /**
@@ -2351,12 +2284,12 @@ class HttpTemplate {
             if (deserializeClass == ru.jrestly.problem.ProblemDetail.class) {
                 try {
                     errorObject = responseCodec(responseHeaders).deserialize(
-                            payload.getBytes(payloadCharset), deserializeClass, contentTypeOf(responseHeaders));
+                            payload.getBytes(payloadCharset), deserializeClass, ResponseBody.contentTypeOf(responseHeaders));
                 } catch (Throwable ignored) {
                 }
             } else {
                 errorObject = responseCodec(responseHeaders).deserialize(
-                        payload.getBytes(payloadCharset), deserializeClass, contentTypeOf(responseHeaders));
+                        payload.getBytes(payloadCharset), deserializeClass, ResponseBody.contentTypeOf(responseHeaders));
             }
         }
 
@@ -2401,7 +2334,7 @@ class HttpTemplate {
     private UnexpectedStatusException createUnexpectedStatusException(
             int statusCode, String rawBody, List<Header> responseHeaders) {
         ru.jrestly.problem.ProblemDetail problemDetail = ProblemDetailResolver.resolve(
-                statusCode, rawBody, responseHeaders, contentTypeOf(responseHeaders),
+                statusCode, rawBody, responseHeaders, ResponseBody.contentTypeOf(responseHeaders),
                 responseCodecOrNull(responseHeaders));
         if (statusCode >= 400 && statusCode < 500) {
             return new ClientErrorException(statusCode, rawBody, responseHeaders, problemDetail);

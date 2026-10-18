@@ -9,10 +9,15 @@ import java.io.InputStream;
 import java.lang.reflect.Method;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
+import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Supplier;
 import java.util.stream.Stream;
+
+import ru.jrestly.codec.PayloadCodec;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -307,8 +312,242 @@ class ResponseBodyTest {
     }
 
     // ------------------------------------------------------------------
+    // bufferedOptional — the Optional contour of the buffered decode leg (5c)
+    // ------------------------------------------------------------------
+
+    @Test
+    @DisplayName("bufferedOptional: a missing resource or a null/empty body is Optional.empty() with the codec untouched")
+    void optionalMissingResourceAndEmptyBody() {
+        byte[] body = {1, 0, 2};
+        RecordingLogger verbose = new RecordingLogger();
+        for (int status : new int[]{404, 304, 204}) {
+            assertEquals(Optional.empty(), ResponseBody.bufferedOptional(
+                    status, body, Dto.class, StandardCharsets.UTF_8, "application/json", never(), verbose));
+            assertEquals("No response or empty/status for Optional return.", verbose.lastMessage());
+
+            RecordingLogger quiet = new RecordingLogger(false);
+            assertEquals(Optional.empty(), ResponseBody.bufferedOptional(
+                    status, body, Dto.class, StandardCharsets.UTF_8, "application/json", never(), quiet));
+            assertNull(quiet.lastMessage());
+        }
+        // A null body is a missing resource too
+        assertEquals(Optional.empty(), ResponseBody.bufferedOptional(
+                200, null, Dto.class, StandardCharsets.UTF_8, "application/json", never(), verbose));
+        // So is an empty body
+        assertEquals(Optional.empty(), ResponseBody.bufferedOptional(
+                200, new byte[0], Dto.class, StandardCharsets.UTF_8, "application/json", never(), verbose));
+    }
+
+    @Test
+    @DisplayName("bufferedOptional: byte[] returns Optional.of(the same array) with the codec untouched")
+    void optionalByteArray() {
+        byte[] body = {1, 2, 3};
+        RecordingLogger verbose = new RecordingLogger();
+        assertEquals(Optional.of(body), ResponseBody.bufferedOptional(
+                200, body, byte[].class, StandardCharsets.UTF_8, "application/json", never(), verbose));
+        assertEquals("Response size: 3 bytes", verbose.lastMessage());
+
+        RecordingLogger quiet = new RecordingLogger(false);
+        assertEquals(Optional.of(body), ResponseBody.bufferedOptional(
+                200, body, byte[].class, StandardCharsets.UTF_8, "application/json", never(), quiet));
+        assertNull(quiet.lastMessage());
+    }
+
+    @Test
+    @DisplayName("bufferedOptional: the String return decodes with the payload charset, not UTF-8")
+    void optionalStringHonorsPayloadCharset() {
+        // "é" in UTF-8 is two bytes; the same bytes in ISO-8859-1 decode to "Ã©"
+        byte[] body = {(byte) 0xC3, (byte) 0xA9};
+        RecordingLogger verbose = new RecordingLogger();
+        assertEquals(Optional.of("Ã©"), ResponseBody.bufferedOptional(
+                200, body, String.class, StandardCharsets.ISO_8859_1, "text/plain", never(), verbose));
+        assertEquals("Response size: 2 bytes\nÃ©", verbose.lastMessage());
+
+        RecordingLogger quiet = new RecordingLogger(false);
+        assertEquals(Optional.of("Ã©"), ResponseBody.bufferedOptional(
+                200, body, String.class, StandardCharsets.ISO_8859_1, "text/plain", never(), quiet));
+        assertNull(quiet.lastMessage());
+    }
+
+    @Test
+    @DisplayName("bufferedOptional: Void and void returns are Optional.empty() with the codec untouched")
+    void optionalVoidReturn() {
+        RecordingLogger verbose = new RecordingLogger();
+        byte[] body = {1};
+        assertEquals(Optional.empty(), ResponseBody.bufferedOptional(
+                200, body, Void.class, StandardCharsets.UTF_8, "application/json", never(), verbose));
+        assertEquals(Optional.empty(), ResponseBody.bufferedOptional(
+                200, body, void.class, StandardCharsets.UTF_8, "application/json", never(), verbose));
+    }
+
+    @Test
+    @DisplayName("bufferedOptional: a DTO decodes through the codec, null-safe wrapped into an Optional")
+    void optionalDtoDecodesThroughCodec() {
+        byte[] body = "payload".getBytes(StandardCharsets.UTF_8);
+        StubPayloadCodec codec = new StubPayloadCodec();
+        RecordingLogger quiet = new RecordingLogger(false);
+
+        codec.result = "decoded";
+        assertEquals(Optional.of("decoded"), ResponseBody.bufferedOptional(
+                200, body, Dto.class, StandardCharsets.UTF_8, "application/json", () -> codec, quiet));
+        assertEquals(1, codec.deserializeCalls);
+        assertEquals(Dto.class, codec.deserializeType);
+        assertEquals("application/json", codec.deserializeMediaType);
+
+        // A null decode result is Optional.empty(), not IllegalStateException
+        codec.result = null;
+        assertEquals(Optional.empty(), ResponseBody.bufferedOptional(
+                200, body, Dto.class, StandardCharsets.UTF_8, "application/json", () -> codec, quiet));
+        assertEquals(2, codec.deserializeCalls);
+    }
+
+    @Test
+    @DisplayName("bufferedOptional: the DTO log line previews UTF-8, while prettyPrint receives the payload charset")
+    void optionalDtoLogUsesUtf8Preview() {
+        byte[] body = {(byte) 0xC3, (byte) 0xA9};
+        StubPayloadCodec codec = new StubPayloadCodec();
+        codec.result = "decoded";
+        RecordingLogger verbose = new RecordingLogger();
+
+        assertEquals(Optional.of("decoded"), ResponseBody.bufferedOptional(
+                200, body, Dto.class, StandardCharsets.ISO_8859_1, "application/xml", () -> codec, verbose));
+        String message = verbose.lastMessage();
+        // The log preview is deliberately UTF-8: the 2-byte body is 1 preview char
+        assertTrue(message.startsWith("Response size: 1 bytes\n"), "not a UTF-8 preview: " + message);
+        // prettyPrint receives the payload charset: the same bytes decode to "Ã©"
+        assertTrue(message.contains("pretty:application/xml:Ã©"), "prettyPrint got the wrong charset: " + message);
+        assertEquals(1, codec.deserializeCalls);
+    }
+
+    // ------------------------------------------------------------------
+    // bufferedRaw — the raw contour of the buffered decode leg (5c)
+    // ------------------------------------------------------------------
+
+    @Test
+    @DisplayName("bufferedRaw: a null or empty body returns null with the codec untouched")
+    void rawEmptyBodyReturnsNull() {
+        RecordingLogger verbose = new RecordingLogger();
+        assertNull(ResponseBody.bufferedRaw(
+                null, Dto.class, StandardCharsets.UTF_8, "application/json", never(), verbose));
+        assertEquals("No response.", verbose.lastMessage());
+        assertNull(ResponseBody.bufferedRaw(
+                new byte[0], Dto.class, StandardCharsets.UTF_8, "application/json", never(), verbose));
+
+        RecordingLogger quiet = new RecordingLogger(false);
+        assertNull(ResponseBody.bufferedRaw(
+                new byte[0], Dto.class, StandardCharsets.UTF_8, "application/json", never(), quiet));
+        assertNull(quiet.lastMessage());
+    }
+
+    @Test
+    @DisplayName("bufferedRaw: byte[] returns the same array, not a copy or wrapper")
+    void rawByteArray() {
+        byte[] body = {1, 2, 3};
+        RecordingLogger verbose = new RecordingLogger();
+        assertSame(body, ResponseBody.bufferedRaw(
+                body, byte[].class, StandardCharsets.UTF_8, "application/json", never(), verbose));
+        assertEquals("Response size: 3 bytes", verbose.lastMessage());
+
+        RecordingLogger quiet = new RecordingLogger(false);
+        assertSame(body, ResponseBody.bufferedRaw(
+                body, byte[].class, StandardCharsets.UTF_8, "application/json", never(), quiet));
+        assertNull(quiet.lastMessage());
+    }
+
+    @Test
+    @DisplayName("bufferedRaw: the String return decodes with the payload charset, not UTF-8")
+    void rawStringHonorsPayloadCharset() {
+        byte[] body = {(byte) 0xC3, (byte) 0xA9};
+        RecordingLogger verbose = new RecordingLogger();
+        assertEquals("Ã©", ResponseBody.bufferedRaw(
+                body, String.class, StandardCharsets.ISO_8859_1, "text/plain", never(), verbose));
+        assertEquals("Response size: 2 bytes\nÃ©", verbose.lastMessage());
+
+        RecordingLogger quiet = new RecordingLogger(false);
+        assertEquals("Ã©", ResponseBody.bufferedRaw(
+                body, String.class, StandardCharsets.ISO_8859_1, "text/plain", never(), quiet));
+        assertNull(quiet.lastMessage());
+    }
+
+    @Test
+    @DisplayName("bufferedRaw: Void and void returns are null with the codec untouched")
+    void rawVoidReturn() {
+        RecordingLogger verbose = new RecordingLogger();
+        byte[] body = {1};
+        assertNull(ResponseBody.bufferedRaw(
+                body, Void.class, StandardCharsets.UTF_8, "application/json", never(), verbose));
+        assertNull(ResponseBody.bufferedRaw(
+                body, void.class, StandardCharsets.UTF_8, "application/json", never(), verbose));
+    }
+
+    @Test
+    @DisplayName("bufferedRaw: a DTO decodes through the codec without an Optional wrapper, null passes through")
+    void rawDtoDecodesThroughCodec() {
+        byte[] body = "payload".getBytes(StandardCharsets.UTF_8);
+        StubPayloadCodec codec = new StubPayloadCodec();
+        RecordingLogger quiet = new RecordingLogger(false);
+
+        codec.result = null;
+        assertNull(ResponseBody.bufferedRaw(
+                body, Dto.class, StandardCharsets.UTF_8, "application/json", () -> codec, quiet));
+        assertEquals(1, codec.deserializeCalls);
+        assertEquals(Dto.class, codec.deserializeType);
+
+        codec.result = "decoded";
+        assertEquals("decoded", ResponseBody.bufferedRaw(
+                body, Dto.class, StandardCharsets.UTF_8, "application/json", () -> codec, quiet));
+        assertEquals(2, codec.deserializeCalls);
+    }
+
+    @Test
+    @DisplayName("bufferedRaw: the DTO log line previews UTF-8 while prettyPrint receives the payload charset")
+    void rawDtoLogUsesUtf8Preview() {
+        byte[] body = {(byte) 0xC3, (byte) 0xA9};
+        StubPayloadCodec codec = new StubPayloadCodec();
+        codec.result = "decoded";
+        RecordingLogger verbose = new RecordingLogger();
+
+        assertEquals("decoded", ResponseBody.bufferedRaw(
+                body, Dto.class, StandardCharsets.ISO_8859_1, "application/xml", () -> codec, verbose));
+        String message = verbose.lastMessage();
+        assertTrue(message.startsWith("Response size: 1 bytes\n"), "not a UTF-8 preview: " + message);
+        assertTrue(message.contains("pretty:application/xml:Ã©"), "prettyPrint got the wrong charset: " + message);
+        assertEquals(1, codec.deserializeCalls);
+    }
+
+    @Test
+    @DisplayName("buffered legs: byte[], String and Void bindings never resolve the codec (bare-template survival)")
+    void rawBindingsNeverResolveCodec() {
+        byte[] body = {1};
+        for (Type binding : new Type[]{byte[].class, String.class, Void.class, void.class}) {
+            assertDoesNotThrow(() -> ResponseBody.bufferedOptional(
+                    200, body, binding, StandardCharsets.UTF_8, "application/json", never(), new RecordingLogger(false)));
+            assertDoesNotThrow(() -> ResponseBody.bufferedRaw(
+                    body, binding, StandardCharsets.UTF_8, "application/json", never(), new RecordingLogger(false)));
+        }
+    }
+
+    // ------------------------------------------------------------------
     // closeQuietly — tolerant close
     // ------------------------------------------------------------------
+
+    @Test
+    @DisplayName("contentTypeOf: Content-Type is picked case-insensitively and null headers/names are skipped")
+    void contentTypeOfRules() {
+        assertNull(ResponseBody.contentTypeOf(null));
+        assertNull(ResponseBody.contentTypeOf(List.of()));
+        assertEquals("application/json",
+                ResponseBody.contentTypeOf(List.of(new Header("Content-Type", "application/json"))));
+        assertEquals("application/json",
+                ResponseBody.contentTypeOf(List.of(new Header("content-type", "application/json"))));
+        // A response without a Content-Type keeps the codec selection null-aware
+        assertNull(ResponseBody.contentTypeOf(List.of(new Header("X-Other", "1"))));
+
+        java.util.ArrayList<Header> dirty = new java.util.ArrayList<>();
+        dirty.add(new Header(null, "application/json"));
+        dirty.add(new Header("Content-Type", null));
+        assertEquals(null, ResponseBody.contentTypeOf(dirty));
+    }
 
     @Test
     @DisplayName("closeQuietly: null stream is a no-op, a failing close is logged and not thrown")
@@ -358,9 +597,65 @@ class ResponseBodyTest {
         };
     }
 
+    /** A codec supplier that must never be resolved on the raw bindings. */
+    private static Supplier<PayloadCodec> never() {
+        return () -> {
+            throw new AssertionError("the codec must not be resolved on this leg");
+        };
+    }
+
+    /** A payload type that is none of the raw bindings (byte[], String, Void). */
+    private static final class Dto {
+    }
+
+    /** A codec stub that records how it is called and can return a null result. */
+    private static final class StubPayloadCodec implements PayloadCodec {
+        Object result;
+        int deserializeCalls;
+        Type deserializeType;
+        String deserializeMediaType;
+
+        @Override
+        public boolean supports(String mediaType) {
+            return true;
+        }
+
+        @Override
+        @SuppressWarnings("unchecked")
+        public <T> T deserialize(byte[] payload, Type type, String mediaType) {
+            deserializeCalls++;
+            deserializeType = type;
+            deserializeMediaType = mediaType;
+            return (T) result;
+        }
+
+        @Override
+        public byte[] serialize(Object value, String mediaType) {
+            return new byte[0];
+        }
+
+        @Override
+        public String prettyPrint(byte[] payload, String mediaType, Charset charset) {
+            return "pretty:" + mediaType + ":" + new String(payload, charset);
+        }
+    }
+
     /** Captures the logged message instead of emitting it — no console noise. */
     private static final class RecordingLogger implements System.Logger {
+        private final boolean verbose;
         private String lastMessage;
+
+        RecordingLogger() {
+            this(true);
+        }
+
+        RecordingLogger(boolean verbose) {
+            this.verbose = verbose;
+        }
+
+        String lastMessage() {
+            return lastMessage;
+        }
 
         @Override
         public String getName() {
@@ -369,7 +664,7 @@ class ResponseBodyTest {
 
         @Override
         public boolean isLoggable(Level level) {
-            return true;
+            return verbose;
         }
 
         @Override

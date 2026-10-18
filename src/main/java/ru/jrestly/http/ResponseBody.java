@@ -9,9 +9,12 @@ import java.lang.reflect.Type;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Optional;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
+
+import ru.jrestly.codec.PayloadCodec;
 
 /**
  * Package-private response-body decode primitives shared by the synchronous
@@ -41,7 +44,16 @@ import java.util.stream.Stream;
  *     <li>{@link #wrapForTrailers(InputStream, java.util.function.Supplier, ResponseHeaders,
  *         ResponseHeaders)} — the terminal hook for late-arriving trailers
  *         (ADR-0059);</li>
- *     <li>{@link #closeQuietly(InputStream, System.Logger)} — tolerant close.</li>
+ *     <li>{@link #closeQuietly(InputStream, System.Logger)} — tolerant close;</li>
+ *     <li>{@link #contentTypeOf(List)} — the response Content-Type the codec
+ *         is selected by (ADR-0060);</li>
+ *     <li>{@link #bufferedOptional(int, byte[], Type, Charset, String, java.util.function.Supplier, System.Logger)}
+ *         and {@link #bufferedRaw(byte[], Type, Charset, String, java.util.function.Supplier, System.Logger)}
+ *         — the two buffered decode legs of {@code processResponse}: the
+ *         Optional-returning contour (ADR-0023) and the raw contour. The codec
+ *         is passed as a {@code Supplier} and is only resolved on the DTO leg
+ *         — on the byte[]/String/Void legs a bare template must survive with
+ *         no codec at all.</li>
  * </ul>
  *
  * <p>It is stateless, like {@link RetryAfter} and {@link ProblemDetailResolver}:
@@ -197,5 +209,97 @@ final class ResponseBody {
             return "";
         }
         return new String(response.body(), resolveCharset(response.headers()));
+    }
+
+    // ADR-0060: the response Content-Type the codec is selected by — null when
+    // the header is absent. A null-named or null-valued header is skipped.
+    static String contentTypeOf(List<Header> headers) {
+        if (headers == null) {
+            return null;
+        }
+        for (Header header : headers) {
+            if (header.name() != null && header.name().equalsIgnoreCase("Content-Type")) {
+                return header.value();
+            }
+        }
+        return null;
+    }
+
+    // ADR-0066 step 5c: the buffered decode leg of processResponse — the
+    // Optional-returning contour (ADR-0023). A missing resource (404/304/204)
+    // or a null/empty body is Optional.empty(); byte[]/String/Void return
+    // without ever touching the codec; a DTO decodes through the lazily
+    // supplied response codec, which is resolved once per use (log preview,
+    // then deserialize) — eagerly resolving it here would break a bare
+    // template whose registry has no codec for this media type.
+    static Object bufferedOptional(int statusCode, byte[] bytes, Type returnType, Charset payloadCharset,
+                                   String contentType, Supplier<PayloadCodec> codec, System.Logger logger) {
+        if (isMissingResource(statusCode) || bytes == null || bytes.length == 0) {
+            if (logger.isLoggable(System.Logger.Level.INFO)) {
+                logger.log(System.Logger.Level.INFO, "No response or empty/status for Optional return.");
+            }
+            return Optional.empty();
+        }
+        if (byte[].class.equals(returnType)) {
+            if (logger.isLoggable(System.Logger.Level.INFO)) {
+                logger.log(System.Logger.Level.INFO, "Response size: " + bytes.length + " bytes");
+            }
+            return Optional.of(bytes);
+        }
+        if (String.class.equals(returnType)) {
+            String payload = new String(bytes, payloadCharset);
+            if (logger.isLoggable(System.Logger.Level.INFO)) {
+                logger.log(System.Logger.Level.INFO, "Response size: " + payload.length() + " bytes\n" + payload);
+            }
+            return Optional.of(payload);
+        }
+        if (Void.class.equals(returnType) || void.class.equals(returnType)) {
+            return Optional.empty();
+        }
+        // DTO leg. The INFO preview is deliberately UTF-8, not the payload
+        // charset — a log line is not data (ADR-0056) — while prettyPrint
+        // receives the payload charset.
+        if (logger.isLoggable(System.Logger.Level.INFO)) {
+            String payload = new String(bytes, StandardCharsets.UTF_8);
+            logger.log(System.Logger.Level.INFO, "Response size: " + payload.length() + " bytes\n"
+                    + codec.get().prettyPrint(bytes, contentType, payloadCharset));
+        }
+        return Optional.ofNullable(codec.get().deserialize(bytes, returnType, contentType));
+    }
+
+    // ADR-0066 step 5c: the buffered decode leg of processResponse — the raw
+    // contour. A null/empty body is null; byte[]/String/Void return without
+    // ever touching the codec; a DTO decodes through the lazily supplied
+    // response codec, possibly to null (raw semantics — no Optional wrapper).
+    static Object bufferedRaw(byte[] bytes, Type returnType, Charset payloadCharset,
+                              String contentType, Supplier<PayloadCodec> codec, System.Logger logger) {
+        if (bytes == null || bytes.length == 0) {
+            if (logger.isLoggable(System.Logger.Level.INFO)) {
+                logger.log(System.Logger.Level.INFO, "No response.");
+            }
+            return null;
+        }
+        if (byte[].class.equals(returnType)) {
+            if (logger.isLoggable(System.Logger.Level.INFO)) {
+                logger.log(System.Logger.Level.INFO, "Response size: " + bytes.length + " bytes");
+            }
+            return bytes;
+        }
+        if (String.class.equals(returnType)) {
+            String payload = new String(bytes, payloadCharset);
+            if (logger.isLoggable(System.Logger.Level.INFO)) {
+                logger.log(System.Logger.Level.INFO, "Response size: " + payload.length() + " bytes\n" + payload);
+            }
+            return payload;
+        }
+        if (Void.class.equals(returnType) || void.class.equals(returnType)) {
+            return null;
+        }
+        if (logger.isLoggable(System.Logger.Level.INFO)) {
+            String payload = new String(bytes, StandardCharsets.UTF_8);
+            logger.log(System.Logger.Level.INFO, "Response size: " + payload.length() + " bytes\n"
+                    + codec.get().prettyPrint(bytes, contentType, payloadCharset));
+        }
+        return codec.get().deserialize(bytes, returnType, contentType);
     }
 }
