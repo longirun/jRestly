@@ -2180,7 +2180,7 @@ Gates (session #241):
 ---
 
 > **Current status (2026-10-18).** Highest ADR issued: **0066**; next free: **0067**.
-> Cycle 0.10.0 packaged and verified. Live gate: **1586/1586** tests green across all five modules, 0 warnings under `-Werror`. JaCoCo: 100% Class Coverage (148/148), 100% Method Coverage (1437/1437), 97.67% Instructions, 97.37% Lines, 88.98% Branches.
+> Cycle 0.10.0 packaged and verified. Live gate: **1598/1598** tests green across all five modules, 0 warnings under `-Werror`. JaCoCo: 100% Class Coverage (148/148), 100% Method Coverage (1440/1440), 97.69% Instructions, 97.40% Lines, **89.11% Branches** (historical record).
 
 ### Cycle 0.11.0 — internal structure
 
@@ -2229,6 +2229,24 @@ Gates (session #241):
   `extractText` — прямые матрицы). `ResponseBody` — 0 missed ветвей; `HttpTemplate`
   122 → **115** missed; CLASS 147 → 148, BRANCH 88.82% → **88.98%**, COMPLEXITY
   86.79% → **86.98%**. Публичный API не изменён.
+- **ADR-0066 (§session #277):** второй под-шаг шага №5 (5b) — стриминговые
+  артефакты вынесены из `processResponse` в тот же `ResponseBody`:
+  `lineStream` (дублировавшаяся конструкция BufferedReader/lines в line- и
+  SSE-ветках), `eventStream` (`ServerSentEvent.parse` поверх lineStream —
+  close проксируется до провода), `wrapForTrailers` (трейлер-хук ADR-0059),
+  `isMissingResource` (названо правило Optional 404/304/204 — единый источник
+  правды для пяти call-site'ов: 3 стриминговых ветки, буферная
+  optional-ветка, probePayloadDecode), `streamingPayloadLine`, `closeQuietly`.
+  TDD-находка №38: NPE при `Content-Length` без значения (`Stream.findFirst()`
+  не проглатывает null) — фикс фильтром `h.value() != null`. `ResponseBodyTest`
+  8 → 20 тестов, `ResponseBody` — **68/68 ветвей, 0 missed**; `HttpTemplate`
+  115 → **108** missed; BRANCH **89.11%**, COMPLEXITY **87.16%** — рекорды.
+  Публичный API не изменён.
+- **Беклог от Антона (2026-10-18):** кандидаты №6 (лаконичность публичного
+  API, без обязательств обратной совместимости), №7 (бенчмарк на движке
+  rss/atom: ops/sec, CPU, mem против конкурентов), №8 (ревизия старого
+  синтетического «типового метода» — не убежали ли мы от главного) —
+  стартуют **после закрытия ADR-0066** (его же формулировка).
 
 ## Post-0.5.0 shortlist (not scheduled — see ADR-0003)
 

@@ -16,11 +16,9 @@ import ru.jrestly.resilience.CircuitBreakerOpenException;
 import ru.jrestly.resilience.RateLimiter;
 import ru.jrestly.resilience.RateLimitExceededException;
 
-import java.io.BufferedReader;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.InputStreamReader;
 import java.util.zip.GZIPInputStream;
 import java.util.zip.Inflater;
 import java.util.zip.InflaterInputStream;
@@ -779,45 +777,29 @@ class HttpTemplate {
         InputStream stream = response.stream();
         if (stream != null) {
             // ADR-0059: Terminal streaming hook for late-arriving trailers
-            Supplier<List<Header>> trailersSupplier = response.trailersSupplier();
-            if (trailersSupplier != null && (responseHeadersHolder != null || capturedHeaderHolder != null)) {
-                final ResponseHeaders holderToNotify = responseHeadersHolder;
-                final ResponseHeaders capturedToNotify = capturedHeaderHolder;
-                Consumer<List<Header>> trailersConsumer = trailers -> {
-                    if (holderToNotify != null) {
-                        holderToNotify.populateTrailers(trailers);
-                    }
-                    if (capturedToNotify != null) {
-                        capturedToNotify.populateTrailers(trailers);
-                    }
-                };
-                stream = new TrailerCompletingInputStream(stream, trailersSupplier, trailersConsumer);
-            }
-
-            final InputStream effectiveStream = stream;
+            stream = ResponseBody.wrapForTrailers(stream, response.trailersSupplier(),
+                    responseHeadersHolder, capturedHeaderHolder);
 
             if (onErrorParser != null && onErrorParser.canParse(statusCode)) {
-                String errorPayload = ResponseBody.consumePayload(effectiveStream, payloadCharset);
+                String errorPayload = ResponseBody.consumePayload(stream, payloadCharset);
                 handleOnError(statusCode, errorPayload, responseHeaders, payloadCharset);
             }
             if (!isExpectedStatus(statusCode)) {
-                String rawPayload = ResponseBody.consumePayload(effectiveStream, payloadCharset);
+                String rawPayload = ResponseBody.consumePayload(stream, payloadCharset);
                 throw createUnexpectedStatusException(statusCode, rawPayload == null ? "" : rawPayload, responseHeaders);
             }
             // ADR-0016 Aspect 1 & 5: Stream<String> returns line stream;
             // Stream<ServerSentEvent> returns parsed event stream
             if (ResponseBody.isStreamType(returnType, String.class)) {
                 if (logger.isLoggable(System.Logger.Level.INFO)) {
-                    logger.log(System.Logger.Level.INFO, streamingPayloadLine("streaming lines", responseHeaders));
+                    logger.log(System.Logger.Level.INFO, ResponseBody.streamingPayloadLine("streaming lines", responseHeaders));
                 }
-                Stream<String> lineStream = new BufferedReader(new InputStreamReader(effectiveStream, payloadCharset))
-                        .lines()
-                        .onClose(() -> closeQuietly(effectiveStream));
+                Stream<String> lineStream = ResponseBody.lineStream(stream, payloadCharset, logger);
                 if (optional) {
                     // ADR-0023 × ADR-0016: a missing resource is Optional.empty()
                     // with the stream closed, never a stream to drain; success
                     // wraps the artifact, never hands it over raw
-                    if (statusCode == 404 || statusCode == 304 || statusCode == 204) {
+                    if (ResponseBody.isMissingResource(statusCode)) {
                         lineStream.close();
                         return (T) Optional.empty();
                     }
@@ -827,17 +809,14 @@ class HttpTemplate {
             }
             if (ResponseBody.isStreamType(returnType, ServerSentEvent.class)) {
                 if (logger.isLoggable(System.Logger.Level.INFO)) {
-                    logger.log(System.Logger.Level.INFO, streamingPayloadLine("streaming events", responseHeaders));
+                    logger.log(System.Logger.Level.INFO, ResponseBody.streamingPayloadLine("streaming events", responseHeaders));
                 }
-                Stream<String> lineStream = new BufferedReader(new InputStreamReader(effectiveStream, payloadCharset))
-                        .lines()
-                        .onClose(() -> closeQuietly(effectiveStream));
-                Stream<ServerSentEvent> eventStream = ServerSentEvent.parse(lineStream);
+                Stream<ServerSentEvent> eventStream = ResponseBody.eventStream(stream, payloadCharset, logger);
                 if (optional) {
                     // ADR-0023 × ADR-0016: the same missing-resource rule as the
                     // line stream — close propagates through the parser to the
                     // wire stream
-                    if (statusCode == 404 || statusCode == 304 || statusCode == 204) {
+                    if (ResponseBody.isMissingResource(statusCode)) {
                         eventStream.close();
                         return (T) Optional.empty();
                     }
@@ -848,18 +827,18 @@ class HttpTemplate {
             // ADR-0015 Aspect 5: the payload line is skipped for stream
             // responses — logging must not consume the body
             if (logger.isLoggable(System.Logger.Level.INFO)) {
-                logger.log(System.Logger.Level.INFO, streamingPayloadLine("streaming", responseHeaders));
+                logger.log(System.Logger.Level.INFO, ResponseBody.streamingPayloadLine("streaming", responseHeaders));
             }
             if (optional) {
-                if (statusCode == 404 || statusCode == 304 || statusCode == 204) {
-                    closeQuietly(effectiveStream);
+                if (ResponseBody.isMissingResource(statusCode)) {
+                    ResponseBody.closeQuietly(stream, logger);
                     return (T) Optional.empty();
                 }
                 if (InputStream.class.equals(returnType)) {
-                    return (T) Optional.of(effectiveStream);
+                    return (T) Optional.of(stream);
                 }
             }
-            return (T) effectiveStream;
+            return (T) stream;
         }
 
         byte[] bytes = response.body();
@@ -875,7 +854,7 @@ class HttpTemplate {
         }
 
         if (optional) {
-            if (statusCode == 404 || statusCode == 304 || statusCode == 204 || bytes == null || bytes.length == 0) {
+            if (ResponseBody.isMissingResource(statusCode) || bytes == null || bytes.length == 0) {
                 if (logger.isLoggable(System.Logger.Level.INFO)) {
                     logger.log(System.Logger.Level.INFO, "No response or empty/status for Optional return.");
                 }
@@ -939,29 +918,6 @@ class HttpTemplate {
         }
 
         return responseCodec(responseHeaders).deserialize(bytes, returnType, contentTypeOf(responseHeaders));
-    }
-
-    private void closeQuietly(InputStream stream) {
-        if (stream == null) {
-            return;
-        }
-        try {
-            stream.close();
-        } catch (IOException e) {
-            logger.log(System.Logger.Level.INFO, "Failed to close the response stream", e);
-        }
-    }
-
-    // ADR-0015 & ADR-0016: streaming variant of the payload log line
-    private static String streamingPayloadLine(String prefix, List<Header> headers) {
-        String contentLength = headers.stream()
-                .filter(h -> h.name() != null && h.name().equalsIgnoreCase("Content-Length"))
-                .map(Header::value)
-                .findFirst()
-                .orElse(null);
-        return contentLength == null
-                ? prefix + " (length unknown)"
-                : prefix + ", Content-Length: " + contentLength;
     }
 
     // Handles redirects according to HTTP spec:
@@ -1164,7 +1120,7 @@ class HttpTemplate {
         byte[] bytes = response.body();
         String payload = (bytes != null && bytes.length > 0) ? new String(bytes, StandardCharsets.UTF_8) : null;
         if (optional) {
-            if (status == 404 || status == 304 || status == 204 || payload == null) {
+            if (ResponseBody.isMissingResource(status) || payload == null) {
                 return true;
             }
             if (String.class.equals(returnType) || byte[].class.equals(returnType) || Void.class.equals(returnType) || void.class.equals(returnType)) {
@@ -1496,7 +1452,7 @@ class HttpTemplate {
     // failure is logged, not thrown: body hygiene, not the call's fate
     private void closeIntermediateStream(WireResponse response) {
         if (response != null) {
-            closeQuietly(response.stream());
+            ResponseBody.closeQuietly(response.stream(), logger);
         }
     }
 

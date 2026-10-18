@@ -1,12 +1,16 @@
 package ru.jrestly.http;
 
+import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.function.Consumer;
+import java.util.function.Supplier;
 import java.util.stream.Stream;
 
 /**
@@ -28,7 +32,16 @@ import java.util.stream.Stream;
  *         streaming error payload respecting the resolved charset (ADR-0015
  *         Aspect 3);</li>
  *     <li>{@link #extractText(WireResponse)} — a buffered body as text with the
- *         resolved charset.</li>
+ *         resolved charset;</li>
+ *     <li>{@link #isMissingResource(int)} — the shared missing-resource rule of
+ *         the Optional-returning methods, ADR-0023 × ADR-0016;</li>
+ *     <li>{@link #lineStream(InputStream, Charset)} and {@link #eventStream(InputStream,
+ *         Charset)} — the streaming artifacts built over the wire stream
+ *         (ADR-0016);</li>
+ *     <li>{@link #wrapForTrailers(InputStream, java.util.function.Supplier, ResponseHeaders,
+ *         ResponseHeaders)} — the terminal hook for late-arriving trailers
+ *         (ADR-0059);</li>
+ *     <li>{@link #closeQuietly(InputStream, System.Logger)} — tolerant close.</li>
  * </ul>
  *
  * <p>It is stateless, like {@link RetryAfter} and {@link ProblemDetailResolver}:
@@ -37,6 +50,80 @@ import java.util.stream.Stream;
 final class ResponseBody {
 
     private ResponseBody() {
+    }
+
+    // ADR-0023 × ADR-0016: the shared missing-resource rule of the
+    // Optional-returning methods — a missing resource is Optional.empty()
+    // with the stream closed, never a stream to drain
+    static boolean isMissingResource(int statusCode) {
+        return statusCode == 404 || statusCode == 304 || statusCode == 204;
+    }
+
+    // ADR-0016 Aspect 1: Stream<String> returns a line stream. The close
+    // propagates back to the wire stream — the artifact owns it.
+    static Stream<String> lineStream(InputStream stream, Charset charset, System.Logger logger) {
+        return new BufferedReader(new InputStreamReader(stream, charset))
+                .lines()
+                .onClose(() -> closeQuietly(stream, logger));
+    }
+
+    // ADR-0016 Aspect 5: Stream<ServerSentEvent> returns a parsed event
+    // stream chained over the line stream — closing the artifact closes the
+    // line stream, which closes the wire stream.
+    static Stream<ServerSentEvent> eventStream(InputStream stream, Charset charset, System.Logger logger) {
+        return ServerSentEvent.parse(lineStream(stream, charset, logger));
+    }
+
+    // ADR-0059: terminal streaming hook — late-arriving trailers are
+    // populated into the per-call holder and the capture-thread-local holder
+    // when the stream ends. The hook is only attached when someone actually
+    // receives the headers.
+    static InputStream wrapForTrailers(InputStream stream,
+                                       Supplier<List<Header>> trailersSupplier,
+                                       ResponseHeaders perCallHolder,
+                                       ResponseHeaders capturedHolder) {
+        if (trailersSupplier == null || (perCallHolder == null && capturedHolder == null)) {
+            return stream;
+        }
+        Consumer<List<Header>> trailersConsumer = trailers -> {
+            if (perCallHolder != null) {
+                perCallHolder.populateTrailers(trailers);
+            }
+            if (capturedHolder != null) {
+                capturedHolder.populateTrailers(trailers);
+            }
+        };
+        return new TrailerCompletingInputStream(stream, trailersSupplier, trailersConsumer);
+    }
+
+    // Body hygiene, not the call's fate: a close failure is logged (when a
+    // logger is around), never thrown
+    static void closeQuietly(InputStream stream, System.Logger logger) {
+        if (stream == null) {
+            return;
+        }
+        try {
+            stream.close();
+        } catch (IOException e) {
+            if (logger != null) {
+                logger.log(System.Logger.Level.INFO, "Failed to close the response stream", e);
+            }
+        }
+    }
+
+    // ADR-0015 & ADR-0016: streaming variant of the payload log line. A
+    // null-named or null-valued header is skipped — findFirst on a null
+    // mapped element would throw, and a malformed response must not kill
+    // the INFO log of a streaming call
+    static String streamingPayloadLine(String prefix, List<Header> headers) {
+        String contentLength = headers.stream()
+                .filter(h -> h.name() != null && h.name().equalsIgnoreCase("Content-Length") && h.value() != null)
+                .map(Header::value)
+                .findFirst()
+                .orElse(null);
+        return contentLength == null
+                ? prefix + " (length unknown)"
+                : prefix + ", Content-Length: " + contentLength;
     }
 
     // ADR-0015 Aspect 3: the error paths' consumption — the stream's

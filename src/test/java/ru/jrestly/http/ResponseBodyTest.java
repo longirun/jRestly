@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.lang.reflect.Method;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
@@ -13,9 +14,12 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Stream;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -160,8 +164,228 @@ class ResponseBodyTest {
     }
 
     // ------------------------------------------------------------------
+    // isMissingResource — shared Optional rule (ADR-0023 × ADR-0016)
+    // ------------------------------------------------------------------
+
+    @Test
+    @DisplayName("isMissingResource: 404/304/204 is a missing resource, everything else is not")
+    void isMissingResourceMatrix() {
+        assertTrue(ResponseBody.isMissingResource(404));
+        assertTrue(ResponseBody.isMissingResource(304));
+        assertTrue(ResponseBody.isMissingResource(204));
+        assertFalse(ResponseBody.isMissingResource(200));
+        assertFalse(ResponseBody.isMissingResource(403));
+        assertFalse(ResponseBody.isMissingResource(500));
+    }
+
+    // ------------------------------------------------------------------
+    // lineStream — wire stream → Stream<String> (ADR-0016 Aspect 1)
+    // ------------------------------------------------------------------
+
+    @Test
+    @DisplayName("lineStream: decodes lines with the declared charset and closes the wire stream on close")
+    void lineStreamDecodesAndClosesWire() {
+        AtomicBoolean wireClosed = new AtomicBoolean();
+        InputStream wire = closingTrack("héllo\nworld".getBytes(StandardCharsets.ISO_8859_1), wireClosed);
+        Stream<String> lineStream = ResponseBody.lineStream(wire, StandardCharsets.ISO_8859_1, null);
+
+        List<String> lines = lineStream.toList();
+        assertEquals(List.of("héllo", "world"), lines);
+        assertFalse(wireClosed.get());
+
+        lineStream.close();
+        assertTrue(wireClosed.get());
+    }
+
+    @Test
+    @DisplayName("lineStream: an empty wire stream yields an empty artifact, close is still safe")
+    void lineStreamEmptyWire() {
+        Stream<String> lineStream = ResponseBody.lineStream(new ByteArrayInputStream(new byte[0]), StandardCharsets.UTF_8, null);
+        assertEquals(List.of(), lineStream.toList());
+        lineStream.close();
+    }
+
+    @Test
+    @DisplayName("lineStream: a failing wire close is logged, never thrown out of the artifact")
+    void lineStreamCloseFailureIsLoggedNotThrown() {
+        InputStream wire = new ByteArrayInputStream("data".getBytes(StandardCharsets.UTF_8)) {
+            @Override
+            public void close() throws IOException {
+                throw new IOException("boom");
+            }
+        };
+        RecordingLogger logger = new RecordingLogger();
+        Stream<String> lineStream = ResponseBody.lineStream(wire, StandardCharsets.UTF_8, logger);
+        lineStream.close();
+        assertEquals("Failed to close the response stream", logger.lastMessage);
+    }
+
+    // ------------------------------------------------------------------
+    // eventStream — wire stream → Stream<ServerSentEvent> (ADR-0016 Aspect 5)
+    // ------------------------------------------------------------------
+
+    @Test
+    @DisplayName("eventStream: parses events over the line stream and close propagates to the wire stream")
+    void eventStreamParsesAndClosePropagates() {
+        AtomicBoolean wireClosed = new AtomicBoolean();
+        InputStream wire = closingTrack("data: hi\n\n".getBytes(StandardCharsets.UTF_8), wireClosed);
+        Stream<ServerSentEvent> eventStream = ResponseBody.eventStream(wire, StandardCharsets.UTF_8, null);
+
+        List<ServerSentEvent> events = eventStream.toList();
+        assertEquals(1, events.size());
+        assertEquals("hi", events.get(0).data());
+        assertFalse(wireClosed.get());
+
+        // close propagates through the parser: event stream → line stream → wire stream
+        eventStream.close();
+        assertTrue(wireClosed.get());
+    }
+
+    @Test
+    @DisplayName("eventStream: the declared charset decodes event data")
+    void eventStreamHonorsCharset() {
+        AtomicBoolean wireClosed = new AtomicBoolean();
+        InputStream wire = closingTrack("data: précis\n\n".getBytes(StandardCharsets.ISO_8859_1), wireClosed);
+        Stream<ServerSentEvent> eventStream = ResponseBody.eventStream(wire, StandardCharsets.ISO_8859_1, null);
+        assertEquals("précis", eventStream.toList().get(0).data());
+        eventStream.close();
+    }
+
+    // ------------------------------------------------------------------
+    // wrapForTrailers — terminal hook (ADR-0059)
+    // ------------------------------------------------------------------
+
+    @Test
+    @DisplayName("wrapForTrailers: no supplier or no holders — the wire stream is passed through untouched")
+    void wrapForTrailersPassThroughCases() {
+        ByteArrayInputStream wire = new ByteArrayInputStream("body".getBytes(StandardCharsets.UTF_8));
+        assertSame(wire, ResponseBody.wrapForTrailers(wire, null, new ResponseHeaders(), new ResponseHeaders()));
+        assertSame(wire, ResponseBody.wrapForTrailers(wire, List::of, null, null));
+        assertSame(wire, ResponseBody.wrapForTrailers(wire, null, null, null));
+    }
+
+    @Test
+    @DisplayName("wrapForTrailers: the hook attaches when both a supplier and a receiver are present")
+    void wrapForTrailersAttachesHook() {
+        assertInstanceOf(TrailerCompletingInputStream.class, ResponseBody.wrapForTrailers(
+                new ByteArrayInputStream(new byte[0]), List::of, new ResponseHeaders(), null));
+        assertInstanceOf(TrailerCompletingInputStream.class, ResponseBody.wrapForTrailers(
+                new ByteArrayInputStream(new byte[0]), List::of, null, new ResponseHeaders()));
+        assertInstanceOf(TrailerCompletingInputStream.class, ResponseBody.wrapForTrailers(
+                new ByteArrayInputStream(new byte[0]), List::of, new ResponseHeaders(), new ResponseHeaders()));
+    }
+
+    @Test
+    @DisplayName("wrapForTrailers: the attached hook populates the per-call holder and capture holder on EOF")
+    void wrapForTrailersPopulatesHoldersAtEof() throws IOException {
+        ResponseHeaders perCall = new ResponseHeaders();
+        ResponseHeaders captured = new ResponseHeaders();
+        List<Header> trailers = List.of(new Header("X-Hash", "abc"));
+        InputStream hooked = ResponseBody.wrapForTrailers(
+                new ByteArrayInputStream("chunk".getBytes(StandardCharsets.UTF_8)),
+                () -> trailers, perCall, captured);
+
+        assertEquals("chunk", new String(hooked.readAllBytes(), StandardCharsets.UTF_8));
+        hooked.close();
+
+        assertEquals(trailers, perCall.trailers());
+        assertEquals(trailers, captured.trailers());
+    }
+
+    @Test
+    @DisplayName("wrapForTrailers: a holder that is null leaves the sister holder untouched at EOF")
+    void wrapForTrailersNullSisterHolderUntouched() throws IOException {
+        ResponseHeaders captured = new ResponseHeaders();
+        List<Header> trailers = List.of(new Header("X-Hash", "abc"));
+        InputStream hooked = ResponseBody.wrapForTrailers(
+                new ByteArrayInputStream(new byte[0]), () -> trailers, null, captured);
+
+        hooked.readAllBytes();
+        hooked.close();
+
+        assertEquals(trailers, captured.trailers());
+    }
+
+    // ------------------------------------------------------------------
+    // closeQuietly — tolerant close
+    // ------------------------------------------------------------------
+
+    @Test
+    @DisplayName("closeQuietly: null stream is a no-op, a failing close is logged and not thrown")
+    void closeQuietlyToleratesFailures() throws IOException {
+        ResponseBody.closeQuietly(null, null);
+
+        InputStream wire = new ByteArrayInputStream(new byte[0]) {
+            @Override
+            public void close() throws IOException {
+                throw new IOException("boom");
+            }
+        };
+        assertDoesNotThrow(() -> ResponseBody.closeQuietly(wire, null));
+        assertDoesNotThrow(() -> ResponseBody.closeQuietly(wire, new RecordingLogger()));
+    }
+
+    // ------------------------------------------------------------------
+    // streamingPayloadLine — log line of a streamed payload
+    // ------------------------------------------------------------------
+
+    @Test
+    @DisplayName("streamingPayloadLine: Content-Length is picked up case-insensitively, absent means length unknown")
+    void streamingPayloadLineMatrix() {
+        assertEquals("streaming lines, Content-Length: 42", ResponseBody.streamingPayloadLine("streaming lines",
+                List.of(new Header("content-length", "42"))));
+        assertEquals("streaming lines (length unknown)", ResponseBody.streamingPayloadLine("streaming lines", List.of()));
+        assertEquals("streaming lines (length unknown)", ResponseBody.streamingPayloadLine("streaming lines",
+                List.of(new Header("Content-Length", null))));
+
+        List<Header> mixed = new java.util.ArrayList<>();
+        mixed.add(new Header(null, "42"));
+        mixed.add(new Header("Content-Length", "7"));
+        assertEquals("streaming events, Content-Length: 7", ResponseBody.streamingPayloadLine("streaming events", mixed));
+    }
+
+    // ------------------------------------------------------------------
     // fixtures
     // ------------------------------------------------------------------
+
+    private static InputStream closingTrack(byte[] data, AtomicBoolean closed) {
+        return new ByteArrayInputStream(data) {
+            @Override
+            public void close() throws IOException {
+                closed.set(true);
+                super.close();
+            }
+        };
+    }
+
+    /** Captures the logged message instead of emitting it — no console noise. */
+    private static final class RecordingLogger implements System.Logger {
+        private String lastMessage;
+
+        @Override
+        public String getName() {
+            return "test";
+        }
+
+        @Override
+        public boolean isLoggable(Level level) {
+            return true;
+        }
+
+        @Override
+        public void log(Level level, java.util.ResourceBundle bundle, String msg, Object... params) {
+            lastMessage = msg;
+        }
+
+        @Override
+        public void log(Level level, java.util.ResourceBundle bundle, String msg, Throwable thrown) {
+            lastMessage = msg;
+        }
+
+        public void log(Level level, java.util.ResourceBundle bundle, String msg) {
+            lastMessage = msg;
+        }
+    }
 
     private interface TypeSource {
         Stream<String> lines();
