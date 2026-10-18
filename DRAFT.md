@@ -1,5 +1,41 @@
 # DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
+> **Сессия #267 (free-аудит `HttpTemplate` — завершение WIP прерванной #266: package-private seams `hasHeader`/`isCrossOrigin`/`effectivePort` обрели unit-матрицу; закрыто 14 ветвей в трёх методах — missed branches `hasHeader` 5 → 0, `isCrossOrigin` 6 → 0, `effectivePort` 3 → 0; `HttpTemplate` 176 → 162 missed; гейт 1,528/1,528, INSTRUCTION 97.46%, LINE 97.18%, BRANCH 87.69%, COMPLEXITY 85.49%):**
+> свободный ход по хвосту непокрытых ветвей `HttpTemplate` (176 missed по данным #265);
+> #266 оборвалась до коммита (паттерн #155/#186/#254): в дереве — только package-private
+> seam'ы `hasHeader`, `isCrossOrigin`, `effectivePort` (+ комментарии о намеренности),
+> но без тестов. Приняты, верифицированы по коду, покрыты.
+> 1. *Аудит (матрица ветвей по HTML-отчёту JaCoCo):*
+>    - `hasHeader(req, name)` (L569/L573; 5 missed из 12): `req == null`,
+>      `req.headers() == null`, элемент `null` в списке заголовков и `Header` с
+>      `null`-именем — все defensive-ветви не вызывались (в проде `effectiveRequest`
+>      всегда валиден, а `List.of` запрещает null-элементы → e2e до них не доходит);
+>      плюс ветвь «не найдено» (`equalsIgnoreCase == false`);
+>    - `isCrossOrigin(from, to)` (L1755/L1756/L1759/L1760; 6 missed из 14):
+>      `from.getScheme() == null` / `to.getScheme() == null` (относительный URI),
+>      `from.getHost() == null` / `to.getHost() == null` (opaque URI вида `foo:/opaque`),
+>      сравнение схем и хостов без учёта регистра (обе стороны `equalsIgnoreCase`);
+>    - `effectivePort(uri)` (L1767/L1770; 3 missed из 4): явный порт, дефолт `https`
+>      → 443 (в т.ч. схема `HTTPS` — регистронезависимо), дефолт прочих схем → 80.
+> 2. *TDD и гейт:*
+>    - Два новых безсетевых сьюта: `HttpTemplateCrossOriginTest` (10 тестов —
+>      матрица `isCrossOrigin` + `effectivePort`) и `HttpTemplateConditionalHeaderTest`
+>      (7 тестов — матрица `hasHeader`, включая null-элемент и `Header(null, v)` —
+>      `List.copyOf`/`List.of` такие не принимают, поэтому список собирается `ArrayList`).
+>      До seam-семейства #266 тесты не компилировались бы (методы были `private`),
+>      на seam'ах — зелёные с первого прогона.
+>    - Всего тестов: **1,528 / 1,528** green across all 5 modules (+17 тестов, 0 failures, 0 errors, 0 warnings under `-Werror`).
+>    - `hasHeader`: missed 5 → **0**; `isCrossOrigin`: 6 → **0**; `effectivePort`: 3 → **0**;
+>      `HttpTemplate`: 176 → **162** missed (82.69%). Суммарный BRANCH-прирост +15 (14 — этот
+>      срез, одна ветвь — джиттер-зависимая в `RetryPolicy`, вне среза).
+>    - **JaCoCo Coverage:**
+>      * **CLASS:** **143 / 143 (100.00%)**; **METHOD:** **1432 / 1432 (100.00%)** — абсолютные 100% сохранены!
+>      * **BRANCH:** **3,896 / 4,443 (87.69%)** — новый исторический рекорд!
+>      * **INSTRUCTION:** **30,582 / 31,380 (97.46%)** — новый исторический рекорд!
+>      * **LINE:** **6,646 / 6,839 (97.18%)** — новый исторический рекорд!
+>      * **COMPLEXITY:** **3,151 / 3,686 (85.49%)** — новый исторический рекорд!
+>    - ADR не тронут — чистый coverage-срез по контракту.
+
 > **Сессия #265 (free-аудит `ResponseHeaders` и `ProblemDetail$ZeroDepJsonParser`: масштабный coverage-срез заголовков ответа и встроенного zero-dep JSON парсера; закрыто 19 ветвей `ResponseHeaders` — missed branches 34 → 15, ветви 81.3% → 91.8%; закрыто 5 ветвей `ZeroDepJsonParser` — missed branches 29 → 24, ветви 79.0% → 82.6%; впервые в истории библиотеки преодолён рубеж 87% Branch Coverage — 87.35%; впервые пробит рубеж 85% Complexity — 85.11%; гейт 1,511/1,511 тестов, INSTRUCTION 97.40%, LINE 97.09%):**
 > свободный ход по классам ядра с наибольшим хвостом непокрытых ветвей;
 > сужение на `ResponseHeaders` (34 missed branches на входе, 81.3% coverage) и `ProblemDetail$ZeroDepJsonParser` (29 missed branches, 79.0% coverage):

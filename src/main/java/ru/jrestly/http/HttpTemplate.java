@@ -565,7 +565,8 @@ class HttpTemplate {
         );
     }
 
-    private static boolean hasHeader(WireRequest req, String name) {
+    // Package-private seam: unit tests verify all defensive branches
+    static boolean hasHeader(WireRequest req, String name) {
         if (req == null || req.headers() == null) {
             return false;
         }
@@ -1751,7 +1752,8 @@ class HttpTemplate {
                 .orElse(null);
     }
 
-    private static boolean isCrossOrigin(URI from, URI to) {
+    // Package-private seam: unit tests verify all cross-origin comparison branches
+    static boolean isCrossOrigin(URI from, URI to) {
         if (from.getScheme() == null || to.getScheme() == null
                 || !from.getScheme().equalsIgnoreCase(to.getScheme())) {
             return true;
@@ -1763,7 +1765,8 @@ class HttpTemplate {
         return effectivePort(from) != effectivePort(to);
     }
 
-    private static int effectivePort(URI uri) {
+    // Package-private seam: unit tests verify default-port resolution
+    static int effectivePort(URI uri) {
         if (uri.getPort() != -1) {
             return uri.getPort();
         }

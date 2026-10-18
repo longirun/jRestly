@@ -51,39 +51,6 @@
 
 ---
 
-[2026-10-17 22:30] Агент (сессия #251): Антон, продолжил глубокий аудит и харденинг краевых условий библиотечных подсистем, взят новый рубеж Branch Coverage в JaCoCo:
-- В `CallMetrics`: верифицировано извлечение `statusCode()` из вложенного `HandledException` (`t.getCause()`), пустые ответы/сбои (`statusCode == -1`, `isSuccess == false`), и не-2xx ответы без сбоев.
-- В `ApiKeyAuth`: верифицирован обход методов с `@Authorization`, безопасная работа при `context == null` или `context.method() == null`, корректная конкатенация query при наличии И query, И фрагмента URI (`?tab=all#details`), а также динамические `Supplier<String>`.
-- В `UnexpectedStatusException`: протестированы все варианты `getMessage()` при вариациях null/empty `title` и `detail`, а также безопасный fallback в `getRawBody()`.
-- В `ProblemDetailException`: протестирован 3-аргументный конструктор при `details == null`, `details instanceof ProblemDetail`, и строковых/кастомных деталях, а также все ветки `getMessage()`.
-- В `ProblemDetail`: проверена очистка в `setProperties(null)`, фильтрация blank-имен в `setProperty`, сериализация вариаций полей в `toJson()`, парсинг нечисловых статусов в `fromJson()`, а также полный контракт `equals()` и `hashCode()`.
-- В `ResponseHeaders`: протестированы краевые случаи парсинга заголовков `Link` (запятые внутри кавычек, множественные токены `rel`, неэкранированный `rel`, пустые/битые заголовки), а также возврат `Optional.empty()` в `locationUri()` при невалидных URI с пробелами.
-- В `CacheControl`: протестированы null-элементы/имена/значения в заголовках, пустые токены в `Cache-Control`, кавычки вокруг значений, отрицательные/нечисловые директивы `max-age` и `stale-while-revalidate`, а также возврат `EMPTY` при отсутствии директив.
-- В `TraceContext`: протестирован парсинг некорректных нешестнадцатеричных `traceId` и `spanId`, а также краевые биты флагов в `isSampled()`.
-- В `ReconnectPolicy.Builder`: протестирована полная fail-fast валидация параметров (`maxAttempts < 0`, отрицательный `initialBackoff`, `initialBackoff > maxBackoff`, `backoffMultiplier < 1.0` и `NaN`, null-checks).
-- В `ServerSentEventReconnector`: протестирован выброс `NoSuchElementException` в `next()` на пустом потоке.
-- В `AbstractHttpClient`: протестированы безопасные дефолты акцессоров (`getCookieHandler()`, `getCookieStore()`, `getProxySelector()`, `getAuthenticator()`, `getHttpClient()`) при `moduleInfo == null`, а также поведение при кастомном не-`CookieManager` обработчике кук.
-- Новые исторические рекорды качества JaCoCo:
-  * **82.94% Branch Coverage** (3,655 / 4,407, +1.14% за сессию, преодолен рубеж 82.9%)!
-  * **95.69% Instruction Coverage** (29,852 / 31,198, +0.04%);
-  * **95.54% Line Coverage** (6,492 / 6,795, +0.09%);
-  * **80.57% Complexity** (2,944 / 3,654, преодолен рубеж 80.5%);
-  * **100.00% Method Coverage (1418/1418)**;
-  * **100.00% Class Coverage (143/143)**.
-- Тестовая база выросла до **1422 / 1422** тестов (100% green across all 5 modules, 0 failures, 0 errors, 0 warnings under `-Werror`).
-[2026-10-17 23:30] Агент (сессия #253): Антон, найден и устранён 34-й «тихий» баг серии — в ядре HTTP-пайплайна:
-- *Находка:* `HttpTemplateBuilder` собирал список заголовков для сброса на кросс-оригинных редиректах из «сырого» `AuthProvider.getAuthHeaders()`. Из-за этого явный `@RequestHeader` контроллера, затеняющий ambient auth-заголовок **по имени** (реалистичный кейс: клиент с `bearerAuth(...)` + per-call `@RequestHeader("Authorization")` override), молча удалялся на кросс-оригинном хопе — редирект улетал **без `Authorization` вообще**, нарушая обещание ADR-0002 («явные значения `@RequestHeader` переживают редирект»).
-- *Fix:* drop-list теперь вычисляется как ambient auth-имени **минус** явные `@RequestHeader`-имена контроллера (статические + динамические, case-insensitive). Оба пути (sync и async) проходят через `nextHop()`, поэтому исправление покрывает оба. Остаточный краевой кейс (Map-типизированный динамический `@RequestHeader` с runtime-ключом, совпадающим с ambient auth-именем) задокументирован как non-goal в поправке.
-- *TDD:* red-first тест `CrossOriginRedirectTest.crossOriginRedirectPreservesExplicitAuthOverride` (hop 1 несёт явный токен; hop 2, кросс-оригинный, теперь несёт его тоже) — до фикса красный, после зелёный.
-- *Гейты:* **1423/1423** тестов зелёные (0 failures, 0 errors, 0 warnings under `-Werror`), Javadoc чист.
-- *Новые исторические рекорды JaCoCo:*
-  * **95.74% Instruction Coverage** (29,935 / 31,266);
-  * **82.95% Branch Coverage** (3,667 / 4,421);
-  * **95.58% Line Coverage** (6,504 / 6,805);
-  * **100.00% Method Coverage (1418/1418)**;
-  * **100.00% Class Coverage (143/143)**.
-- ADR-0002 дополнен `## Amendment #253`.
-
 [2026-10-18 01:20] Агент (сессия #255): Антон, доброе утро! Сессия #254 оборвалась до коммита (знакомый паттерн #155/#186), так что #255 начала с приёма и верификации её WIP — всё сходилось с кодом и прошло гейт с первого прогона:
 - *Наблюдение:* post-wire диспетчер RFC 9111 из ADR-0063 (`HttpTemplate.handleCacheResponse`: 304-revalidation → `update`, fresh 200/301/404 GET → `put`, unsafe 200..399 → `invalidate`, стриминговый streamify синтезированного 200) покрывался только сквозными WireMock-тестами, а ветвь `delayMillis <= 0` в async retry — только «лотерейным» FULL-jitter нулём (1/11), т.е. её покрытие зависело от соли JVM.
 - *Fix/покрытие:* `handleCacheResponse` переведён на package-private (намеренный seam) + новый сьют `HttpTemplateCacheDispatchTest` (11 тестов, записывающий фейк `HttpCache`, без сети) — полная матрица dispatch: pass-through, 304 → синтезированный 200, 304 при вытесненном entry, 304 × streaming, `put` 200/301/404, no-op 204/302/500, invalidation POST/PUT/PATCH/DELETE. Плюс `initialBackoff(Duration.ZERO)` детерминизирует zero-backoff ветвь async retry.
@@ -138,5 +105,19 @@
   * **85.11% Complexity** (3,137 / 3,686) — **впервые преодолён рубеж 85% Complexity!**
   * **100.00% Method Coverage (1432/1432)**, **100.00% Class Coverage (143/143)**!
 - Тестовая база: **1,511 / 1,511** тестов зелёные across all 5 modules (+9 тестов, 0 failures, 0 errors, 0 warnings under `-Werror`).
+
+[2026-10-18 08:30] Агент (сессия #267): Антон, доброе утро! Сессия #266 оборвалась до коммита (знакомый паттерн #155/#186/#254) — оставила в дереве три package-private seam'а `HttpTemplate` (`hasHeader`/`isCrossOrigin`/`effectivePort`) **без тестов**. #267 приняла WIP и довела его до конца:
+- *Аудит:* по HTML-отчёту JaCoCo снял точную карту непокрытых ветвей: `hasHeader` 5 missed, `isCrossOrigin` 6 missed, `effectivePort` 3 missed. Это defensive-обвязка, до которой e2e не доходит: `null`-request / `null`-список заголовков / `null`-элемент / `Header` с `null`-именем; `null`-схема (относительный URI) и `null`-хост (opaque `foo:/opaque`); явный порт и дефолты 443/80 (в т.ч. регистронезависимо).
+- *Тесты:* два безсетевых сьюта — `HttpTemplateCrossOriginTest` (10) + `HttpTemplateConditionalHeaderTest` (7). До seam-семейства #266 они бы не скомпилировались (методы были `private`).
+- *Гейты:* **1,528 / 1,528** тестов зелёные across all 5 modules (+17), 0 failures/errors, javadoc чист под `-Werror`.
+- *Новые исторические рекорды JaCoCo:*
+  * **87.69% Branch Coverage** (3,896 / 4,443);
+  * **97.46% Instruction Coverage** (30,582 / 31,380);
+  * **97.18% Line Coverage** (6,646 / 6,839);
+  * **85.49% Complexity** (3,151 / 3,686);
+  * **100.00% Method Coverage (1432/1432)**, **100.00% Class Coverage (143/143)**.
+- `HttpTemplate`: 176 → **162** missed branches (82.69%).
+- Дальше — остаток `HttpTemplate` (`processResponse` ~23, `exchange`/`exchangeAsync`) или концепт ADR-0066 для цикла 0.11.0.
+
 
 
