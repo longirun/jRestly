@@ -32,7 +32,7 @@ class ArrayParameterWireMockTest extends BaseWireMockTest {
         String getByFilterMap(@RequestParam Map<String, Object> filter);
 
         @Get("/api/items#top")
-        String getWithFragmentAndParam(@RequestParam(name = "page") int page);
+        String getWithFragmentAndParam(@RequestParam int page);
     }
 
     interface ArrayHeaderController {

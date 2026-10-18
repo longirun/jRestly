@@ -55,11 +55,11 @@ class MultipartIndependentTest extends BaseWireMockTest {
         @Post(value = "/api/upload",  requestType = RequestType.MULTIPART_FORM_DATA)
         @HttpVersion(HttpClient.Version.HTTP_1_1) // chunked transfer encoding is HTTP/1.1 semantics
         String uploadStreamWithText(@MultipartFormFile(partName = "file") FileContent file,
-                                    @RequestParam(name = "comment") String comment);
+                                    @RequestParam String comment);
 
         @Post(value = "/api/upload",  requestType = RequestType.MULTIPART_FORM_DATA)
         String uploadThreeParts(@MultipartFormFile(partName = "alpha") List<FileContent> alpha,
-                                @RequestParam(name = "note") String note,
+                                @RequestParam String note,
                                 @MultipartFormFile(partName = "beta") List<FileContent> beta);
     }
 

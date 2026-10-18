@@ -72,10 +72,10 @@ public class TargetUrlTest extends BaseWireMockTest {
         String fetchSubpath(@TargetUrl String baseUrl);
 
         @Get("/items/${id}")
-        String fetchItemWithVar(@TargetUrl URI baseUri, @PathVariable(name = "id") String id);
+        String fetchItemWithVar(@TargetUrl URI baseUri, @PathVariable String id);
 
         @Get
-        String queryParams(@TargetUrl String baseUrl, @RequestParam(name = "limit") int limit);
+        String queryParams(@TargetUrl String baseUrl, @RequestParam int limit);
 
         @Get
         CompletableFuture<String> fetchAsync(@TargetUrl URI uri);

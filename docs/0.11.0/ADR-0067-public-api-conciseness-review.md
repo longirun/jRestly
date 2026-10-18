@@ -1,6 +1,6 @@
 # ADR-0067: Public API Conciseness Review (Candidate #6)
 
-- **Status:** P1 реализован (#292); P2/P3/P4 — после (P3 подтверждён словом Антона: лаконичность перевешивает самобытность); P5 — не трогать.
+- **Status:** P1 реализован (#292), P2 реализован (#293); P3/P4 — после (P3 подтверждён словом Антона: лаконичность перевешивает самобытность); P5 — не трогать.
 - **Session:** #285 (2026-10-18)
 - **Задача Антона (mailbox, 2026-10-18):** «Рассмотреть публичный апи на предмет лаконичности.
   Вроде даже у Ретрофита он менее многословный? Обратная совместимость нам не требуется —
@@ -166,3 +166,54 @@ merge кривой — это баг, чинить по TDD в отдельно�
 - Дальше: P2 (безымянные биндинги в README/примерах — код не меняется), P3
   (`${id}` → `{id}`: маска `validatePath`, экстрактор #210, `createUrl`/
   `createUri` replace, README, тесты), P4-микропроверка.
+
+---
+
+## Amendment #293 (2026-10-19): P2 реализован
+
+*P2 исполнен как чистый документационный прогон* (поведение запросов не
+меняется — fallback на имя Java-параметра реализован ADR-0017 и защищён
+fail-fast'ом #212): 32 файла, 93 строки — README (8), javadoc
+`DownloadProgressListener` (1), shared fixtures `TestController`/
+`PathVariableController`, benchmarks (2) и поведенческие тесты (WireMock/
+integration). Правило, применённое программно: `@Ann(name = "X") T x` →
+`@Ann T x` **тогда и только тогда**, когда `X == x` и в скобках нет второго
+атрибута. Явный `name = ` сохранён ровно в своей нише: `query ≠ q`,
+`tag ≠ tags`, `Accept ≠ acceptOverride` (дискриминаторы), второй атрибут
+(`encoded = true`, `format = …`, `contentType = …`) и статические
+декларации (`@RequestHeader(name = …, value = …)`, `@RequestDefaultParam`,
+`@MultipartFormFile(partName = …)`). Тесты декларативной семантики
+(`ControllerValidationTest`, `MethodMetadataTest`, `*ValidationTest`,
+`HttpTemplateBuilderTest`) осознанно не тронуты — там атрибут `name` есть
+объект наблюдения, а не декор.
+
+*Факты, проверенные кодом для прогона:*
+
+- Bare-форма `@PathVariable T x` компилируется у всех четырёх аннотаций
+  параметрических биндингов, потому что `name()` имеет `default ""` —
+  грабля #292 (implicit `value` — только один абстрактный метод) бьёт по
+  синтаксису `@Ann("…")`, а не по пустым скобкам.
+- Исключение — `@MultipartFormFile.partName()`: default'а нет, поэтому
+  `partName = ` держится всегда, даже при совпадении с именем параметра.
+- `-parameters` стоит и в `compileJava`, и в `compileTestJava` (build.gradle
+  всех 5 модулей) — fallback в тестах/фикстурах надёжен.
+- Spring-бенчмарк (`SpringRestClientBenchmarkClient`) не тронут: его
+  `@PathVariable("id")` — аннотация Spring с единственным `value()`.
+
+*Находка прогона — fallback на имя параметра неполон для Map-префикса:*
+первый гейт упал на двух тестах `GetMethodTest` (prefixing `name[key]`) —
+`HttpTemplateBuilder` строит префикс из `rawRequestParamName()`, а не из
+эффективного имени (с fallback'ом ADR-0017): bare `@RequestParam Map filter`
+раскрывается в голые `status=…`, а `@RequestParam(name = "filter") Map filter`
+— в `filter[status]=…`. Это **задокументированное** поведение README
+(префикс — «if `@RequestParam.name()` is specified»), так что в рамках
+«кода не меняется» декларация `GetMethodTest.searchWithPrefixedMap`
+вернулась к явной форме (атрибут там — объект наблюдения, как в
+`*ValidationTest`). Хвост в беклог: либо довести fallback до Map-префикса
+(bare и named станут полностью эквивалентны), либо задокументировать
+различие явно — решать в отдельной сессии.
+
+Гейт **1,637/1,637** green across all 5 modules (число тестов не изменилось
+— правки декларативные), javadoc чист под `-Werror`. Исторические снапшоты
+(`docs/0.9.0/`, `docs/0.10.0/`, `ROADMAP.md`, §1 «jRestly сегодня» этого
+ADR) не переписаны — осознанно. Дальше: **P3** (`${id}` → `{id}`).

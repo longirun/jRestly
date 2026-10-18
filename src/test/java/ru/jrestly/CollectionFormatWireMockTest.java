@@ -54,7 +54,7 @@ class CollectionFormatWireMockTest extends BaseWireMockTest {
         @Get("/api/param-override")
         @QueryCollectionFormat(CollectionFormat.CSV)
         String getParamOverride(
-                @RequestParam(name = "csvTags") List<String> csvTags,
+                @RequestParam List<String> csvTags,
                 @RequestParam(name = "pipeTags", format = CollectionFormat.PIPES) List<String> pipeTags,
                 @RequestParam(name = "bracketTags", format = CollectionFormat.BRACKETS) List<String> bracketTags
         );
@@ -98,14 +98,14 @@ class CollectionFormatWireMockTest extends BaseWireMockTest {
         @Post(value = "/api/multipart/csv",  requestType = RequestType.MULTIPART_FORM_DATA)
         @QueryCollectionFormat(CollectionFormat.CSV)
         String postMultipartCsv(
-                @RequestParam(name = "tags") List<String> tags,
+                @RequestParam List<String> tags,
                 @MultipartFormFile(partName = "file") FileContent file
         );
 
         @Post(value = "/api/multipart/brackets",  requestType = RequestType.MULTIPART_FORM_DATA)
         @QueryCollectionFormat(CollectionFormat.BRACKETS)
         String postMultipartBrackets(
-                @RequestParam(name = "tags") List<String> tags,
+                @RequestParam List<String> tags,
                 @MultipartFormFile(partName = "file") FileContent file
         );
     }

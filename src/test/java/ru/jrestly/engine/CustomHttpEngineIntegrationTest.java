@@ -37,10 +37,10 @@ class CustomHttpEngineIntegrationTest {
 
     interface UserApi {
         @Get("/users/${id}")
-        UserDto getUser(@PathVariable(name = "id") long id);
+        UserDto getUser(@PathVariable long id);
 
         @Get("/users/${id}/async")
-        CompletableFuture<UserDto> getUserAsync(@PathVariable(name = "id") long id);
+        CompletableFuture<UserDto> getUserAsync(@PathVariable long id);
 
         @Get("/flaky")
         @Retry(times = 3, initialBackoffMs = 10)

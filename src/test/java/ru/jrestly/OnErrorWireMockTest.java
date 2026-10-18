@@ -92,7 +92,7 @@ class OnErrorWireMockTest {
         @Get("/api/items/${id}")
         @OnError(statuses = {404}, errorObject = NotFoundDto.class)
         @OnError(statuses = {422}, errorObject = ValidationDto.class)
-        String getItem(@PathVariable(name = "id") long id);
+        String getItem(@PathVariable long id);
 
         @Get("/api/unannotated-method")
         String callUnannotated();
@@ -103,19 +103,19 @@ class OnErrorWireMockTest {
 
         @Get("/api/typed-exception/${id}")
         @OnError(statuses = {404}, errorObject = ItemNotFoundException.class)
-        String getWithTypedException(@PathVariable(name = "id") long id);
+        String getWithTypedException(@PathVariable long id);
 
         @Get("/api/handled-subclass/${id}")
         @OnError(statuses = {409}, errorObject = ItemConflictException.class)
-        String getWithHandledSubclass(@PathVariable(name = "id") long id);
+        String getWithHandledSubclass(@PathVariable long id);
 
         @Get("/api/typed-async/${id}")
         @OnError(statuses = {404}, errorObject = ItemNotFoundException.class)
-        CompletableFuture<String> getAsyncWithTypedException(@PathVariable(name = "id") long id);
+        CompletableFuture<String> getAsyncWithTypedException(@PathVariable long id);
 
         @Get("/api/typed-stream/${id}")
         @OnError(statuses = {404}, errorObject = ItemNotFoundException.class)
-        InputStream getStreamWithTypedException(@PathVariable(name = "id") long id);
+        InputStream getStreamWithTypedException(@PathVariable long id);
 
         @Get("/api/unexpected")
         String callUnexpected();

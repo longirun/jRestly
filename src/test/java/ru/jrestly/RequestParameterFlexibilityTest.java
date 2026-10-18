@@ -42,14 +42,14 @@ class RequestParameterFlexibilityTest extends BaseWireMockTest {
         String searchItems(
                 @RequestParam(name = "filter") Map<String, Object> filters,
                 @RequestParam(name = "tag") List<String> tags,
-                @RequestParam(name = "offset") Integer offset,
+                @RequestParam Integer offset,
                 @RequestHeader(name = "Accept") String acceptOverride,
                 @RequestHeader(name = "X-Correlation-Id") String correlationId
         );
 
         @Get("/api/catalog/items/${id}")
         String getItem(
-                @PathVariable(name = "id") String id,
+                @PathVariable String id,
                 @RequestHeader Map<String, Object> dynamicHeaders
         );
 

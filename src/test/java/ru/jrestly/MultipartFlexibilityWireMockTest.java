@@ -33,7 +33,7 @@ class MultipartFlexibilityWireMockTest extends BaseWireMockTest {
 
         @Post(value = "/api/upload/json-string",  requestType = RequestType.MULTIPART_FORM_DATA)
         String uploadWithJsonString(@RequestParam(name = "config", contentType = "application/json") String json,
-                                    @RequestParam(name = "tag") String tag);
+                                    @RequestParam String tag);
 
         @Post(value = "/api/upload/charset-windows",  requestType = RequestType.MULTIPART_FORM_DATA)
         String uploadWithWindows1251(@RequestParam(name = "doc", contentType = "text/plain; charset=windows-1251") String text);
@@ -48,7 +48,7 @@ class MultipartFlexibilityWireMockTest extends BaseWireMockTest {
         String uploadWithJsonCollection(@RequestParam(name = "items", contentType = "application/json") List<ItemDto> items);
 
         @Post(value = "/api/form/submit",  requestType = RequestType.APPLICATION_FORM_URLENCODED)
-        String submitForm(@RequestParam(name = "name") String name, @RequestParam(name = "extra") String extra);
+        String submitForm(@RequestParam String name, @RequestParam String extra);
     }
 
     private MultipartFlexibilityController controller() {

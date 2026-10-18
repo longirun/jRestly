@@ -7,7 +7,7 @@ package ru.jrestly.http;
  * May be declared as an unannotated method parameter on controller interfaces:
  * <pre>{@code
  * @Get("/files/{id}")
- * InputStream download(@PathVariable(name = "id") String id,
+ * InputStream download(@PathVariable String id,
  *                      DownloadProgressListener progress);
  * }</pre>
  */

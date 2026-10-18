@@ -65,10 +65,10 @@ class ResponseHeadersWireMockTest extends BaseWireMockTest {
     interface MetadataTestClient {
 
         @Get("/items")
-        List<String> getItemsWithHeaders(@RequestParam(name = "page") int page, ResponseHeaders headers);
+        List<String> getItemsWithHeaders(@RequestParam int page, ResponseHeaders headers);
 
         @Get("/items-clean")
-        List<String> getItemsClean(@RequestParam(name = "page") int page);
+        List<String> getItemsClean(@RequestParam int page);
 
         @Post("/users")
         UserDto createUser(@RequestBody UserDto user, ResponseHeaders headers);

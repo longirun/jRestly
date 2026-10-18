@@ -584,10 +584,10 @@ class RequestPipelineTest {
 
     private interface PipelineController {
         @Get("/api/hello")
-        String hello(@RequestParam(name = "name") String name);
+        String hello(@RequestParam String name);
 
         @Get("/api/hello-async")
-        CompletableFuture<String> helloAsync(@RequestParam(name = "name") String name);
+        CompletableFuture<String> helloAsync(@RequestParam String name);
 
         @Get("/api/error")
         @OnError(statuses = {400}, errorObject = ErrorDto.class)

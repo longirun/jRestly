@@ -16,25 +16,25 @@ import java.util.stream.Stream;
 public interface TestController {
 
     @Get("/api/items/${id}")
-    TestDto getItem(@PathVariable(name = "id") Long id);
+    TestDto getItem(@PathVariable Long id);
 
     @Get("/api/items/${slug}")
-    TestDto getItemBySlug(@PathVariable(name = "slug") String slug);
+    TestDto getItemBySlug(@PathVariable String slug);
 
     @Get("/api/items/${id}")
-    CompletableFuture<TestDto> getItemAsync(@PathVariable(name = "id") Long id);
+    CompletableFuture<TestDto> getItemAsync(@PathVariable Long id);
 
     @Get("/api/items")
-    List<TestDto> getItems(@RequestParam(name = "page") Integer page);
+    List<TestDto> getItems(@RequestParam Integer page);
 
     @Get("/api/items")
-    CompletableFuture<List<TestDto>> getItemsAsync(@RequestParam(name = "page") Integer page);
+    CompletableFuture<List<TestDto>> getItemsAsync(@RequestParam Integer page);
 
     @Get("/api/search")
-    List<TestDto> searchItems(@RequestParam(name = "q") String query, @RequestParam(name = "limit") Integer limit);
+    List<TestDto> searchItems(@RequestParam(name = "q") String query, @RequestParam Integer limit);
 
     @Get(value = "/api/items",  params = {@RequestDefaultParam(name = "size", value = "10")})
-    List<TestDto> getItemsWithDefaults(@RequestParam(name = "page") Integer page);
+    List<TestDto> getItemsWithDefaults(@RequestParam Integer page);
 
     @Get("/api/raw")
     String getRaw();
@@ -76,16 +76,16 @@ public interface TestController {
     CompletableFuture<TestDto> createItemAsync(@RequestBody TestDto item);
 
     @Post(value = "/api/form",  requestType = RequestType.APPLICATION_FORM_URLENCODED)
-    String submitForm(@RequestParam(name = "field1") String field1, @RequestParam(name = "field2") String field2);
+    String submitForm(@RequestParam String field1, @RequestParam String field2);
 
     @Delete("/api/items/${id}")
-    void deleteItem(@PathVariable(name = "id") Long id);
+    void deleteItem(@PathVariable Long id);
 
     @Delete("/api/items")
     void deleteItems(@RequestBody TestDto criteria);
 
     @Delete(value = "/api/items",  requestType = RequestType.APPLICATION_FORM_URLENCODED)
-    void deleteItemsForm(@RequestParam(name = "reason") String reason);
+    void deleteItemsForm(@RequestParam String reason);
 
     @Get("/api/headers")
     String getWithHeaders(@RequestHeader(name = "X-Custom") String customHeader);
@@ -135,16 +135,16 @@ public interface TestController {
     String authLogin(@RequestBody Object credentials);
 
     @Get("/api/collection")
-    List<TestDto> getWithCollectionParam(@RequestParam(name = "ids") List<Long> ids);
+    List<TestDto> getWithCollectionParam(@RequestParam List<Long> ids);
 
     @Patch("/api/items/${id}")
-    TestDto patchItem(@PathVariable(name = "id") Long id, @RequestBody TestDto item);
+    TestDto patchItem(@PathVariable Long id, @RequestBody TestDto item);
 
     @Patch(value = "/api/items/${id}",  requestType = RequestType.APPLICATION_FORM_URLENCODED)
-    String patchItemForm(@PathVariable(name = "id") Long id, @RequestParam(name = "name") String name);
+    String patchItemForm(@PathVariable Long id, @RequestParam String name);
 
     @Put("/api/items/${id}")
-    TestDto putItem(@PathVariable(name = "id") Long id, @RequestBody TestDto item);
+    TestDto putItem(@PathVariable Long id, @RequestBody TestDto item);
 
     @Post("/api/async")
     @ExpectStatus(statuses = {202})
@@ -161,7 +161,7 @@ public interface TestController {
 
     @Delete("/api/items/${id}/silent")
     @ExpectStatus(statuses = {204})
-    void deleteSilent(@PathVariable(name = "id") Long id);
+    void deleteSilent(@PathVariable Long id);
 
     @Post(value = "/api/upload",  requestType = RequestType.MULTIPART_FORM_DATA)
     String uploadFile(@MultipartFormFile(partName = "file") String filePath);
@@ -171,14 +171,14 @@ public interface TestController {
 
     @Post(value = "/api/upload",  requestType = RequestType.MULTIPART_FORM_DATA)
     String uploadFileWithText(@MultipartFormFile(partName = "file") String filePath,
-                              @RequestParam(name = "comment") String comment);
+                              @RequestParam String comment);
 
     @Post(value = "/api/upload",  requestType = RequestType.MULTIPART_FORM_DATA)
     String uploadFilePath(@MultipartFormFile(partName = "file") Path file);
 
     @Post(value = "/api/upload",  requestType = RequestType.MULTIPART_FORM_DATA)
     String uploadFileWithTextParts(@MultipartFormFile(partName = "file") String filePath,
-                                   @RequestParam(name = "tags") List<String> tags);
+                                   @RequestParam List<String> tags);
 
     @Post(value = "/api/upload",  requestType = RequestType.MULTIPART_FORM_DATA)
     String uploadFileContent(@MultipartFormFile(partName = "file") FileContent file);

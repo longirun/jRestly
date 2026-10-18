@@ -24,7 +24,7 @@ class ProgressListenerResolutionTest {
 
     interface DownloadController {
         @Get("/files/${id}")
-        byte[] download(@PathVariable(name = "id") String id, DownloadProgressListener listener);
+        byte[] download(@PathVariable String id, DownloadProgressListener listener);
     }
 
     interface UploadController {

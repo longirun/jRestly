@@ -45,10 +45,10 @@ class ZeroGarbagePipelineTest {
         String pingWithHeaders(ResponseHeaders headers);
 
         @Get("/search")
-        String search(@RequestParam(name = "q") String query, @RequestParam(name = "page") int page);
+        String search(@RequestParam(name = "q") String query, @RequestParam int page);
 
         @Post(value = "/form",  requestType = RequestType.APPLICATION_FORM_URLENCODED)
-        String submitForm(@RequestParam(name = "user") String user, @RequestParam(name = "role") String role);
+        String submitForm(@RequestParam String user, @RequestParam String role);
 
         @Get("/static-cookies")
         @Cookie(name = "token", value = "secret-token")

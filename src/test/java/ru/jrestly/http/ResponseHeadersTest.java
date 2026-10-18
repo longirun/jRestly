@@ -233,7 +233,7 @@ class ResponseHeadersTest {
     void controllerValidatorValidMethod() {
         interface GoodController {
             @Get("/items")
-            List<String> getItems(@RequestParam(name = "page") int page, ResponseHeaders headers);
+            List<String> getItems(@RequestParam int page, ResponseHeaders headers);
         }
 
         var problems = ControllerValidator.validate(GoodController.class);

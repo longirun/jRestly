@@ -24,7 +24,7 @@ class PathVariableEncodedTest extends BaseWireMockTest {
         String getRawToken(@PathVariable(name = "token", encoded = true) String token);
 
         @Get("/api/default-encode/${name}")
-        String getDefaultEncode(@PathVariable(name = "name") String name);
+        String getDefaultEncode(@PathVariable String name);
     }
 
     private StorageController storageController() {

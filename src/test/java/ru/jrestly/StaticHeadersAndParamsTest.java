@@ -110,7 +110,7 @@ class StaticHeadersAndParamsTest extends BaseWireMockTest {
     @RequestDefaultParam(name = "limit", value = "10")
     interface RuntimeOverrideParamController {
         @Get("/api/static/runtime-param-override")
-        String call(@RequestParam(name = "limit") Integer limit);
+        String call(@RequestParam Integer limit);
     }
 
     @RequestDefaultParam(name = "sort", value = "asc")

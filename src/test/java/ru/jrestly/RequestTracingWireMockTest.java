@@ -68,7 +68,7 @@ class RequestTracingWireMockTest extends BaseWireMockTest {
 
         @Get("/api/trace/force-new-w3c")
         @Trace(w3c = true, forceNew = true)
-        String forceNewW3cTrace(@RequestHeader(name = "traceparent") String traceparent);
+        String forceNewW3cTrace(@RequestHeader String traceparent);
 
         @Get("/api/trace/async")
         CompletableFuture<String> asyncTrace();

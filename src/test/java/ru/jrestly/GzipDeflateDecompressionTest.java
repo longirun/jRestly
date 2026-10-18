@@ -45,10 +45,10 @@ class GzipDeflateDecompressionTest extends BaseWireMockTest {
 
     interface DecompressionApi {
         @Get("/api/items/${id}")
-        TestDto getItem(@PathVariable(name = "id") Long id);
+        TestDto getItem(@PathVariable Long id);
 
         @Get("/api/items/${id}/async")
-        CompletableFuture<TestDto> getItemAsync(@PathVariable(name = "id") Long id);
+        CompletableFuture<TestDto> getItemAsync(@PathVariable Long id);
 
         @Get("/api/text")
         String getText();

@@ -37,7 +37,7 @@ public class DispatchOverheadBenchmark {
 
     public interface MockUserApi {
         @Get("/api/users/${id}")
-        UserDto getUser(@PathVariable(name = "id") long id);
+        UserDto getUser(@PathVariable long id);
 
         @Get("/api/ping")
         String ping();

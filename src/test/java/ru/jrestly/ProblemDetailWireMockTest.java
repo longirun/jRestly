@@ -36,7 +36,7 @@ public class ProblemDetailWireMockTest extends BaseWireMockTest {
 
     interface ProblemApiClient {
         @Get("/accounts/${id}")
-        String getAccount(@PathVariable(name = "id") String id);
+        String getAccount(@PathVariable String id);
 
         @Post("/transfer")
         String transfer();

@@ -67,10 +67,10 @@ class ShortCircuitExecutionTest {
     public interface MockService {
 
         @Get("/users/${id}")
-        UserDto getUser(@PathVariable(name = "id") long id);
+        UserDto getUser(@PathVariable long id);
 
         @Get("/users/${id}/optional")
-        Optional<UserDto> getOptionalUser(@PathVariable(name = "id") long id);
+        Optional<UserDto> getOptionalUser(@PathVariable long id);
 
         @Get("/greeting")
         String getGreeting();
@@ -80,13 +80,13 @@ class ShortCircuitExecutionTest {
 
         @Get("/users/${id}/strict")
         @OnError(statuses = {404}, errorObject = UserNotFoundException.class)
-        UserDto getStrictUser(@PathVariable(name = "id") long id);
+        UserDto getStrictUser(@PathVariable long id);
 
         @Get("/users/${id}/async")
-        CompletableFuture<UserDto> getUserAsync(@PathVariable(name = "id") long id);
+        CompletableFuture<UserDto> getUserAsync(@PathVariable long id);
 
         @Get("/users/${id}/with-headers")
-        UserDto getUserWithHeaders(@PathVariable(name = "id") long id, ResponseHeaders headers);
+        UserDto getUserWithHeaders(@PathVariable long id, ResponseHeaders headers);
 
         @Post("/users")
         UserDto createUser(@RequestBody UserDto user);

@@ -136,7 +136,7 @@ class ClientMetricsWireMockTest {
     public interface MetricsTestClient {
 
         @Get("/api/item")
-        TestDto getItem(@RequestParam(name = "id") String id);
+        TestDto getItem(@RequestParam String id);
 
         @Post("/api/item")
         TestDto createItem(@RequestBody TestDto item);

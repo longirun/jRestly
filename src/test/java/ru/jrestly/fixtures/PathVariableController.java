@@ -6,11 +6,11 @@ import ru.jrestly.annotation.PathVariable;
 public interface PathVariableController {
 
     @Get("/api/items/${slug}")
-    String getItemBySlug(@PathVariable(name = "slug") String slug);
+    String getItemBySlug(@PathVariable String slug);
 
     @Get("/api/users/${userId}/orders/${orderId}")
-    String getUserOrder(@PathVariable(name = "userId") Long userId,
-                        @PathVariable(name = "orderId") String orderId);
+    String getUserOrder(@PathVariable Long userId,
+                        @PathVariable String orderId);
 
     /**
      * Name-fallback fixture: {@code @PathVariable} without an explicit {@code name} —

@@ -100,20 +100,20 @@ import java.util.List;
 public interface ItemApi {
 
     @Get("/api/items/${id}")
-    Item getItem(@PathVariable(name = "id") long id);
+    Item getItem(@PathVariable long id);
 
     @Get("/api/items")
-    List<Item> listItems(@RequestParam(name = "page") int page);
+    List<Item> listItems(@RequestParam int page);
 
     @Post("/api/items")
     Item createItem(@RequestBody Item item);
 
     @Delete("/api/items/${id}")
-    void deleteItem(@PathVariable(name = "id") long id);
+    void deleteItem(@PathVariable long id);
 
     @Get("/api/items/${id}")
     @OnError(statuses = {404}, errorObject = ApiError.class)
-    Item getItemOrThrow(@PathVariable(name = "id") long id);
+    Item getItemOrThrow(@PathVariable long id);
 }
 ```
 
@@ -222,10 +222,10 @@ Declare `InputStream` or `CompletableFuture<InputStream>` as the controller meth
 public interface DownloadApi {
 
     @Get("/files/${name}")
-    InputStream download(@PathVariable(name = "name") String name);
+    InputStream download(@PathVariable String name);
 
     @Get("/files/${name}")
-    CompletableFuture<InputStream> downloadAsync(@PathVariable(name = "name") String name);
+    CompletableFuture<InputStream> downloadAsync(@PathVariable String name);
 }
 ```
 
@@ -282,7 +282,7 @@ public interface SearchApi extends BaseApi {
     List<Item> search(
             @RequestParam(name = "filter") Map<String, Object> filters,
             @RequestParam(name = "sort") List<String> sortFields,
-            @RequestParam(name = "offset") Integer offset,
+            @RequestParam Integer offset,
             @RequestHeader(name = "Accept") String acceptOverride,
             @RequestHeader Map<String, String> dynamicHeaders
     );
@@ -347,7 +347,7 @@ public interface ItemApi {
 
     @Get("/api/items/${id}")
     @Retry(times = 3, initialBackoffMs = 500)
-    Item getItem(@PathVariable(name = "id") long id);
+    Item getItem(@PathVariable long id);
 }
 ```
 
