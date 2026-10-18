@@ -1,5 +1,33 @@
 # DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
+> **Сессия #270 (структурный аудит по вопросу Антона + ADR-0066 + первый шаг
+> декомпозиции `HttpTemplate`: `RetryAfter` вынесен в package-private
+> коллаборатор; `package-info.java` для всех 15 пакетов; гейт 1,569/1,569,
+> публичный API не изменён, `HttpTemplate` 132 → 129 missed):**
+> прямой заказ Антона об организации внутренней структуры кода (mailbox,
+> 2026-10-18). Аудит: таксономия пакетов осмысленна, SPI-границы честные,
+> направление зависимостей предсказуемо; долги — god-класс `HttpTemplate`
+> (2825 строк / 48 полей / 63 метода), осознанное кольцо `ru.jrestly` ⇄
+> `ru.jrestly.http`, отсутствие пакетной документации.
+> 1. *ADR-0066* (`docs/0.11.0/ADR-0066-internal-code-structure-and-pipeline-decomposition.md`):
+>    план инкрементальной декомпозиции `HttpTemplate` по одной когезивной
+>    ответственности на сессию (RetryAfter → политика редиректов → Problem
+>    Details resolver → dispatch кэша → декодирование тела → метрики),
+>    package-private коллабораторы, публичный API и швы не трогаются.
+> 2. *Шаг №1 — `RetryAfter`:* из `HttpTemplate` перенесены три формата HTTP-date
+>    RFC 9110 + набор дней недели и 4 private-static метода в новый
+>    package-private `ru.jrestly.http.RetryAfter` (`delayMillis(WireResponse)`);
+>    логика байт-в-байт, 4 осиротевших импорта удалены, тест переименован
+>    (`HttpTemplateRetryAfterTest` → `RetryAfterTest`, 11 тестов).
+> 3. *Пакетная документация:* `package-info.java` во все 15 пакетов
+>    `ru.jrestly.*` — ответственность, ключевые типы, ссылки на ADR; javadoc-гейт
+>    (`-Xdoclint:all -Werror`) зелёный.
+> 4. *Гейты:* **1,569 / 1,569** green across all 5 modules, 0 failures/errors,
+>    javadoc чист под `-Werror`. JaCoCo: BRANCH 3,944/4,443 (88.77%),
+>    INSTRUCTION 30,648/31,381 (97.66%), LINE 6,659/6,839 (97.37%),
+>    COMPLEXITY 3,197/3,687 (86.71%), METHOD 1433/1433 и CLASS 144/144 (100%).
+> 5. *Дальше* — шаг №2 ADR-0066 (политика редиректов) или хвосты покрытия.
+
 > **Сессия #269 (free-аудит кластера Problem Details ADR-0064 в `HttpTemplate` —
 > `handleOnError` / `resolveProblemDetail` / `isProblemJsonContentType` /
 > `isLikelyProblemDetail` / `instantiateThrowable`: полный срез достижимых ветвей
@@ -2308,7 +2336,20 @@
   `priority()`), `JacksonXmlCodecProvider` в субмодуле — XML подключается без
   вызовов, +9 тестов, **1187/1187**. **Кандидат №4 закрыт полностью.**
 
-**Активная зона пуста:** кандидаты №1 (test-javadoc) и №2/№3/№4 закрыты (§выше).
+- **Кандидат №5 — декомпозиция `HttpTemplate` (ADR-0066, `docs/0.11.0/`)** *(открыт
+  сессией #270 по вопросу Антона об организации внутренней структуры)*:
+  god-класс `HttpTemplate` (2825 строк / 48 полей / 63 метода) распиливается
+  инкрементально на package-private коллабораторы в `ru.jrestly.http`, по одной
+  когезивной ответственности на сессию, без изменения публичного API и швов.
+  - **Шаг №1 — сделана (#270):** `RetryAfter` (парсер `Retry-After`, три даты
+    RFC 9110) извлечён; `package-info.java` для всех 15 пакетов.
+  - **Шаг №2 (следующий):** политика редиректов (`nextHop`, `dropAuthHeaders`,
+    `isCrossOrigin`, `effectivePort`, `redirectLocation`, `logExhaustedRedirects`).
+  - **Шаги №3–№6:** Problem Details resolver → dispatch кэша → декодирование
+    тела (charset/streaming) → уведомления метрик.
+
+**Активная зона пуста:** кандидаты №1 (test-javadoc) и №2/№3/№4 закрыты (§выше);
+кандидат №5 (ADR-0066) открыт и ведётся пошагово.
 Завершённые эпики ADR-0058/0059/0060 дистиллированы в `ROADMAP.md` (сессия #206),
 highest ADR **0060**, next free **0061**. Следующий ход — свободный: концепт
 ADR-0061+ (новая эргономика/зрелость) или свежий free-аудит. Хвосты-кандидаты

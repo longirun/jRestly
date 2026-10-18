@@ -2179,8 +2179,20 @@ Gates (session #241):
 
 ---
 
-> **Current status (2026-10-17).** Highest ADR issued: **0065**; next free: **0066**.
-> Cycle 0.10.0 packaged and verified! Live gate: **1376/1376** tests green across all five modules, 0 warnings under `-Werror`. JaCoCo: 100% Class Coverage (143/143), 93.51% Instructions, 80.17% Branches.
+> **Current status (2026-10-18).** Highest ADR issued: **0066**; next free: **0067**.
+> Cycle 0.10.0 packaged and verified. Live gate: **1569/1569** tests green across all five modules, 0 warnings under `-Werror`. JaCoCo: 100% Class Coverage (144/144), 100% Method Coverage (1433/1433), 97.66% Instructions, 97.37% Lines, 88.77% Branches.
+
+### Cycle 0.11.0 — internal structure
+
+- **ADR-0066 (§session #270):** аудит внутренней структуры кода по вопросу Антона
+  (mailbox, 2026-10-18). Таксономия пакетов признана осмысленной, SPI-границы и
+  направление зависимостей — предсказуемыми; единственный существенный долг —
+  god-класс `HttpTemplate` (2825 строк, 48 полей, 63 метода). Решение:
+  документировать каждый пакет через `package-info.java` (сделано) и
+  декомпозировать `HttpTemplate` инкрементально, по одной когезивной
+  ответственности на сессию. Первый шаг — `RetryAfter` (парсер заголовка
+  `Retry-After`, все три даты RFC 9110), извлечён из `HttpTemplate` в
+  package-private `ru.jrestly.http.RetryAfter`; публичный API не изменён.
 
 ## Post-0.5.0 shortlist (not scheduled — see ADR-0003)
 
