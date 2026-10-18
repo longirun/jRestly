@@ -6,6 +6,10 @@ import ru.jrestly.annotation.HttpVersion;
 
 import java.net.http.HttpClient;
 
+/**
+ * {@code @HttpVersion} fixture (ADR-0038): calls pinned to HTTP/1.1,
+ * the unpinned control, and pinning across a redirect hop.
+ */
 public interface HttpVersionController {
 
     @HttpVersion(HttpClient.Version.HTTP_1_1)

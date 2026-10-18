@@ -2,6 +2,12 @@ package ru.jrestly.fixtures;
 
 import ru.jrestly.annotation.*;
 
+/**
+ * Redirect behavioral fixture: no-follow and follow budgets per verb,
+ * relative {@code Location}, same-origin hops, and the explicit
+ * {@code Authorization} override that must survive a cross-origin hop
+ * (ADR-0002, Amendment #253).
+ */
 public interface RedirectMethodController {
 
     @Get("/api/redirect-nofollow")

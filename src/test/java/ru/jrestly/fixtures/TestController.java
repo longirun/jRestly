@@ -13,6 +13,14 @@ import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.stream.Stream;
 
+/**
+ * Shared declarative controller behind the core behavioral suites:
+ * verbs, {@code {placeholder}} path templates, query and default params,
+ * form/multipart bodies, streaming returns ({@code InputStream}, lines,
+ * SSE), redirects, {@code @OnError} (ADR-0028), auth and {@code @ExpectStatus}.
+ * Sync and async ({@code CompletableFuture}) twins are declared side by side
+ * so both circuits are covered by the same controller.
+ */
 public interface TestController {
 
     @Get("/api/items/{id}")

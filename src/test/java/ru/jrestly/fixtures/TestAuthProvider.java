@@ -5,6 +5,12 @@ import ru.jrestly.http.Header;
 
 import java.util.List;
 
+/**
+ * Test {@link AuthHeaderProvider} with a switchable {@code isAuthorized}
+ * flag and a capture counter: the counter pins "classified exactly once"
+ * for {@code @SetAuthDetails} capture across decode-retry
+ * (ADR-0011, Aspect 7).
+ */
 public class TestAuthProvider extends AuthHeaderProvider {
 
     private boolean authorized;

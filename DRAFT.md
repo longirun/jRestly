@@ -1,5 +1,30 @@
 # DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
+> **Сессия #297 (хвост fixtures-javadoc — закрыт: class-level javadoc у всех
+> 17 типов `ru.jrestly.fixtures`; гейт 1,644/1,644 в силе, код — только
+> doc-комментарии):** последний незакрытый хвост кандидата №1 (test-javadoc):
+> 1. *Состав:* лаконичный class-level javadoc (3–5 строк, стиль
+>    `RetryController`/`TestFutures`: «что это + какие сьюты/ADR держит») у
+>    **15** типов без doc: контроллеры (`TestController` — общий декларативный
+>    фикстур core-сьют, `PathVariableController`, `NullableFieldController`,
+>    `BrokenController` — невалидные декларации для `ControllerValidator`,
+>    `HttpVersionController`, `DateTimeController`,
+>    `RedirectMethodController`), DTO-записи (`TestDto`, `TestErrorDto`,
+>    `EventDto`, `NullableFieldDto`) и инфраструктура
+>    (`TestModuleInfo`/`TestApiClient`/`TestEnvironment`/`TestAuthProvider`).
+>    У `RetryController` и `TestFutures` doc уже был — не тронуты.
+> 2. *Факты, проверенные перед записью:* ADR-номера для ссылок —
+>    `@OnError` = ADR-0028, `@HttpVersion` = ADR-0038, name-fallback =
+>    ADR-0017 Amendment #212, auth-override на кросс-оригинном редиректе =
+>    ADR-0002 Amendment #253, capture-count `TestAuthProvider` = ADR-0011
+>    Aspect 7 (комментарий уже был в коде — перенесён в doc).
+> 3. *Гейт:* **1,644/1,644** green across all 5 modules (логика не менялась),
+>    javadoc чист под `-Werror`. Новых публичных API нет.
+> 4. *Итог нити:* кандидат №1 (test-javadoc) + хвост fixtures **закрыты
+>    полностью** — во всём дереве классы без class-level javadoc отсутствуют.
+>    Highest ADR **0067**, next free **0068**. Дальше: Path/File-тела метрик
+>    (-1; engine-reported byte accounting) или новый свободный аудит.
+
 > **Сессия #296 (хвост Map-prefix fallback — решён: «задокументировано by
 > design», wire-формат не менялся; гейт 1,644/1,644 в силе):** хвост находки
 > #293: bare `@RequestParam Map filter` шлёт плоские `status=…`, а named
@@ -2892,7 +2917,12 @@
   (`rawRequestParamName` в `HttpTemplateBuilder`) — хвост в беклог.
   **P3 — исполнен (#294):** плейсхолдер `${id}` → `{id}` (маска/экстрактор/
   replace/тесты/README/javadoc; +1 тест, гейт 1,638/1,638), ADR-0067
-  Amendment #294. **Осталось: P4-микропроверка** — отдельная сессия по TDD.
+  Amendment #294. **P4 — исполнен (#295):** микропроверка статических query
+  в пути (e2e `RequestParameterFlexibilityTest` + баг-фикс двойного `?` при
+  сшивании `@TargetUrl` с query и query пути; гейт 1,644/1,644), ADR-0067
+  Amendment #295. Хвост Map-prefix — решён (#296, «задокументировано by
+  design», ADR-0017 Amendment #296). **Кандидат №6 закрыт полностью**
+  (P1–P4; P5 осознанно не трогаем).
 - **Кандидат №7 — бенчмарк на rss/atom-движке** *(Антон, 2026-10-18 14:37 —
   после ADR-0066)*: реализовать движок парсинга rss/atom и сравнить с
   конкурентами в реальном сценарии: ops/sec, CPU, mem-usage; белые пути
@@ -2909,22 +2939,23 @@
 
 **Активная зона:** кандидат №5 (ADR-0066) **закрыт и дистиллирован** (#284) —
 все шесть шагов сделаны (№1–№4, №5a/5b/5c, №6; see выше; гейт 1,636/1,636),
-эпик перенесён в `ROADMAP.md` (паттерн #206). **Кандидат №6: P1 (#292),
-P2 (#293) и P3 (#294) исполнены, гейт 1,638/1,638** — следующий ход:
-**P4-микропроверка** (статические query прямо в пути
-`@Get("/items?size=10")` — работает ли merge-пломбинг с плейсхолдерами без
-искажений; маленькая сессия, +задокументировать в README при зелёном). Хвосты:
-**Map-префикс не видит fallback** (находка прогона P2) — префикс строится из
-`rawRequestParamName()`, а не эффективного имени (ADR-0017)
-(`HttpTemplateBuilder`); довести bare ≡ named или задокументировать различие.
+эпик перенесён в `ROADMAP.md` (паттерн #206). **Кандидат №6 (ADR-0067)
+закрыт полностью:** P1 (#292), P2 (#293), P3 (#294), **P4 (#295)** —
+микропроверка статических query в пути (зелёная e2e + баг-фикс двойного `?`
+при сшивании `@TargetUrl` c query и query пути); хвост Map-prefix fallback —
+**решён (#296**, «задокументировано by design», ADR-0017 Amendment #296,
+wire-формат не менялся). **Кандидат №1 (test-javadoc) закрыт с хвостом
+(#297):** class-level javadoc у всех 17 типов `ru.jrestly.fixtures` — в
+дереве не осталось классов без class-level javadoc. Текущий гейт —
+**1,644/1,644** во всех 5 модулях. Следующий ход: Path/File-тела метрик
+(хвост ниже) или новый свободный аудит.
 **Кандидат №8 проверен (#287): регрессии dispatch/аллокаций нет** (см.
 пометку выше). №7 (rss/atom) — разблокируется ответом Антона
 (вопрос A/B задан в mailbox #284/#285). Highest ADR **0067**, next free **0068**.
 Хвосты-кандидаты
 из аудит-нити (не эпики): Path/File-тела метрик (-1 вместо размера;
 engine-reported byte accounting), валидация `@ExpectStatus`/`@FollowRedirects`
-(инварианты нигде не объявлены — фича, не дыра; #207), 15 вспомогательных
-типов `ru.jrestly.fixtures` (при желании — мелкий батч «fixtures-javadoc»).
+(инварианты нигде не объявлены — фича, не дыра; #207).
 **Семантика `Duration.ZERO`-таймаута закрыта в #213**: `0` формально означает
 «без таймаута» на всех движках (ADR-0027 Amendment #213), `@ExpectStatus`/
 `@FollowRedirects` остаются решением #207 «фича, не дыра». **`@MultipartFormFile.partName`

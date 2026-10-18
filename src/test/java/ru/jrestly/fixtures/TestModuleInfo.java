@@ -5,6 +5,12 @@ import ru.jrestly.Environment;
 import ru.jrestly.ModuleInfo;
 import ru.jrestly.http.RetryPolicy;
 
+/**
+ * Test {@link ModuleInfo}: a {@link TestEnvironment} bound to a base URL,
+ * a {@link TestAuthProvider}, a swappable {@link RetryPolicy}
+ * (default: off) and the default resilience registries. Shared by the
+ * suites that need per-test client configuration.
+ */
 public class TestModuleInfo implements ModuleInfo {
 
     private final TestEnvironment environment;

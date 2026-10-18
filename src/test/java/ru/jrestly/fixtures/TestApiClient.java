@@ -6,6 +6,11 @@ import ru.jrestly.http.Header;
 
 import java.util.List;
 
+/**
+ * Test {@link AbstractHttpClient}: its {@code login()} pulls the ambient
+ * auth headers from the {@code AuthProvider} into the environment —
+ * the background-login path of the auth suites.
+ */
 public class TestApiClient extends AbstractHttpClient {
 
     public TestApiClient(ModuleInfo moduleInfo) {
