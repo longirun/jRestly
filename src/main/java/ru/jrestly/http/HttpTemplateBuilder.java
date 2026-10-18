@@ -493,7 +493,18 @@ public class HttpTemplateBuilder {
             if (queryOrFrag >= 0) {
                 String basePart = targetUrl.substring(0, queryOrFrag);
                 String restPart = targetUrl.substring(queryOrFrag);
-                return joinUrlPath(basePart, path) + restPart;
+                // The verb path may carry its own static query (e.g. @Get("/items?size=10"));
+                // merge it before the target's query/fragment so both survive.
+                int pathQueryIdx = path.indexOf('?');
+                if (pathQueryIdx < 0) {
+                    return joinUrlPath(basePart, path) + restPart;
+                }
+                String pathPart = joinUrlPath(basePart, path.substring(0, pathQueryIdx));
+                String pathQuery = path.substring(pathQueryIdx + 1);
+                if (restPart.startsWith("?")) {
+                    return pathPart + "?" + pathQuery + "&" + restPart.substring(1);
+                }
+                return pathPart + "?" + pathQuery + restPart;
             }
             return joinUrlPath(targetUrl, path);
         }

@@ -1,5 +1,35 @@
 # DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
+> **Сессия #295 (Кандидат №6, P4 — исполнен: микропроверка статических query
+> прямо в пути + TDD баг-фикс; гейт 1,644/1,644):**
+> 1. *Микропроверка:* статическая query в пути (`@Get("/items?size=10")`) без
+>    `@TargetUrl` всегда работала (`createUri` отдаёт URL как есть;
+>    `appendQuery` fragment-aware и достает динамические `@RequestParam`
+>    через `&`). Новое e2e-покрытие `RequestParameterFlexibilityTest`
+>    (a) сама, (b) с `@RequestParam`, (c) с `{id}` — зелёное без фикса.
+> 2. *Баг:* `@TargetUrl` с собственной query (`?a=1`) + путь со статической
+>    query давал `…/items?size=10?a=1` — двойной `?`, `a=1` растворяется в
+>    значении `size`, `URI.create` не ругается (тихий баг). Красные тесты:
+>    `TargetUrlTest.targetUrlWithQueryMergesStaticPathQuery` и
+>    `…PlusDynamicParamMergesAll` (404 на WireMock).
+> 3. *Фикс:* `HttpTemplateBuilder.createUrl()` — статическая query пути
+>    сшивается `&`-ом перед query самого target: `…?size=10&a=1`; динамика
+>    вызова — последней (`&limit=5`). Порядок на проводе: статика пути →
+>    query target → динамика вызова. Кейсы «target без query» и «оба без
+>    query» — без изменений.
+> 4. *Документация:* README — буллет «Static query in the verb path» +
+>    уточнение Composition-буллета `@TargetUrl`. ADR-0067: Status +
+>    `## Amendment #295`. Новых публичных API нет.
+> 5. *Гейт:* **1,644/1,644** green across all modules (+6 новых тестов),
+>    javadoc чист под `-Werror`.
+> 6. **Кандидат №6 (ADR-0067) полностью закрыт:** P1–P4 реализованы, P5
+>    осознанно не трогаем.
+> 7. *Дальше:* **хвост Map-prefix fallback** (находка #293:
+>    `createRequestParams` строит Map-префикс из `rawRequestParamName()`, а не
+>    из эффективного имени ADR-0017 — довести fallback до Map-префикса
+>    (bare ≡ named) или задокументировать различие явно). Highest ADR
+>    **0067**, next free **0068**.
+
 > **Сессия #293 (Кандидат №6, P2 — исполнен: безымянные биндинги в
 > README/примерах/фикстурах; гейт 1,637/1,637):** документационный прогон
 > без изменения поведения (fallback на имя Java-параметра — ADR-0017 +

@@ -1,6 +1,6 @@
 # ADR-0067: Public API Conciseness Review (Candidate #6)
 
-- **Status:** P1 реализован (#292), P2 реализован (#293), P3 реализован (#294); P4 — после; P5 — не трогать.
+- **Status:** P1 реализован (#292), P2 реализован (#293), P3 реализован (#294), P4 реализован (#295, с баг-фиксом); P5 — не трогать.
 - **Session:** #285 (2026-10-18)
 - **Задача Антона (mailbox, 2026-10-18):** «Рассмотреть публичный апи на предмет лаконичности.
   Вроде даже у Ретрофита он менее многословный? Обратная совместимость нам не требуется —
@@ -259,3 +259,48 @@ JSON-строки, не плейсхолдеры).
 Гейт **1,638/1,638** green across all 5 modules (+1 новый тест), javadoc
 чист под `-Werror`. Дальше: **P4-микропроверка** (статические query в пути
 `@Get("/items?size=10")` — merge с динамическими `@RequestParam`).
+
+## Amendment #295 (2026-10-19): P4 реализован (микропроверка + баг-фикс)
+
+Микропроверка показала, что P4 — не чисто документационный шаг: найден
+реальный баг в merge статической query из пути с query `@TargetUrl`.
+
+**Покрашенное (зелёное):** статическая query в пути без `@TargetUrl`
+работала всегда — `createUri` без `requestParams` отдаёт URL как есть, а
+`appendQuery` (`HttpTemplate`, fragment-aware) корректно достает
+`@RequestParam` после существующей query через `&`. Новое e2e-покрытие:
+`RequestParameterFlexibilityTest` — `@Get("/items?size=10")` (a) сам по
+себе, (b) с динамическим `@RequestParam` (merge `?size=10&page=2`),
+(c) с `{id}`-плейсхолдером (`/items/42?size=10`). Все три зелёные без
+фикса.
+
+**Покрасневшее (красное):** `@TargetUrl` с собственной query
+(`http://host/search?a=1`) + путь со статической query
+(`/items?size=10`) давал `…/items?size=10?a=1` — двойной `?`, сервер
+парсит это как один параметр `size=10?a=1`, а `a=1` теряется. `URI.create`
+такое не ругает (RFC-легальное), баг тихий. Красные тесты:
+`TargetUrlTest.targetUrlWithQueryMergesStaticPathQuery` и
+`targetUrlStaticPathQueryPlusDynamicParamMergesAll` (оба падали 404 на
+WireMock).
+
+**Фикс:** `HttpTemplateBuilder.createUrl()` — при наличии query/fragment
+в target URL статическая query пути теперь отрезается до `joinUrlPath`
+и сшивается перед query самого target через `&`: итог
+`…/items?size=10&a=1`, динамические `@RequestParam` достают после через
+`appendQuery` (`…&limit=5`). Порядок на проводе: статика пути → query
+target → динамика вызова (от более статичного к более динамичному).
+Кейс «target без query + путь с query» и «оба без query» — поведение
+без изменений.
+
+**Документация:** README — буллет «Static query in the verb path» в
+секции Request parameter & header flexibility + уточнение Composition-буллета
+`@TargetUrl` (порядок merge). Новых публичных API нет.
+
+*Грабля дня:* `URI.create` валидирует только синтаксис URI, не семантику
+query — «двойной `?`» для неё вполне легален; единственный способ поймать
+такой баг — e2e через реальный парсер (WireMock stub `urlEqualTo`).
+
+Гейт **1,644/1,644** green across all modules (+6 новых тестов), javadoc
+чист под `-Werror`. Кандидат №6 (ADR-0067) полностью закрыт: P1–P4
+реализованы, P5 осознанно не трогаем. Дальше: хвост Map-prefix fallback
+(находка #293).

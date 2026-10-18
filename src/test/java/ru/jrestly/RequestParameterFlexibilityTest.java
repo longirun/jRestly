@@ -71,6 +71,23 @@ class RequestParameterFlexibilityTest extends BaseWireMockTest {
         );
     }
 
+    /**
+     * ADR-0067 P4: a static query declared directly in the verb path
+     * ({@code @Get("/items?size=10")}) must coexist with path variables
+     * and dynamic {@link RequestParam} values.
+     */
+    interface StaticQueryPathApi {
+
+        @Get("/items?size=10")
+        String staticQueryAlone();
+
+        @Get("/items?size=10")
+        String staticQueryWithDynamicPage(@RequestParam(name = "page") int page);
+
+        @Get("/items/{id}?size=10")
+        String staticQueryWithPathVariable(@PathVariable String id);
+    }
+
     @Test
     @DisplayName("Complex search with interface inheritance, dynamic map filters, nullable items, and header override")
     void complexSearchWithInheritanceAndOverrides() {
@@ -211,5 +228,44 @@ class RequestParameterFlexibilityTest extends BaseWireMockTest {
                 .withQueryParam("debug", equalTo("true"))
                 .withHeader("User-Agent", equalTo("jRestly-Client/1.0"))
                 .withHeader("X-Tenant-Id", equalTo("tenant-default")));
+    }
+
+    @Test
+    @DisplayName("Static query in the verb path is sent as-is when no dynamic params are present (ADR-0067 P4)")
+    void staticQueryInPathSentAlone() {
+        stubFor(get(urlEqualTo("/items?size=10"))
+                .willReturn(aResponse().withStatus(200).withBody("alone")));
+
+        StaticQueryPathApi api = client.get(StaticQueryPathApi.class);
+        String result = api.staticQueryAlone();
+
+        assertEquals("alone", result);
+        verify(getRequestedFor(urlEqualTo("/items?size=10")));
+    }
+
+    @Test
+    @DisplayName("Dynamic @RequestParam is appended after the path's static query with & (ADR-0067 P4)")
+    void staticQueryInPathMergesDynamicParams() {
+        stubFor(get(urlEqualTo("/items?size=10&page=2"))
+                .willReturn(aResponse().withStatus(200).withBody("merged")));
+
+        StaticQueryPathApi api = client.get(StaticQueryPathApi.class);
+        String result = api.staticQueryWithDynamicPage(2);
+
+        assertEquals("merged", result);
+        verify(getRequestedFor(urlEqualTo("/items?size=10&page=2")));
+    }
+
+    @Test
+    @DisplayName("Path variables substitute cleanly alongside a static query in the path (ADR-0067 P4)")
+    void staticQueryInPathWithPathVariable() {
+        stubFor(get(urlEqualTo("/items/42?size=10"))
+                .willReturn(aResponse().withStatus(200).withBody("item")));
+
+        StaticQueryPathApi api = client.get(StaticQueryPathApi.class);
+        String result = api.staticQueryWithPathVariable("42");
+
+        assertEquals("item", result);
+        verify(getRequestedFor(urlEqualTo("/items/42?size=10")));
     }
 }

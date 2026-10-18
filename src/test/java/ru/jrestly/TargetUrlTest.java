@@ -79,6 +79,15 @@ public class TargetUrlTest extends BaseWireMockTest {
 
         @Get
         CompletableFuture<String> fetchAsync(@TargetUrl URI uri);
+
+        @Get("/items?size=10")
+        String fetchSubpathWithStaticQuery(@TargetUrl String baseUrl);
+
+        @Get("/items?size=10")
+        String fetchSubpathWithStaticQueryAndTargetQuery(@TargetUrl String baseUrl);
+
+        @Get("/items?size=10")
+        String fetchSubpathWithStaticQueryAndDynamicParam(@TargetUrl String baseUrl, @RequestParam int limit);
     }
 
     @Test
@@ -224,5 +233,47 @@ public class TargetUrlTest extends BaseWireMockTest {
         assertNotNull(future);
         assertEquals("async-ok", future.get());
         verify(getRequestedFor(urlEqualTo("/async/job")));
+    }
+
+    @Test
+    void targetUrlWithoutQueryKeepsStaticPathQuery() {
+        stubFor(get(urlEqualTo("/static-query/items?size=10"))
+                .willReturn(aResponse()
+                        .withStatus(200)
+                        .withBody("page")));
+
+        DynamicApiController api = client.get(DynamicApiController.class);
+        String result = api.fetchSubpathWithStaticQuery(baseUrl() + "/static-query");
+
+        assertEquals("page", result);
+        verify(getRequestedFor(urlEqualTo("/static-query/items?size=10")));
+    }
+
+    @Test
+    void targetUrlWithQueryMergesStaticPathQuery() {
+        stubFor(get(urlEqualTo("/static-query/search/items?size=10&a=1"))
+                .willReturn(aResponse()
+                        .withStatus(200)
+                        .withBody("merged")));
+
+        DynamicApiController api = client.get(DynamicApiController.class);
+        String result = api.fetchSubpathWithStaticQueryAndTargetQuery(baseUrl() + "/static-query/search?a=1");
+
+        assertEquals("merged", result);
+        verify(getRequestedFor(urlEqualTo("/static-query/search/items?size=10&a=1")));
+    }
+
+    @Test
+    void targetUrlStaticPathQueryPlusDynamicParamMergesAll() {
+        stubFor(get(urlEqualTo("/static-query/search/items?size=10&a=1&limit=5"))
+                .willReturn(aResponse()
+                        .withStatus(200)
+                        .withBody("all")));
+
+        DynamicApiController api = client.get(DynamicApiController.class);
+        String result = api.fetchSubpathWithStaticQueryAndDynamicParam(baseUrl() + "/static-query/search?a=1", 5);
+
+        assertEquals("all", result);
+        verify(getRequestedFor(urlEqualTo("/static-query/search/items?size=10&a=1&limit=5")));
     }
 }

@@ -149,7 +149,7 @@ public interface StorageApi {
 ```
 
 - **Supported types:** `java.net.URI`, `java.net.URL`, and `CharSequence`/`String`.
-- **Composition:** Path variables (`{id}`) and `@RequestParam` seamlessly append to the target URL; relative paths in `@Get("...")` normalize slashes cleanly.
+- **Composition:** Path variables (`{id}`) and `@RequestParam` seamlessly append to the target URL; relative paths in `@Get("...")` normalize slashes cleanly. A static query declared in the verb path (e.g. `@Get("/items?size=10")`) is preserved: it precedes the target's own query, which is merged after it with `&`, and dynamic `@RequestParam` values are appended last.
 - **Fail-fast:** Passing `null` immediately throws an `IllegalArgumentException`. Declaring invalid types or multiple `@TargetUrl` parameters fails fast during proxy creation.
 - **Performance:** Dynamic URL dispatch is pre-indexed in `MethodMetadata` with zero runtime reflection.
 
@@ -290,6 +290,7 @@ public interface SearchApi extends BaseApi {
 ```
 
 - **Nullable parameters & headers:** Passing `null` as a `@RequestHeader` or `@RequestParam` argument omits it gracefully from the wire request. Collections skip `null` elements without throwing exceptions. Passing `null` to a `@PathVariable` throws an actionable `IllegalArgumentException` indicating that the path placeholder cannot be left blank.
+- **Static query in the verb path:** A query declared directly in the path (e.g. `@Get("/items?size=10")`) is sent as-is; dynamic `@RequestParam` values are appended after it with `&`, and it composes cleanly with `{id}` path variables (ADR-0067 P4).
 - **Dynamic `Map<?, ?>` parameters:** `@RequestParam Map<?, ?>` expands map entries into query parameters (or form fields). If `@RequestParam.name()` is specified, parameter names are prefixed as `name[key]` (e.g. `filter[status]=active`). Nested collections expand into repeated keys.
 - **Dynamic `Map<?, ?>` headers:** `@RequestHeader Map<?, ?>` binds arbitrary dynamic headers. Entries with `null` keys or values are omitted.
 - **Class-level & method-level static declarations:** `@RequestHeader` and `@RequestDefaultParam` can be declared directly on controller interfaces or individual methods with `@Repeatable` support. Interface inheritance applies parent declarations first, allowing child interfaces to specialize headers and defaults.
