@@ -118,6 +118,99 @@ class HttpTemplateDecodeProbeTest {
         assertEquals(0, codec.deserializeCalls);
     }
 
+    // Optional return types: the probe's optional branch must mirror the
+    // optional branch of processResponse (ADR-0011 Aspect 2) — 404/304/204
+    // and an empty body cannot fail the decode, String/byte[]/Void/void are
+    // returned raw or discarded, only the DTO leg touches the codec.
+    // With optional=true, isExpectedStatus admits 2xx, 304 and 404, so
+    // these probes reach the optional branch, not the unexpected-status
+    // short-circuit the non-optional 404 test above hits.
+
+    @Test
+    @DisplayName("optional, 404 with body: true without touching the codec")
+    void optional404IsTrueWithoutTouchingTheCodec() {
+        template.setOptional(true);
+        template.setReturnType(TestDto.class);
+
+        assertTrue(template.probePayloadDecode(response(404, GOOD_BODY)));
+        assertEquals(0, codec.deserializeCalls);
+    }
+
+    @Test
+    @DisplayName("optional, 304 with body: true without touching the codec")
+    void optional304IsTrueWithoutTouchingTheCodec() {
+        template.setOptional(true);
+        template.setReturnType(TestDto.class);
+
+        assertTrue(template.probePayloadDecode(response(304, GOOD_BODY)));
+        assertEquals(0, codec.deserializeCalls);
+    }
+
+    @Test
+    @DisplayName("optional, 204 with body: true without touching the codec")
+    void optional204IsTrueWithoutTouchingTheCodec() {
+        template.setOptional(true);
+        template.setReturnType(TestDto.class);
+
+        assertTrue(template.probePayloadDecode(response(204, GOOD_BODY)));
+        assertEquals(0, codec.deserializeCalls);
+    }
+
+    @Test
+    @DisplayName("optional, empty body: true without touching the codec")
+    void optionalEmptyBodyIsTrueWithoutTouchingTheCodec() {
+        template.setOptional(true);
+        template.setReturnType(TestDto.class);
+
+        assertTrue(template.probePayloadDecode(response(200, null)));
+        assertEquals(0, codec.deserializeCalls);
+    }
+
+    @Test
+    @DisplayName("optional, String/byte[]/Void/void return types: the body is returned raw or discarded, true without touching the codec")
+    void optionalRawReturnTypesAreTrueWithoutTouchingTheCodec() {
+        template.setOptional(true);
+        template.setReturnType(String.class);
+        assertTrue(template.probePayloadDecode(response(200, GARBAGE_BODY)));
+        assertEquals(0, codec.deserializeCalls);
+
+        template.setReturnType(byte[].class);
+        assertTrue(template.probePayloadDecode(response(200, GARBAGE_BODY)));
+        assertEquals(0, codec.deserializeCalls);
+
+        template.setReturnType(Void.class);
+        assertTrue(template.probePayloadDecode(response(200, GARBAGE_BODY)));
+        assertEquals(0, codec.deserializeCalls);
+
+        template.setReturnType(void.class);
+        assertTrue(template.probePayloadDecode(response(200, GARBAGE_BODY)));
+        assertEquals(0, codec.deserializeCalls);
+    }
+
+    @Test
+    @DisplayName("optional, decodable payload: true, the codec runs exactly once")
+    void optionalPayloadThatDecodesIsTrue() {
+        template.setOptional(true);
+        template.setReturnType(TestDto.class);
+        codec.result = new TestDto(7L, "ok", "fine");
+
+        assertTrue(template.probePayloadDecode(response(200, GOOD_BODY)));
+        assertEquals(1, codec.deserializeCalls);
+    }
+
+    @Test
+    @DisplayName("optional, unbindable payload: the codec's own exception propagates, same instance, unwrapped")
+    void optionalPayloadThatDoesNotBindThrowsTheCodecException() {
+        template.setOptional(true);
+        template.setReturnType(TestDto.class);
+        RuntimeException failure = new IllegalStateException("cannot bind the payload to TestDto");
+        codec.failure = failure;
+
+        assertSame(failure, assertThrows(RuntimeException.class,
+                () -> template.probePayloadDecode(response(200, GARBAGE_BODY))));
+        assertEquals(1, codec.deserializeCalls);
+    }
+
     /**
      * A stub {@link JsonCodec}: records every deserialize call; returns
      * {@code result} or throws {@code failure} (a test sets exactly one).

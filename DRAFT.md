@@ -1,5 +1,44 @@
 # DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
+> **Сессия #261 (free-аудит `HttpTemplate`, `probePayloadDecode` × Optional-возврат (ADR-0011 Aspect 2): чистый срез — optional-ветвь decode-probe была 100% непокрыта, логика верифицирована как точное зеркало optional-ветви `processResponse`; 7 guard-тестов, код не тронут; гейт 1461/1461, BRANCH 83.84% и INSTRUCTION 96.11% и LINE 95.82% — новые рекорды):**
+> свободный ход по хвосту `HttpTemplate` (193 missed branches на входе),
+> сужение на `probePayloadDecode` (1269–1303): ветвь `if (optional)`
+> (1282–1290) — 16 missed branches при 0 покрытых. Probe вызывается только
+> из retry-цикла (`!last && isRetryDecodeFailures()`, строки 1189/1472),
+> и ни один тест не сочетал Optional-возврат с decode-retry, а
+> `HttpTemplateDecodeProbeTest` (из ADR-0011) ходил только по
+> non-optional-пути.
+> 1. *Аудит (diff против `processResponse` 935–965):* ветви идентичны —
+>    404/304/204/пустое тело → «decode не может упасть» (в `processResponse`
+>    это `Optional.empty()`); String/byte[]/Void/void → сырой возврат/отброс
+>    (codec не трогается); DTO-нога → `responseCodec(...).deserialize` —
+>    само исключение codec'а. `payload == null` в probe семантически то же
+>    `bytes == null || bytes.length == 0`. При `optional=true` и без явного
+>    `expectStatuses` `isExpectedStatus` (1904–1918) пропускает 2xx/304/404,
+>    так что probe доходит до optional-ветви, а не до unexpected-status
+>    short-circuit. Логика верна — чистый срез (паттерн #192/#197/#198).
+> 2. *Guard-тесты (7, `HttpTemplateDecodeProbeTest`, без WireMock —
+>    package-private seam + `setOptional`/`setReturnType` + StubCodec):*
+>    404/304/204 с телом и пустое тело → true при 0 вызовах codec'а
+>    (каждый дизъюнкт первой конъюнкции первым истинным); String/byte[]/
+>    Void/void → true при 0 вызовах (каждый дизъюнкт второй конъюнкции);
+>    декодируемый DTO-пейлоад → true, codec ровно один раз;
+>    небиндящийся → исключение codec'а, тот же инстанс, unwrapped.
+>    JUnit-5 per-method lifecycle: свежий template/codec на тест,
+>    `setOptional(true)` не течёт между тестами.
+> 3. *Ситуация на входе:* #260 оборвалась до коммита (паттерн #155/#186) —
+>    в дереве только счётчик 259→261, HEAD 7bfc1eb (#259); принят как есть.
+> 4. *TDD и исторические гейты JaCoCo:*
+>    - Всего тестов: **1461 / 1461** green across all 5 modules (+7, 0 failures, 0 errors, 0 warnings under `-Werror`).
+>    - **JaCoCo Coverage:**
+>      * **CLASS:** **143 / 143 (100.00%)**; **METHOD:** **1418 / 1418 (100.00%)** — абсолютное 100% сохранено!
+>      * **BRANCH:** **3,725 / 4,443 (83.84%)** — новый исторический рекорд (+16, ровно целевая ветвь)!
+>      * **INSTRUCTION:** **30,119 / 31,338 (96.11%)** — новый исторический рекорд!
+>      * **LINE:** **6,540 / 6,825 (95.82%)** — новый исторический рекорд!
+>      * **COMPLEXITY:** **2,979 / 3,672 (81.13%)**.
+>    - `HttpTemplate`: missed branches 193 → **177** (ветви 81.09%).
+>    - ADR не тронут — код без изменений (чистый coverage-срез, паттерн #192/#197/#198).
+
 > **Сессия #259 (free-аудит `HttpTemplate`, хвост `exchange()`/`exchangeAsync()`, ADR-0036 метрики × pre-wire rejection (rate-limiter timeout / open circuit breaker): 37-я «тихая» находка — `attempts()` сообщал 1 при нулевых `onAttemptComplete`-колбэках на pre-wire rejection; гейт 1454/1454, BRANCH 83.48% и INSTRUCTION 95.95% и LINE 95.74% — новые рекорды):**
 > свободный ход по хвосту непокрытых ветвей `HttpTemplate` (195 missed по
 > данным #258, покрытие ветвей 79.12%), сужение на pre-wire rejection-путь
