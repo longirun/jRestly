@@ -655,8 +655,209 @@ public class ControllerValidationTest {
         assertTrue(retryProblems.stream().anyMatch(p -> p.contains("maxBackoffMs must not be negative")));
     }
 
+    @Test
+    void validateToleratesNullAndNonInterfaceClass() {
+        assertTrue(ControllerValidator.validate(null).isEmpty());
+        assertTrue(ControllerValidator.validate(String.class).isEmpty());
+    }
 
-    // Compiles a throwaway controller interface at runtime. The project itself is
+    interface DiamondBase {
+        @ru.jrestly.annotation.Get(path = "/base")
+        String base();
+    }
+    interface DiamondLeft extends DiamondBase {}
+    interface DiamondRight extends DiamondBase {}
+    interface DiamondTop extends DiamondLeft, DiamondRight {
+        static void helper() {}
+    }
+
+    @Test
+    void diamondInheritanceAndStaticMethodsPassValidation() {
+        assertTrue(ControllerValidator.validate(DiamondTop.class).isEmpty());
+    }
+
+    @ru.jrestly.annotation.Accept("application/json\n")
+    @ru.jrestly.annotation.ContentType("text/plain\n")
+    @ru.jrestly.annotation.Cookie(name = "c_name\n", value = "c_val\n")
+    interface ClassLevelLfController {
+        @ru.jrestly.annotation.Get(path = "/lf")
+        @ru.jrestly.annotation.Accept("text/html\n")
+        @ru.jrestly.annotation.ContentType("application/xml\n")
+        @ru.jrestly.annotation.Cookie(name = "m_name\n", value = "m_val\n")
+        String lfMethod(@ru.jrestly.annotation.Cookie(name = "p_name\n") String cookieParam);
+    }
+
+    @Test
+    void rejectsCrlfInAnnotationsWithPureLf() {
+        List<String> problems = ControllerValidator.validate(ClassLevelLfController.class);
+        assertEquals(9, problems.size());
+        assertTrue(problems.stream().anyMatch(p -> p.contains("@Accept media type must not contain CRLF characters")));
+        assertTrue(problems.stream().anyMatch(p -> p.contains("@ContentType must not contain CRLF characters")));
+        assertTrue(problems.stream().anyMatch(p -> p.contains("@Cookie name must not contain CRLF characters")));
+        assertTrue(problems.stream().anyMatch(p -> p.contains("@Cookie value must not contain CRLF characters")));
+        assertTrue(problems.stream().anyMatch(p -> p.contains("@Cookie parameter name must not contain CRLF characters")));
+    }
+
+    @ru.jrestly.annotation.OnError(statuses = {600, 404}, errorObject = ru.jrestly.problem.ProblemDetail.class)
+    @ru.jrestly.annotation.OnError(statuses = {404}, errorObject = ru.jrestly.problem.ProblemDetail.class)
+    interface OnErrorClassEdgeCasesController {
+        @ru.jrestly.annotation.Get(path = "/err")
+        @ru.jrestly.annotation.OnError(statuses = {600, 404}, errorObject = ru.jrestly.problem.ProblemDetail.class)
+        @ru.jrestly.annotation.OnError(statuses = {404}, errorObject = ru.jrestly.problem.ProblemDetail.class)
+        String call();
+    }
+
+    @Test
+    void reportsOnErrorStatusAbove599AndToleratesDuplicateStatusWithSameErrorObject() {
+        List<String> problems = ControllerValidator.validate(OnErrorClassEdgeCasesController.class);
+        assertEquals(2, problems.size());
+        assertTrue(problems.get(0).contains("must be a valid HTTP status (100..599), was 600"));
+        assertTrue(problems.get(1).contains("must be a valid HTTP status (100..599), was 600"));
+    }
+
+    interface DeleteWithParamsController {
+        @ru.jrestly.annotation.Delete(path = "/delete-item", params = {
+            @ru.jrestly.annotation.RequestDefaultParam(name = "force", value = "true"),
+            @ru.jrestly.annotation.RequestDefaultParam(name = "   ", value = "blank")
+        })
+        String deleteItem();
+    }
+
+    @Test
+    void resolvesDeletePathAndValidatesVerbDefaultParams() {
+        List<String> problems = ControllerValidator.validate(DeleteWithParamsController.class);
+        assertEquals(1, problems.size());
+        assertTrue(problems.getFirst().contains("@RequestDefaultParam name must not be blank"));
+    }
+
+    interface ParameterAnnotationCombinationController {
+        @ru.jrestly.annotation.Post(path = "/combo-body-part")
+        String bodyWithPart(@ru.jrestly.annotation.RequestBody @ru.jrestly.annotation.MultipartFormFile(partName = "f") byte[] payload);
+
+        @ru.jrestly.annotation.Get(path = "/combo-cookie")
+        String cookieWithOthers(
+            @ru.jrestly.annotation.Cookie(name = "c2") @ru.jrestly.annotation.RequestParam String c2,
+            @ru.jrestly.annotation.Cookie(name = "c3") @ru.jrestly.annotation.PathVariable(name = "c3") String c3,
+            @ru.jrestly.annotation.Cookie(name = "c4") @ru.jrestly.annotation.RequestBody String c4,
+            @ru.jrestly.annotation.Cookie(name = "c5") @ru.jrestly.annotation.MultipartFormFile(partName = "p") byte[] c5
+        );
+
+        @ru.jrestly.annotation.Get(path = "/combo-target-url")
+        String targetUrlWithOthers(
+            @ru.jrestly.annotation.TargetUrl @ru.jrestly.annotation.RequestParam String u1,
+            @ru.jrestly.annotation.TargetUrl @ru.jrestly.annotation.PathVariable(name = "u2") String u2,
+            @ru.jrestly.annotation.TargetUrl @ru.jrestly.annotation.RequestHeader(name = "H") String u3,
+            @ru.jrestly.annotation.TargetUrl @ru.jrestly.annotation.Cookie(name = "C") String u4,
+            @ru.jrestly.annotation.TargetUrl @ru.jrestly.annotation.RequestBody String u5,
+            @ru.jrestly.annotation.TargetUrl @ru.jrestly.annotation.MultipartFormFile(partName = "u6") byte[] u6
+        );
+
+        @ru.jrestly.annotation.Get(path = "/combo-headers-progress")
+        String progressAndHeaders(
+            @ru.jrestly.annotation.TargetUrl ru.jrestly.http.ResponseHeaders headersWithTargetUrl,
+            @ru.jrestly.annotation.RequestParam ru.jrestly.http.UploadProgressListener uploadWithParam,
+            @ru.jrestly.annotation.PathVariable(name = "up") ru.jrestly.http.UploadProgressListener uploadWithVar,
+            @ru.jrestly.annotation.RequestHeader(name = "UH") ru.jrestly.http.UploadProgressListener uploadWithHeader,
+            @ru.jrestly.annotation.Cookie(name = "UC") ru.jrestly.http.UploadProgressListener uploadWithCookie,
+            @ru.jrestly.annotation.RequestBody ru.jrestly.http.UploadProgressListener uploadWithBody,
+            @ru.jrestly.annotation.MultipartFormFile(partName = "UF") ru.jrestly.http.UploadProgressListener uploadWithPart,
+            @ru.jrestly.annotation.TargetUrl ru.jrestly.http.UploadProgressListener uploadWithTarget,
+            @ru.jrestly.annotation.RequestParam ru.jrestly.http.DownloadProgressListener downloadWithParam,
+            @ru.jrestly.annotation.PathVariable(name = "dp") ru.jrestly.http.DownloadProgressListener downloadWithVar,
+            @ru.jrestly.annotation.RequestHeader(name = "DH") ru.jrestly.http.DownloadProgressListener downloadWithHeader,
+            @ru.jrestly.annotation.Cookie(name = "DC") ru.jrestly.http.DownloadProgressListener downloadWithCookie,
+            @ru.jrestly.annotation.RequestBody ru.jrestly.http.DownloadProgressListener downloadWithBody,
+            @ru.jrestly.annotation.MultipartFormFile(partName = "DF") ru.jrestly.http.DownloadProgressListener downloadWithPart,
+            @ru.jrestly.annotation.TargetUrl ru.jrestly.http.DownloadProgressListener downloadWithTarget
+        );
+    }
+
+    @Test
+    void rejectsDisallowedCombinationsOfParameterAnnotations() {
+        List<String> problems = ControllerValidator.validate(ParameterAnnotationCombinationController.class);
+        assertTrue(problems.stream().anyMatch(p -> p.contains("parameter must not combine @RequestBody with other HTTP parameter annotations")));
+        assertTrue(problems.stream().anyMatch(p -> p.contains("parameter must not combine @Cookie with other HTTP parameter annotations")));
+        assertTrue(problems.stream().anyMatch(p -> p.contains("parameter must not combine @TargetUrl with other HTTP parameter annotations")));
+        assertTrue(problems.stream().anyMatch(p -> p.contains("ResponseHeaders parameter must not be annotated with HTTP parameter annotations")));
+        assertTrue(problems.stream().anyMatch(p -> p.contains("UploadProgressListener parameter must not be annotated with HTTP parameter annotations")));
+        assertTrue(problems.stream().anyMatch(p -> p.contains("DownloadProgressListener parameter must not be annotated with HTTP parameter annotations")));
+    }
+
+    abstract static class AbstractCustomInterceptor implements ru.jrestly.interceptor.RequestInterceptor {}
+    abstract static class AbstractCustomMetrics implements ru.jrestly.metrics.ClientMetricsListener {}
+
+    interface AbstractInterceptorAndMetricsController {
+        @ru.jrestly.annotation.Get(path = "/abs")
+        @ru.jrestly.annotation.WithInterceptor(AbstractCustomInterceptor.class)
+        @ru.jrestly.annotation.WithMetrics(AbstractCustomMetrics.class)
+        String call();
+    }
+
+    @Test
+    void rejectsAbstractClassesInWithInterceptorAndWithMetrics() {
+        List<String> problems = ControllerValidator.validate(AbstractInterceptorAndMetricsController.class);
+        assertEquals(2, problems.size());
+        assertTrue(problems.get(0).contains("@WithInterceptor class AbstractCustomInterceptor must not be abstract or an interface"));
+        assertTrue(problems.get(1).contains("@WithMetrics class AbstractCustomMetrics must not be abstract or an interface"));
+    }
+
+    interface NonAnnotatedMethodHolder {
+        void unannotatedMethod();
+    }
+
+    @Test
+    void packagePrivateSeamsHandleNullsAndEdgeCases() throws Exception {
+        List<String> problems = new ArrayList<>();
+        ControllerValidator.validateInterceptorClass(null, "Test", problems);
+        assertEquals(List.of("Test: @WithInterceptor class must not be null"), problems);
+
+        problems.clear();
+        ControllerValidator.validateMetricsClass(null, "Test", problems);
+        assertEquals(List.of("Test: @WithMetrics class must not be null"), problems);
+
+        problems.clear();
+        ControllerValidator.validatePath("Test", null, problems);
+        assertTrue(problems.isEmpty());
+
+        java.lang.reflect.Method nonAnnotated = NonAnnotatedMethodHolder.class.getMethod("unannotatedMethod");
+        ControllerValidator.validatePathVariableMismatch(nonAnnotated, problems);
+        assertTrue(problems.isEmpty());
+        org.junit.jupiter.api.Assertions.assertNull(ControllerValidator.resolvePath(nonAnnotated));
+        assertEquals(0, ControllerValidator.resolveVerbDefaultParams(nonAnnotated).length);
+
+        ru.jrestly.annotation.Retry retryProxy = (ru.jrestly.annotation.Retry) Proxy.newProxyInstance(
+                ru.jrestly.annotation.Retry.class.getClassLoader(),
+                new Class<?>[]{ru.jrestly.annotation.Retry.class},
+                (proxy, method, args) -> switch (method.getName()) {
+                    case "times" -> 3;
+                    case "initialBackoffMs" -> 100L;
+                    case "maxBackoffMs" -> 500L;
+                    case "multiplier" -> Double.NaN;
+                    case "statuses" -> new int[]{600};
+                    case "annotationType" -> ru.jrestly.annotation.Retry.class;
+                    default -> "proxy @Retry";
+                });
+        problems.clear();
+        ControllerValidator.validateRetry("Test", retryProxy, problems);
+        assertEquals(2, problems.size());
+        assertTrue(problems.get(0).contains("@Retry multiplier must be >= 1.0, was NaN"));
+        assertTrue(problems.get(1).contains("@Retry status must be in [100, 599], was 600"));
+
+        ru.jrestly.annotation.ExpectStatus expectStatusProxy = (ru.jrestly.annotation.ExpectStatus) Proxy.newProxyInstance(
+                ru.jrestly.annotation.ExpectStatus.class.getClassLoader(),
+                new Class<?>[]{ru.jrestly.annotation.ExpectStatus.class},
+                (proxy, method, args) -> switch (method.getName()) {
+                    case "statuses" -> new int[]{600};
+                    case "annotationType" -> ru.jrestly.annotation.ExpectStatus.class;
+                    default -> "proxy @ExpectStatus";
+                });
+        problems.clear();
+        ControllerValidator.validateExpectStatus("Test", expectStatusProxy, problems);
+        assertEquals(1, problems.size());
+        assertTrue(problems.getFirst().contains("@ExpectStatus status must be in [100, 599], was 600"));
+    }
+
+
 
     // built with -parameters, so a class that lacks the MethodParameters attribute
     // -- the only way to reproduce the missing flag -- must be produced here. A

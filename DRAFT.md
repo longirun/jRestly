@@ -1,5 +1,28 @@
 # DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
+> **Сессия #264 (free-аудит `ControllerValidator`: исчерпывающий coverage-срез валидатора интерфейсов контроллеров; закрыто 40 ветвей класса `ControllerValidator` — missed branches 50 → 10, ветви 90.0% → 98.00%; преодолен исторический рубеж 1,500 тестов — 1,502/1502; впервые пробит рубеж 97% Line Coverage — 97.00%; Branch Coverage достиг 86.81%, Instruction 97.34%):**
+> свободный ход по классам ядра с наибольшим хвостом непокрытых ветвей;
+> сужение на `ControllerValidator` (50 missed branches на входе, 90.0% coverage — третий по рангу класс по missed branches):
+> 1. *Аудит (кластеры `ControllerValidator`):*
+>    - Null и не-интерфейсные классы: `validate(null)` и `validate(String.class)` безопасно возвращают пустой список проблем;
+>    - Алмазное наследование и статические методы интерфейса: дедупликация обхода `visited.add(current)` при повторном посещении базового интерфейса в ромбе и фильтрация статических методов `Modifier.isStatic`;
+>    - Чистый LF (`\n` без `\r`) в аннотациях CRLF-защиты: `@Accept`, `@ContentType`, `@Cookie` на уровне класса и метода, а также параметр `@Cookie`;
+>    - `@OnError`: статусы `> 599` (например, 600) и дедупликация дублирующихся статусов с идентичным `errorObject` (не вызывает ложных конфликтов);
+>    - `@Delete`: корректное извлечение `params` из `@Delete(params = ...)` и валидация blank-имен параметров через `resolveVerbDefaultParams`;
+>    - Комбинации параметров: обнаружение несовместимых сочетаний аннотаций (`@RequestBody` + `@MultipartFormFile`, `@Cookie` с другими HTTP-аннотациями, `@TargetUrl` со всеми параметрами запроса, `ResponseHeaders` + `@TargetUrl`, `UploadProgressListener` и `DownloadProgressListener` со всеми типами запросных аннотаций);
+>    - Абстрактные классы в `@WithInterceptor` и `@WithMetrics`: `Modifier.isAbstract` для классов, не являющихся интерфейсами;
+>    - Package-private seams: открытие швов валидатора (`collectClassProblems`, `collectMethods`, `validateMethod`, `validateInterceptorClass`, `validateMetricsClass`, `validateRetry`, `validateExpectStatus`, `validatePath`, `validatePathVariableMismatch`) позволило верифицировать поведение при null-аргументах, `Double.NaN` в `Retry.multiplier()`, и статусных кодах > 599.
+> 2. *TDD и исторические гейты JaCoCo:*
+>    - Добавлено 8 тестов в `ControllerValidationTest` (быстрые unit-проверки, без сети): **1,502 / 1,502** green across all 5 modules (+8 тестов, впервые преодолен рубеж 1500 тестов, 0 failures, 0 errors, 0 warnings under `-Werror`).
+>    - `ControllerValidator`: missed branches 50 → **10** (покрытие ветвей выросло с 90.0% до **98.00%**, закрыто 40 ветвей)!
+>    - **JaCoCo Coverage:**
+>      * **CLASS:** **143 / 143 (100.00%)**; **METHOD:** **1432 / 1432 (100.00%)** — абсолютные 100% сохранены!
+>      * **BRANCH:** **3,857 / 4,443 (86.81%)** — новый исторический рекорд (+39 покрытых ветвей, вплотную к 87%)!
+>      * **INSTRUCTION:** **30,546 / 31,380 (97.34%)** — новый исторический рекорд!
+>      * **LINE:** **6,634 / 6,839 (97.00%)** — новый исторический рекорд (впервые пробит рубеж 97%)!
+>      * **COMPLEXITY:** **3,113 / 3,686 (84.45%)** — новый исторический рекорд!
+>    - ADR не тронут — чистый coverage-срез по контракту.
+> 
 > **Сессия #263 (free-аудит `HttpTemplateBuilder`: исчерпывающий coverage-срез сборщика шаблонов HTTP-запросов; пробит рубеж 85% Branch Coverage — 85.93%, закрыто 44 ветви класса `HttpTemplateBuilder`, 19 новых тестов, гейт 1494/1494, INSTRUCTION 97.23% и LINE 96.83% — новые исторические рекорды библиотеки):**
 > свободный ход по классам ядра с наибольшим хвостом непокрытых ветвей;
 > сужение на `HttpTemplateBuilder` (164 missed branches на входе, 74.8% coverage — второй класс в библиотеке по missed branches):

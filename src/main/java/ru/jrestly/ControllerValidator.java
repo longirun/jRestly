@@ -142,7 +142,7 @@ public final class ControllerValidator {
         return problems;
     }
 
-    private static void collectClassProblems(Class<?> current, List<String> problems, Set<Class<?>> visited) {
+    static void collectClassProblems(Class<?> current, List<String> problems, Set<Class<?>> visited) {
         if (current == null || !current.isInterface() || !visited.add(current)) {
             return;
         }
@@ -241,7 +241,7 @@ public final class ControllerValidator {
         }
     }
 
-    private static void collectMethods(Class<?> current, Map<String, Method> methods) {
+    static void collectMethods(Class<?> current, Map<String, Method> methods) {
         if (current == null || !current.isInterface()) {
             return;
         }
@@ -262,7 +262,7 @@ public final class ControllerValidator {
         return method.getName() + Arrays.toString(method.getParameterTypes());
     }
 
-    private static List<String> validateMethod(Method method) {
+    static List<String> validateMethod(Method method) {
         List<String> problems = new ArrayList<>();
 
         List<String> httpAnnotations = new ArrayList<>();
@@ -573,7 +573,7 @@ public final class ControllerValidator {
         return problems;
     }
 
-    private static void validateInterceptorClass(Class<?> clazz, String prefix, List<String> problems) {
+    static void validateInterceptorClass(Class<?> clazz, String prefix, List<String> problems) {
         if (clazz == null) {
             problems.add(prefix + ": @WithInterceptor class must not be null");
             return;
@@ -593,7 +593,7 @@ public final class ControllerValidator {
         }
     }
 
-    private static void validateMetricsClass(Class<?> clazz, String prefix, List<String> problems) {
+    static void validateMetricsClass(Class<?> clazz, String prefix, List<String> problems) {
         if (clazz == null) {
             problems.add(prefix + ": @WithMetrics class must not be null");
             return;
@@ -613,7 +613,7 @@ public final class ControllerValidator {
         }
     }
 
-    private static RequestDefaultParam[] resolveVerbDefaultParams(Method method) {
+    static RequestDefaultParam[] resolveVerbDefaultParams(Method method) {
         if (method.isAnnotationPresent(Get.class)) {
             return method.getAnnotation(Get.class).params();
         }
@@ -632,7 +632,7 @@ public final class ControllerValidator {
         return new RequestDefaultParam[0];
     }
 
-    private static RequestType resolveRequestType(Method method) {
+    static RequestType resolveRequestType(Method method) {
         if (method.isAnnotationPresent(Get.class)) {
             return RequestType.APPLICATION_JSON;
         }
@@ -657,7 +657,7 @@ public final class ControllerValidator {
         }
     }
 
-    private static void validateCircuitBreaker(String prefix, ru.jrestly.annotation.CircuitBreaker cb, List<String> problems) {
+    static void validateCircuitBreaker(String prefix, ru.jrestly.annotation.CircuitBreaker cb, List<String> problems) {
         if (cb.name().isBlank()) {
             problems.add(prefix + ": @CircuitBreaker name must not be blank");
         }
@@ -680,7 +680,7 @@ public final class ControllerValidator {
         }
     }
 
-    private static void validateRateLimiter(String prefix, ru.jrestly.annotation.RateLimiter rl, List<String> problems) {
+    static void validateRateLimiter(String prefix, ru.jrestly.annotation.RateLimiter rl, List<String> problems) {
         if (rl.name().isBlank()) {
             problems.add(prefix + ": @RateLimiter name must not be blank");
         }
@@ -700,7 +700,7 @@ public final class ControllerValidator {
     // a cryptic "Illegal character in path" at send time), and a @PathVariable
     // with no matching placeholder is silently dropped from the URL. Both are
     // caught here, at proxy creation, through the aggregated channel.
-    private static void validatePathVariableMismatch(Method method, List<String> problems) {
+    static void validatePathVariableMismatch(Method method, List<String> problems) {
         String path = resolvePath(method);
         if (path == null) {
             return;
@@ -730,7 +730,7 @@ public final class ControllerValidator {
                 problems.add(method.getName() + "(): path placeholder '${}' must not be blank");
             } else if (!pathVariables.contains(placeholder)) {
                 problems.add(method.getName() + "(): path placeholder '${" + placeholder
-                        + "}' has no matching @PathVariable parameter");
+                    + "}' has no matching @PathVariable parameter");
             }
         }
         for (String pathVariable : pathVariables) {
@@ -749,7 +749,7 @@ public final class ControllerValidator {
     // the path. It is caught here, at proxy creation. ${...} placeholders are
     // masked with a same-length legal run first, so a valid template does not trip
     // the check and reported indices stay aligned with the declared path.
-    private static void validatePath(String prefix, String path, List<String> problems) {
+    static void validatePath(String prefix, String path, List<String> problems) {
         if (path == null) {
             return;
         }
@@ -769,7 +769,7 @@ public final class ControllerValidator {
     // placeholder. Both are silent until the wire, so they are surfaced here, at
     // proxy creation. A Map parameter (and an HttpCookie) takes its names from the
     // entries/instance rather than the parameter name and is legitimately blank.
-    private static void validateParameterNames(Method method, List<String> problems) {
+    static void validateParameterNames(Method method, List<String> problems) {
         for (Parameter parameter : method.getParameters()) {
             String annotation = fallbackNameAnnotation(parameter);
             if (annotation != null && !parameter.isNamePresent()) {
@@ -780,7 +780,7 @@ public final class ControllerValidator {
         }
     }
 
-    private static String fallbackNameAnnotation(Parameter parameter) {
+    static String fallbackNameAnnotation(Parameter parameter) {
         Class<?> type = parameter.getType();
         if (parameter.isAnnotationPresent(PathVariable.class)
                 && parameter.getAnnotation(PathVariable.class).name().isEmpty()) {
@@ -805,7 +805,7 @@ public final class ControllerValidator {
         return null;
     }
 
-    private static String resolvePath(Method method) {
+    static String resolvePath(Method method) {
         if (method.isAnnotationPresent(Get.class)) {
             return method.getAnnotation(Get.class).path();
         }
@@ -827,7 +827,7 @@ public final class ControllerValidator {
     // Mirrors RetryPolicy.Builder.build() so a misconfigured @Retry surfaces
     // through the eager-validation channel (aggregated, actionable) instead of
     // a bare IllegalStateException at the first invocation (MethodMetadata.parse).
-    private static void validateRetry(String prefix, Retry retry, List<String> problems) {
+    static void validateRetry(String prefix, Retry retry, List<String> problems) {
         if (retry.times() < 1) {
             problems.add(prefix + ": @Retry times must be >= 1, was " + retry.times());
         }
@@ -851,7 +851,7 @@ public final class ControllerValidator {
         }
     }
 
-    private static void validateExpectStatus(String prefix, ExpectStatus expectStatus, List<String> problems) {
+    static void validateExpectStatus(String prefix, ExpectStatus expectStatus, List<String> problems) {
         int[] statuses = expectStatus.statuses();
         if (statuses.length == 0) {
             problems.add(prefix + ": @ExpectStatus statuses must not be empty");
@@ -863,7 +863,7 @@ public final class ControllerValidator {
         }
     }
 
-    private static void validateFollowRedirects(String prefix, FollowRedirects followRedirects, List<String> problems) {
+    static void validateFollowRedirects(String prefix, FollowRedirects followRedirects, List<String> problems) {
         if (followRedirects.count() < 0) {
             problems.add(prefix + ": @FollowRedirects count must not be negative, was " + followRedirects.count());
         }
