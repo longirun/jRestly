@@ -15,206 +15,206 @@ import java.util.stream.Stream;
 
 public interface TestController {
 
-    @Get(path = "/api/items/${id}")
+    @Get("/api/items/${id}")
     TestDto getItem(@PathVariable(name = "id") Long id);
 
-    @Get(path = "/api/items/${slug}")
+    @Get("/api/items/${slug}")
     TestDto getItemBySlug(@PathVariable(name = "slug") String slug);
 
-    @Get(path = "/api/items/${id}")
+    @Get("/api/items/${id}")
     CompletableFuture<TestDto> getItemAsync(@PathVariable(name = "id") Long id);
 
-    @Get(path = "/api/items")
+    @Get("/api/items")
     List<TestDto> getItems(@RequestParam(name = "page") Integer page);
 
-    @Get(path = "/api/items")
+    @Get("/api/items")
     CompletableFuture<List<TestDto>> getItemsAsync(@RequestParam(name = "page") Integer page);
 
-    @Get(path = "/api/search")
+    @Get("/api/search")
     List<TestDto> searchItems(@RequestParam(name = "q") String query, @RequestParam(name = "limit") Integer limit);
 
-    @Get(path = "/api/items", params = {@RequestDefaultParam(name = "size", value = "10")})
+    @Get(value = "/api/items",  params = {@RequestDefaultParam(name = "size", value = "10")})
     List<TestDto> getItemsWithDefaults(@RequestParam(name = "page") Integer page);
 
-    @Get(path = "/api/raw")
+    @Get("/api/raw")
     String getRaw();
 
-    @Get(path = "/api/raw")
+    @Get("/api/raw")
     CompletableFuture<String> getRawAsync();
 
-    @Get(path = "/api/stream")
+    @Get("/api/stream")
     InputStream getStream();
 
-    @Get(path = "/api/stream")
+    @Get("/api/stream")
     CompletableFuture<InputStream> getStreamAsync();
 
-    @Get(path = "/api/stream/lines")
+    @Get("/api/stream/lines")
     Stream<String> getLines();
 
-    @Get(path = "/api/stream/lines")
+    @Get("/api/stream/lines")
     CompletableFuture<Stream<String>> getLinesAsync();
 
-    @Get(path = "/api/stream/events")
+    @Get("/api/stream/events")
     Stream<ServerSentEvent> getEvents();
 
-    @Get(path = "/api/stream/events")
+    @Get("/api/stream/events")
     CompletableFuture<Stream<ServerSentEvent>> getEventsAsync();
 
-    @Get(path = "/api/nothing")
+    @Get("/api/nothing")
     void getNothing();
 
-    @Get(path = "/api/nothing")
+    @Get("/api/nothing")
     CompletableFuture<Void> getNothingAsync();
 
-    @Get(path = "/api/nothing")
+    @Get("/api/nothing")
     Void getNothingBoxed();
 
-    @Post(path = "/api/items")
+    @Post("/api/items")
     TestDto createItem(@RequestBody TestDto item);
 
-    @Post(path = "/api/items")
+    @Post("/api/items")
     CompletableFuture<TestDto> createItemAsync(@RequestBody TestDto item);
 
-    @Post(path = "/api/form", requestType = RequestType.APPLICATION_FORM_URLENCODED)
+    @Post(value = "/api/form",  requestType = RequestType.APPLICATION_FORM_URLENCODED)
     String submitForm(@RequestParam(name = "field1") String field1, @RequestParam(name = "field2") String field2);
 
-    @Delete(path = "/api/items/${id}")
+    @Delete("/api/items/${id}")
     void deleteItem(@PathVariable(name = "id") Long id);
 
-    @Delete(path = "/api/items")
+    @Delete("/api/items")
     void deleteItems(@RequestBody TestDto criteria);
 
-    @Delete(path = "/api/items", requestType = RequestType.APPLICATION_FORM_URLENCODED)
+    @Delete(value = "/api/items",  requestType = RequestType.APPLICATION_FORM_URLENCODED)
     void deleteItemsForm(@RequestParam(name = "reason") String reason);
 
-    @Get(path = "/api/headers")
+    @Get("/api/headers")
     String getWithHeaders(@RequestHeader(name = "X-Custom") String customHeader);
 
-    @Get(path = "/api/error")
+    @Get("/api/error")
     @OnError(statuses = {400, 404}, errorObject = TestErrorDto.class)
     TestDto getWithError();
 
-    @Get(path = "/api/error")
+    @Get("/api/error")
     @OnError(statuses = {400, 404}, errorObject = TestErrorDto.class)
     CompletableFuture<TestDto> getWithErrorAsync();
 
-    @Get(path = "/api/rate-limited")
+    @Get("/api/rate-limited")
     @OnError(statuses = {429}, errorObject = TestErrorDto.class)
     TestDto getRateLimited();
 
-    @Get(path = "/api/auth-check")
+    @Get("/api/auth-check")
     TestDto getAuthorized();
 
     @Anonymous
-    @Get(path = "/api/public")
+    @Get("/api/public")
     TestDto getAnonymous();
 
     @SetAuthDetails(headerName = "access-token")
-    @Post(path = "/api/login")
+    @Post("/api/login")
     String login(@RequestBody Object credentials);
 
     @FollowRedirects(count = 3)
-    @Get(path = "/api/redirect")
+    @Get("/api/redirect")
     String getWithRedirect();
 
     @FollowRedirects(count = 3)
-    @Get(path = "/api/redirect")
+    @Get("/api/redirect")
     CompletableFuture<String> getWithRedirectAsync();
 
     @FollowRedirects(count = 3)
-    @Post(path = "/api/redirect-post")
+    @Post("/api/redirect-post")
     String postWithRedirect(@RequestBody TestDto item);
 
     @FollowRedirects(count = 3)
-    @Post(path = "/api/redirect-post-preserve")
+    @Post("/api/redirect-post-preserve")
     TestDto postWithRedirectPreservingBody(@RequestBody TestDto item);
 
     @Authorization
     @SetAuthDetails(headerName = "access-token")
-    @Post(path = "/api/auth/login")
+    @Post("/api/auth/login")
     String authLogin(@RequestBody Object credentials);
 
-    @Get(path = "/api/collection")
+    @Get("/api/collection")
     List<TestDto> getWithCollectionParam(@RequestParam(name = "ids") List<Long> ids);
 
-    @Patch(path = "/api/items/${id}")
+    @Patch("/api/items/${id}")
     TestDto patchItem(@PathVariable(name = "id") Long id, @RequestBody TestDto item);
 
-    @Patch(path = "/api/items/${id}", requestType = RequestType.APPLICATION_FORM_URLENCODED)
+    @Patch(value = "/api/items/${id}",  requestType = RequestType.APPLICATION_FORM_URLENCODED)
     String patchItemForm(@PathVariable(name = "id") Long id, @RequestParam(name = "name") String name);
 
-    @Put(path = "/api/items/${id}")
+    @Put("/api/items/${id}")
     TestDto putItem(@PathVariable(name = "id") Long id, @RequestBody TestDto item);
 
-    @Post(path = "/api/async")
+    @Post("/api/async")
     @ExpectStatus(statuses = {202})
     void createAsync(@RequestBody TestDto item);
 
-    @Get(path = "/api/server-error")
+    @Get("/api/server-error")
     TestDto getServerError();
 
-    @Get(path = "/api/server-error")
+    @Get("/api/server-error")
     CompletableFuture<TestDto> getServerErrorAsync();
 
-    @Get(path = "/api/server-error")
+    @Get("/api/server-error")
     CompletableFuture<TestDto> getServerErrorFaultAsync();
 
-    @Delete(path = "/api/items/${id}/silent")
+    @Delete("/api/items/${id}/silent")
     @ExpectStatus(statuses = {204})
     void deleteSilent(@PathVariable(name = "id") Long id);
 
-    @Post(path = "/api/upload", requestType = RequestType.MULTIPART_FORM_DATA)
+    @Post(value = "/api/upload",  requestType = RequestType.MULTIPART_FORM_DATA)
     String uploadFile(@MultipartFormFile(partName = "file") String filePath);
 
-    @Post(path = "/api/upload", requestType = RequestType.MULTIPART_FORM_DATA)
+    @Post(value = "/api/upload",  requestType = RequestType.MULTIPART_FORM_DATA)
     String uploadFileObject(@MultipartFormFile(partName = "file") File file);
 
-    @Post(path = "/api/upload", requestType = RequestType.MULTIPART_FORM_DATA)
+    @Post(value = "/api/upload",  requestType = RequestType.MULTIPART_FORM_DATA)
     String uploadFileWithText(@MultipartFormFile(partName = "file") String filePath,
                               @RequestParam(name = "comment") String comment);
 
-    @Post(path = "/api/upload", requestType = RequestType.MULTIPART_FORM_DATA)
+    @Post(value = "/api/upload",  requestType = RequestType.MULTIPART_FORM_DATA)
     String uploadFilePath(@MultipartFormFile(partName = "file") Path file);
 
-    @Post(path = "/api/upload", requestType = RequestType.MULTIPART_FORM_DATA)
+    @Post(value = "/api/upload",  requestType = RequestType.MULTIPART_FORM_DATA)
     String uploadFileWithTextParts(@MultipartFormFile(partName = "file") String filePath,
                                    @RequestParam(name = "tags") List<String> tags);
 
-    @Post(path = "/api/upload", requestType = RequestType.MULTIPART_FORM_DATA)
+    @Post(value = "/api/upload",  requestType = RequestType.MULTIPART_FORM_DATA)
     String uploadFileContent(@MultipartFormFile(partName = "file") FileContent file);
 
-    @Post(path = "/api/upload", requestType = RequestType.MULTIPART_FORM_DATA)
+    @Post(value = "/api/upload",  requestType = RequestType.MULTIPART_FORM_DATA)
     @HttpVersion(HttpClient.Version.HTTP_1_1) // chunked transfer encoding is HTTP/1.1 semantics
     String uploadFileContentFromStream(@MultipartFormFile(partName = "file") FileContent file);
 
-    @Post(path = "/api/upload", requestType = RequestType.MULTIPART_FORM_DATA)
+    @Post(value = "/api/upload",  requestType = RequestType.MULTIPART_FORM_DATA)
     String uploadFileContentFromPath(@MultipartFormFile(partName = "file") FileContent file);
 
-    @Post(path = "/api/upload", requestType = RequestType.MULTIPART_FORM_DATA)
+    @Post(value = "/api/upload",  requestType = RequestType.MULTIPART_FORM_DATA)
     @FollowRedirects(count = 1)
     String uploadFileContentFollowRedirect(@MultipartFormFile(partName = "file") FileContent file);
 
-    @Post(path = "/api/upload", requestType = RequestType.MULTIPART_FORM_DATA)
+    @Post(value = "/api/upload",  requestType = RequestType.MULTIPART_FORM_DATA)
     String uploadFilePaths(@MultipartFormFile(partName = "file") List<Path> files);
 
-    @Post(path = "/api/upload", requestType = RequestType.MULTIPART_FORM_DATA)
+    @Post(value = "/api/upload",  requestType = RequestType.MULTIPART_FORM_DATA)
     String uploadFileContents(@MultipartFormFile(partName = "file") List<FileContent> files);
 
-    @Post(path = "/api/upload", requestType = RequestType.MULTIPART_FORM_DATA)
+    @Post(value = "/api/upload",  requestType = RequestType.MULTIPART_FORM_DATA)
     String uploadMixedFiles(@MultipartFormFile(partName = "file") List<Object> files);
 
-    @Post(path = "/api/upload", requestType = RequestType.MULTIPART_FORM_DATA)
+    @Post(value = "/api/upload",  requestType = RequestType.MULTIPART_FORM_DATA)
     String uploadFilePathVarargs(@MultipartFormFile(partName = "file") Path... files);
 
-    @Post(path = "/api/upload", requestType = RequestType.MULTIPART_FORM_DATA)
+    @Post(value = "/api/upload",  requestType = RequestType.MULTIPART_FORM_DATA)
     String uploadFilePathArray(@MultipartFormFile(partName = "file") Path[] files);
 
-    @Post(path = "/api/upload", requestType = RequestType.MULTIPART_FORM_DATA)
+    @Post(value = "/api/upload",  requestType = RequestType.MULTIPART_FORM_DATA)
     String uploadFileContentTyped(@MultipartFormFile(partName = "file", contentType = "application/xml") FileContent file);
 
-    @Post(path = "/api/upload", requestType = RequestType.MULTIPART_FORM_DATA)
+    @Post(value = "/api/upload",  requestType = RequestType.MULTIPART_FORM_DATA)
     String uploadFileContentsTyped(@MultipartFormFile(partName = "files", contentType = "text/xml") List<FileContent> files);
 
-    @Post(path = "/api/upload", requestType = RequestType.MULTIPART_FORM_DATA)
+    @Post(value = "/api/upload",  requestType = RequestType.MULTIPART_FORM_DATA)
     String uploadFileContentQuoted(@MultipartFormFile(partName = "a\"b") FileContent file);
 }

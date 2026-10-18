@@ -64,29 +64,29 @@ class ResponseHeadersWireMockTest extends BaseWireMockTest {
 
     interface MetadataTestClient {
 
-        @Get(path = "/items")
+        @Get("/items")
         List<String> getItemsWithHeaders(@RequestParam(name = "page") int page, ResponseHeaders headers);
 
-        @Get(path = "/items-clean")
+        @Get("/items-clean")
         List<String> getItemsClean(@RequestParam(name = "page") int page);
 
-        @Post(path = "/users")
+        @Post("/users")
         UserDto createUser(@RequestBody UserDto user, ResponseHeaders headers);
 
-        @Get(path = "/rate-limited")
+        @Get("/rate-limited")
         String getRateLimited(ResponseHeaders headers);
 
-        @Get(path = "/async-items")
+        @Get("/async-items")
         CompletableFuture<List<String>> getAsyncItems(ResponseHeaders headers);
 
-        @Get(path = "/download")
+        @Get("/download")
         InputStream download(ResponseHeaders headers);
 
-        @Get(path = "/error-handled")
+        @Get("/error-handled")
         @OnError(statuses = {400}, errorObject = TestErrorDto.class)
         String getHandledError(ResponseHeaders headers);
 
-        @Get(path = "/error-unexpected")
+        @Get("/error-unexpected")
         String getUnexpectedError(ResponseHeaders headers);
     }
 

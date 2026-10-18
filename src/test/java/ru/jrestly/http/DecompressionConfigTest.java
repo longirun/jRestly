@@ -38,10 +38,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class DecompressionConfigTest {
 
     interface SampleController {
-        @Get(path = "/data")
+        @Get("/data")
         String getData();
 
-        @Get(path = "/custom")
+        @Get("/custom")
         String getCustom(@RequestHeader(name = "Accept-Encoding") String encoding);
     }
 

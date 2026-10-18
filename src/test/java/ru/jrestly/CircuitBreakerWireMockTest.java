@@ -33,25 +33,25 @@ class CircuitBreakerWireMockTest extends BaseWireMockTest {
     @CircuitBreaker(name = "flaky-service", minimumNumberOfCalls = 2, slidingWindowSize = 2, failureRateThreshold = 50.0f, waitDurationMs = 80)
     public interface FlakyApi {
 
-        @Get(path = "/api/cb/flaky")
+        @Get("/api/cb/flaky")
         String callFlaky();
 
-        @Get(path = "/api/cb/safe")
+        @Get("/api/cb/safe")
         @CircuitBreaker(enabled = false)
         String callSafe();
 
-        @Get(path = "/api/cb/async")
+        @Get("/api/cb/async")
         CompletableFuture<String> callFlakyAsync();
     }
 
     public interface ClientErrorApi {
         @CircuitBreaker(name = "client-error-service", minimumNumberOfCalls = 2, slidingWindowSize = 2, failureRateThreshold = 50.0f)
-        @Get(path = "/api/cb/missing")
+        @Get("/api/cb/missing")
         String callMissing();
     }
 
     public interface PlainApi {
-        @Get(path = "/api/cb/plain")
+        @Get("/api/cb/plain")
         String callPlain();
     }
 

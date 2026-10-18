@@ -158,74 +158,74 @@ class DeclarativeInterceptorWireMockTest {
     // Controller interfaces
     @WithInterceptor(InterfaceTagInterceptor.class)
     public interface InterfaceLevelApi {
-        @Get(path = "/first")
+        @Get("/first")
         ItemDto getFirst();
 
-        @Get(path = "/second")
+        @Get("/second")
         ItemDto getSecond();
     }
 
     public interface MethodLevelApi {
         @WithInterceptor(MethodTagInterceptor.class)
-        @Get(path = "/tagged")
+        @Get("/tagged")
         ItemDto tagged();
 
-        @Get(path = "/untagged")
+        @Get("/untagged")
         ItemDto untagged();
     }
 
     @WithInterceptor(TraceSuperInterceptor.class)
     public interface SuperTraceApi {
-        @Get(path = "/trace")
+        @Get("/trace")
         ItemDto trace();
     }
 
     @WithInterceptor(TraceSubInterceptor.class)
     public interface SubTraceApi extends SuperTraceApi {
         @WithInterceptor(TraceMethodInterceptor.class)
-        @Get(path = "/trace")
+        @Get("/trace")
         ItemDto trace();
     }
 
     public interface MultiArrayApi {
         @WithInterceptor({ArrayHeaderAInterceptor.class, ArrayHeaderBInterceptor.class})
-        @Get(path = "/multi")
+        @Get("/multi")
         ItemDto multi();
     }
 
     public interface RepeatableApi {
         @WithInterceptor(RepeatableHeaderAInterceptor.class)
         @WithInterceptor(RepeatableHeaderBInterceptor.class)
-        @Get(path = "/repeatable")
+        @Get("/repeatable")
         ItemDto repeatable();
     }
 
     public interface AuditApi {
         @WithInterceptor(AuditDualInterceptor.class)
-        @Get(path = "/audit")
+        @Get("/audit")
         ItemDto callAudit();
     }
 
     public interface MetricApi {
         @WithInterceptor(MetricResponseInterceptor.class)
-        @Get(path = "/metric")
+        @Get("/metric")
         ItemDto callMetric();
     }
 
     public interface AsyncStreamApi {
         @WithInterceptor(MethodTagInterceptor.class)
         @WithInterceptor(MetricResponseInterceptor.class)
-        @Get(path = "/async")
+        @Get("/async")
         CompletableFuture<ItemDto> getAsync();
 
         @WithInterceptor(MethodTagInterceptor.class)
-        @Get(path = "/stream")
+        @Get("/stream")
         InputStream getStream();
     }
 
     public interface StatefulApi {
         @WithInterceptor(SequenceCounterInterceptor.class)
-        @Get(path = "/seq")
+        @Get("/seq")
         ItemDto nextSeq();
     }
 

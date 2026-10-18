@@ -807,19 +807,19 @@ public final class ControllerValidator {
 
     static String resolvePath(Method method) {
         if (method.isAnnotationPresent(Get.class)) {
-            return method.getAnnotation(Get.class).path();
+            return method.getAnnotation(Get.class).value();
         }
         if (method.isAnnotationPresent(Post.class)) {
-            return method.getAnnotation(Post.class).path();
+            return method.getAnnotation(Post.class).value();
         }
         if (method.isAnnotationPresent(Put.class)) {
-            return method.getAnnotation(Put.class).path();
+            return method.getAnnotation(Put.class).value();
         }
         if (method.isAnnotationPresent(Patch.class)) {
-            return method.getAnnotation(Patch.class).path();
+            return method.getAnnotation(Patch.class).value();
         }
         if (method.isAnnotationPresent(Delete.class)) {
-            return method.getAnnotation(Delete.class).path();
+            return method.getAnnotation(Delete.class).value();
         }
         return null;
     }

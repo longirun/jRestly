@@ -51,41 +51,41 @@ class UploadProgressWireMockTest {
 
     public interface UploadApi {
 
-        @Post(path = "/files/single", requestType = RequestType.MULTIPART_FORM_DATA)
+        @Post(value = "/files/single",  requestType = RequestType.MULTIPART_FORM_DATA)
         String uploadSingle(@MultipartFormFile(partName = "file") FileContent file,
                             UploadProgressListener progress);
 
         @HttpVersion(HttpClient.Version.HTTP_1_1)
-        @Post(path = "/files/stream", requestType = RequestType.MULTIPART_FORM_DATA)
+        @Post(value = "/files/stream",  requestType = RequestType.MULTIPART_FORM_DATA)
         String uploadStreamChunked(@MultipartFormFile(partName = "file") FileContent file,
                                    UploadProgressListener progress);
 
-        @Post(path = "/files/disk", requestType = RequestType.MULTIPART_FORM_DATA)
+        @Post(value = "/files/disk",  requestType = RequestType.MULTIPART_FORM_DATA)
         String uploadDiskFile(@MultipartFormFile(partName = "file") Path file,
                               UploadProgressListener progress);
 
-        @Post(path = "/files/multiple", requestType = RequestType.MULTIPART_FORM_DATA)
+        @Post(value = "/files/multiple",  requestType = RequestType.MULTIPART_FORM_DATA)
         String uploadMultiple(@MultipartFormFile(partName = "files") List<FileContent> files,
                               UploadProgressListener progress);
 
-        @Post(path = "/raw/bytes")
+        @Post("/raw/bytes")
         String uploadRaw(@RequestBody byte[] body,
                          UploadProgressListener progress);
 
-        @Post(path = "/json/dto")
+        @Post("/json/dto")
         String uploadJson(@RequestBody ItemDto item,
                           UploadProgressListener progress);
 
-        @Post(path = "/files/async", requestType = RequestType.MULTIPART_FORM_DATA)
+        @Post(value = "/files/async",  requestType = RequestType.MULTIPART_FORM_DATA)
         CompletableFuture<String> uploadAsync(@MultipartFormFile(partName = "file") FileContent file,
                                               UploadProgressListener progress);
 
         @Retry(times = 2, nonIdempotent = true, initialBackoffMs = 10, maxBackoffMs = 50)
-        @Post(path = "/files/retryable", requestType = RequestType.MULTIPART_FORM_DATA)
+        @Post(value = "/files/retryable",  requestType = RequestType.MULTIPART_FORM_DATA)
         String uploadWithRetry(@MultipartFormFile(partName = "file") FileContent file,
                                UploadProgressListener progress);
 
-        @Post(path = "/files/plain", requestType = RequestType.MULTIPART_FORM_DATA)
+        @Post(value = "/files/plain",  requestType = RequestType.MULTIPART_FORM_DATA)
         String uploadWithoutProgressListener(@MultipartFormFile(partName = "file") FileContent file);
     }
 

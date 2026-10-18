@@ -89,42 +89,42 @@ class OnErrorWireMockTest {
     @OnError(statuses = {400}, errorObject = SharedAuthErrorDto.class)
     public interface ErrorTestClient {
 
-        @Get(path = "/api/items/${id}")
+        @Get("/api/items/${id}")
         @OnError(statuses = {404}, errorObject = NotFoundDto.class)
         @OnError(statuses = {422}, errorObject = ValidationDto.class)
         String getItem(@PathVariable(name = "id") long id);
 
-        @Get(path = "/api/unannotated-method")
+        @Get("/api/unannotated-method")
         String callUnannotated();
 
-        @Get(path = "/api/override-method")
+        @Get("/api/override-method")
         @OnError(statuses = {400}, errorObject = MethodSpecificErrorDto.class)
         String callOverride();
 
-        @Get(path = "/api/typed-exception/${id}")
+        @Get("/api/typed-exception/${id}")
         @OnError(statuses = {404}, errorObject = ItemNotFoundException.class)
         String getWithTypedException(@PathVariable(name = "id") long id);
 
-        @Get(path = "/api/handled-subclass/${id}")
+        @Get("/api/handled-subclass/${id}")
         @OnError(statuses = {409}, errorObject = ItemConflictException.class)
         String getWithHandledSubclass(@PathVariable(name = "id") long id);
 
-        @Get(path = "/api/typed-async/${id}")
+        @Get("/api/typed-async/${id}")
         @OnError(statuses = {404}, errorObject = ItemNotFoundException.class)
         CompletableFuture<String> getAsyncWithTypedException(@PathVariable(name = "id") long id);
 
-        @Get(path = "/api/typed-stream/${id}")
+        @Get("/api/typed-stream/${id}")
         @OnError(statuses = {404}, errorObject = ItemNotFoundException.class)
         InputStream getStreamWithTypedException(@PathVariable(name = "id") long id);
 
-        @Get(path = "/api/unexpected")
+        @Get("/api/unexpected")
         String callUnexpected();
 
-        @Get(path = "/api/custom-status-ex")
+        @Get("/api/custom-status-ex")
         @OnError(statuses = {422}, errorObject = CustomMessageAndStatusException.class)
         String callCustomStatusEx();
 
-        @Get(path = "/api/fallback-ex")
+        @Get("/api/fallback-ex")
         @OnError(statuses = {423}, errorObject = FallbackException.class)
         String callFallbackEx();
     }

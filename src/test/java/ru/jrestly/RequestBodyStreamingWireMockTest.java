@@ -45,53 +45,53 @@ class RequestBodyStreamingWireMockTest {
     @HttpVersion(java.net.http.HttpClient.Version.HTTP_1_1)
     public interface StreamingClient {
 
-        @Post(path = "/upload/publisher")
+        @Post("/upload/publisher")
         String uploadPublisher(@RequestBody Flow.Publisher<ByteBuffer> publisher);
 
-        @Post(path = "/upload/strings")
+        @Post("/upload/strings")
         String uploadStrings(@RequestBody Flow.Publisher<String> publisher);
 
-        @Post(path = "/upload/ndjson")
+        @Post("/upload/ndjson")
         @ContentType("application/x-ndjson")
         String uploadNdjson(@RequestBody Flow.Publisher<String> publisher);
 
-        @Post(path = "/upload/stream")
+        @Post("/upload/stream")
         String uploadStream(@RequestBody InputStream stream);
 
-        @Post(path = "/upload/supplier-retry")
+        @Post("/upload/supplier-retry")
         @Retry(times = 2, nonIdempotent = true, initialBackoffMs = 10, maxBackoffMs = 50)
         String uploadSupplierRetry(@RequestBody Supplier<InputStream> streamSupplier);
 
-        @Post(path = "/upload/supplier-once")
+        @Post("/upload/supplier-once")
         String uploadSupplierOnce(@RequestBody Supplier<InputStream> streamSupplier);
 
-        @Post(path = "/upload/supplier-flow-pub")
+        @Post("/upload/supplier-flow-pub")
         String uploadSupplierFlowPublisher(@RequestBody Supplier<Flow.Publisher<ByteBuffer>> publisherSupplier);
 
-        @Post(path = "/upload/supplier-body-pub")
+        @Post("/upload/supplier-body-pub")
         @Retry(times = 2, nonIdempotent = true, initialBackoffMs = 10, maxBackoffMs = 50)
         String uploadSupplierBodyPublisher(@RequestBody Supplier<HttpRequest.BodyPublisher> publisherSupplier);
 
-        @Post(path = "/upload/redirect-307")
+        @Post("/upload/redirect-307")
         @FollowRedirects(count = 2)
         String uploadRedirect307(@RequestBody Supplier<InputStream> streamSupplier);
 
-        @Put(path = "/upload/file")
+        @Put("/upload/file")
         String uploadFile(@RequestBody java.io.File file);
 
-        @Put(path = "/upload/path")
+        @Put("/upload/path")
         String uploadPath(@RequestBody Path path);
 
-        @Post(path = "/upload/body-pub")
+        @Post("/upload/body-pub")
         String uploadBodyPublisher(@RequestBody HttpRequest.BodyPublisher bodyPublisher);
 
-        @Post(path = "/upload/progress")
+        @Post("/upload/progress")
         String uploadWithProgress(@RequestBody Flow.Publisher<ByteBuffer> publisher, UploadProgressListener listener);
 
-        @Post(path = "/upload/async")
+        @Post("/upload/async")
         CompletableFuture<String> uploadAsync(@RequestBody Flow.Publisher<ByteBuffer> publisher);
 
-        @Post(path = "/upload/nullable")
+        @Post("/upload/nullable")
         String uploadNullable(@RequestBody Flow.Publisher<ByteBuffer> publisher);
     }
 

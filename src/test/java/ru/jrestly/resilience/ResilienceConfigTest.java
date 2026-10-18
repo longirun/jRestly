@@ -98,7 +98,7 @@ class ResilienceConfigTest {
     }
 
     interface ValidResilientApi {
-        @Get(path = "/api/items")
+        @Get("/api/items")
         @ru.jrestly.annotation.CircuitBreaker(name = "items", failureRateThreshold = 40.0f, minimumNumberOfCalls = 5, slidingWindowSize = 10, waitDurationMs = 2000, permittedNumberOfCallsInHalfOpenState = 2)
         @ru.jrestly.annotation.RateLimiter(name = "items", limitForPeriod = 5, limitRefreshPeriodMs = 1000, timeoutDurationMs = 200)
         String getItems();
@@ -112,11 +112,11 @@ class ResilienceConfigTest {
     }
 
     interface InvalidBlankNamesApi {
-        @Get(path = "/api/1")
+        @Get("/api/1")
         @ru.jrestly.annotation.CircuitBreaker(name = "   ")
         String method1();
 
-        @Get(path = "/api/2")
+        @Get("/api/2")
         @ru.jrestly.annotation.RateLimiter(name = "")
         String method2();
     }
@@ -131,11 +131,11 @@ class ResilienceConfigTest {
     }
 
     interface InvalidBoundsApi {
-        @Get(path = "/api/cb")
+        @Get("/api/cb")
         @ru.jrestly.annotation.CircuitBreaker(failureRateThreshold = 0.0f, minimumNumberOfCalls = 0, slidingWindowSize = 0, waitDurationMs = -1, permittedNumberOfCallsInHalfOpenState = 0)
         String methodCb();
 
-        @Get(path = "/api/rl")
+        @Get("/api/rl")
         @ru.jrestly.annotation.RateLimiter(limitForPeriod = 0, limitRefreshPeriodMs = -10, timeoutDurationMs = -5)
         String methodRl();
     }

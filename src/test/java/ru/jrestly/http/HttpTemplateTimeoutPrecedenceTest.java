@@ -23,29 +23,29 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 class HttpTemplateTimeoutPrecedenceTest {
 
     interface SuperApi {
-        @Get(path = "/super")
+        @Get("/super")
         String superMethod();
     }
 
     @Timeout(value = 10, unit = TimeUnit.SECONDS)
     interface InterfaceTimeoutApi {
-        @Get(path = "/inherited")
+        @Get("/inherited")
         String inherited();
 
         @Timeout(500)
-        @Get(path = "/override")
+        @Get("/override")
         String overridden();
     }
 
     @Timeout(2000)
     interface ParentApi {
-        @Get(path = "/parent")
+        @Get("/parent")
         String parentMethod();
     }
 
     @Timeout(500)
     interface ChildApi extends ParentApi {
-        @Get(path = "/child")
+        @Get("/child")
         String childMethod();
     }
 

@@ -26,52 +26,52 @@ import static org.junit.jupiter.api.Assertions.*;
 class RequestBodyValidationTest {
 
     interface InvalidGetWithBodyApi {
-        @Get(path = "/items")
+        @Get("/items")
         String getItems(@RequestBody String filter);
     }
 
     interface MultipleRequestBodyApi {
-        @Post(path = "/upload")
+        @Post("/upload")
         void upload(@RequestBody String first, @RequestBody String second);
     }
 
     interface CombinedParamApi {
-        @Post(path = "/data")
+        @Post("/data")
         void sendData(@RequestBody @RequestParam(name = "q") String payload);
     }
 
     interface CombinedPathApi {
-        @Put(path = "/users/${id}")
+        @Put("/users/${id}")
         void updateUser(@RequestBody @PathVariable(name = "id") String payload);
     }
 
     interface CombinedHeaderApi {
-        @Post(path = "/data")
+        @Post("/data")
         void sendWithHeader(@RequestBody @RequestHeader(name = "X-Tag") String payload);
     }
 
     interface CombinedCookieApi {
-        @Post(path = "/data")
+        @Post("/data")
         void sendWithCookie(@RequestBody @Cookie(name = "session") String payload);
     }
 
     interface ValidStreamingApi {
-        @Post(path = "/stream/bytebuffer")
+        @Post("/stream/bytebuffer")
         void streamByteBuffer(@RequestBody Flow.Publisher<ByteBuffer> publisher);
 
-        @Post(path = "/stream/string")
+        @Post("/stream/string")
         void streamString(@RequestBody Flow.Publisher<String> publisher);
 
-        @Post(path = "/stream/inputstream")
+        @Post("/stream/inputstream")
         void streamInputStream(@RequestBody InputStream stream);
 
-        @Post(path = "/stream/supplier")
+        @Post("/stream/supplier")
         void streamSupplier(@RequestBody Supplier<InputStream> streamSupplier);
 
-        @Post(path = "/stream/path")
+        @Post("/stream/path")
         void streamPath(@RequestBody Path path);
 
-        @Post(path = "/stream/publisher")
+        @Post("/stream/publisher")
         void streamBodyPublisher(@RequestBody HttpRequest.BodyPublisher publisher);
     }
 

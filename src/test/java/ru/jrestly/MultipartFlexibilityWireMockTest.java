@@ -27,27 +27,27 @@ class MultipartFlexibilityWireMockTest extends BaseWireMockTest {
     public record ItemDto(String name, int quantity) {}
 
     interface MultipartFlexibilityController {
-        @Post(path = "/api/upload/json-dto", requestType = RequestType.MULTIPART_FORM_DATA)
+        @Post(value = "/api/upload/json-dto",  requestType = RequestType.MULTIPART_FORM_DATA)
         String uploadWithJsonDto(@RequestParam(name = "item", contentType = "application/json") ItemDto item,
                                  @MultipartFormFile(partName = "file") FileContent file);
 
-        @Post(path = "/api/upload/json-string", requestType = RequestType.MULTIPART_FORM_DATA)
+        @Post(value = "/api/upload/json-string",  requestType = RequestType.MULTIPART_FORM_DATA)
         String uploadWithJsonString(@RequestParam(name = "config", contentType = "application/json") String json,
                                     @RequestParam(name = "tag") String tag);
 
-        @Post(path = "/api/upload/charset-windows", requestType = RequestType.MULTIPART_FORM_DATA)
+        @Post(value = "/api/upload/charset-windows",  requestType = RequestType.MULTIPART_FORM_DATA)
         String uploadWithWindows1251(@RequestParam(name = "doc", contentType = "text/plain; charset=windows-1251") String text);
 
-        @Post(path = "/api/upload/charset-quoted", requestType = RequestType.MULTIPART_FORM_DATA)
+        @Post(value = "/api/upload/charset-quoted",  requestType = RequestType.MULTIPART_FORM_DATA)
         String uploadWithQuotedCharset(@RequestParam(name = "note", contentType = "text/plain; charset=\"ISO-8859-1\"") String text);
 
-        @Post(path = "/api/upload/byte-array", requestType = RequestType.MULTIPART_FORM_DATA)
+        @Post(value = "/api/upload/byte-array",  requestType = RequestType.MULTIPART_FORM_DATA)
         String uploadWithRawBytes(@RequestParam(name = "raw", contentType = "application/octet-stream") byte[] data);
 
-        @Post(path = "/api/upload/collection-json", requestType = RequestType.MULTIPART_FORM_DATA)
+        @Post(value = "/api/upload/collection-json",  requestType = RequestType.MULTIPART_FORM_DATA)
         String uploadWithJsonCollection(@RequestParam(name = "items", contentType = "application/json") List<ItemDto> items);
 
-        @Post(path = "/api/form/submit", requestType = RequestType.APPLICATION_FORM_URLENCODED)
+        @Post(value = "/api/form/submit",  requestType = RequestType.APPLICATION_FORM_URLENCODED)
         String submitForm(@RequestParam(name = "name") String name, @RequestParam(name = "extra") String extra);
     }
 

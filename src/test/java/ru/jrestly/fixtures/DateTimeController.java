@@ -5,6 +5,6 @@ import ru.jrestly.annotation.RequestBody;
 
 public interface DateTimeController {
 
-    @Post(path = "/api/events")
+    @Post("/api/events")
     EventDto createEvent(@RequestBody EventDto event);
 }

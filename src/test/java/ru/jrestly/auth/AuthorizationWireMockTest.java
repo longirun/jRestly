@@ -45,13 +45,13 @@ class AuthorizationWireMockTest {
     }
 
     interface SecureApi {
-        @Get(path = "/secure/data")
+        @Get("/secure/data")
         String getData();
 
-        @Get(path = "/secure/data-async")
+        @Get("/secure/data-async")
         CompletableFuture<String> getDataAsync();
 
-        @Post(path = "/auth/login")
+        @Post("/auth/login")
         @Authorization
         String login(@RequestBody String credentials);
     }

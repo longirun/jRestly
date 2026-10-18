@@ -39,41 +39,41 @@ class TimeoutWireMockTest extends BaseWireMockTest {
     interface TimeoutClientApi {
 
         @Timeout(100)
-        @Get(path = "/api/fast-timeout")
+        @Get("/api/fast-timeout")
         TestDto fastTimeout();
 
         @Timeout(value = 2, unit = TimeUnit.SECONDS)
-        @Get(path = "/api/slow-allowed")
+        @Get("/api/slow-allowed")
         TestDto slowAllowed();
 
         @Timeout(100)
-        @Get(path = "/api/async-timeout")
+        @Get("/api/async-timeout")
         CompletableFuture<TestDto> asyncTimeout();
 
         @Timeout(100)
         @Retry(times = 2, initialBackoffMs = 50, maxBackoffMs = 100, transport = true)
-        @Get(path = "/api/retry-timeout")
+        @Get("/api/retry-timeout")
         TestDto retryTimeout();
 
         @Timeout(1500)
-        @Get(path = "/api/stream-timeout")
+        @Get("/api/stream-timeout")
         InputStream streamTimeout();
     }
 
     interface ZeroTimeoutApi {
 
-        @Get(path = "/api/zero-timeout")
+        @Get("/api/zero-timeout")
         TestDto get();
     }
 
     @Timeout(100)
     interface InterfaceTimeoutApi {
 
-        @Get(path = "/api/iface-inherited")
+        @Get("/api/iface-inherited")
         TestDto inherited();
 
         @Timeout(value = 2, unit = TimeUnit.SECONDS)
-        @Get(path = "/api/iface-override")
+        @Get("/api/iface-override")
         TestDto overridden();
     }
 

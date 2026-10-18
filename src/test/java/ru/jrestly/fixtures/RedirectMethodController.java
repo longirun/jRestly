@@ -4,29 +4,29 @@ import ru.jrestly.annotation.*;
 
 public interface RedirectMethodController {
 
-    @Get(path = "/api/redirect-nofollow")
+    @Get("/api/redirect-nofollow")
     String getWithoutFollowRedirects();
 
-    @Post(path = "/api/redirect-post-nofollow")
+    @Post("/api/redirect-post-nofollow")
     String postWithoutFollowRedirects(@RequestBody TestDto item);
 
     @FollowRedirects(count = 2)
-    @Put(path = "/api/redirect-put")
+    @Put("/api/redirect-put")
     TestDto putWithRedirect(@RequestBody TestDto item);
 
     @FollowRedirects(count = 2)
-    @Patch(path = "/api/redirect-patch")
+    @Patch("/api/redirect-patch")
     TestDto patchWithRedirect(@RequestBody TestDto item);
 
     @FollowRedirects(count = 2)
-    @Get(path = "/api/redirect-relative")
+    @Get("/api/redirect-relative")
     String getWithRelativeRedirectLocation();
 
     @FollowRedirects(count = 2)
-    @Get(path = "/api/same-origin")
+    @Get("/api/same-origin")
     String getSameOriginRedirect();
 
     @FollowRedirects(count = 1)
-    @Get(path = "/api/redirect")
+    @Get("/api/redirect")
     String getWithExplicitAuthOverride(@RequestHeader(name = "Authorization") String token);
 }

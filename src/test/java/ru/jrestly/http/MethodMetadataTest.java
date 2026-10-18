@@ -59,56 +59,59 @@ class MethodMetadataTest {
 
     interface SuperApi {
         @Timeout(value = 5, unit = TimeUnit.SECONDS)
-        @Get(path = "/super")
+        @Get("/super")
         String superMethod();
     }
 
     @WithInterceptor(SampleRequestInterceptor.class)
     interface SampleController extends SuperApi {
-        @Get(path = "/users/{id}")
+        @Get("/users/{id}")
         @ExpectStatus(statuses = {200, 201})
         @OnError(statuses = {404}, errorObject = DummyError.class)
         String getUser(String id, ResponseHeaders headers);
 
-        @Post(path = "/upload")
+        @Post("/upload")
         @Timeout(value = 100, unit = TimeUnit.MILLISECONDS)
         CompletableFuture<Optional<byte[]>> upload(byte[] data, UploadProgressListener listener);
 
-        @Get(path = "/stream")
+        @Get("/stream")
         InputStream stream();
 
-        @Get(path = "/cookies")
+        @Get("/cookies")
         @ru.jrestly.annotation.Cookie(name = "sessionId", value = "abc123xyz")
         @ru.jrestly.annotation.Cookie(name = "theme", value = "dark")
         String withCookies();
 
-        @Get(path = "/conditional")
+        @Get("/conditional")
         @ru.jrestly.annotation.RequestHeader(name = "If-None-Match", value = "\"etag123\"")
         String withConditional();
 
-        @Post(path = "/explicit-content")
+        @Post("/explicit-content")
         @ru.jrestly.annotation.RequestHeader(name = "Content-Type", value = "text/plain")
         String withExplicitContentType();
 
-        @Get(path = "/traced")
+        @Get("/traced")
         @ru.jrestly.annotation.Trace(enabled = true)
         String withTrace();
 
         @ru.jrestly.annotation.Accept("application/json")
         @ru.jrestly.annotation.Trace(enabled = true)
-        @Get(path = "/accept-test")
+        @Get("/accept-test")
         String withAcceptAndTrace();
 
-        @Post(path = "/multipart-test", requestType = RequestType.MULTIPART_FORM_DATA)
+        @Post(value = "/multipart-test", requestType = RequestType.MULTIPART_FORM_DATA)
         void withMultipart(@ru.jrestly.annotation.MultipartFormFile(partName = "file") byte[] file,
                            @ru.jrestly.annotation.RequestParam(name = "desc") String desc);
 
-        @Get(path = "/params-test/${id}")
+        @Get("/params-test/${id}")
         void withParams(@ru.jrestly.annotation.PathVariable(name = "id") String id,
                         @ru.jrestly.annotation.RequestHeader("X-Custom") String header);
     }
 
-
+    interface VerbValueApi {
+        @Get("/api/conventional")
+        void conventional();
+    }
 
     @BeforeEach
     void setUp() {
@@ -136,6 +139,16 @@ class MethodMetadataTest {
         assertEquals(HttpMethod.GET, meta.requestMeta().httpMethod());
         assertEquals("/users/{id}", meta.requestMeta().path());
         assertEquals(RequestType.APPLICATION_JSON, meta.requestMeta().requestType());
+    }
+
+    @Test
+    @DisplayName("Verb path declared via the implicit value attribute (concise API, ADR-0067 P1)")
+    void verbPathDeclaredViaImplicitValueAttribute() throws NoSuchMethodException {
+        Method conventional = VerbValueApi.class.getDeclaredMethod("conventional");
+        MethodMetadata meta = MethodMetadata.of(conventional, VerbValueApi.class);
+
+        assertEquals("/api/conventional", meta.requestMeta().path());
+        assertEquals(HttpMethod.GET, meta.requestMeta().httpMethod());
     }
 
     @Test
@@ -343,11 +356,11 @@ class MethodMetadataTest {
 
     @WithMetrics(MetricsListenerB.class)
     interface SubMetricsApi extends BaseMetricsApi {
-        @Get(path = "/metrics-all")
+        @Get("/metrics-all")
         @WithMetrics({MetricsListenerA.class, MetricsListenerC.class, NonListenerClass.class})
         String allListeners();
 
-        @Get(path = "/metrics-inherited")
+        @Get("/metrics-inherited")
         String inheritedOnly();
     }
 
@@ -356,30 +369,30 @@ class MethodMetadataTest {
 
     @WithInterceptor({DualInterceptor.class, RespInterceptorB.class})
     interface SubInterceptorApi extends BaseInterceptorApi {
-        @Get(path = "/interceptors-method")
+        @Get("/interceptors-method")
         @WithInterceptor({FirstReqInterceptor.class, MethodReqInterceptor.class, NonInterceptorClass.class})
         String methodWithInterceptors();
 
-        @Get(path = "/interceptors-inherited")
+        @Get("/interceptors-inherited")
         String methodInherited();
     }
 
     @QueryCollectionFormat(CollectionFormat.SSV)
     interface FormatApi {
-        @Get(path = "/format-csv")
+        @Get("/format-csv")
         @QueryCollectionFormat(CollectionFormat.CSV)
         String methodCsv();
 
-        @Get(path = "/format-default")
+        @Get("/format-default")
         @QueryCollectionFormat(CollectionFormat.DEFAULT)
         String methodDefault();
 
-        @Get(path = "/format-inherited")
+        @Get("/format-inherited")
         String methodInherited();
     }
 
     interface NoFormatApi {
-        @Get(path = "/format-plain")
+        @Get("/format-plain")
         String methodPlain();
     }
 
@@ -388,105 +401,105 @@ class MethodMetadataTest {
     interface BaseErrorApi {}
 
     interface SubErrorApi extends BaseErrorApi {
-        @Get(path = "/errors-specific")
+        @Get("/errors-specific")
         @OnError(statuses = {400}, errorObject = DummyBadRequestError.class)
         @OnError(errorObject = DummyMethodDefaultError.class)
         String methodSpecific();
 
-        @Get(path = "/errors-inherited")
+        @Get("/errors-inherited")
         String methodInherited();
     }
 
     @Compress(algorithm = CompressionAlgorithm.GZIP, minSizeBytes = 512)
     interface BaseCompressApi {
-        @Get(path = "/compress-disabled")
+        @Get("/compress-disabled")
         @Compress(enabled = false)
         String methodDisabled();
 
-        @Get(path = "/compress-deflate")
+        @Get("/compress-deflate")
         @Compress(algorithm = CompressionAlgorithm.DEFLATE, minSizeBytes = 1024)
         String methodDeflate();
 
-        @Get(path = "/compress-inherited")
+        @Get("/compress-inherited")
         String methodInherited();
     }
 
     @Compress(enabled = false)
     interface DisabledIfaceCompressApi {
-        @Get(path = "/compress-inherit-disabled")
+        @Get("/compress-inherit-disabled")
         String methodInheritDisabled();
     }
 
     interface NoCompressApi {
-        @Get(path = "/compress-none")
+        @Get("/compress-none")
         String methodNoCompress();
     }
 
     @ru.jrestly.annotation.CircuitBreaker(name = "iface-cb")
     @ru.jrestly.annotation.RateLimiter(name = "iface-rl")
     interface ResilienceApi {
-        @Get(path = "/resilience-override")
+        @Get("/resilience-override")
         @ru.jrestly.annotation.CircuitBreaker(name = "method-cb")
         @ru.jrestly.annotation.RateLimiter(name = "method-rl")
         String methodOverridden();
 
-        @Get(path = "/resilience-inherited")
+        @Get("/resilience-inherited")
         String methodInherited();
     }
 
     @ru.jrestly.annotation.HttpVersion(java.net.http.HttpClient.Version.HTTP_2)
     interface HttpVersionApi {
-        @Get(path = "/http-v1")
+        @Get("/http-v1")
         @ru.jrestly.annotation.HttpVersion(java.net.http.HttpClient.Version.HTTP_1_1)
         String methodHttp1();
 
-        @Get(path = "/http-inherited")
+        @Get("/http-inherited")
         String methodInherited();
 
-        @Get(path = "/redirects")
+        @Get("/redirects")
         @ru.jrestly.annotation.FollowRedirects(count = 5)
         String methodRedirects();
 
-        @Get(path = "/no-redirects")
+        @Get("/no-redirects")
         String methodNoRedirects();
     }
 
     interface RetryApi {
-        @Get(path = "/retry-max-after")
+        @Get("/retry-max-after")
         @ru.jrestly.annotation.Retry(times = 4, maxRetryAfterMs = 4000)
         String methodRetryWithMaxAfter();
 
-        @Get(path = "/retry-no-max-after")
+        @Get("/retry-no-max-after")
         @ru.jrestly.annotation.Retry(times = 2, maxRetryAfterMs = -1)
         String methodRetryWithoutMaxAfter();
     }
 
     interface InvalidTimeoutMethodApi {
-        @Get(path = "/timeout-zero")
+        @Get("/timeout-zero")
         @Timeout(value = 0, unit = TimeUnit.SECONDS)
         String methodZeroTimeout();
     }
 
     @Timeout(value = -5, unit = TimeUnit.SECONDS)
     interface InvalidTimeoutIfaceApi {
-        @Get(path = "/timeout-iface")
+        @Get("/timeout-iface")
         String method();
     }
 
     interface ConditionalApi {
-        @Get(path = "/if-match")
+        @Get("/if-match")
         @ru.jrestly.annotation.RequestHeader(name = "If-Match", value = "\"xyz\"")
         String ifMatch();
 
-        @Get(path = "/if-unmod")
+        @Get("/if-unmod")
         @ru.jrestly.annotation.RequestHeader(name = "If-Unmodified-Since", value = "date")
         String ifUnmodifiedSince();
 
-        @Get(path = "/if-mod")
+        @Get("/if-mod")
         @ru.jrestly.annotation.RequestHeader(name = "If-Modified-Since", value = "date")
         String ifModifiedSince();
 
-        @Get(path = "/non-cond")
+        @Get("/non-cond")
         @ru.jrestly.annotation.RequestHeader(name = "X-Foo", value = "bar")
         String nonConditional();
     }
@@ -495,7 +508,7 @@ class MethodMetadataTest {
     @ru.jrestly.annotation.Cookie(name = "valid", value = "123")
     @ru.jrestly.annotation.RequestDefaultParam(name = "ifaceParam", value = "val1")
     interface StaticDataApi {
-        @Get(path = "/search", params = {
+        @Get(value = "/search",  params = {
                 @ru.jrestly.annotation.RequestDefaultParam(name = "q", value = "query"),
                 @ru.jrestly.annotation.RequestDefaultParam(name = "limit", value = "10")
         })
@@ -505,18 +518,18 @@ class MethodMetadataTest {
 
     interface ReturnTypeApi {
         @SuppressWarnings("rawtypes")
-        @Get(path = "/raw-optional")
+        @Get("/raw-optional")
         Optional rawOptional();
 
-        @Get(path = "/sse-stream")
+        @Get("/sse-stream")
         Stream<ServerSentEvent> sseStream();
 
-        @Get(path = "/string-stream")
+        @Get("/string-stream")
         Stream<String> stringStream();
     }
 
     interface ParamDescriptorApi {
-        @Post(path = "/full")
+        @Post("/full")
         @ru.jrestly.annotation.SetAuthDetails(headerName = "X-Auth-Token")
         @ru.jrestly.annotation.Authorization
         void full(

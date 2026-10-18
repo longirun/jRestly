@@ -8,13 +8,13 @@ public interface BrokenController {
 
     String noHttpAnnotation();
 
-    @Get(path = "/duplicate")
-    @Post(path = "/duplicate")
+    @Get("/duplicate")
+    @Post("/duplicate")
     String multipleHttpAnnotations();
 
-    @Post(path = "/upload", requestType = RequestType.MULTIPART_FORM_DATA)
+    @Post(value = "/upload",  requestType = RequestType.MULTIPART_FORM_DATA)
     String multipartWithoutParams();
 
-    @Post(path = "/form", requestType = RequestType.APPLICATION_FORM_URLENCODED)
+    @Post(value = "/form",  requestType = RequestType.APPLICATION_FORM_URLENCODED)
     String formWithoutParams();
 }

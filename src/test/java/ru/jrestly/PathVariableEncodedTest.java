@@ -17,13 +17,13 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 class PathVariableEncodedTest extends BaseWireMockTest {
 
     interface StorageController {
-        @Get(path = "/api/storage/${path}")
+        @Get("/api/storage/${path}")
         String getRawPath(@PathVariable(name = "path", encoded = true) String path);
 
-        @Get(path = "/api/tokens/${token}")
+        @Get("/api/tokens/${token}")
         String getRawToken(@PathVariable(name = "token", encoded = true) String token);
 
-        @Get(path = "/api/default-encode/${name}")
+        @Get("/api/default-encode/${name}")
         String getDefaultEncode(@PathVariable(name = "name") String name);
     }
 

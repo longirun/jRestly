@@ -25,37 +25,37 @@ import static org.junit.jupiter.api.Assertions.*;
 class DownloadProgressValidationTest {
 
     interface AnnotatedRequestParamController {
-        @Get(path = "/download")
+        @Get("/download")
         InputStream download(@RequestParam(name = "p") DownloadProgressListener progress);
     }
 
     interface AnnotatedPathVariableController {
-        @Get(path = "/download/${p}")
+        @Get("/download/${p}")
         InputStream download(@PathVariable(name = "p") DownloadProgressListener progress);
     }
 
     interface AnnotatedHeaderController {
-        @Get(path = "/download")
+        @Get("/download")
         InputStream download(@RequestHeader(name = "X-Progress") DownloadProgressListener progress);
     }
 
     interface AnnotatedCookieController {
-        @Get(path = "/download")
+        @Get("/download")
         InputStream download(@Cookie(name = "c") DownloadProgressListener progress);
     }
 
     interface AnnotatedMultipartController {
-        @Post(path = "/download", requestType = RequestType.MULTIPART_FORM_DATA)
+        @Post(value = "/download",  requestType = RequestType.MULTIPART_FORM_DATA)
         InputStream download(@MultipartFormFile(partName = "file") DownloadProgressListener progress);
     }
 
     interface OnlyDownloadProgressListenerMultipartController {
-        @Post(path = "/download", requestType = RequestType.MULTIPART_FORM_DATA)
+        @Post(value = "/download",  requestType = RequestType.MULTIPART_FORM_DATA)
         InputStream download(DownloadProgressListener progress);
     }
 
     interface ValidController {
-        @Get(path = "/download/${id}")
+        @Get("/download/${id}")
         InputStream download(@PathVariable(name = "id") String id, DownloadProgressListener progress);
     }
 

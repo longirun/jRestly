@@ -21,50 +21,50 @@ import static org.junit.jupiter.api.Assertions.*;
 class CollectionFormatValidationTest {
 
     interface SuperSearchApi {
-        @Get(path = "/super")
+        @Get("/super")
         @QueryCollectionFormat(CollectionFormat.CSV)
         String searchSuper(@RequestParam(name = "tags") List<String> tags);
     }
 
     @QueryCollectionFormat(CollectionFormat.PIPES)
     interface SubSearchApi extends SuperSearchApi {
-        @Get(path = "/sub/default")
+        @Get("/sub/default")
         String searchSubDefault(@RequestParam(name = "tags") List<String> tags);
 
-        @Get(path = "/sub/override-method")
+        @Get("/sub/override-method")
         @QueryCollectionFormat(CollectionFormat.SSV)
         String searchSubMethodOverride(@RequestParam(name = "tags") List<String> tags);
 
-        @Get(path = "/sub/override-param")
+        @Get("/sub/override-param")
         @QueryCollectionFormat(CollectionFormat.TSV)
         String searchSubParamOverride(@RequestParam(name = "tags", format = CollectionFormat.BRACKETS) List<String> tags);
 
-        @Get(path = "/sub/scalar")
+        @Get("/sub/scalar")
         String searchScalar(@RequestParam(name = "page") int page);
     }
 
     interface AllFormatsController {
-        @Get(path = "/explode")
+        @Get("/explode")
         @QueryCollectionFormat(CollectionFormat.EXPLODE)
         String explode(@RequestParam(name = "tags") List<String> tags);
 
-        @Get(path = "/csv")
+        @Get("/csv")
         @QueryCollectionFormat(CollectionFormat.CSV)
         String csv(@RequestParam(name = "tags") List<String> tags);
 
-        @Get(path = "/ssv")
+        @Get("/ssv")
         @QueryCollectionFormat(CollectionFormat.SSV)
         String ssv(@RequestParam(name = "tags") List<String> tags);
 
-        @Get(path = "/tsv")
+        @Get("/tsv")
         @QueryCollectionFormat(CollectionFormat.TSV)
         String tsv(@RequestParam(name = "tags") List<String> tags);
 
-        @Get(path = "/pipes")
+        @Get("/pipes")
         @QueryCollectionFormat(CollectionFormat.PIPES)
         String pipes(@RequestParam(name = "tags") List<String> tags);
 
-        @Get(path = "/brackets")
+        @Get("/brackets")
         @QueryCollectionFormat(CollectionFormat.BRACKETS)
         String brackets(@RequestParam(name = "tags") List<String> tags);
     }

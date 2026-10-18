@@ -79,19 +79,19 @@ class PayloadCodecWireMockTest {
     }
 
     interface PipeApi {
-        @Post(path = "/person")
+        @Post("/person")
         @ContentType(PipeCodec.MEDIA)
         String send(@RequestBody Person person);
 
-        @Get(path = "/person")
+        @Get("/person")
         @Accept(PipeCodec.MEDIA)
         Person fetch();
 
-        @Post(path = "/unregistered")
+        @Post("/unregistered")
         @ContentType("application/x-unregistered")
         String sendUnregistered(@RequestBody Person person);
 
-        @Post(path = "/json-person")
+        @Post("/json-person")
         String sendJson(@RequestBody Person person);
     }
 

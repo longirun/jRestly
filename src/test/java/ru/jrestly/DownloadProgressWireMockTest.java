@@ -50,35 +50,35 @@ class DownloadProgressWireMockTest {
 
     public interface DownloadApi {
 
-        @Get(path = "/download/bytes")
+        @Get("/download/bytes")
         byte[] downloadBytes(DownloadProgressListener progress);
 
-        @Get(path = "/download/string")
+        @Get("/download/string")
         String downloadString(DownloadProgressListener progress);
 
-        @Get(path = "/download/dto")
+        @Get("/download/dto")
         DownloadDto downloadDto(DownloadProgressListener progress);
 
-        @Get(path = "/download/stream")
+        @Get("/download/stream")
         InputStream downloadStream(DownloadProgressListener progress);
 
         @HttpVersion(HttpClient.Version.HTTP_1_1)
-        @Get(path = "/download/chunked")
+        @Get("/download/chunked")
         InputStream downloadChunked(DownloadProgressListener progress);
 
-        @Get(path = "/download/async")
+        @Get("/download/async")
         CompletableFuture<byte[]> downloadAsync(DownloadProgressListener progress);
 
         @Retry(times = 2, nonIdempotent = true, initialBackoffMs = 10, maxBackoffMs = 50)
-        @Get(path = "/download/retryable")
+        @Get("/download/retryable")
         byte[] downloadWithRetry(DownloadProgressListener progress);
 
-        @Post(path = "/transform", requestType = RequestType.MULTIPART_FORM_DATA)
+        @Post(value = "/transform",  requestType = RequestType.MULTIPART_FORM_DATA)
         byte[] transform(@MultipartFormFile(partName = "file") FileContent file,
                          UploadProgressListener uploadProgress,
                          DownloadProgressListener downloadProgress);
 
-        @Get(path = "/download/plain")
+        @Get("/download/plain")
         byte[] downloadWithoutProgressListener();
     }
 

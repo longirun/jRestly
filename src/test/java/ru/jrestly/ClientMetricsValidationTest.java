@@ -65,25 +65,25 @@ class ClientMetricsValidationTest {
 
     @WithMetrics(ValidTestMetricsListener.class)
     interface ValidController {
-        @Get(path = "/api/test")
+        @Get("/api/test")
         String test();
     }
 
     @WithMetrics(AbstractMetricsListener.class)
     interface AbstractListenerController {
-        @Get(path = "/api/test")
+        @Get("/api/test")
         String test();
     }
 
     interface MethodInvalidListenerController {
-        @Get(path = "/api/test")
+        @Get("/api/test")
         @WithMetrics(NoDefaultConstructorListener.class)
         String test();
     }
 
     @WithMetrics(NonListenerClass.class)
     interface NonListenerController {
-        @Get(path = "/api/test")
+        @Get("/api/test")
         String test();
     }
 

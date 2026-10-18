@@ -44,30 +44,30 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class GzipDeflateDecompressionTest extends BaseWireMockTest {
 
     interface DecompressionApi {
-        @Get(path = "/api/items/${id}")
+        @Get("/api/items/${id}")
         TestDto getItem(@PathVariable(name = "id") Long id);
 
-        @Get(path = "/api/items/${id}/async")
+        @Get("/api/items/${id}/async")
         CompletableFuture<TestDto> getItemAsync(@PathVariable(name = "id") Long id);
 
-        @Get(path = "/api/text")
+        @Get("/api/text")
         String getText();
 
-        @Get(path = "/api/stream")
+        @Get("/api/stream")
         InputStream getStream();
 
-        @Get(path = "/api/lines")
+        @Get("/api/lines")
         Stream<String> getLines();
 
-        @Get(path = "/api/error-parsed")
+        @Get("/api/error-parsed")
         @OnError(statuses = {400}, errorObject = TestErrorDto.class)
         TestDto getWithError();
 
-        @Get(path = "/api/unexpected")
+        @Get("/api/unexpected")
         @ExpectStatus(statuses = {200})
         TestDto getUnexpected();
 
-        @Get(path = "/api/custom-encoding")
+        @Get("/api/custom-encoding")
         String getWithCustomAcceptEncoding(@RequestHeader(name = "Accept-Encoding") String encoding);
     }
 

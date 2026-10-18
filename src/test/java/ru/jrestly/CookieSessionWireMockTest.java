@@ -26,41 +26,41 @@ import static org.junit.jupiter.api.Assertions.*;
 class CookieSessionWireMockTest extends BaseWireMockTest {
 
     interface SessionApi {
-        @Post(path = "/api/login")
+        @Post("/api/login")
         String login(ResponseHeaders headers);
 
-        @Get(path = "/api/profile")
+        @Get("/api/profile")
         String getProfile();
     }
 
     @Cookie(name = "app_theme", value = "dark")
     interface DeclarativeCookieApi {
 
-        @Get(path = "/api/theme")
+        @Get("/api/theme")
         String getTheme();
 
-        @Get(path = "/api/method-cookie")
+        @Get("/api/method-cookie")
         @Cookie(name = "feature", value = "canary")
         String getWithMethodCookie();
 
-        @Get(path = "/api/repeatable-cookie")
+        @Get("/api/repeatable-cookie")
         @Cookie(name = "c1", value = "v1")
         @Cookie(name = "c2", value = "v2")
         String getWithRepeatableCookies();
 
-        @Get(path = "/api/param-cookie")
+        @Get("/api/param-cookie")
         String getWithParamCookie(@Cookie(name = "auth_session") String token);
 
-        @Get(path = "/api/override-theme")
+        @Get("/api/override-theme")
         String overrideTheme(@Cookie(name = "app_theme") String themeOverride);
 
-        @Get(path = "/api/map-cookies")
+        @Get("/api/map-cookies")
         String getWithMapCookies(@Cookie Map<String, Object> cookieMap);
 
-        @Get(path = "/api/http-cookie-param")
+        @Get("/api/http-cookie-param")
         String getWithHttpCookie(@Cookie HttpCookie cookie);
 
-        @Get(path = "/api/async-cookie")
+        @Get("/api/async-cookie")
         @Cookie(name = "async_token", value = "async_123")
         CompletableFuture<String> getAsyncWithCookie();
     }

@@ -36,10 +36,10 @@ import java.util.concurrent.TimeUnit;
 public class DispatchOverheadBenchmark {
 
     public interface MockUserApi {
-        @Get(path = "/api/users/${id}")
+        @Get("/api/users/${id}")
         UserDto getUser(@PathVariable(name = "id") long id);
 
-        @Get(path = "/api/ping")
+        @Get("/api/ping")
         String ping();
     }
 

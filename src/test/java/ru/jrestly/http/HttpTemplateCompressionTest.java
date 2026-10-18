@@ -26,7 +26,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class HttpTemplateCompressionTest {
 
     interface CompressApi {
-        @Post(path = "/compress")
+        @Post("/compress")
         @Compress(algorithm = CompressionAlgorithm.GZIP, minSizeBytes = 10)
         String sendData(@RequestBody String payload);
     }

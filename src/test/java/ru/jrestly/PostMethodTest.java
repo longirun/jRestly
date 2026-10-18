@@ -24,10 +24,10 @@ import static org.junit.jupiter.api.Assertions.*;
 class PostMethodTest extends BaseWireMockTest {
 
     interface DynamicFormController {
-        @Post(path = "/api/form/dynamic", requestType = RequestType.APPLICATION_FORM_URLENCODED)
+        @Post(value = "/api/form/dynamic",  requestType = RequestType.APPLICATION_FORM_URLENCODED)
         String postFormWithMap(@RequestParam Map<String, ?> fields);
 
-        @Post(path = "/api/form/prefixed", requestType = RequestType.APPLICATION_FORM_URLENCODED)
+        @Post(value = "/api/form/prefixed",  requestType = RequestType.APPLICATION_FORM_URLENCODED)
         String postFormWithPrefixedMap(@RequestParam(name = "data") Map<String, ?> fields);
     }
 

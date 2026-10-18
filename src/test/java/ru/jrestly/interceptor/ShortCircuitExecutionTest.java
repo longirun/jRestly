@@ -66,29 +66,29 @@ class ShortCircuitExecutionTest {
 
     public interface MockService {
 
-        @Get(path = "/users/${id}")
+        @Get("/users/${id}")
         UserDto getUser(@PathVariable(name = "id") long id);
 
-        @Get(path = "/users/${id}/optional")
+        @Get("/users/${id}/optional")
         Optional<UserDto> getOptionalUser(@PathVariable(name = "id") long id);
 
-        @Get(path = "/greeting")
+        @Get("/greeting")
         String getGreeting();
 
-        @Get(path = "/binary")
+        @Get("/binary")
         byte[] getBinary();
 
-        @Get(path = "/users/${id}/strict")
+        @Get("/users/${id}/strict")
         @OnError(statuses = {404}, errorObject = UserNotFoundException.class)
         UserDto getStrictUser(@PathVariable(name = "id") long id);
 
-        @Get(path = "/users/${id}/async")
+        @Get("/users/${id}/async")
         CompletableFuture<UserDto> getUserAsync(@PathVariable(name = "id") long id);
 
-        @Get(path = "/users/${id}/with-headers")
+        @Get("/users/${id}/with-headers")
         UserDto getUserWithHeaders(@PathVariable(name = "id") long id, ResponseHeaders headers);
 
-        @Post(path = "/users")
+        @Post("/users")
         UserDto createUser(@RequestBody UserDto user);
     }
 
@@ -309,7 +309,7 @@ class ShortCircuitExecutionTest {
 
     @WithInterceptor(DeclarativeMockInterceptor.class)
     public interface DeclarativeMockService {
-        @Get(path = "/mocked")
+        @Get("/mocked")
         UserDto getMockedUser();
     }
 

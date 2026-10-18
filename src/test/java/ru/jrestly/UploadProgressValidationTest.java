@@ -24,32 +24,32 @@ import static org.junit.jupiter.api.Assertions.*;
 class UploadProgressValidationTest {
 
     interface AnnotatedRequestParamController {
-        @Post(path = "/upload")
+        @Post("/upload")
         String upload(@RequestParam(name = "p") UploadProgressListener progress);
     }
 
     interface AnnotatedPathVariableController {
-        @Post(path = "/upload/${p}")
+        @Post("/upload/${p}")
         String upload(@PathVariable(name = "p") UploadProgressListener progress);
     }
 
     interface AnnotatedHeaderController {
-        @Post(path = "/upload")
+        @Post("/upload")
         String upload(@RequestHeader(name = "X-Progress") UploadProgressListener progress);
     }
 
     interface AnnotatedMultipartController {
-        @Post(path = "/upload", requestType = RequestType.MULTIPART_FORM_DATA)
+        @Post(value = "/upload",  requestType = RequestType.MULTIPART_FORM_DATA)
         String upload(@MultipartFormFile(partName = "file") UploadProgressListener progress);
     }
 
     interface OnlyProgressListenerMultipartController {
-        @Post(path = "/upload", requestType = RequestType.MULTIPART_FORM_DATA)
+        @Post(value = "/upload",  requestType = RequestType.MULTIPART_FORM_DATA)
         String upload(UploadProgressListener progress);
     }
 
     interface ValidController {
-        @Post(path = "/upload", requestType = RequestType.MULTIPART_FORM_DATA)
+        @Post(value = "/upload",  requestType = RequestType.MULTIPART_FORM_DATA)
         String upload(@MultipartFormFile(partName = "file") FileContent file, UploadProgressListener progress);
     }
 

@@ -54,27 +54,27 @@ class OptionalReturnTest extends BaseWireMockTest {
 
     interface OptionalClient {
 
-        @Get(path = "/users/${id}")
+        @Get("/users/${id}")
         Optional<UserDto> findUser(@PathVariable(name = "id") long id);
 
-        @Get(path = "/users/${id}/async")
+        @Get("/users/${id}/async")
         CompletableFuture<Optional<UserDto>> findUserAsync(@PathVariable(name = "id") long id);
 
-        @Get(path = "/users/${id}/strict")
+        @Get("/users/${id}/strict")
         @ExpectStatus(statuses = {200})
         Optional<UserDto> findUserStrict(@PathVariable(name = "id") long id);
 
-        @Get(path = "/users/${id}/error-override")
+        @Get("/users/${id}/error-override")
         @OnError(errorObject = TestErrorDto.class, statuses = {404})
         Optional<UserDto> findUserWithErrorOverride(@PathVariable(name = "id") long id);
 
-        @Get(path = "/raw-text")
+        @Get("/raw-text")
         Optional<String> getRawText();
 
-        @Get(path = "/void-check")
+        @Get("/void-check")
         Optional<Void> getVoidCheck();
 
-        @Get(path = "/user-list")
+        @Get("/user-list")
         Optional<List<UserDto>> listUsers();
     }
 

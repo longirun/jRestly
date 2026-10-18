@@ -22,29 +22,29 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 class ArrayParameterWireMockTest extends BaseWireMockTest {
 
     interface ArrayQueryController {
-        @Get(path = "/api/items")
+        @Get("/api/items")
         String getByTags(@RequestParam(name = "tag") String[] tags);
 
-        @Get(path = "/api/items/by-ids")
+        @Get("/api/items/by-ids")
         String getByIds(@RequestParam(name = "id") int[] ids);
 
-        @Get(path = "/api/items/filter")
+        @Get("/api/items/filter")
         String getByFilterMap(@RequestParam Map<String, Object> filter);
 
-        @Get(path = "/api/items#top")
+        @Get("/api/items#top")
         String getWithFragmentAndParam(@RequestParam(name = "page") int page);
     }
 
     interface ArrayHeaderController {
-        @Get(path = "/api/headers/array")
+        @Get("/api/headers/array")
         String getWithHeaderArray(@RequestHeader(name = "X-Role") String[] roles);
 
-        @Get(path = "/api/headers/dynamic-array")
+        @Get("/api/headers/dynamic-array")
         String getWithHeaderMap(@RequestHeader Map<String, Object> headers);
     }
 
     interface ArrayFormController {
-        @Post(path = "/api/form/array", requestType = RequestType.APPLICATION_FORM_URLENCODED)
+        @Post(value = "/api/form/array",  requestType = RequestType.APPLICATION_FORM_URLENCODED)
         String postForm(
                 @RequestParam(name = "category") String[] categories,
                 @RequestParam(name = "flag") int[] flags

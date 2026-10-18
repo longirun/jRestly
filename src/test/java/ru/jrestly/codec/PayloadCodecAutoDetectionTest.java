@@ -46,7 +46,7 @@ class PayloadCodecAutoDetectionTest {
     }
 
     interface SpiApi {
-        @Post(path = "/spi")
+        @Post("/spi")
         @ContentType(TestSpiPayloadCodecProvider.MEDIA)
         String send(@RequestBody Payload payload);
     }

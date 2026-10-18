@@ -36,13 +36,13 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class CustomHttpEngineIntegrationTest {
 
     interface UserApi {
-        @Get(path = "/users/${id}")
+        @Get("/users/${id}")
         UserDto getUser(@PathVariable(name = "id") long id);
 
-        @Get(path = "/users/${id}/async")
+        @Get("/users/${id}/async")
         CompletableFuture<UserDto> getUserAsync(@PathVariable(name = "id") long id);
 
-        @Get(path = "/flaky")
+        @Get("/flaky")
         @Retry(times = 3, initialBackoffMs = 10)
         String getFlaky();
     }

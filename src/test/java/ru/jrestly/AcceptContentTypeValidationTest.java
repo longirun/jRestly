@@ -22,60 +22,60 @@ class AcceptContentTypeValidationTest {
 
     @Accept({})
     interface InterfaceEmptyAcceptController {
-        @Get(path = "/test")
+        @Get("/test")
         String test();
     }
 
     @Accept({"   "})
     interface InterfaceBlankAcceptController {
-        @Get(path = "/test")
+        @Get("/test")
         String test();
     }
 
     @Accept({"application/json\r\nInjected: evil"})
     interface InterfaceCrlfAcceptController {
-        @Get(path = "/test")
+        @Get("/test")
         String test();
     }
 
     @ContentType("   ")
     interface InterfaceBlankContentTypeController {
-        @Post(path = "/test")
+        @Post("/test")
         String test();
     }
 
     @ContentType("application/json\nInjected: evil")
     interface InterfaceCrlfContentTypeController {
-        @Post(path = "/test")
+        @Post("/test")
         String test();
     }
 
     interface MethodEmptyAcceptController {
-        @Get(path = "/test")
+        @Get("/test")
         @Accept({})
         String test();
     }
 
     interface MethodBlankAcceptController {
-        @Get(path = "/test")
+        @Get("/test")
         @Accept({"application/json", ""})
         String test();
     }
 
     interface MethodCrlfAcceptController {
-        @Get(path = "/test")
+        @Get("/test")
         @Accept({"text/plain\rInjected: evil"})
         String test();
     }
 
     interface MethodBlankContentTypeController {
-        @Post(path = "/test")
+        @Post("/test")
         @ContentType("")
         String test();
     }
 
     interface MethodCrlfContentTypeController {
-        @Post(path = "/test")
+        @Post("/test")
         @ContentType("application/xml\r\nInjected: evil")
         String test();
     }
@@ -83,11 +83,11 @@ class AcceptContentTypeValidationTest {
     @Accept(MediaType.APPLICATION_JSON)
     @ContentType(MediaType.APPLICATION_JSON)
     interface ValidAnnotatedController {
-        @Get(path = "/items")
+        @Get("/items")
         @Accept({MediaType.APPLICATION_JSON, MediaType.TEXT_PLAIN})
         String getItems();
 
-        @Post(path = "/items")
+        @Post("/items")
         @ContentType(MediaType.APPLICATION_XML)
         String createItem();
     }

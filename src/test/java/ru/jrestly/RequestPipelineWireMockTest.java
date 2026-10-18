@@ -68,29 +68,29 @@ class RequestPipelineWireMockTest extends BaseWireMockTest {
 
     interface PipelineWireMockApi {
 
-        @Get(path = "/api/secure/data")
+        @Get("/api/secure/data")
         String getSecureData();
 
-        @Get(path = "/api/trace")
+        @Get("/api/trace")
         String traceRequest();
 
-        @Get(path = "/api/users/${id}")
+        @Get("/api/users/${id}")
         String getUserById(@PathVariable(name = "id") String id);
 
-        @Get(path = "/api/resource-with-error")
+        @Get("/api/resource-with-error")
         @OnError(statuses = {400}, errorObject = TestErrorDto.class)
         String getResourceWithError();
 
-        @Get(path = "/api/unhandled-crash")
+        @Get("/api/unhandled-crash")
         String getUnhandledCrash();
 
-        @Get(path = "/api/faulty-network")
+        @Get("/api/faulty-network")
         String getFaultyNetwork();
 
-        @Get(path = "/api/async-data")
+        @Get("/api/async-data")
         CompletableFuture<String> asyncGetData(@RequestParam(name = "q") String query);
 
-        @Get(path = "/api/chain")
+        @Get("/api/chain")
         String getChainedData();
     }
 

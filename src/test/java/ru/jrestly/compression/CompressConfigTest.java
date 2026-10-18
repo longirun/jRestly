@@ -32,30 +32,30 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class CompressConfigTest {
 
     interface ValidApi {
-        @Post(path = "/api/data")
+        @Post("/api/data")
         @Compress(algorithm = CompressionAlgorithm.GZIP, minSizeBytes = 256)
         String sendData(@RequestBody String data);
     }
 
     @Compress(algorithm = CompressionAlgorithm.DEFLATE, minSizeBytes = 512)
     interface ValidInterfaceApi {
-        @Post(path = "/api/data")
+        @Post("/api/data")
         String sendData(@RequestBody String data);
 
-        @Post(path = "/api/plain")
+        @Post("/api/plain")
         @Compress(enabled = false)
         String sendPlain(@RequestBody String data);
     }
 
     interface InvalidMethodApi {
-        @Post(path = "/api/data")
+        @Post("/api/data")
         @Compress(minSizeBytes = -1)
         String sendData(@RequestBody String data);
     }
 
     @Compress(minSizeBytes = -50)
     interface InvalidInterfaceApi {
-        @Post(path = "/api/data")
+        @Post("/api/data")
         String sendData(@RequestBody String data);
     }
 

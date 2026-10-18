@@ -23,12 +23,12 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 class ProgressListenerResolutionTest {
 
     interface DownloadController {
-        @Get(path = "/files/${id}")
+        @Get("/files/${id}")
         byte[] download(@PathVariable(name = "id") String id, DownloadProgressListener listener);
     }
 
     interface UploadController {
-        @Post(path = "/upload")
+        @Post("/upload")
         String upload(@MultipartFormFile(partName = "file") FileContent file, UploadProgressListener listener);
     }
 

@@ -20,7 +20,7 @@ public @interface Post {
      *
      * @return the target path, or an absolute URL
      */
-    String path() default "";
+    String value() default "";
 
     /**
      * Content type and payload format. Defaults to {@link RequestType#APPLICATION_JSON}.

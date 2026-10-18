@@ -38,24 +38,24 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class ZeroGarbagePipelineTest {
 
     interface FastPathApi {
-        @Get(path = "/ping")
+        @Get("/ping")
         String ping();
 
-        @Get(path = "/ping")
+        @Get("/ping")
         String pingWithHeaders(ResponseHeaders headers);
 
-        @Get(path = "/search")
+        @Get("/search")
         String search(@RequestParam(name = "q") String query, @RequestParam(name = "page") int page);
 
-        @Post(path = "/form", requestType = RequestType.APPLICATION_FORM_URLENCODED)
+        @Post(value = "/form",  requestType = RequestType.APPLICATION_FORM_URLENCODED)
         String submitForm(@RequestParam(name = "user") String user, @RequestParam(name = "role") String role);
 
-        @Get(path = "/static-cookies")
+        @Get("/static-cookies")
         @Cookie(name = "token", value = "secret-token")
         @Cookie(name = "env", value = "prod")
         String staticCookies();
 
-        @Get(path = "/etag-cached")
+        @Get("/etag-cached")
         @RequestHeader(name = "If-None-Match", value = "\"etag-999\"")
         Optional<String> getWithEtag();
     }

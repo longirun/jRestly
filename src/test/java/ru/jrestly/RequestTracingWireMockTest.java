@@ -44,38 +44,38 @@ class RequestTracingWireMockTest extends BaseWireMockTest {
 
     @Trace
     public interface InterfaceLevelTraceApi {
-        @Get(path = "/api/trace/default")
+        @Get("/api/trace/default")
         String defaultTrace();
 
-        @Get(path = "/api/trace/custom")
+        @Get("/api/trace/custom")
         @Trace(header = "X-Correlation-ID")
         String customHeaderTrace();
 
-        @Get(path = "/api/trace/w3c")
+        @Get("/api/trace/w3c")
         @Trace(w3c = true)
         String w3cTrace();
 
-        @Get(path = "/api/trace/disabled")
+        @Get("/api/trace/disabled")
         @Trace(enabled = false)
         String disabledTrace();
 
-        @Get(path = "/api/trace/preserve")
+        @Get("/api/trace/preserve")
         String preserveHeader(@RequestHeader(name = "X-Request-ID") String id);
 
-        @Get(path = "/api/trace/force-new")
+        @Get("/api/trace/force-new")
         @Trace(forceNew = true)
         String forceNewTrace(@RequestHeader(name = "X-Request-ID") String id);
 
-        @Get(path = "/api/trace/force-new-w3c")
+        @Get("/api/trace/force-new-w3c")
         @Trace(w3c = true, forceNew = true)
         String forceNewW3cTrace(@RequestHeader(name = "traceparent") String traceparent);
 
-        @Get(path = "/api/trace/async")
+        @Get("/api/trace/async")
         CompletableFuture<String> asyncTrace();
     }
 
     public interface UntracedApi {
-        @Get(path = "/api/untraced/ping")
+        @Get("/api/untraced/ping")
         String ping();
     }
 

@@ -42,17 +42,17 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class ServerSentEventsAndLineStreamingTest extends BaseWireMockTest {
 
     interface LlmChatApi {
-        @Post(path = "/v1/chat/completions")
+        @Post("/v1/chat/completions")
         Stream<ServerSentEvent> streamChat(@RequestBody Map<String, Object> request);
 
-        @Post(path = "/v1/chat/completions")
+        @Post("/v1/chat/completions")
         CompletableFuture<Stream<ServerSentEvent>> streamChatAsync(@RequestBody Map<String, Object> request);
 
-        @Get(path = "/v1/chat/error")
+        @Get("/v1/chat/error")
         @OnError(statuses = {429}, errorObject = TestErrorDto.class)
         Stream<ServerSentEvent> rateLimitedStream();
 
-        @Get(path = "/v1/lines/error")
+        @Get("/v1/lines/error")
         @OnError(statuses = {400}, errorObject = TestErrorDto.class)
         Stream<String> badRequestLines();
     }

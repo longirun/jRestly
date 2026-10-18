@@ -5,6 +5,6 @@ import ru.jrestly.annotation.RequestBody;
 
 public interface NullableFieldController {
 
-    @Post(path = "/api/nullable")
+    @Post("/api/nullable")
     NullableFieldDto createNullable(@RequestBody NullableFieldDto item);
 }

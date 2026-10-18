@@ -38,7 +38,7 @@ class JdkStreamingCloseUnblockedTest {
 
     interface SseApi {
 
-        @Get(path = "/sse")
+        @Get("/sse")
         Stream<ServerSentEvent> events();
     }
 

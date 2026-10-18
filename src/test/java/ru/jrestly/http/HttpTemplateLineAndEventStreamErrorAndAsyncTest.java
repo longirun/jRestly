@@ -322,31 +322,31 @@ class HttpTemplateLineAndEventStreamErrorAndAsyncTest {
     }
 
     private interface StreamingAsyncErrorController {
-        @Get(path = "/lines")
+        @Get("/lines")
         Stream<String> lines();
 
-        @Get(path = "/lines-error")
+        @Get("/lines-error")
         @OnError(statuses = {429}, errorObject = TestDto.class)
         Stream<String> linesOnError();
 
-        @Get(path = "/events")
+        @Get("/events")
         Stream<ServerSentEvent> events();
 
-        @Get(path = "/events-error")
+        @Get("/events-error")
         @OnError(statuses = {400}, errorObject = TestDto.class)
         Stream<ServerSentEvent> eventsOnError();
 
-        @Get(path = "/lines-async")
+        @Get("/lines-async")
         CompletableFuture<Stream<String>> linesAsync();
 
-        @Get(path = "/lines-async-error")
+        @Get("/lines-async-error")
         @OnError(statuses = {429}, errorObject = TestDto.class)
         CompletableFuture<Stream<String>> linesAsyncOnError();
 
-        @Get(path = "/events-async")
+        @Get("/events-async")
         CompletableFuture<Stream<ServerSentEvent>> eventsAsync();
 
-        @Get(path = "/events-async-error")
+        @Get("/events-async-error")
         @OnError(statuses = {400}, errorObject = TestDto.class)
         CompletableFuture<Stream<ServerSentEvent>> eventsAsyncOnError();
     }

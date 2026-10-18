@@ -28,23 +28,23 @@ import static org.junit.jupiter.api.Assertions.*;
 class PersistentCookieWireMockTest extends BaseWireMockTest {
 
     interface AuthApi {
-        @Post(path = "/api/login")
+        @Post("/api/login")
         String login(ResponseHeaders headers);
 
-        @Get(path = "/api/profile")
+        @Get("/api/profile")
         String getProfile();
 
-        @Post(path = "/api/logout")
+        @Post("/api/logout")
         String logout();
 
-        @Post(path = "/api/multi-cookie-login")
+        @Post("/api/multi-cookie-login")
         String multiCookieLogin();
 
-        @Get(path = "/api/declarative")
+        @Get("/api/declarative")
         @Cookie(name = "x_client_type", value = "cli_bot")
         String getDeclarative();
 
-        @Post(path = "/api/async-login")
+        @Post("/api/async-login")
         CompletableFuture<String> asyncLogin();
     }
 

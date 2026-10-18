@@ -62,22 +62,22 @@ public class ControllerValidationTest {
     }
 
     interface StreamController {
-        @ru.jrestly.annotation.Get(path = "/api/stream")
+        @ru.jrestly.annotation.Get("/api/stream")
         java.io.InputStream stream();
 
-        @ru.jrestly.annotation.Get(path = "/api/stream/async")
+        @ru.jrestly.annotation.Get("/api/stream/async")
         java.util.concurrent.CompletableFuture<java.io.InputStream> streamAsync();
 
-        @ru.jrestly.annotation.Get(path = "/api/stream/lines")
+        @ru.jrestly.annotation.Get("/api/stream/lines")
         java.util.stream.Stream<String> lines();
 
-        @ru.jrestly.annotation.Get(path = "/api/stream/lines/async")
+        @ru.jrestly.annotation.Get("/api/stream/lines/async")
         java.util.concurrent.CompletableFuture<java.util.stream.Stream<String>> linesAsync();
 
-        @ru.jrestly.annotation.Get(path = "/api/stream/events")
+        @ru.jrestly.annotation.Get("/api/stream/events")
         java.util.stream.Stream<ru.jrestly.http.ServerSentEvent> events();
 
-        @ru.jrestly.annotation.Get(path = "/api/stream/events/async")
+        @ru.jrestly.annotation.Get("/api/stream/events/async")
         java.util.concurrent.CompletableFuture<java.util.stream.Stream<ru.jrestly.http.ServerSentEvent>> eventsAsync();
     }
 
@@ -91,22 +91,22 @@ public class ControllerValidationTest {
 
     @ru.jrestly.annotation.RequestHeader(name = "  ", value = "v")
     interface BlankClassHeaderController {
-        @ru.jrestly.annotation.Get(path = "/test")
+        @ru.jrestly.annotation.Get("/test")
         String call();
     }
 
     @ru.jrestly.annotation.RequestDefaultParam(name = "", value = "v")
     interface BlankClassDefaultParamController {
-        @ru.jrestly.annotation.Get(path = "/test")
+        @ru.jrestly.annotation.Get("/test")
         String call();
     }
 
     interface BlankMethodHeaderAndParamController {
-        @ru.jrestly.annotation.Get(path = "/test-header")
+        @ru.jrestly.annotation.Get("/test-header")
         @ru.jrestly.annotation.RequestHeader(name = "", value = "v")
         String blankHeader();
 
-        @ru.jrestly.annotation.Get(path = "/test-param")
+        @ru.jrestly.annotation.Get("/test-param")
         @ru.jrestly.annotation.RequestDefaultParam(name = "   ", value = "v")
         String blankParam();
     }
@@ -141,25 +141,25 @@ public class ControllerValidationTest {
     }
 
     interface InvalidRetryController {
-        @ru.jrestly.annotation.Get(path = "/a")
+        @ru.jrestly.annotation.Get("/a")
         @ru.jrestly.annotation.Retry(times = 0)
         String timesZero();
 
-        @ru.jrestly.annotation.Get(path = "/b")
+        @ru.jrestly.annotation.Get("/b")
         @ru.jrestly.annotation.Retry(times = 3, initialBackoffMs = 5_000, maxBackoffMs = 100)
         String invertedBackoff();
 
-        @ru.jrestly.annotation.Get(path = "/c")
+        @ru.jrestly.annotation.Get("/c")
         @ru.jrestly.annotation.Retry(times = 2, multiplier = 0.5)
         String lowMultiplier();
 
-        @ru.jrestly.annotation.Get(path = "/d")
+        @ru.jrestly.annotation.Get("/d")
         @ru.jrestly.annotation.Retry(times = 2, statuses = {999})
         String badStatus();
     }
 
     interface ValidRetryController {
-        @ru.jrestly.annotation.Get(path = "/ok")
+        @ru.jrestly.annotation.Get("/ok")
         @ru.jrestly.annotation.Retry(times = 3, initialBackoffMs = 10, maxBackoffMs = 50, statuses = {408, 429, 503})
         String ok();
     }
@@ -184,13 +184,13 @@ public class ControllerValidationTest {
     }
 
     interface BlankAuthDetailsController {
-        @ru.jrestly.annotation.Get(path = "/login")
+        @ru.jrestly.annotation.Get("/login")
         @ru.jrestly.annotation.SetAuthDetails(headerName = "")
         String login();
     }
 
     interface ValidAuthDetailsController {
-        @ru.jrestly.annotation.Get(path = "/login")
+        @ru.jrestly.annotation.Get("/login")
         @ru.jrestly.annotation.SetAuthDetails(headerName = "access-token")
         String login();
     }
@@ -213,12 +213,12 @@ public class ControllerValidationTest {
     }
 
     interface BlankMultipartPartNameController {
-        @ru.jrestly.annotation.Post(path = "/upload", requestType = ru.jrestly.http.RequestType.MULTIPART_FORM_DATA)
+        @ru.jrestly.annotation.Post(value = "/upload",  requestType = ru.jrestly.http.RequestType.MULTIPART_FORM_DATA)
         String upload(@ru.jrestly.annotation.MultipartFormFile(partName = "  ") java.io.File file);
     }
 
     interface ValidMultipartPartNameController {
-        @ru.jrestly.annotation.Post(path = "/upload", requestType = ru.jrestly.http.RequestType.MULTIPART_FORM_DATA)
+        @ru.jrestly.annotation.Post(value = "/upload",  requestType = ru.jrestly.http.RequestType.MULTIPART_FORM_DATA)
         String upload(@ru.jrestly.annotation.MultipartFormFile(partName = "file") java.io.File file);
     }
 
@@ -241,12 +241,12 @@ public class ControllerValidationTest {
     }
 
     interface FileParamOnJsonController {
-        @ru.jrestly.annotation.Post(path = "/upload")
+        @ru.jrestly.annotation.Post("/upload")
         String upload(@ru.jrestly.annotation.MultipartFormFile(partName = "file") java.io.File file);
     }
 
     interface FileParamOnMultipartController {
-        @ru.jrestly.annotation.Post(path = "/upload", requestType = ru.jrestly.http.RequestType.MULTIPART_FORM_DATA)
+        @ru.jrestly.annotation.Post(value = "/upload",  requestType = ru.jrestly.http.RequestType.MULTIPART_FORM_DATA)
         String upload(@ru.jrestly.annotation.MultipartFormFile(partName = "file") java.io.File file);
     }
 
@@ -269,19 +269,19 @@ public class ControllerValidationTest {
     }
 
     interface BodyParamOnFormController {
-        @ru.jrestly.annotation.Post(path = "/submit", requestType = ru.jrestly.http.RequestType.APPLICATION_FORM_URLENCODED)
+        @ru.jrestly.annotation.Post(value = "/submit",  requestType = ru.jrestly.http.RequestType.APPLICATION_FORM_URLENCODED)
         String submit(@ru.jrestly.annotation.RequestBody String payload,
                       @ru.jrestly.annotation.RequestParam(name = "name") String name);
     }
 
     interface BodyParamOnMultipartController {
-        @ru.jrestly.annotation.Post(path = "/upload", requestType = ru.jrestly.http.RequestType.MULTIPART_FORM_DATA)
+        @ru.jrestly.annotation.Post(value = "/upload",  requestType = ru.jrestly.http.RequestType.MULTIPART_FORM_DATA)
         String upload(@ru.jrestly.annotation.RequestBody String payload,
                       @ru.jrestly.annotation.MultipartFormFile(partName = "file") java.io.File file);
     }
 
     interface BodyParamOnJsonController {
-        @ru.jrestly.annotation.Post(path = "/submit")
+        @ru.jrestly.annotation.Post("/submit")
         String submit(@ru.jrestly.annotation.RequestBody String payload);
     }
 
@@ -310,13 +310,13 @@ public class ControllerValidationTest {
     }
 
     interface FileAndRequestParamOnSameParamController {
-        @ru.jrestly.annotation.Post(path = "/upload", requestType = ru.jrestly.http.RequestType.MULTIPART_FORM_DATA)
+        @ru.jrestly.annotation.Post(value = "/upload",  requestType = ru.jrestly.http.RequestType.MULTIPART_FORM_DATA)
         String upload(@ru.jrestly.annotation.MultipartFormFile(partName = "file")
                       @ru.jrestly.annotation.RequestParam(name = "desc") String value);
     }
 
     interface ValidMultipartFieldAndFileController {
-        @ru.jrestly.annotation.Post(path = "/upload", requestType = ru.jrestly.http.RequestType.MULTIPART_FORM_DATA)
+        @ru.jrestly.annotation.Post(value = "/upload",  requestType = ru.jrestly.http.RequestType.MULTIPART_FORM_DATA)
         String upload(@ru.jrestly.annotation.RequestParam(name = "desc") String description,
                       @ru.jrestly.annotation.MultipartFormFile(partName = "file") java.io.File file);
     }
@@ -345,23 +345,23 @@ public class ControllerValidationTest {
     }
 
     interface PathOnlyFormController {
-        @ru.jrestly.annotation.Post(path = "/users/${id}", requestType = ru.jrestly.http.RequestType.APPLICATION_FORM_URLENCODED)
+        @ru.jrestly.annotation.Post(value = "/users/${id}",  requestType = ru.jrestly.http.RequestType.APPLICATION_FORM_URLENCODED)
         String postForm(@ru.jrestly.annotation.PathVariable(name = "id") String id);
     }
 
     interface PathOnlyMultipartController {
-        @ru.jrestly.annotation.Post(path = "/users/${id}", requestType = ru.jrestly.http.RequestType.MULTIPART_FORM_DATA)
+        @ru.jrestly.annotation.Post(value = "/users/${id}",  requestType = ru.jrestly.http.RequestType.MULTIPART_FORM_DATA)
         String postMultipart(@ru.jrestly.annotation.PathVariable(name = "id") String id);
     }
 
     interface PathAndFormParamController {
-        @ru.jrestly.annotation.Post(path = "/users/${id}", requestType = ru.jrestly.http.RequestType.APPLICATION_FORM_URLENCODED)
+        @ru.jrestly.annotation.Post(value = "/users/${id}",  requestType = ru.jrestly.http.RequestType.APPLICATION_FORM_URLENCODED)
         String postForm(@ru.jrestly.annotation.PathVariable(name = "id") String id,
                         @ru.jrestly.annotation.RequestParam(name = "name") String name);
     }
 
     interface PathAndMultipartParamController {
-        @ru.jrestly.annotation.Post(path = "/users/${id}", requestType = ru.jrestly.http.RequestType.MULTIPART_FORM_DATA)
+        @ru.jrestly.annotation.Post(value = "/users/${id}",  requestType = ru.jrestly.http.RequestType.MULTIPART_FORM_DATA)
         String postMultipart(@ru.jrestly.annotation.PathVariable(name = "id") String id,
                              @ru.jrestly.annotation.MultipartFormFile(partName = "file") java.io.File file);
     }
@@ -393,25 +393,25 @@ public class ControllerValidationTest {
     }
 
     interface InvalidExpectStatusController {
-        @ru.jrestly.annotation.Get(path = "/empty")
+        @ru.jrestly.annotation.Get("/empty")
         @ru.jrestly.annotation.ExpectStatus(statuses = {})
         String emptyStatuses();
 
-        @ru.jrestly.annotation.Get(path = "/low")
+        @ru.jrestly.annotation.Get("/low")
         @ru.jrestly.annotation.ExpectStatus(statuses = {99})
         String lowStatus();
 
-        @ru.jrestly.annotation.Get(path = "/high")
+        @ru.jrestly.annotation.Get("/high")
         @ru.jrestly.annotation.ExpectStatus(statuses = {600})
         String highStatus();
     }
 
     interface ValidExpectStatusController {
-        @ru.jrestly.annotation.Get(path = "/ok")
+        @ru.jrestly.annotation.Get("/ok")
         @ru.jrestly.annotation.ExpectStatus(statuses = {200, 201})
         String ok();
 
-        @ru.jrestly.annotation.Get(path = "/accepted")
+        @ru.jrestly.annotation.Get("/accepted")
         @ru.jrestly.annotation.ExpectStatus(statuses = {202})
         String accepted();
     }
@@ -435,21 +435,21 @@ public class ControllerValidationTest {
     }
 
     interface InvalidFollowRedirectsController {
-        @ru.jrestly.annotation.Get(path = "/neg")
+        @ru.jrestly.annotation.Get("/neg")
         @ru.jrestly.annotation.FollowRedirects(count = -1)
         String negativeCount();
 
-        @ru.jrestly.annotation.Get(path = "/neg5")
+        @ru.jrestly.annotation.Get("/neg5")
         @ru.jrestly.annotation.FollowRedirects(count = -5)
         String negativeFive();
     }
 
     interface ValidFollowRedirectsController {
-        @ru.jrestly.annotation.Get(path = "/zero")
+        @ru.jrestly.annotation.Get("/zero")
         @ru.jrestly.annotation.FollowRedirects(count = 0)
         String zeroCount();
 
-        @ru.jrestly.annotation.Get(path = "/hops")
+        @ru.jrestly.annotation.Get("/hops")
         @ru.jrestly.annotation.FollowRedirects(count = 3)
         String positiveCount();
     }
@@ -487,17 +487,17 @@ public class ControllerValidationTest {
     }
 
     interface UnresolvedPlaceholderController {
-        @ru.jrestly.annotation.Get(path = "/users/${id}")
+        @ru.jrestly.annotation.Get("/users/${id}")
         String getUser();
     }
 
     interface UnusedPathVariableController {
-        @ru.jrestly.annotation.Get(path = "/users")
+        @ru.jrestly.annotation.Get("/users")
         String getUser(@ru.jrestly.annotation.PathVariable(name = "id") String id);
     }
 
     interface ValidPathVariableController {
-        @ru.jrestly.annotation.Get(path = "/users/${id}")
+        @ru.jrestly.annotation.Get("/users/${id}")
         String getUser(@ru.jrestly.annotation.PathVariable(name = "id") String id);
     }
 
@@ -525,21 +525,21 @@ public class ControllerValidationTest {
     }
 
     interface InvalidPathController {
-        @ru.jrestly.annotation.Get(path = "/api/ us")
+        @ru.jrestly.annotation.Get("/api/ us")
         String space();
 
-        @ru.jrestly.annotation.Get(path = "/api/users/{id}")
+        @ru.jrestly.annotation.Get("/api/users/{id}")
         String singleBrace();
 
-        @ru.jrestly.annotation.Get(path = "/api/100%")
+        @ru.jrestly.annotation.Get("/api/100%")
         String malformedEscape();
     }
 
     interface ValidPathCharactersController {
-        @ru.jrestly.annotation.Get(path = "/api/items%20list?x=1")
+        @ru.jrestly.annotation.Get("/api/items%20list?x=1")
         String percentEncoded();
 
-        @ru.jrestly.annotation.Get(path = "http://[::1]/api/items")
+        @ru.jrestly.annotation.Get("http://[::1]/api/items")
         String ipv6AbsoluteUrl();
     }
 
@@ -575,13 +575,13 @@ public class ControllerValidationTest {
         // its placeholder. The interface is compiled at runtime both ways to prove
         // the guard keys on the compiler flag, not on the declarations themselves.
         String bindings = """
-                    @Get(path = "/search")
+                    @Get("/search")
                     String search(@RequestParam String query);
 
-                    @Get(path = "/api")
+                    @Get("/api")
                     String fetch(@RequestHeader String token);
 
-                    @Get(path = "/session")
+                    @Get("/session")
                     String session(@Cookie String sid);
                 """;
 
@@ -600,13 +600,13 @@ public class ControllerValidationTest {
 
         // a Map parameter takes its names from the entries, not the parameter name
         assertTrue(ControllerValidator.validate(compileController("MapController", """
-                    @Get(path = "/search")
+                    @Get("/search")
                     String search(@RequestParam java.util.Map<String, String> filters);
                 """, false)).isEmpty());
 
         // an explicit name() removes the dependency on the flag entirely
         assertTrue(ControllerValidator.validate(compileController("ExplicitNameController", """
-                    @Get(path = "/search")
+                    @Get("/search")
                     String search(@RequestParam(name = "query") String q);
                 """, false)).isEmpty());
     }
@@ -614,7 +614,7 @@ public class ControllerValidationTest {
     @Test
     void reportsUnnamedPathVariableWithoutParametersFlagActionably() throws Exception {
         Class<?> controller = compileController("NoParamsPathVarController", """
-                    @Get(path = "/items/${id}")
+                    @Get("/items/${id}")
                     String item(@PathVariable String id);
                 """, false);
         List<String> problems = ControllerValidator.validate(controller);
@@ -624,18 +624,18 @@ public class ControllerValidationTest {
     }
 
     interface EmptyPlaceholderController {
-        @ru.jrestly.annotation.Get(path = "/users/${}")
+        @ru.jrestly.annotation.Get("/users/${}")
         String emptyPlaceholder();
     }
 
     interface InvalidCircuitBreakerController {
-        @ru.jrestly.annotation.Get(path = "/cb")
+        @ru.jrestly.annotation.Get("/cb")
         @ru.jrestly.annotation.CircuitBreaker(name = "cb", minimumNumberOfCalls = 10, slidingWindowSize = 5, failureRateThreshold = 105.0f)
         String brokenCb();
     }
 
     interface NegativeRetryBackoffController {
-        @ru.jrestly.annotation.Get(path = "/retry")
+        @ru.jrestly.annotation.Get("/retry")
         @ru.jrestly.annotation.Retry(initialBackoffMs = -10, maxBackoffMs = -5)
         String brokenRetry();
     }
@@ -662,7 +662,7 @@ public class ControllerValidationTest {
     }
 
     interface DiamondBase {
-        @ru.jrestly.annotation.Get(path = "/base")
+        @ru.jrestly.annotation.Get("/base")
         String base();
     }
     interface DiamondLeft extends DiamondBase {}
@@ -680,7 +680,7 @@ public class ControllerValidationTest {
     @ru.jrestly.annotation.ContentType("text/plain\n")
     @ru.jrestly.annotation.Cookie(name = "c_name\n", value = "c_val\n")
     interface ClassLevelLfController {
-        @ru.jrestly.annotation.Get(path = "/lf")
+        @ru.jrestly.annotation.Get("/lf")
         @ru.jrestly.annotation.Accept("text/html\n")
         @ru.jrestly.annotation.ContentType("application/xml\n")
         @ru.jrestly.annotation.Cookie(name = "m_name\n", value = "m_val\n")
@@ -701,7 +701,7 @@ public class ControllerValidationTest {
     @ru.jrestly.annotation.OnError(statuses = {600, 404}, errorObject = ru.jrestly.problem.ProblemDetail.class)
     @ru.jrestly.annotation.OnError(statuses = {404}, errorObject = ru.jrestly.problem.ProblemDetail.class)
     interface OnErrorClassEdgeCasesController {
-        @ru.jrestly.annotation.Get(path = "/err")
+        @ru.jrestly.annotation.Get("/err")
         @ru.jrestly.annotation.OnError(statuses = {600, 404}, errorObject = ru.jrestly.problem.ProblemDetail.class)
         @ru.jrestly.annotation.OnError(statuses = {404}, errorObject = ru.jrestly.problem.ProblemDetail.class)
         String call();
@@ -716,7 +716,7 @@ public class ControllerValidationTest {
     }
 
     interface DeleteWithParamsController {
-        @ru.jrestly.annotation.Delete(path = "/delete-item", params = {
+        @ru.jrestly.annotation.Delete(value = "/delete-item",  params = {
             @ru.jrestly.annotation.RequestDefaultParam(name = "force", value = "true"),
             @ru.jrestly.annotation.RequestDefaultParam(name = "   ", value = "blank")
         })
@@ -731,10 +731,10 @@ public class ControllerValidationTest {
     }
 
     interface ParameterAnnotationCombinationController {
-        @ru.jrestly.annotation.Post(path = "/combo-body-part")
+        @ru.jrestly.annotation.Post("/combo-body-part")
         String bodyWithPart(@ru.jrestly.annotation.RequestBody @ru.jrestly.annotation.MultipartFormFile(partName = "f") byte[] payload);
 
-        @ru.jrestly.annotation.Get(path = "/combo-cookie")
+        @ru.jrestly.annotation.Get("/combo-cookie")
         String cookieWithOthers(
             @ru.jrestly.annotation.Cookie(name = "c2") @ru.jrestly.annotation.RequestParam String c2,
             @ru.jrestly.annotation.Cookie(name = "c3") @ru.jrestly.annotation.PathVariable(name = "c3") String c3,
@@ -742,7 +742,7 @@ public class ControllerValidationTest {
             @ru.jrestly.annotation.Cookie(name = "c5") @ru.jrestly.annotation.MultipartFormFile(partName = "p") byte[] c5
         );
 
-        @ru.jrestly.annotation.Get(path = "/combo-target-url")
+        @ru.jrestly.annotation.Get("/combo-target-url")
         String targetUrlWithOthers(
             @ru.jrestly.annotation.TargetUrl @ru.jrestly.annotation.RequestParam String u1,
             @ru.jrestly.annotation.TargetUrl @ru.jrestly.annotation.PathVariable(name = "u2") String u2,
@@ -752,7 +752,7 @@ public class ControllerValidationTest {
             @ru.jrestly.annotation.TargetUrl @ru.jrestly.annotation.MultipartFormFile(partName = "u6") byte[] u6
         );
 
-        @ru.jrestly.annotation.Get(path = "/combo-headers-progress")
+        @ru.jrestly.annotation.Get("/combo-headers-progress")
         String progressAndHeaders(
             @ru.jrestly.annotation.TargetUrl ru.jrestly.http.ResponseHeaders headersWithTargetUrl,
             @ru.jrestly.annotation.RequestParam ru.jrestly.http.UploadProgressListener uploadWithParam,
@@ -787,7 +787,7 @@ public class ControllerValidationTest {
     abstract static class AbstractCustomMetrics implements ru.jrestly.metrics.ClientMetricsListener {}
 
     interface AbstractInterceptorAndMetricsController {
-        @ru.jrestly.annotation.Get(path = "/abs")
+        @ru.jrestly.annotation.Get("/abs")
         @ru.jrestly.annotation.WithInterceptor(AbstractCustomInterceptor.class)
         @ru.jrestly.annotation.WithMetrics(AbstractCustomMetrics.class)
         String call();

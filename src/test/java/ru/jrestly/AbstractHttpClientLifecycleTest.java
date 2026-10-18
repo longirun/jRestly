@@ -29,7 +29,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class AbstractHttpClientLifecycleTest {
 
     interface TestApi {
-        @Get(path = "/ping")
+        @Get("/ping")
         String ping();
     }
 

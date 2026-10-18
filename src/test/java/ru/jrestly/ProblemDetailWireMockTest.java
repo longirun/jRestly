@@ -35,25 +35,25 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 public class ProblemDetailWireMockTest extends BaseWireMockTest {
 
     interface ProblemApiClient {
-        @Get(path = "/accounts/${id}")
+        @Get("/accounts/${id}")
         String getAccount(@PathVariable(name = "id") String id);
 
-        @Post(path = "/transfer")
+        @Post("/transfer")
         String transfer();
 
-        @Get(path = "/error-handled-pd")
+        @Get("/error-handled-pd")
         @OnError(statuses = 404, errorObject = ProblemDetail.class)
         String getWithProblemDetail();
 
-        @Get(path = "/error-handled-ex")
+        @Get("/error-handled-ex")
         @OnError(statuses = 422, errorObject = ProblemDetailException.class)
         String getWithProblemDetailException();
 
-        @Get(path = "/error-handled-bom")
+        @Get("/error-handled-bom")
         @OnError(statuses = 422, errorObject = ProblemDetailException.class)
         String getWithProblemDetailBom();
 
-        @Get(path = "/async-error")
+        @Get("/async-error")
         CompletableFuture<String> getAsync();
     }
 

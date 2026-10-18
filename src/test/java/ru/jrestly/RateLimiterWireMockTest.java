@@ -31,25 +31,25 @@ class RateLimiterWireMockTest extends BaseWireMockTest {
     @RateLimiter(name = "strict-rate", limitForPeriod = 2, limitRefreshPeriodMs = 1000)
     public interface RateLimitedApi {
 
-        @Get(path = "/api/rl/data")
+        @Get("/api/rl/data")
         String getData();
 
-        @Get(path = "/api/rl/unlimited")
+        @Get("/api/rl/unlimited")
         @RateLimiter(enabled = false)
         String getUnlimited();
 
-        @Get(path = "/api/rl/async")
+        @Get("/api/rl/async")
         CompletableFuture<String> getAsync();
     }
 
     public interface WaitingRateLimitedApi {
-        @Get(path = "/api/rl/wait")
+        @Get("/api/rl/wait")
         @RateLimiter(name = "waiting-rate", limitForPeriod = 1, limitRefreshPeriodMs = 80, timeoutDurationMs = 250)
         String getWithWait();
     }
 
     public interface PlainApi {
-        @Get(path = "/api/rl/plain")
+        @Get("/api/rl/plain")
         String callPlain();
     }
 

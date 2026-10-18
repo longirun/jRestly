@@ -63,44 +63,44 @@ class InterceptorAnnotationTest {
 
     public interface InvalidTypeApi {
         @WithInterceptor(InvalidNotAnInterceptor.class)
-        @Get(path = "/test")
+        @Get("/test")
         String test();
     }
 
     public interface AbstractTypeApi {
         @WithInterceptor(AbstractInterceptor.class)
-        @Get(path = "/test")
+        @Get("/test")
         String test();
     }
 
     public interface NoDefaultConstructorApi {
         @WithInterceptor(NoDefaultConstructorInterceptor.class)
-        @Get(path = "/test")
+        @Get("/test")
         String test();
     }
 
     @WithInterceptor(InvalidNotAnInterceptor.class)
     public interface InvalidInterfaceApi {
-        @Get(path = "/test")
+        @Get("/test")
         String test();
     }
 
     public interface BaseApi {
         @WithInterceptor(ValidRequestInterceptor.class)
-        @Get(path = "/base")
+        @Get("/base")
         String base();
     }
 
     @WithInterceptor(ValidResponseInterceptor.class)
     public interface SuperApi {
-        @Get(path = "/super")
+        @Get("/super")
         String getSuper();
     }
 
     @WithInterceptor(DualInterceptor.class)
     public interface SubApi extends SuperApi {
         @WithInterceptor(ValidRequestInterceptor.class)
-        @Get(path = "/sub")
+        @Get("/sub")
         String getSub();
     }
 

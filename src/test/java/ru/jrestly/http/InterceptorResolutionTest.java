@@ -59,21 +59,21 @@ class InterceptorResolutionTest {
 
     @WithInterceptor(ValidResponseInterceptor.class)
     public interface SuperApi {
-        @Get(path = "/super")
+        @Get("/super")
         String getSuper();
     }
 
     @WithInterceptor(DualInterceptor.class)
     public interface SubApi extends SuperApi {
         @WithInterceptor(ValidRequestInterceptor.class)
-        @Get(path = "/sub")
+        @Get("/sub")
         String getSub();
     }
 
     @WithInterceptor(ValidRequestInterceptor.class)
     public interface DuplicateAnnotatedApi {
         @WithInterceptor(ValidRequestInterceptor.class)
-        @Get(path = "/call")
+        @Get("/call")
         String call();
     }
 
@@ -102,7 +102,7 @@ class InterceptorResolutionTest {
 
     @WithInterceptor({LowPriorityInterceptor.class, HighPriorityInterceptor.class, NeutralInterceptor.class})
     public interface OrderedInterceptorApi {
-        @Get(path = "/order")
+        @Get("/order")
         String call();
     }
 
@@ -112,7 +112,7 @@ class InterceptorResolutionTest {
 
     @WithInterceptor(SubLevelInterceptor.class)
     public interface OrderedSubApi extends OrderedSuperApi {
-        @Get(path = "/ordered")
+        @Get("/ordered")
         String call();
     }
 
@@ -134,7 +134,7 @@ class InterceptorResolutionTest {
     @WithInterceptor(FirstAnnotationInterceptor.class)
     @WithInterceptor(SecondAnnotationInterceptor.class)
     public interface CrossAnnotationApi {
-        @Get(path = "/cross")
+        @Get("/cross")
         String call();
     }
 

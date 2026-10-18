@@ -25,17 +25,17 @@ class TimeoutConfigTest {
 
     interface InvalidMethodTimeoutApi {
         @Timeout(0)
-        @Get(path = "/invalid-method-zero")
+        @Get("/invalid-method-zero")
         String zeroTimeout();
 
         @Timeout(-100)
-        @Get(path = "/invalid-method-negative")
+        @Get("/invalid-method-negative")
         String negativeTimeout();
     }
 
     @Timeout(0)
     interface InvalidInterfaceTimeoutApi {
-        @Get(path = "/ping")
+        @Get("/ping")
         String ping();
     }
 

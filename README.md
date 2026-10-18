@@ -99,19 +99,19 @@ import java.util.List;
 
 public interface ItemApi {
 
-    @Get(path = "/api/items/${id}")
+    @Get("/api/items/${id}")
     Item getItem(@PathVariable(name = "id") long id);
 
-    @Get(path = "/api/items")
+    @Get("/api/items")
     List<Item> listItems(@RequestParam(name = "page") int page);
 
-    @Post(path = "/api/items")
+    @Post("/api/items")
     Item createItem(@RequestBody Item item);
 
-    @Delete(path = "/api/items/${id}")
+    @Delete("/api/items/${id}")
     void deleteItem(@PathVariable(name = "id") long id);
 
-    @Get(path = "/api/items/${id}")
+    @Get("/api/items/${id}")
     @OnError(statuses = {404}, errorObject = ApiError.class)
     Item getItemOrThrow(@PathVariable(name = "id") long id);
 }
@@ -143,13 +143,13 @@ public interface StorageApi {
     @Get
     InputStream download(@TargetUrl URI presignedUri);
 
-    @Post(path = "/subresource")
+    @Post("/subresource")
     void uploadToWebhook(@TargetUrl String webhookUrl, @RequestBody Payload payload);
 }
 ```
 
 - **Supported types:** `java.net.URI`, `java.net.URL`, and `CharSequence`/`String`.
-- **Composition:** Path variables (`${id}`) and `@RequestParam` seamlessly append to the target URL; relative paths in `@Get(path = "...")` normalize slashes cleanly.
+- **Composition:** Path variables (`${id}`) and `@RequestParam` seamlessly append to the target URL; relative paths in `@Get("...")` normalize slashes cleanly.
 - **Fail-fast:** Passing `null` immediately throws an `IllegalArgumentException`. Declaring invalid types or multiple `@TargetUrl` parameters fails fast during proxy creation.
 - **Performance:** Dynamic URL dispatch is pre-indexed in `MethodMetadata` with zero runtime reflection.
 
@@ -177,7 +177,7 @@ jRestly natively supports RFC 7807 / RFC 9457 Problem Details (`application/prob
 ```java
 public interface BillingApi {
 
-    @Post(path = "/orders")
+    @Post("/orders")
     @OnError(statuses = {400, 403}, errorObject = ProblemDetail.class)
     Order createOrder(@RequestBody OrderRequest order);
 }
@@ -195,7 +195,7 @@ XML ships as an opt-in submodule, published alongside the core as `jrestly-codec
 
 ```java
 interface PersonApi {
-    @Post(path = "/person")
+    @Post("/person")
     @ContentType(MediaType.APPLICATION_XML)
     String send(@RequestBody Person person);
 }
@@ -221,10 +221,10 @@ Declare `InputStream` or `CompletableFuture<InputStream>` as the controller meth
 ```java
 public interface DownloadApi {
 
-    @Get(path = "/files/${name}")
+    @Get("/files/${name}")
     InputStream download(@PathVariable(name = "name") String name);
 
-    @Get(path = "/files/${name}")
+    @Get("/files/${name}")
     CompletableFuture<InputStream> downloadAsync(@PathVariable(name = "name") String name);
 }
 ```
@@ -240,13 +240,13 @@ Declare `Stream<ServerSentEvent>` or `Stream<String>` (and their `CompletableFut
 ```java
 public interface LlmApi {
 
-    @Post(path = "/v1/chat/completions")
+    @Post("/v1/chat/completions")
     Stream<ServerSentEvent> streamChat(@RequestBody ChatRequest request);
 
-    @Post(path = "/v1/chat/completions")
+    @Post("/v1/chat/completions")
     CompletableFuture<Stream<ServerSentEvent>> streamChatAsync(@RequestBody ChatRequest request);
 
-    @Get(path = "/events/ndjson")
+    @Get("/events/ndjson")
     Stream<String> streamLines();
 }
 ```
@@ -278,7 +278,7 @@ public interface BaseApi {
 @RequestHeader(name = "Accept", value = "application/json")
 public interface SearchApi extends BaseApi {
 
-    @Get(path = "/api/items")
+    @Get("/api/items")
     List<Item> search(
             @RequestParam(name = "filter") Map<String, Object> filters,
             @RequestParam(name = "sort") List<String> sortFields,
@@ -345,7 +345,7 @@ JRestlyClient client = JRestlyClient.builder()
 
 public interface ItemApi {
 
-    @Get(path = "/api/items/${id}")
+    @Get("/api/items/${id}")
     @Retry(times = 3, initialBackoffMs = 500)
     Item getItem(@PathVariable(name = "id") long id);
 }
@@ -367,10 +367,10 @@ The wait between attempts grows exponentially (200 ms → 5 s cap by default) wi
 ```java
 public interface UploadApi {
 
-    @Post(path = "/api/upload", requestType = RequestType.MULTIPART_FORM_DATA)
+    @Post("/api/upload", requestType = RequestType.MULTIPART_FORM_DATA)
     String upload(@MultipartFormFile(partName = "file") FileContent file);
 
-    @Post(path = "/api/attachments", requestType = RequestType.MULTIPART_FORM_DATA)
+    @Post("/api/attachments", requestType = RequestType.MULTIPART_FORM_DATA)
     String uploadAll(@MultipartFormFile(partName = "attachment") List<FileContent> files);
 }
 ```

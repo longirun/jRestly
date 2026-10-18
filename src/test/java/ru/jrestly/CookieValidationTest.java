@@ -23,47 +23,47 @@ class CookieValidationTest {
 
     @Cookie(name = "   ", value = "val")
     interface BlankInterfaceCookieApi {
-        @Get(path = "/test")
+        @Get("/test")
         String test();
     }
 
     @Cookie(name = "name\r\ninjection", value = "val")
     interface CrlfInterfaceCookieNameApi {
-        @Get(path = "/test")
+        @Get("/test")
         String test();
     }
 
     @Cookie(name = "name", value = "val\r\ninjection")
     interface CrlfInterfaceCookieValueApi {
-        @Get(path = "/test")
+        @Get("/test")
         String test();
     }
 
     interface MethodCookieProblemsApi {
-        @Get(path = "/blank")
+        @Get("/blank")
         @Cookie(name = "", value = "val")
         String blankName();
 
-        @Get(path = "/crlf-name")
+        @Get("/crlf-name")
         @Cookie(name = "bad\nname", value = "val")
         String crlfName();
 
-        @Get(path = "/crlf-val")
+        @Get("/crlf-val")
         @Cookie(name = "good", value = "bad\rval")
         String crlfValue();
     }
 
     interface ParameterCookieProblemsApi {
-        @Get(path = "/param-crlf")
+        @Get("/param-crlf")
         String crlfParam(@Cookie(name = "param\r\n") String token);
 
-        @Get(path = "/param-conflict")
+        @Get("/param-conflict")
         String conflictParam(@Cookie(name = "auth") @RequestParam(name = "auth") String token);
     }
 
     interface ValidCookieApi {
         @Cookie(name = "app", value = "jrestly")
-        @Get(path = "/valid")
+        @Get("/valid")
         @Cookie(name = "feature", value = "active")
         String getValid(@Cookie(name = "sessionId") String sessionId);
     }

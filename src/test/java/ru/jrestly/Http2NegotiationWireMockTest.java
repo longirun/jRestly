@@ -66,26 +66,26 @@ class Http2NegotiationWireMockTest extends BaseWireMockTest {
 
     public interface NegotiationController {
 
-        @Get(path = "/api/protocol")
+        @Get("/api/protocol")
         String getProtocol(ResponseHeaders headers);
 
-        @Get(path = "/api/pinned-http1")
+        @Get("/api/pinned-http1")
         @HttpVersion(HttpClient.Version.HTTP_1_1)
         String getPinnedHttp1(ResponseHeaders headers);
 
-        @Get(path = "/api/trailers")
+        @Get("/api/trailers")
         String getWithTrailers(ResponseHeaders headers);
 
-        @Get(path = "/api/capture")
+        @Get("/api/capture")
         String getForCapture();
 
-        @Get(path = "/api/gzip")
+        @Get("/api/gzip")
         String getGzip(ResponseHeaders headers);
 
-        @Get(path = "/api/async")
+        @Get("/api/async")
         CompletableFuture<String> getAsync(ResponseHeaders headers);
 
-        @Get(path = "/api/fail")
+        @Get("/api/fail")
         String getFailing();
     }
 

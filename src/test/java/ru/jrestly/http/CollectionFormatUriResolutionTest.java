@@ -26,57 +26,57 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 class CollectionFormatUriResolutionTest {
 
     interface SuperSearchApi {
-        @Get(path = "/super")
+        @Get("/super")
         @QueryCollectionFormat(CollectionFormat.CSV)
         String searchSuper(@RequestParam(name = "tags") List<String> tags);
     }
 
     @QueryCollectionFormat(CollectionFormat.PIPES)
     interface DefaultFallbackApi {
-        @Get(path = "/df/inherit")
+        @Get("/df/inherit")
         @QueryCollectionFormat(CollectionFormat.DEFAULT)
         String inheritInterfaceDefault(@RequestParam(name = "tags") List<String> tags);
 
-        @Get(path = "/df/param-default")
+        @Get("/df/param-default")
         @QueryCollectionFormat(CollectionFormat.SSV)
         String paramDefaultFallsBack(@RequestParam(name = "tags", format = CollectionFormat.DEFAULT) List<String> tags);
 
-        @Post(path = "/df/form-empty", requestType = RequestType.APPLICATION_FORM_URLENCODED)
+        @Post(value = "/df/form-empty",  requestType = RequestType.APPLICATION_FORM_URLENCODED)
         @QueryCollectionFormat(CollectionFormat.CSV)
         String formEmptyCollection(@RequestParam(name = "tags") List<String> tags);
     }
 
     @QueryCollectionFormat(CollectionFormat.CSV)
     interface GrandSearchApi {
-        @Get(path = "/deep/grand")
+        @Get("/deep/grand")
         String deepGrand(@RequestParam(name = "tags") List<String> tags);
     }
 
     @QueryCollectionFormat(CollectionFormat.TSV)
     interface MidSearchApi extends GrandSearchApi {
-        @Get(path = "/deep/mid")
+        @Get("/deep/mid")
         String deepMid(@RequestParam(name = "tags") List<String> tags);
     }
 
     interface LeafSearchApi extends MidSearchApi {
-        @Get(path = "/deep/leaf")
+        @Get("/deep/leaf")
         String deepLeaf(@RequestParam(name = "tags") List<String> tags);
     }
 
     @QueryCollectionFormat(CollectionFormat.PIPES)
     interface SubSearchApi extends SuperSearchApi {
-        @Get(path = "/sub/default")
+        @Get("/sub/default")
         String searchSubDefault(@RequestParam(name = "tags") List<String> tags);
 
-        @Get(path = "/sub/override-method")
+        @Get("/sub/override-method")
         @QueryCollectionFormat(CollectionFormat.SSV)
         String searchSubMethodOverride(@RequestParam(name = "tags") List<String> tags);
 
-        @Get(path = "/sub/override-param")
+        @Get("/sub/override-param")
         @QueryCollectionFormat(CollectionFormat.TSV)
         String searchSubParamOverride(@RequestParam(name = "tags", format = CollectionFormat.BRACKETS) List<String> tags);
 
-        @Get(path = "/sub/scalar")
+        @Get("/sub/scalar")
         String searchScalar(@RequestParam(name = "page") int page);
     }
 

@@ -219,7 +219,7 @@ class ResponseHeadersTest {
     @DisplayName("ControllerValidator treats methods with only ResponseHeaders as lacking form params")
     void controllerValidatorFormCheck() {
         interface BadFormController {
-            @Post(path = "/form", requestType = RequestType.APPLICATION_FORM_URLENCODED)
+            @Post(value = "/form",  requestType = RequestType.APPLICATION_FORM_URLENCODED)
             String postForm(ResponseHeaders headers);
         }
 
@@ -232,7 +232,7 @@ class ResponseHeadersTest {
     @DisplayName("ControllerValidator accepts methods with ResponseHeaders alongside normal params")
     void controllerValidatorValidMethod() {
         interface GoodController {
-            @Get(path = "/items")
+            @Get("/items")
             List<String> getItems(@RequestParam(name = "page") int page, ResponseHeaders headers);
         }
 

@@ -24,21 +24,21 @@ class StaticHeadersAndParamsTest extends BaseWireMockTest {
 
     @RequestHeader(name = "X-Api-Key", value = "secret-123")
     interface SingleClassHeaderController {
-        @Get(path = "/api/static/single-header")
+        @Get("/api/static/single-header")
         String call();
     }
 
     @RequestHeader(name = "X-Header-One", value = "val1")
     @RequestHeader(name = "X-Header-Two", value = "val2")
     interface MultiClassHeaderController {
-        @Get(path = "/api/static/multi-header")
+        @Get("/api/static/multi-header")
         String call();
     }
 
     @RequestHeader(name = "X-Common", value = "base")
     @RequestHeader(name = "X-Overridden", value = "base-val")
     interface BaseHeaderController {
-        @Get(path = "/api/static/inherited-header")
+        @Get("/api/static/inherited-header")
         String call();
     }
 
@@ -50,7 +50,7 @@ class StaticHeadersAndParamsTest extends BaseWireMockTest {
     @RequestHeader(name = "Accept", value = "application/json")
     @RequestHeader(name = "X-Tag", value = "class-tag")
     interface MethodOverrideHeaderController {
-        @Get(path = "/api/static/method-header-override")
+        @Get("/api/static/method-header-override")
         @RequestHeader(name = "Accept", value = "text/plain")
         @RequestHeader(name = "X-Method", value = "method-val")
         String call();
@@ -58,40 +58,40 @@ class StaticHeadersAndParamsTest extends BaseWireMockTest {
 
     @RequestHeader(name = "X-Version", value = "v1")
     interface ParamOverrideHeaderController {
-        @Get(path = "/api/static/param-header-override")
+        @Get("/api/static/param-header-override")
         String call(@RequestHeader(name = "X-Version") String version);
     }
 
     @RequestHeader(name = "X-Trace", value = "trace-default")
     interface MapOverrideHeaderController {
-        @Get(path = "/api/static/map-header-override")
+        @Get("/api/static/map-header-override")
         String call(@RequestHeader Map<String, ?> headers);
     }
 
     @RequestHeader(name = "x-custom-key", value = "lowercased")
     interface CaseInsensitiveHeaderController {
-        @Get(path = "/api/static/case-header")
+        @Get("/api/static/case-header")
         @RequestHeader(name = "X-Custom-Key", value = "uppercased")
         String call();
     }
 
     @RequestDefaultParam(name = "api_version", value = "1.0")
     interface SingleClassParamController {
-        @Get(path = "/api/static/single-param")
+        @Get("/api/static/single-param")
         String call();
     }
 
     @RequestDefaultParam(name = "p1", value = "v1")
     @RequestDefaultParam(name = "p2", value = "v2")
     interface MultiClassParamController {
-        @Get(path = "/api/static/multi-param")
+        @Get("/api/static/multi-param")
         String call();
     }
 
     @RequestDefaultParam(name = "common", value = "base")
     @RequestDefaultParam(name = "override_me", value = "base")
     interface BaseParamController {
-        @Get(path = "/api/static/inherited-param")
+        @Get("/api/static/inherited-param")
         String call();
     }
 
@@ -102,29 +102,29 @@ class StaticHeadersAndParamsTest extends BaseWireMockTest {
 
     @RequestDefaultParam(name = "limit", value = "10")
     interface MethodOverrideParamController {
-        @Get(path = "/api/static/method-param-override")
+        @Get("/api/static/method-param-override")
         @RequestDefaultParam(name = "limit", value = "50")
         String call();
     }
 
     @RequestDefaultParam(name = "limit", value = "10")
     interface RuntimeOverrideParamController {
-        @Get(path = "/api/static/runtime-param-override")
+        @Get("/api/static/runtime-param-override")
         String call(@RequestParam(name = "limit") Integer limit);
     }
 
     @RequestDefaultParam(name = "sort", value = "asc")
     interface MapOverrideParamController {
-        @Get(path = "/api/static/map-param-override")
+        @Get("/api/static/map-param-override")
         String call(@RequestParam Map<String, ?> params);
     }
 
     @RequestDefaultParam(name = "grant_type", value = "client_credentials")
     interface FormDefaultParamController {
-        @Post(path = "/api/static/token", requestType = RequestType.APPLICATION_FORM_URLENCODED)
+        @Post(value = "/api/static/token",  requestType = RequestType.APPLICATION_FORM_URLENCODED)
         String getToken(@RequestParam(name = "client_id") String clientId);
 
-        @Post(path = "/api/static/token-override", requestType = RequestType.APPLICATION_FORM_URLENCODED)
+        @Post(value = "/api/static/token-override",  requestType = RequestType.APPLICATION_FORM_URLENCODED)
         String getTokenOverride(@RequestParam(name = "grant_type") String grantType,
                                 @RequestParam(name = "client_id") String clientId);
     }

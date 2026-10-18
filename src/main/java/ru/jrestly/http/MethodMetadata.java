@@ -571,23 +571,23 @@ final class MethodMetadata {
         }
         if (method.isAnnotationPresent(Get.class)) {
             Get annotation = method.getAnnotation(Get.class);
-            return new RequestMeta(HttpMethod.GET, annotation.path(), RequestType.APPLICATION_JSON, annotation.params());
+            return new RequestMeta(HttpMethod.GET, annotation.value(), RequestType.APPLICATION_JSON, annotation.params());
         }
         if (method.isAnnotationPresent(Post.class)) {
             Post annotation = method.getAnnotation(Post.class);
-            return new RequestMeta(HttpMethod.POST, annotation.path(), annotation.requestType(), annotation.params());
+            return new RequestMeta(HttpMethod.POST, annotation.value(), annotation.requestType(), annotation.params());
         }
         if (method.isAnnotationPresent(Put.class)) {
             Put annotation = method.getAnnotation(Put.class);
-            return new RequestMeta(HttpMethod.PUT, annotation.path(), annotation.requestType(), annotation.params());
+            return new RequestMeta(HttpMethod.PUT, annotation.value(), annotation.requestType(), annotation.params());
         }
         if (method.isAnnotationPresent(Patch.class)) {
             Patch annotation = method.getAnnotation(Patch.class);
-            return new RequestMeta(HttpMethod.PATCH, annotation.path(), annotation.requestType(), annotation.params());
+            return new RequestMeta(HttpMethod.PATCH, annotation.value(), annotation.requestType(), annotation.params());
         }
         if (method.isAnnotationPresent(Delete.class)) {
             Delete annotation = method.getAnnotation(Delete.class);
-            return new RequestMeta(HttpMethod.DELETE, annotation.path(), annotation.requestType(), annotation.params());
+            return new RequestMeta(HttpMethod.DELETE, annotation.value(), annotation.requestType(), annotation.params());
         }
 
         throw new UnsupportedOperationException("No HTTP method annotation found on " + method);

@@ -24,10 +24,10 @@ import static org.junit.jupiter.api.Assertions.*;
 class GetMethodTest extends BaseWireMockTest {
 
     interface DynamicQueryController {
-        @Get(path = "/api/search/dynamic")
+        @Get("/api/search/dynamic")
         String searchWithMap(@RequestParam Map<String, ?> params);
 
-        @Get(path = "/api/search/prefixed")
+        @Get("/api/search/prefixed")
         String searchWithPrefixedMap(@RequestParam(name = "filter") Map<String, ?> filter);
     }
 

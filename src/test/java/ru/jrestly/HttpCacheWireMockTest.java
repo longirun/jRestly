@@ -70,37 +70,37 @@ class HttpCacheWireMockTest extends BaseWireMockTest {
 
     public interface CachedResourceClient {
 
-        @Get(path = "/data")
+        @Get("/data")
         String getData();
 
-        @Get(path = "/data")
+        @Get("/data")
         String getDataWithHeaders(ResponseHeaders headers);
 
-        @Get(path = "/data")
+        @Get("/data")
         String getDataWithCacheControl(@RequestHeader(name = "Cache-Control") String cacheControl);
 
-        @Get(path = "/data/async")
+        @Get("/data/async")
         CompletableFuture<String> getDataAsync(ResponseHeaders headers);
 
-        @Get(path = "/data/bytes")
+        @Get("/data/bytes")
         byte[] getBytes();
 
-        @Get(path = "/data/stream")
+        @Get("/data/stream")
         byte[] getStreamDataBytes();
 
-        @Get(path = "/data/stream")
+        @Get("/data/stream")
         InputStream getStream();
 
-        @Get(path = "/data/stream-reval")
+        @Get("/data/stream-reval")
         byte[] getStreamRevalBytes();
 
-        @Get(path = "/data/stream-reval")
+        @Get("/data/stream-reval")
         InputStream getStreamReval(@RequestHeader(name = "Cache-Control") String cacheControl);
 
-        @Post(path = "/data")
+        @Post("/data")
         String mutateData();
 
-        @Delete(path = "/data")
+        @Delete("/data")
         void deleteData();
     }
 

@@ -583,20 +583,20 @@ class RequestPipelineTest {
     // ------------------------------------------------------------------
 
     private interface PipelineController {
-        @Get(path = "/api/hello")
+        @Get("/api/hello")
         String hello(@RequestParam(name = "name") String name);
 
-        @Get(path = "/api/hello-async")
+        @Get("/api/hello-async")
         CompletableFuture<String> helloAsync(@RequestParam(name = "name") String name);
 
-        @Get(path = "/api/error")
+        @Get("/api/error")
         @OnError(statuses = {400}, errorObject = ErrorDto.class)
         String errorCall();
 
-        @Get(path = "/api/unexpected")
+        @Get("/api/unexpected")
         String unexpectedCall();
 
-        @Get(path = "/api/stream")
+        @Get("/api/stream")
         InputStream streamCall();
     }
 

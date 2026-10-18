@@ -471,13 +471,13 @@ class HttpTemplateStreamWireTest {
 
     private interface StreamController {
 
-        @Get(path = "/api/stream")
+        @Get("/api/stream")
         InputStream download();
 
-        @Get(path = "/api/stream")
+        @Get("/api/stream")
         CompletableFuture<InputStream> downloadAsync();
 
-        @Get(path = "/api/stream")
+        @Get("/api/stream")
         String raw();
     }
 }

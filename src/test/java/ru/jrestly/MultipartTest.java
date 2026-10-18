@@ -36,11 +36,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class MultipartTest extends BaseWireMockTest {
 
     interface DynamicMultipartController {
-        @Post(path = "/api/upload/dynamic", requestType = RequestType.MULTIPART_FORM_DATA)
+        @Post(value = "/api/upload/dynamic",  requestType = RequestType.MULTIPART_FORM_DATA)
         String uploadWithMap(@MultipartFormFile(partName = "file") FileContent file,
                              @RequestParam Map<String, ?> meta);
 
-        @Post(path = "/api/upload/prefixed", requestType = RequestType.MULTIPART_FORM_DATA)
+        @Post(value = "/api/upload/prefixed",  requestType = RequestType.MULTIPART_FORM_DATA)
         String uploadWithPrefixedMap(@MultipartFormFile(partName = "file") FileContent file,
                                      @RequestParam(name = "meta") Map<String, ?> meta);
     }

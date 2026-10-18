@@ -51,15 +51,15 @@ class JacksonXmlWireMockTest {
     }
 
     interface XmlApi {
-        @Post(path = "/person")
+        @Post("/person")
         @ContentType(MediaType.APPLICATION_XML)
         String send(@RequestBody Person person);
 
-        @Get(path = "/person")
+        @Get("/person")
         @Accept(MediaType.APPLICATION_XML)
         Person fetch();
 
-        @Post(path = "/json-person")
+        @Post("/json-person")
         String sendJson(@RequestBody Person person);
     }
 

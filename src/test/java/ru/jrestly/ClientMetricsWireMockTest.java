@@ -135,49 +135,49 @@ class ClientMetricsWireMockTest {
 
     public interface MetricsTestClient {
 
-        @Get(path = "/api/item")
+        @Get("/api/item")
         TestDto getItem(@RequestParam(name = "id") String id);
 
-        @Post(path = "/api/item")
+        @Post("/api/item")
         TestDto createItem(@RequestBody TestDto item);
 
-        @Get(path = "/api/retryable")
+        @Get("/api/retryable")
         @Retry(times = 3, initialBackoffMs = 10, maxBackoffMs = 50)
         TestDto getRetryable();
 
-        @Get(path = "/api/error")
+        @Get("/api/error")
         @OnError(statuses = 422, errorObject = ErrorDto.class)
         TestDto getWithError();
 
-        @Get(path = "/api/delayed")
+        @Get("/api/delayed")
         TestDto getDelayed();
 
-        @Get(path = "/api/async")
+        @Get("/api/async")
         CompletableFuture<TestDto> getAsync();
 
-        @Get(path = "/api/declarative")
+        @Get("/api/declarative")
         @WithMetrics(DeclarativeTestListener.class)
         TestDto getDeclarative();
 
-        @Get(path = "/api/faulty")
+        @Get("/api/faulty")
         @WithMetrics(FaultyMetricsListener.class)
         TestDto getFaulty();
     }
 
     public interface RefreshMetricsClient {
 
-        @Get(path = "/api/secure")
+        @Get("/api/secure")
         TestDto getSecure();
 
-        @Get(path = "/api/secure-retry")
+        @Get("/api/secure-retry")
         @Retry(times = 3, initialBackoffMs = 10, maxBackoffMs = 50)
         TestDto getSecureRetryable();
 
-        @Get(path = "/api/secure-retry-async")
+        @Get("/api/secure-retry-async")
         @Retry(times = 3, initialBackoffMs = 10, maxBackoffMs = 50)
         CompletableFuture<TestDto> getSecureRetryAsync();
 
-        @Get(path = "/api/secure-async")
+        @Get("/api/secure-async")
         CompletableFuture<TestDto> getSecureAsync();
     }
 

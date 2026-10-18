@@ -23,35 +23,35 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 class CollectionFormatWireMockTest extends BaseWireMockTest {
 
     interface QueryFormatsController {
-        @Get(path = "/api/csv")
+        @Get("/api/csv")
         @QueryCollectionFormat(CollectionFormat.CSV)
         String getCsv(@RequestParam(name = "tag") List<String> tags);
 
-        @Get(path = "/api/csv/array")
+        @Get("/api/csv/array")
         @QueryCollectionFormat(CollectionFormat.CSV)
         String getCsvArray(@RequestParam(name = "tag") String[] tags);
 
-        @Get(path = "/api/csv/primitive")
+        @Get("/api/csv/primitive")
         @QueryCollectionFormat(CollectionFormat.CSV)
         String getCsvPrimitive(@RequestParam(name = "id") int[] ids);
 
-        @Get(path = "/api/ssv")
+        @Get("/api/ssv")
         @QueryCollectionFormat(CollectionFormat.SSV)
         String getSsv(@RequestParam(name = "tag") List<String> tags);
 
-        @Get(path = "/api/tsv")
+        @Get("/api/tsv")
         @QueryCollectionFormat(CollectionFormat.TSV)
         String getTsv(@RequestParam(name = "tag") List<String> tags);
 
-        @Get(path = "/api/pipes")
+        @Get("/api/pipes")
         @QueryCollectionFormat(CollectionFormat.PIPES)
         String getPipes(@RequestParam(name = "tag") List<String> tags);
 
-        @Get(path = "/api/brackets")
+        @Get("/api/brackets")
         @QueryCollectionFormat(CollectionFormat.BRACKETS)
         String getBrackets(@RequestParam(name = "tag") List<String> tags);
 
-        @Get(path = "/api/param-override")
+        @Get("/api/param-override")
         @QueryCollectionFormat(CollectionFormat.CSV)
         String getParamOverride(
                 @RequestParam(name = "csvTags") List<String> csvTags,
@@ -59,50 +59,50 @@ class CollectionFormatWireMockTest extends BaseWireMockTest {
                 @RequestParam(name = "bracketTags", format = CollectionFormat.BRACKETS) List<String> bracketTags
         );
 
-        @Get(path = "/api/dynamic-map")
+        @Get("/api/dynamic-map")
         @QueryCollectionFormat(CollectionFormat.CSV)
         String getDynamicMap(@RequestParam Map<String, Object> map);
 
-        @Get(path = "/api/single-item")
+        @Get("/api/single-item")
         @QueryCollectionFormat(CollectionFormat.CSV)
         String getSingleItemCsv(@RequestParam(name = "tag") List<String> tags);
 
-        @Get(path = "/api/single-item/brackets")
+        @Get("/api/single-item/brackets")
         @QueryCollectionFormat(CollectionFormat.BRACKETS)
         String getSingleItemBrackets(@RequestParam(name = "tag") List<String> tags);
 
-        @Get(path = "/api/async")
+        @Get("/api/async")
         @QueryCollectionFormat(CollectionFormat.CSV)
         CompletableFuture<String> getAsyncCsv(@RequestParam(name = "tag") List<String> tags);
     }
 
     @QueryCollectionFormat(CollectionFormat.CSV)
     interface InterfaceDefaultCsvController {
-        @Get(path = "/api/iface/inherited")
+        @Get("/api/iface/inherited")
         String getInherited(@RequestParam(name = "tag") List<String> tags);
 
-        @Get(path = "/api/iface/method-override")
+        @Get("/api/iface/method-override")
         @QueryCollectionFormat(CollectionFormat.PIPES)
         String getMethodOverride(@RequestParam(name = "tag") List<String> tags);
     }
 
     interface FormAndMultipartController {
-        @Post(path = "/api/form/csv", requestType = RequestType.APPLICATION_FORM_URLENCODED)
+        @Post(value = "/api/form/csv",  requestType = RequestType.APPLICATION_FORM_URLENCODED)
         @QueryCollectionFormat(CollectionFormat.CSV)
         String postFormCsv(@RequestParam(name = "category") List<String> categories);
 
-        @Post(path = "/api/form/brackets", requestType = RequestType.APPLICATION_FORM_URLENCODED)
+        @Post(value = "/api/form/brackets",  requestType = RequestType.APPLICATION_FORM_URLENCODED)
         @QueryCollectionFormat(CollectionFormat.BRACKETS)
         String postFormBrackets(@RequestParam(name = "category") List<String> categories);
 
-        @Post(path = "/api/multipart/csv", requestType = RequestType.MULTIPART_FORM_DATA)
+        @Post(value = "/api/multipart/csv",  requestType = RequestType.MULTIPART_FORM_DATA)
         @QueryCollectionFormat(CollectionFormat.CSV)
         String postMultipartCsv(
                 @RequestParam(name = "tags") List<String> tags,
                 @MultipartFormFile(partName = "file") FileContent file
         );
 
-        @Post(path = "/api/multipart/brackets", requestType = RequestType.MULTIPART_FORM_DATA)
+        @Post(value = "/api/multipart/brackets",  requestType = RequestType.MULTIPART_FORM_DATA)
         @QueryCollectionFormat(CollectionFormat.BRACKETS)
         String postMultipartBrackets(
                 @RequestParam(name = "tags") List<String> tags,

@@ -33,7 +33,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class ResponseStreamingTest extends BaseWireMockTest {
 
     interface StreamErrorApi {
-        @Get(path = "/api/stream-error")
+        @Get("/api/stream-error")
         @OnError(statuses = {400}, errorObject = TestErrorDto.class)
         InputStream streamWithError();
     }

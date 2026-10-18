@@ -23,12 +23,12 @@ import static org.junit.jupiter.api.Assertions.*;
 class RequestHeadersTest extends BaseWireMockTest {
 
     interface HeaderFeatureController {
-        @Get(path = "/api/headers/multi")
+        @Get("/api/headers/multi")
         String getWithMultiHeader(@RequestHeader(name = "X-Tag") List<String> tags);
     }
 
     interface MapHeaderController {
-        @Get(path = "/api/headers/dynamic")
+        @Get("/api/headers/dynamic")
         String getWithMapHeaders(@RequestHeader Map<String, ?> headers);
     }
 

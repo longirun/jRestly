@@ -21,31 +21,31 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 class HttpVersionHierarchyTest {
 
     interface UnannotatedBaseApi {
-        @Get(path = "/base")
+        @Get("/base")
         String baseCall();
     }
 
     @HttpVersion(HttpClient.Version.HTTP_1_1)
     interface BaseHttp11Api {
-        @Get(path = "/base11")
+        @Get("/base11")
         String base11();
 
-        @Get(path = "/override2")
+        @Get("/override2")
         @HttpVersion(HttpClient.Version.HTTP_2)
         String overrideToHttp2();
     }
 
     interface InheritingSubApi extends BaseHttp11Api {
-        @Get(path = "/sub-inherited")
+        @Get("/sub-inherited")
         String subInherited();
     }
 
     @HttpVersion(HttpClient.Version.HTTP_2)
     interface OverridingSubApi extends BaseHttp11Api {
-        @Get(path = "/sub-override")
+        @Get("/sub-override")
         String subOverride();
 
-        @Get(path = "/sub-method-11")
+        @Get("/sub-method-11")
         @HttpVersion(HttpClient.Version.HTTP_1_1)
         String subMethod11();
     }

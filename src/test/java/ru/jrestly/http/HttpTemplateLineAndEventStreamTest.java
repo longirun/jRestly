@@ -216,29 +216,29 @@ class HttpTemplateLineAndEventStreamTest {
     }
 
     private interface StreamingTestController {
-        @Get(path = "/lines")
+        @Get("/lines")
         Stream<String> streamLines();
 
-        @Get(path = "/lines-async")
+        @Get("/lines-async")
         CompletableFuture<Stream<String>> streamLinesAsync();
 
-        @Get(path = "/events")
+        @Get("/events")
         Stream<ServerSentEvent> streamEvents();
 
-        @Get(path = "/events-async")
+        @Get("/events-async")
         CompletableFuture<Stream<ServerSentEvent>> streamEventsAsync();
 
-        @Get(path = "/integers")
+        @Get("/integers")
         Stream<Integer> streamIntegers();
 
         @SuppressWarnings("rawtypes")
-        @Get(path = "/stream-raw")
+        @Get("/stream-raw")
         Stream streamRaw();
 
-        @Get(path = "/list")
+        @Get("/list")
         List<String> listStrings();
 
-        @Get(path = "/string")
+        @Get("/string")
         String stringResponse();
     }
 

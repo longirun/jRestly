@@ -9,14 +9,14 @@ import java.net.http.HttpClient;
 public interface HttpVersionController {
 
     @HttpVersion(HttpClient.Version.HTTP_1_1)
-    @Get(path = "/api/version-pinned")
+    @Get("/api/version-pinned")
     String getPinnedToHttp11();
 
-    @Get(path = "/api/version-unpinned")
+    @Get("/api/version-unpinned")
     String getUnpinned();
 
     @HttpVersion(HttpClient.Version.HTTP_1_1)
     @FollowRedirects(count = 1)
-    @Get(path = "/api/version-redirect")
+    @Get("/api/version-redirect")
     String getRedirectPinnedToHttp11();
 }

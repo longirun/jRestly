@@ -70,19 +70,19 @@ class TraceConfigTest {
 
     @Trace(header = "   ")
     interface InvalidInterfaceHeader {
-        @Get(path = "/test")
+        @Get("/test")
         String test();
     }
 
     interface InvalidMethodHeader {
-        @Get(path = "/test")
+        @Get("/test")
         @Trace(header = "")
         String test();
     }
 
     @Trace
     interface ValidTraceInterface {
-        @Get(path = "/test")
+        @Get("/test")
         @Trace(w3c = true)
         String test();
     }

@@ -28,7 +28,7 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 class ProxyCacheConcurrencyTest {
 
     interface TestApi {
-        @Get(path = "/ping")
+        @Get("/ping")
         String ping();
     }
 

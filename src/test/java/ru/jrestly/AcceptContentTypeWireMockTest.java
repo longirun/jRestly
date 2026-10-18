@@ -29,44 +29,44 @@ class AcceptContentTypeWireMockTest extends BaseWireMockTest {
     @ContentType(MediaType.APPLICATION_JSON)
     interface InterfaceLevelApi {
 
-        @Get(path = "/api/default-accept")
+        @Get("/api/default-accept")
         String defaultAccept();
 
-        @Get(path = "/api/method-accept-override")
+        @Get("/api/method-accept-override")
         @Accept(MediaType.TEXT_PLAIN)
         String methodAcceptOverride();
 
-        @Get(path = "/api/multi-accept")
+        @Get("/api/multi-accept")
         @Accept({MediaType.APPLICATION_JSON, MediaType.APPLICATION_XML, MediaType.TEXT_PLAIN})
         String multiAccept();
 
-        @Get(path = "/api/runtime-accept-override")
+        @Get("/api/runtime-accept-override")
         String runtimeAcceptOverride(@RequestHeader(name = "Accept") String acceptOverride);
 
-        @Post(path = "/api/default-content-type")
+        @Post("/api/default-content-type")
         String defaultContentType(@RequestBody String body);
 
-        @Post(path = "/api/method-content-type-override")
+        @Post("/api/method-content-type-override")
         @ContentType(MediaType.APPLICATION_XML)
         String methodContentTypeOverride(@RequestBody String body);
 
-        @Post(path = "/api/custom-charset")
+        @Post("/api/custom-charset")
         @ContentType("text/plain; charset=windows-1251")
         String customCharset(@RequestBody String body);
 
-        @Post(path = "/api/raw-bytes")
+        @Post("/api/raw-bytes")
         @ContentType(MediaType.APPLICATION_OCTET_STREAM)
         String rawBytes(@RequestBody byte[] body);
 
-        @Post(path = "/api/runtime-content-type-override")
+        @Post("/api/runtime-content-type-override")
         String runtimeContentTypeOverride(@RequestBody String body,
                                           @RequestHeader(name = "Content-Type") String contentTypeOverride);
 
-        @Get(path = "/api/async-media-types")
+        @Get("/api/async-media-types")
         @Accept(MediaType.APPLICATION_JSON)
         CompletableFuture<String> asyncGet();
 
-        @Post(path = "/api/multipart-related", requestType = RequestType.MULTIPART_FORM_DATA)
+        @Post(value = "/api/multipart-related",  requestType = RequestType.MULTIPART_FORM_DATA)
         @ContentType("multipart/related")
         String multipartRelated(@MultipartFormFile(partName = "file") FileContent file);
     }
@@ -74,19 +74,19 @@ class AcceptContentTypeWireMockTest extends BaseWireMockTest {
     @Accept("application/vnd.company.v1+json")
     @ContentType("application/vnd.company.v1+json")
     interface ParentApi {
-        @Get(path = "/api/parent")
+        @Get("/api/parent")
         String parentCall();
     }
 
     interface ChildApi extends ParentApi {
-        @Get(path = "/api/child-inherited")
+        @Get("/api/child-inherited")
         String childInherited();
 
-        @Get(path = "/api/child-override")
+        @Get("/api/child-override")
         @Accept(MediaType.APPLICATION_JSON)
         String childOverride();
 
-        @Post(path = "/api/child-post-override")
+        @Post("/api/child-post-override")
         @ContentType(MediaType.TEXT_PLAIN)
         String childPostOverride(@RequestBody String body);
     }

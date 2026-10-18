@@ -37,7 +37,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 class SseReconnectWireMockTest extends BaseWireMockTest {
 
     interface ReconnectChatApi {
-        @Post(path = "/v1/reconnect/chat")
+        @Post("/v1/reconnect/chat")
         Stream<ServerSentEvent> chat(
                 @RequestHeader(name = "Last-Event-ID") String lastEventId,
                 @RequestBody Map<String, Object> request);

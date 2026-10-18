@@ -32,37 +32,37 @@ class OnErrorConfigTest {
 
     public interface SuperApi {
         @OnError(statuses = {400, 401}, errorObject = ErrorA.class)
-        @Get(path = "/super")
+        @Get("/super")
         String callSuper();
     }
 
     public interface SubApi extends SuperApi {
         @OnError(statuses = {401}, errorObject = ErrorB.class)
-        @Get(path = "/sub")
+        @Get("/sub")
         String callSub();
 
         @OnError(statuses = {400}, errorObject = ErrorB.class)
-        @Get(path = "/sub-override")
+        @Get("/sub-override")
         String callSubOverride();
     }
 
     public interface ConflictingMethodApi {
         @OnError(statuses = {400}, errorObject = ErrorA.class)
         @OnError(statuses = {400}, errorObject = ErrorB.class)
-        @Get(path = "/conflict")
+        @Get("/conflict")
         String conflict();
     }
 
     @OnError(statuses = {500}, errorObject = ErrorA.class)
     @OnError(statuses = {500}, errorObject = ErrorB.class)
     public interface ConflictingInterfaceApi {
-        @Get(path = "/ok")
+        @Get("/ok")
         String ok();
     }
 
     public interface InvalidStatusApi {
         @OnError(statuses = {99}, errorObject = ErrorA.class)
-        @Get(path = "/invalid")
+        @Get("/invalid")
         String invalid();
     }
 

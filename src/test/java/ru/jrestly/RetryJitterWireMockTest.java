@@ -32,23 +32,23 @@ class RetryJitterWireMockTest extends BaseWireMockTest {
     public interface RetryJitterController {
 
         @Retry(times = 3, initialBackoffMs = 10, maxBackoffMs = 50, jitter = Jitter.NONE, multiplier = 2.0)
-        @Get(path = "/api/jitter-none")
+        @Get("/api/jitter-none")
         TestDto getJitterNone();
 
         @Retry(times = 3, initialBackoffMs = 10, maxBackoffMs = 50, jitter = Jitter.EQUAL)
-        @Get(path = "/api/jitter-equal")
+        @Get("/api/jitter-equal")
         TestDto getJitterEqual();
 
         @Retry(times = 2, initialBackoffMs = 10, maxBackoffMs = 50, respectRetryAfter = false)
-        @Get(path = "/api/ignore-retry-after")
+        @Get("/api/ignore-retry-after")
         TestDto getIgnoreRetryAfter();
 
         @Retry(times = 2, initialBackoffMs = 10, maxBackoffMs = 50, maxRetryAfterMs = 40)
-        @Get(path = "/api/capped-retry-after")
+        @Get("/api/capped-retry-after")
         TestDto getCappedRetryAfter();
 
         @Retry(times = 3, initialBackoffMs = 10, maxBackoffMs = 50, jitter = Jitter.DECORRELATED)
-        @Get(path = "/api/jitter-decorrelated-async")
+        @Get("/api/jitter-decorrelated-async")
         CompletableFuture<TestDto> getDecorrelatedAsync();
     }
 

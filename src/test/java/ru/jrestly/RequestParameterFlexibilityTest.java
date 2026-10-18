@@ -38,7 +38,7 @@ class RequestParameterFlexibilityTest extends BaseWireMockTest {
     @RequestDefaultParam(name = "format", value = "full")
     interface CatalogApi extends BaseServiceApi {
 
-        @Get(path = "/api/catalog/items")
+        @Get("/api/catalog/items")
         String searchItems(
                 @RequestParam(name = "filter") Map<String, Object> filters,
                 @RequestParam(name = "tag") List<String> tags,
@@ -47,13 +47,13 @@ class RequestParameterFlexibilityTest extends BaseWireMockTest {
                 @RequestHeader(name = "X-Correlation-Id") String correlationId
         );
 
-        @Get(path = "/api/catalog/items/${id}")
+        @Get("/api/catalog/items/${id}")
         String getItem(
                 @PathVariable(name = "id") String id,
                 @RequestHeader Map<String, Object> dynamicHeaders
         );
 
-        @Get(path = "/api/catalog/async-search")
+        @Get("/api/catalog/async-search")
         CompletableFuture<String> asyncSearch(
                 @RequestParam(name = "format") String formatOverride,
                 @RequestParam Map<String, Object> extraParams
@@ -64,7 +64,7 @@ class RequestParameterFlexibilityTest extends BaseWireMockTest {
     @RequestDefaultParam(name = "scope", value = "read")
     interface OAuthTokenApi extends BaseServiceApi {
 
-        @Post(path = "/api/oauth/token", requestType = RequestType.APPLICATION_FORM_URLENCODED)
+        @Post(value = "/api/oauth/token",  requestType = RequestType.APPLICATION_FORM_URLENCODED)
         String issueToken(
                 @RequestParam(name = "scope") String scopeOverride,
                 @RequestParam Map<String, Object> credentials

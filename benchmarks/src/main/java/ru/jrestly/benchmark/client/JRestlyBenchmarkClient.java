@@ -16,16 +16,16 @@ public final class JRestlyBenchmarkClient implements AutoCloseable {
      * Declarative API interface definition for jRestly.
      */
     public interface UserApi {
-        @Get(path = "/api/users/${id}")
+        @Get("/api/users/${id}")
         UserDto getUser(@PathVariable(name = "id") long id);
 
-        @Get(path = "/api/ping")
+        @Get("/api/ping")
         String ping();
 
-        @Get(path = "/api/users/batch")
+        @Get("/api/users/batch")
         java.util.List<UserDto> getUsersBatch();
 
-        @Post(path = "/api/users")
+        @Post("/api/users")
         UserDto createUser(@RequestBody UserDto user);
     }
 

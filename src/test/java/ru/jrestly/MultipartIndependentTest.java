@@ -52,12 +52,12 @@ class MultipartIndependentTest extends BaseWireMockTest {
     /** Only the fixtures missing from TestController live here; everything else reuses it. */
     public interface ProbeController {
 
-        @Post(path = "/api/upload", requestType = RequestType.MULTIPART_FORM_DATA)
+        @Post(value = "/api/upload",  requestType = RequestType.MULTIPART_FORM_DATA)
         @HttpVersion(HttpClient.Version.HTTP_1_1) // chunked transfer encoding is HTTP/1.1 semantics
         String uploadStreamWithText(@MultipartFormFile(partName = "file") FileContent file,
                                     @RequestParam(name = "comment") String comment);
 
-        @Post(path = "/api/upload", requestType = RequestType.MULTIPART_FORM_DATA)
+        @Post(value = "/api/upload",  requestType = RequestType.MULTIPART_FORM_DATA)
         String uploadThreeParts(@MultipartFormFile(partName = "alpha") List<FileContent> alpha,
                                 @RequestParam(name = "note") String note,
                                 @MultipartFormFile(partName = "beta") List<FileContent> beta);

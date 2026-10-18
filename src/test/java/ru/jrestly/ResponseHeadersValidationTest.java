@@ -25,54 +25,54 @@ import static org.junit.jupiter.api.Assertions.*;
 class ResponseHeadersValidationTest {
 
     interface AnnotatedRequestParamController {
-        @Get(path = "/headers")
+        @Get("/headers")
         String getHeaders(@RequestParam(name = "p") ResponseHeaders headers);
     }
 
     interface AnnotatedPathVariableController {
-        @Get(path = "/headers/${p}")
+        @Get("/headers/${p}")
         String getHeaders(@PathVariable(name = "p") ResponseHeaders headers);
     }
 
     interface AnnotatedHeaderController {
-        @Get(path = "/headers")
+        @Get("/headers")
         String getHeaders(@RequestHeader(name = "X-Headers") ResponseHeaders headers);
     }
 
     interface AnnotatedCookieController {
-        @Get(path = "/headers")
+        @Get("/headers")
         String getHeaders(@Cookie(name = "c") ResponseHeaders headers);
     }
 
     interface AnnotatedRequestBodyController {
-        @Post(path = "/headers")
+        @Post("/headers")
         String postHeaders(@RequestBody ResponseHeaders headers);
     }
 
     interface AnnotatedMultipartController {
-        @Post(path = "/headers", requestType = RequestType.MULTIPART_FORM_DATA)
+        @Post(value = "/headers",  requestType = RequestType.MULTIPART_FORM_DATA)
         String uploadHeaders(@MultipartFormFile(partName = "file") ResponseHeaders headers);
     }
 
     interface MultipleResponseHeadersController {
-        @Get(path = "/headers")
+        @Get("/headers")
         String getHeaders(ResponseHeaders first, ResponseHeaders second);
     }
 
     interface MultipleUploadProgressController {
-        @Post(path = "/upload", requestType = RequestType.MULTIPART_FORM_DATA)
+        @Post(value = "/upload",  requestType = RequestType.MULTIPART_FORM_DATA)
         String upload(@MultipartFormFile(partName = "f") java.io.File file,
                       UploadProgressListener l1,
                       UploadProgressListener l2);
     }
 
     interface MultipleDownloadProgressController {
-        @Get(path = "/download")
+        @Get("/download")
         InputStream download(DownloadProgressListener l1, DownloadProgressListener l2);
     }
 
     interface ValidController {
-        @Get(path = "/items/${id}")
+        @Get("/items/${id}")
         String getItem(@PathVariable(name = "id") String id,
                        @RequestParam(name = "filter") String filter,
                        ResponseHeaders headers);

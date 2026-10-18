@@ -47,50 +47,50 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class RequestCompressionWireMockTest extends BaseWireMockTest {
 
     public interface DeclarativeCompressApi {
-        @Post(path = "/api/items/gzip")
+        @Post("/api/items/gzip")
         @Compress(algorithm = CompressionAlgorithm.GZIP)
         TestDto createItemGzip(@RequestBody TestDto dto);
 
-        @Put(path = "/api/items/deflate")
+        @Put("/api/items/deflate")
         @Compress(algorithm = CompressionAlgorithm.DEFLATE)
         TestDto updateItemDeflate(@RequestBody TestDto dto);
 
-        @Post(path = "/api/threshold")
+        @Post("/api/threshold")
         @Compress(algorithm = CompressionAlgorithm.GZIP, minSizeBytes = 200)
         String sendThreshold(@RequestBody String payload);
 
-        @Post(path = "/api/items/async")
+        @Post("/api/items/async")
         @Compress(algorithm = CompressionAlgorithm.GZIP)
         CompletableFuture<TestDto> createItemAsync(@RequestBody TestDto dto);
 
-        @Post(path = "/api/manual-header")
+        @Post("/api/manual-header")
         @Compress(algorithm = CompressionAlgorithm.GZIP)
         String sendManualHeader(@RequestHeader(name = "Content-Encoding") String encoding, @RequestBody String payload);
     }
 
     @Compress(algorithm = CompressionAlgorithm.GZIP)
     public interface InterfaceCompressApi {
-        @Post(path = "/api/interface/compressed")
+        @Post("/api/interface/compressed")
         TestDto sendCompressed(@RequestBody TestDto dto);
 
-        @Post(path = "/api/interface/plain")
+        @Post("/api/interface/plain")
         @Compress(enabled = false)
         TestDto sendPlain(@RequestBody TestDto dto);
     }
 
     public interface UnannotatedApi {
-        @Post(path = "/api/client-compressed")
+        @Post("/api/client-compressed")
         TestDto sendData(@RequestBody TestDto dto);
     }
 
     public interface CustomSpiApi {
-        @Post(path = "/api/custom-spi")
+        @Post("/api/custom-spi")
         String echoCustom(@RequestBody String payload);
 
-        @Post(path = "/api/custom-spi/stream")
+        @Post("/api/custom-spi/stream")
         InputStream echoCustomStream(@RequestBody String payload);
 
-        @Post(path = "/api/custom-spi/lines")
+        @Post("/api/custom-spi/lines")
         Stream<String> echoCustomLines(@RequestBody String payload);
     }
 

@@ -93,24 +93,24 @@ class HttpTemplateBuilderTest {
     // -------------------------------------------------------------------------
 
     interface UrlApi {
-        @Get(path = "/users/${id}")
+        @Get("/users/${id}")
         String getWithPathVariable(@PathVariable(name = "id") String id);
 
-        @Get(path = "/users/${id}")
+        @Get("/users/${id}")
         String getWithEncodedPathVariable(@PathVariable(name = "id", encoded = true) String id);
 
-        @Get(path = "/items")
+        @Get("/items")
         String getWithTargetUrl(@TargetUrl String targetUrl);
 
-        @Get(path = "")
+        @Get("")
         String getWithEmptyPathTargetUrl(@TargetUrl String targetUrl);
 
-        @Get(path = "https://override.example.com/absolute")
+        @Get("https://override.example.com/absolute")
         String getWithAbsoluteOverride(@TargetUrl String targetUrl);
     }
 
     interface HeaderApi {
-        @Get(path = "/headers")
+        @Get("/headers")
         @RequestHeader(name = "X-Static-1", value = "static-val-1")
         @RequestHeader(name = "Authorization", value = "Static-Token")
         String getWithHeaders(
@@ -120,24 +120,24 @@ class HttpTemplateBuilderTest {
                 @RequestHeader(name = "X-Array") String[] multiArray
         );
 
-        @Get(path = "/conditional")
+        @Get("/conditional")
         String getConditional(@RequestHeader(name = "If-None-Match") String etag);
 
-        @Get(path = "/conditional-match")
+        @Get("/conditional-match")
         String getConditionalMatch(@RequestHeader(name = "If-Match") String match);
 
-        @Get(path = "/conditional-unmodified")
+        @Get("/conditional-unmodified")
         String getConditionalUnmodified(@RequestHeader(name = "If-Unmodified-Since") String date);
 
-        @Get(path = "/conditional-modified")
+        @Get("/conditional-modified")
         String getConditionalModified(@RequestHeader(name = "If-Modified-Since") String date);
 
-        @Get(path = "/non-conditional")
+        @Get("/non-conditional")
         String getNonConditional(@RequestHeader(name = "X-Random") String random);
     }
 
     interface CookieApi {
-        @Get(path = "/cookies")
+        @Get("/cookies")
         @Cookie(name = "staticCookie1", value = "val1")
         @Cookie(name = "staticCookie2", value = "val2")
         String getWithCookies(
@@ -148,7 +148,7 @@ class HttpTemplateBuilderTest {
     }
 
     interface ParamApi {
-        @Get(path = "/params", params = {@RequestDefaultParam(name = "defaultKey", value = "defaultVal")})
+        @Get(value = "/params",  params = {@RequestDefaultParam(name = "defaultKey", value = "defaultVal")})
         @QueryCollectionFormat(CollectionFormat.CSV)
         String getWithParams(
                 @RequestParam(name = "single") String single,
@@ -165,23 +165,23 @@ class HttpTemplateBuilderTest {
     }
 
     interface BodyApi {
-        @Post(path = "/body/json")
+        @Post("/body/json")
         String postBody(@RequestBody Object body);
 
-        @Post(path = "/body/supplier")
+        @Post("/body/supplier")
         String postSupplierBody(@RequestBody Supplier<?> supplier);
 
-        @Get(path = "/body/get")
+        @Get("/body/get")
         String getWithBodyIgnored(@RequestBody String body);
 
-        @Post(path = "/body/dto")
+        @Post("/body/dto")
         String postDto(@RequestBody DummyDto dto);
     }
 
     record DummyDto(String name) {}
 
     interface MultipartApi {
-        @Post(path = "/multipart", requestType = RequestType.MULTIPART_FORM_DATA)
+        @Post(value = "/multipart",  requestType = RequestType.MULTIPART_FORM_DATA)
         String upload(
                 @ru.jrestly.annotation.MultipartFormFile(partName = "file") Object file,
                 @RequestParam(name = "desc") String desc,
@@ -197,29 +197,29 @@ class HttpTemplateBuilderTest {
     }
 
     interface UrlEncodedApi {
-        @Post(path = "/form", requestType = RequestType.APPLICATION_FORM_URLENCODED)
+        @Post(value = "/form",  requestType = RequestType.APPLICATION_FORM_URLENCODED)
         String submitForm(
                 @RequestParam(name = "user") String user,
                 @RequestParam(name = "empty") String empty
         );
 
-        @Post(path = "/form-empty", requestType = RequestType.APPLICATION_FORM_URLENCODED)
+        @Post(value = "/form-empty",  requestType = RequestType.APPLICATION_FORM_URLENCODED)
         String submitEmpty();
     }
 
     interface CompressionApi {
-        @Post(path = "/compressed")
+        @Post("/compressed")
         @Compress(algorithm = CompressionAlgorithm.GZIP, minSizeBytes = 10)
         String postCompressed(@RequestBody byte[] data);
     }
 
     interface ResilienceApi {
-        @Get(path = "/resilient")
+        @Get("/resilient")
         @ru.jrestly.annotation.CircuitBreaker(name = "cb-test", enabled = true)
         @ru.jrestly.annotation.RateLimiter(name = "rl-test", enabled = true)
         String getResilient();
 
-        @Get(path = "/disabled-resilience")
+        @Get("/disabled-resilience")
         @ru.jrestly.annotation.CircuitBreaker(name = "cb-disabled", enabled = false)
         @ru.jrestly.annotation.RateLimiter(name = "rl-disabled", enabled = false)
         String getDisabledResilience();
@@ -243,10 +243,10 @@ class HttpTemplateBuilderTest {
 
     @WithInterceptor(PrivateNoArgInterceptor.class)
     interface InterceptorApi {
-        @Get(path = "/intercepted")
+        @Get("/intercepted")
         String getIntercepted();
 
-        @Get(path = "/bad-interceptor")
+        @Get("/bad-interceptor")
         @WithInterceptor(ThrowingInterceptor.class)
         String getBadInterceptor();
     }
@@ -263,22 +263,22 @@ class HttpTemplateBuilderTest {
 
     @WithMetrics({MetricsListenerOne.class, MetricsListenerTwo.class})
     interface MetricsApi {
-        @Get(path = "/metrics")
+        @Get("/metrics")
         String getMetrics();
     }
 
     interface TracingApi {
-        @Get(path = "/trace-w3c")
+        @Get("/trace-w3c")
         @Trace(enabled = true, w3c = true, forceNew = true)
         String traceW3c();
 
-        @Get(path = "/trace-custom")
+        @Get("/trace-custom")
         @Trace(enabled = true, w3c = false, header = "X-My-Trace", forceNew = true)
         String traceCustom();
     }
 
     interface ContractInspectionApi {
-        @Get(path = "/inspect")
+        @Get("/inspect")
         @ExpectStatus(statuses = {200, 204})
         @FollowRedirects(count = 3)
         @HttpVersion(HttpClient.Version.HTTP_2)

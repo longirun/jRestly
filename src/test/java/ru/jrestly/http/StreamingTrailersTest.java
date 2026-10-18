@@ -33,25 +33,25 @@ class StreamingTrailersTest {
 
     interface StreamingClient {
 
-        @Get(path = "/stream/bytes")
+        @Get("/stream/bytes")
         InputStream streamBytes(ResponseHeaders headers);
 
-        @Get(path = "/stream/lines")
+        @Get("/stream/lines")
         Stream<String> streamLines(ResponseHeaders headers);
 
-        @Get(path = "/stream/events")
+        @Get("/stream/events")
         Stream<ServerSentEvent> streamEvents(ResponseHeaders headers);
 
-        @Get(path = "/stream/capture-lines")
+        @Get("/stream/capture-lines")
         Stream<String> captureLines();
 
-        @Get(path = "/stream/async-lines")
+        @Get("/stream/async-lines")
         CompletableFuture<Stream<String>> asyncLines(ResponseHeaders headers);
 
-        @Get(path = "/gz/bytes")
+        @Get("/gz/bytes")
         InputStream gzipBytes(ResponseHeaders headers);
 
-        @Get(path = "/gz/lines")
+        @Get("/gz/lines")
         Stream<String> gzipLines(ResponseHeaders headers);
     }
 

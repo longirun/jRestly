@@ -54,42 +54,42 @@ class ZeroDepStandaloneWireMockTest {
     }
 
     interface PureZeroDepApi {
-        @Get(path = "/user/${id}")
+        @Get("/user/${id}")
         String getUser(@PathVariable(name = "id") UUID id);
 
-        @Post(path = "/echo")
+        @Post("/echo")
         String echo(@RequestBody String text);
 
-        @Get(path = "/download")
+        @Get("/download")
         byte[] download();
 
-        @Get(path = "/stream")
+        @Get("/stream")
         InputStream stream();
 
-        @Get(path = "/optional")
+        @Get("/optional")
         Optional<String> optionalValue();
 
-        @Get(path = "/async-user/${id}")
+        @Get("/async-user/${id}")
         CompletableFuture<String> getUserAsync(@PathVariable(name = "id") UUID id);
 
-        @Delete(path = "/item/${id}")
+        @Delete("/item/${id}")
         void deleteItem(@PathVariable(name = "id") long id);
 
-        @Get(path = "/user-dto")
+        @Get("/user-dto")
         TestDto getUserDto();
 
-        @Post(path = "/user-dto")
+        @Post("/user-dto")
         String sendUserDto(@RequestBody TestDto dto);
 
         @OnError(statuses = {500}, errorObject = TestDto.class)
-        @Get(path = "/error-dto")
+        @Get("/error-dto")
         String getWithCustomErrorDto();
 
         @OnError(statuses = {422}, errorObject = ProblemDetailException.class)
-        @Get(path = "/problem-bom-onerror")
+        @Get("/problem-bom-onerror")
         String getProblemBomOnError();
 
-        @Get(path = "/problem-bom-plain")
+        @Get("/problem-bom-plain")
         String getProblemBomPlain();
     }
 

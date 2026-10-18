@@ -24,19 +24,19 @@ class ResponseCharsetWireMockTest extends BaseWireMockTest {
 
     interface CharsetApi {
 
-        @Get(path = "/api/charset/text")
+        @Get("/api/charset/text")
         String text();
 
-        @Get(path = "/api/charset/quoted")
+        @Get("/api/charset/quoted")
         String quotedText();
 
-        @Get(path = "/api/charset/unknown")
+        @Get("/api/charset/unknown")
         String unknownCharset();
 
-        @Get(path = "/api/charset/optional")
+        @Get("/api/charset/optional")
         Optional<String> optionalText();
 
-        @Get(path = "/api/charset/failure")
+        @Get("/api/charset/failure")
         String failure();
     }
 

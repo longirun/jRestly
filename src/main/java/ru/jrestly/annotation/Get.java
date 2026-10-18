@@ -18,7 +18,7 @@ public @interface Get {
      *
      * @return the target path, or an absolute URL
      */
-    String path() default "";
+    String value() default "";
 
     /**
      * Default query parameters appended to the request.
