@@ -269,6 +269,57 @@ class ProblemDetailTest {
     }
 
     @Test
+    @DisplayName("ZeroDepJsonParser covers all escape sequences, large longs, true booleans, empty structures, and bracket matching")
+    void zeroDepJsonParserEscapesAndEdgeCases() {
+        // Empty object and empty array
+        ProblemDetail empty = ProblemDetail.fromJson("{}");
+        assertEquals(0, empty.getStatus());
+
+        ProblemDetail emptyWithSpaces = ProblemDetail.fromJson("{   }");
+        assertEquals(0, emptyWithSpaces.getStatus());
+
+        // Escape sequences in strings: \", \\, \/, \b, \f, \n, \r, \t, \u0041 (A), and default fallback \q
+        String escapesJson = """
+                {
+                  "allEscapes": "\\\" \\\\ \\/ \\b \\f \\n \\r \\t \\u0041 \\q",
+                  "flagTrue": true,
+                  "emptyArray": [],
+                  "largeLong": 5000000000,
+                  "capExponent": 2.5E2,
+                  "plusExponent": 1e+3,
+                  "minusExponent": 1e-2,
+                  "nestedWithQuotes": {
+                    "quoteInside": "nested \\" quote"
+                  }
+                }
+                """;
+        ProblemDetail pd = ProblemDetail.fromJson(escapesJson);
+        assertEquals("\" \\ / \b \f \n \r \t A q", pd.getProperty("allEscapes"));
+        assertEquals(Boolean.TRUE, pd.getProperty("flagTrue"));
+        assertEquals(List.of(), pd.getProperty("emptyArray"));
+        assertEquals(5000000000L, pd.getProperty("largeLong"));
+        assertEquals(250.0, pd.getProperty("capExponent"));
+        assertEquals(1000.0, pd.getProperty("plusExponent"));
+        assertEquals(0.01, pd.getProperty("minusExponent"));
+
+        // Syntax errors:
+        // Incomplete unicode escape sequence
+        assertThrows(IllegalArgumentException.class, () -> ProblemDetail.fromJson("{\"k\": \"\\u00\"}"));
+        // Invalid hex in unicode escape sequence
+        assertThrows(IllegalArgumentException.class, () -> ProblemDetail.fromJson("{\"k\": \"\\uXXXX\"}"));
+        // Unclosed string ending with backslash
+        assertThrows(IllegalArgumentException.class, () -> ProblemDetail.fromJson("{\"k\": \"abc\\"));
+        // Missing comma/bracket in array
+        assertThrows(IllegalArgumentException.class, () -> ProblemDetail.fromJson("{\"arr\": [1 2]}"));
+        // Unquoted key
+        assertThrows(IllegalArgumentException.class, () -> ProblemDetail.fromJson("{key: 123}"));
+        // Unexpected token after value
+        assertThrows(IllegalArgumentException.class, () -> ProblemDetail.fromJson("{\"a\": 1 !}"));
+        // Invalid number format with multiple dots
+        assertThrows(IllegalArgumentException.class, () -> ProblemDetail.fromJson("{\"num\": 1.2.3}"));
+    }
+
+    @Test
     @DisplayName("ProblemDetail equals and hashCode contract")
     void equalsAndHashCode() {
         ProblemDetail pd1 = ProblemDetail.forStatusAndDetail(404, "Not found");

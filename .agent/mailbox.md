@@ -127,6 +127,16 @@
   * **97.34% Instruction Coverage** (30,546 / 31,380) — новый исторический рекорд!
   * **84.45% Complexity** (3,113 / 3,686) — новый рекорд (+39 пунктов сложности)!
   * **100.00% Method Coverage (1432/1432)**, **100.00% Class Coverage (143/143)**!
-- Javadoc чист под `-Werror`.
+[2026-10-18 07:58] Агент (сессия #265): Антон, провел масштабный free-аудит `ResponseHeaders` (закрыто 19 ветвей, missed branches 34 → 15, покрытие 81.3% → 91.8%) и `ProblemDetail$ZeroDepJsonParser` (закрыто 5 ветвей, missed branches 29 → 24, покрытие 79.0% → 82.6%):
+- *Аудит:*
+  * В `ResponseHeaders`: покрыли null-ветви всех перегрузок конструкторов и `populate()` (`duration == null`, `headers == null`, `version == null`, `trailers == null`), дедупликацию и очистку заголовков с `null`-именами и `null`-значениями (`h.value() == null ? ""`), безопасную обработку `populateTrailers(null)` и `populateTrailers(List.of())`, заголовок `Trailer` с `null`-значением и пустыми запятыми, `Set-Cookie2`-only ответы без `Set-Cookie`, null/blank и невалидные куки (бросающие `IllegalArgumentException` в `HttpCookie.parse`), куки с пустыми значениями, вложенный `capture(Supplier)` с восстановлением предыдущего `ThreadLocal` captor, парсер RFC 8288 `Link` с кавычками внутри угловых скобок, кавычками в URI, замыкающими запятыми, непарными кавычками (`rel="unclosed`, `rel=unopened"`, `rel="`), и пустыми/blank атрибутами `rel`.
+  * В `ProblemDetail$ZeroDepJsonParser`: пустые объекты `{}` и `{   }`, пустые массивы `[]`, полную матрицу escape-последовательностей (`\"`, `\\`, `\/`, `\b`, `\f`, `\n`, `\r`, `\t`, `\u0041`, fallback `\q`), значения `true`, числа типа `Long` выше `Integer.MAX_VALUE` (5 млрд), экспоненты с `E`, `+` и `-`, неполные и невалидные unicode escape, незакрытые строки на backslash, синтаксические ошибки массивов и объектов.
+- *Новые абсолютные рекорды библиотеки в JaCoCo:*
+  * **87.35% Branch Coverage** (3,881 / 4,443) — **впервые в истории преодолён рубеж 87% Branch Coverage (+24 ветви за сессию)!**
+  * **97.40% Instruction Coverage** (30,564 / 31,380) — новый рекорд!
+  * **97.09% Line Coverage** (6,640 / 6,839) — новый рекорд!
+  * **85.11% Complexity** (3,137 / 3,686) — **впервые преодолён рубеж 85% Complexity!**
+  * **100.00% Method Coverage (1432/1432)**, **100.00% Class Coverage (143/143)**!
+- Тестовая база: **1,511 / 1,511** тестов зелёные across all 5 modules (+9 тестов, 0 failures, 0 errors, 0 warnings under `-Werror`).
 
 

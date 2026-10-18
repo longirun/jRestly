@@ -1,5 +1,36 @@
 # DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
+> **Сессия #265 (free-аудит `ResponseHeaders` и `ProblemDetail$ZeroDepJsonParser`: масштабный coverage-срез заголовков ответа и встроенного zero-dep JSON парсера; закрыто 19 ветвей `ResponseHeaders` — missed branches 34 → 15, ветви 81.3% → 91.8%; закрыто 5 ветвей `ZeroDepJsonParser` — missed branches 29 → 24, ветви 79.0% → 82.6%; впервые в истории библиотеки преодолён рубеж 87% Branch Coverage — 87.35%; впервые пробит рубеж 85% Complexity — 85.11%; гейт 1,511/1,511 тестов, INSTRUCTION 97.40%, LINE 97.09%):**
+> свободный ход по классам ядра с наибольшим хвостом непокрытых ветвей;
+> сужение на `ResponseHeaders` (34 missed branches на входе, 81.3% coverage) и `ProblemDetail$ZeroDepJsonParser` (29 missed branches, 79.0% coverage):
+> 1. *Аудит (кластеры `ResponseHeaders`):*
+>    - Конструкторы и `doPopulate`: null-параметры `duration`, `headers`, `version`, `trailers` безопасно замещаются дефолтами (`Duration.ZERO`, `List.of()`, `HttpClient.Version.HTTP_1_1`);
+>    - Очистка заголовков и трейлеров: дедупликация и фильтрация элементов с `null`-именами и замена `null`-значений на пустую строку `""` (`h.value() != null ? h.value() : ""`);
+>    - `populateTrailers`: безопасная обработка `null` и пустых списков (no-op guard), обработка трейлеров с `null`-именами и `null`-значениями;
+>    - `declaredTrailers` и `firstTrailer`: заголовок `Trailer` с `null`-значением и пустыми запятыми (`" , X-Hash , , "`), безопасная обработка `null` имени в `firstTrailer` и `trailerValues`;
+>    - `parseCookies`: поддержка ответов только с `Set-Cookie2` (без `Set-Cookie`), обработка `null`/blank значений заголовков, перехват `IllegalArgumentException` при невалидных cookie (`"=malformed"`), fail-fast валидация `Objects.requireNonNull(name)` в `cookie(name)` и `cookieValue(name)`;
+>    - `cookieMap`: куки с пустыми значениями (`"empty_val="` -> `""`);
+>    - `capture(Supplier)`: вложенный вызов с корректным восстановлением предыдущего `ThreadLocal` captor;
+>    - RFC 8288 / 5988 парсер `Link`: угловые скобки `<`/`>` внутри кавычек, двойные кавычки `"` внутри URI, замыкающая запятая в заголовке, непарные кавычки (`rel="unclosed`, `rel=unopened"`, `rel="`), пустые/blank кавычки `rel=""` и `rel="   "`;
+>    - Защита `firstValue`, `allValues`, `firstLongValue`: fail-fast `NullPointerException` при `name == null`.
+> 2. *Аудит (кластеры `ProblemDetail$ZeroDepJsonParser`):*
+>    - Пустые структуры: объект `{}` и `{   }`, массив `[]`;
+>    - Полная матрица escape-последовательностей: `\"`, `\\`, `\/`, `\b`, `\f`, `\n`, `\r`, `\t`, `\u0041` (unicode hex), и default fallback `\q`;
+>    - Значения `true` и числа типа `Long`, превышающие `Integer.MAX_VALUE` (5 млрд);
+>    - Экспоненты чисел с заглавной `E`, знаками `+` и `-` (`2.5E2`, `1e+3`, `1e-2`);
+>    - Неполные (`\u00`) и невалидные (`\uXXXX`) unicode escape, незакрытые строки на backslash (`abc\`), синтаксические ошибки массивов (`[1 2]`), ключи без кавычек, неожиданные токены после значений, числа с несколькими точками (`1.2.3`).
+> 3. *TDD и исторические гейты JaCoCo:*
+>    - Добавлено 9 тестов (+8 в `ResponseHeadersTest`, +1 в `ProblemDetailTest`, быстрые unit-проверки, без сети): **1,511 / 1,511** green across all 5 modules (+9 тестов, 0 failures, 0 errors, 0 warnings under `-Werror`).
+>    - `ResponseHeaders`: missed branches 34 → **15** (покрытие ветвей выросло с 81.3% до **91.80%**, закрыто 19 ветвей)!
+>    - `ProblemDetail$ZeroDepJsonParser`: missed branches 29 → **24** (покрытие ветвей выросло с 79.0% до **82.60%**, закрыто 5 ветвей)!
+>    - **JaCoCo Coverage:**
+>      * **CLASS:** **143 / 143 (100.00%)**; **METHOD:** **1432 / 1432 (100.00%)** — абсолютные 100% сохранены!
+>      * **BRANCH:** **3,881 / 4,443 (87.35%)** — новый исторический рекорд (+24 покрытые ветви за сессию, впервые преодолён рубеж 87%)!
+>      * **INSTRUCTION:** **30,564 / 31,380 (97.40%)** — новый исторический рекорд!
+>      * **LINE:** **6,640 / 6,839 (97.09%)** — новый исторический рекорд!
+>      * **COMPLEXITY:** **3,137 / 3,686 (85.11%)** — новый рекорд (впервые преодолён рубеж 85%)!
+>    - ADR не тронут — чистый coverage-срез по контракту.
+> 
 > **Сессия #264 (free-аудит `ControllerValidator`: исчерпывающий coverage-срез валидатора интерфейсов контроллеров; закрыто 40 ветвей класса `ControllerValidator` — missed branches 50 → 10, ветви 90.0% → 98.00%; преодолен исторический рубеж 1,500 тестов — 1,502/1502; впервые пробит рубеж 97% Line Coverage — 97.00%; Branch Coverage достиг 86.81%, Instruction 97.34%):**
 > свободный ход по классам ядра с наибольшим хвостом непокрытых ветвей;
 > сужение на `ControllerValidator` (50 missed branches на входе, 90.0% coverage — третий по рангу класс по missed branches):

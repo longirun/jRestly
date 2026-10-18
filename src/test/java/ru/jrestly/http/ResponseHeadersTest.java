@@ -8,9 +8,11 @@ import ru.jrestly.annotation.Post;
 import ru.jrestly.annotation.RequestParam;
 
 import java.net.URI;
+import java.net.http.HttpClient;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -432,6 +434,179 @@ class ResponseHeadersTest {
     void locationUriInvalidReturnsEmpty() {
         ResponseHeaders r = new ResponseHeaders(302, List.of(new Header("Location", "http://invalid uri with spaces")), Duration.ZERO);
         assertTrue(r.locationUri().isEmpty());
+    }
+
+    @Test
+    @DisplayName("Constructors and populate handle null collections, durations, versions, and headers with null elements")
+    void doPopulateAndConstructorsNullAndEdgeCases() {
+        ResponseHeaders h1 = new ResponseHeaders(200, null, null, null, null);
+        assertEquals(200, h1.statusCode());
+        assertEquals(Duration.ZERO, h1.duration());
+        assertEquals(HttpClient.Version.HTTP_1_1, h1.version());
+        assertTrue(h1.headers().isEmpty());
+        assertTrue(h1.trailers().isEmpty());
+
+        ResponseHeaders h2 = new ResponseHeaders(200, null, null);
+        assertEquals(Duration.ZERO, h2.duration());
+        assertTrue(h2.headers().isEmpty());
+
+        ResponseHeaders h3 = new ResponseHeaders(200, null, null, null);
+        assertEquals(HttpClient.Version.HTTP_1_1, h3.version());
+
+        ResponseHeaders h4 = new ResponseHeaders();
+        h4.populate(204, null, null);
+        assertEquals(204, h4.statusCode());
+        assertEquals(Duration.ZERO, h4.duration());
+
+        h4.populate(204, null, null, null);
+        assertEquals(HttpClient.Version.HTTP_1_1, h4.version());
+
+        h4.populate(204, null, null, null, null);
+        assertTrue(h4.trailers().isEmpty());
+
+        List<Header> weirdHeaders = new ArrayList<>();
+        weirdHeaders.add(new Header(null, "val-with-null-name"));
+        weirdHeaders.add(new Header("X-Null-Val", null));
+        weirdHeaders.add(new Header("X-Normal", "ok"));
+
+        List<Header> weirdTrailers = new ArrayList<>();
+        weirdTrailers.add(new Header(null, "trailer-val-with-null-name"));
+        weirdTrailers.add(new Header("X-Trailer-Null", null));
+        weirdTrailers.add(new Header("X-Trailer-Normal", "t-ok"));
+
+        ResponseHeaders h5 = new ResponseHeaders(200, weirdHeaders, Duration.ZERO, HttpClient.Version.HTTP_1_1, weirdTrailers);
+        assertEquals(Optional.of(""), h5.firstValue("X-Null-Val"));
+        assertEquals(Optional.of("ok"), h5.firstValue("X-Normal"));
+        assertEquals(Optional.of(""), h5.firstTrailer("X-Trailer-Null"));
+        assertEquals(Optional.of("t-ok"), h5.firstTrailer("X-Trailer-Normal"));
+    }
+
+    @Test
+    @DisplayName("populateTrailers handles null, empty lists, and trailers with null elements and null values")
+    void populateTrailersEdgeCases() {
+        ResponseHeaders resp = new ResponseHeaders();
+        resp.populateTrailers(null);
+        assertTrue(resp.trailers().isEmpty());
+
+        resp.populateTrailers(List.of());
+        assertTrue(resp.trailers().isEmpty());
+
+        List<Header> trailers = new ArrayList<>();
+        trailers.add(new Header(null, "val-with-null-name"));
+        trailers.add(new Header("X-Checksum", null));
+        trailers.add(new Header("X-Checksum", "sha256-abc"));
+        resp.populateTrailers(trailers);
+
+        assertEquals(List.of("", "sha256-abc"), resp.trailerValues("X-Checksum"));
+        assertEquals(Optional.of(""), resp.firstTrailer("X-Checksum"));
+    }
+
+    @Test
+    @DisplayName("declaredTrailers and firstTrailer handle null values, empty comma segments, and null names")
+    void declaredTrailersAndFirstTrailerEdgeCases() {
+        ResponseHeaders resp = new ResponseHeaders(200, List.of(
+                new Header("Trailer", null),
+                new Header("Trailer", " , X-Hash-1 , , X-Hash-2 , ")
+        ), Duration.ZERO);
+
+        assertEquals(List.of("X-Hash-1", "X-Hash-2"), resp.declaredTrailers());
+        assertTrue(resp.firstTrailer(null).isEmpty());
+        assertTrue(resp.trailerValues(null).isEmpty());
+    }
+
+    @Test
+    @DisplayName("parseCookies handles Set-Cookie2-only responses, null/blank/malformed cookies, and null checks")
+    void cookiesSetCookie2OnlyAndEdgeCases() {
+        ResponseHeaders resp1 = new ResponseHeaders(200, List.of(
+                new Header("Set-Cookie2", "theme=dark; Path=/")
+        ), Duration.ZERO);
+        assertEquals(1, resp1.cookies().size());
+        assertEquals(Optional.of("dark"), resp1.cookieValue("theme"));
+
+        List<Header> cookieHeaders = new ArrayList<>();
+        cookieHeaders.add(new Header("Set-Cookie", null));
+        cookieHeaders.add(new Header("Set-Cookie", "   "));
+        cookieHeaders.add(new Header("Set-Cookie", "valid_c=123; Path=/"));
+        cookieHeaders.add(new Header("Set-Cookie", "=malformed-no-name"));
+        cookieHeaders.add(new Header("Set-Cookie2", null));
+        cookieHeaders.add(new Header("Set-Cookie2", "   "));
+        cookieHeaders.add(new Header("Set-Cookie2", "valid_c2=456; Path=/"));
+        cookieHeaders.add(new Header("Set-Cookie2", "=malformed-no-name-2"));
+
+        ResponseHeaders resp2 = new ResponseHeaders(200, cookieHeaders, Duration.ZERO);
+        assertEquals(2, resp2.cookies().size());
+        assertEquals(Optional.of("123"), resp2.cookieValue("valid_c"));
+        assertEquals(Optional.of("456"), resp2.cookieValue("valid_c2"));
+
+        assertThrows(NullPointerException.class, () -> resp2.cookie(null));
+        assertThrows(NullPointerException.class, () -> resp2.cookieValue(null));
+    }
+
+    @Test
+    @DisplayName("cookieMap handles cookies with empty values")
+    void cookieMapWithEmptyValuedCookie() {
+        ResponseHeaders resp = new ResponseHeaders(200, List.of(
+                new Header("Set-Cookie", "empty_val=")
+        ), Duration.ZERO);
+        assertEquals(Optional.of(""), resp.cookieValue("empty_val"));
+        assertEquals("", resp.cookieMap().get("empty_val"));
+    }
+
+    @Test
+    @DisplayName("Nested capture(Supplier) restores previous captor correctly")
+    void captureSupplierNestedRestoresPreviousCaptor() {
+        CapturedResponse<String> outer = ResponseHeaders.capture(() -> {
+            CapturedResponse<Integer> inner = ResponseHeaders.capture(() -> {
+                Consumer<ResponseHeaders> innerCaptor = ResponseHeaders.CURRENT_CAPTOR.get();
+                assertNotNull(innerCaptor);
+                innerCaptor.accept(new ResponseHeaders(201, List.of(new Header("X-Inner", "1")), Duration.ZERO));
+                return 42;
+            });
+            assertEquals(42, inner.result());
+            assertEquals(Optional.of("1"), inner.headers().firstValue("X-Inner"));
+
+            Consumer<ResponseHeaders> outerCaptor = ResponseHeaders.CURRENT_CAPTOR.get();
+            assertNotNull(outerCaptor);
+            outerCaptor.accept(new ResponseHeaders(200, List.of(new Header("X-Outer", "2")), Duration.ZERO));
+            return "done";
+        });
+        assertEquals("done", outer.result());
+        assertEquals(Optional.of("2"), outer.headers().firstValue("X-Outer"));
+        assertNull(ResponseHeaders.CURRENT_CAPTOR.get());
+    }
+
+    @Test
+    @DisplayName("Link header parsing handles quotes with angle brackets, quotes in URIs, trailing commas, and edge quotes in rel")
+    void linkHeaderComplexDelimitersAndQuotes() {
+        ResponseHeaders resp = new ResponseHeaders(200, List.of(
+                new Header("Link", "<https://example.com/tag>; rel=\"next<tag>\", <https://example.com/title>; title=\"a>b\"; rel=\"sec\""),
+                new Header("Link", "<https://example.com/quote\"uri>; rel=\"prev\""),
+                new Header("Link", "<https://example.com/first>; rel=\"first\","),
+                new Header("Link", "<https://example.com/unclosed>; rel=\"unclosed"),
+                new Header("Link", "<https://example.com/unopened>; rel=unopened\""),
+                new Header("Link", "<https://example.com/singlequote>; rel=\""),
+                new Header("Link", "<https://example.com/emptyrel>; rel=\"\""),
+                new Header("Link", "<https://example.com/blankrel>; rel=\"   \"")
+        ), Duration.ZERO);
+
+        Map<String, String> links = resp.links();
+        assertEquals("https://example.com/tag", links.get("next<tag>"));
+        assertEquals("https://example.com/title", links.get("sec"));
+        assertEquals("https://example.com/quote\"uri", links.get("prev"));
+        assertEquals("https://example.com/first", links.get("first"));
+        assertEquals("https://example.com/unclosed", links.get("\"unclosed"));
+        assertEquals("https://example.com/unopened", links.get("unopened\""));
+        assertNull(links.get(""));
+        assertNull(links.get("   "));
+    }
+
+    @Test
+    @DisplayName("firstValue, allValues, and firstLongValue enforce non-null header name")
+    void firstValueAndAllValuesExceptions() {
+        ResponseHeaders resp = new ResponseHeaders();
+        assertThrows(NullPointerException.class, () -> resp.firstValue(null));
+        assertThrows(NullPointerException.class, () -> resp.allValues(null));
+        assertThrows(NullPointerException.class, () -> resp.firstLongValue(null));
     }
 }
 
