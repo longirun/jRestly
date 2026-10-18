@@ -99,6 +99,35 @@ jRestly default, jrestly HTTP/1.1) is ~1.1–1.7 ms/op; Feign and Spring trail a
 ~1.7–2.6 ms/op. In run #147, jRestly over OkHttp was +5 % over raw OkHttp
 (450 vs 428 µs) — the declarative pipeline is not the bottleneck.
 
+## Revision check (run #287)
+
+A post-epic re-check of the synthetic stand (session #287, 2026-10-18), asked by
+Anton after the Zero-Garbage epic (ADR-0055) and the `HttpTemplate` decomposition
+(ADR-0066): *did the refactoring + the coverage push move us away from what matters?*
+
+Same harness, same machine as the table above, `1 fork / 2×1 s warmup / 5×1 s`:
+
+- **In-memory dispatch overhead — no regression.** `jrestly_inMemoryMockDispatch`
+  6.63 µs/op (±4.26) and `jrestly_inMemoryMockPing` 2.58 µs/op (±0.14), with the
+  bare-Jackson baseline at 1.24 µs/op — the declarative layer still costs
+  single-digit microseconds, inside the historical ~5–9 µs/op envelope.
+- **Network byte-allocations — no regression (measured lower).** `jrestly_getUser`
+  29,136 B/op (±1,347) vs the 49,378 B/op recorded at the end of ADR-0055 (#135);
+  `jrestly_ping_zeroDepRaw` 26,609 B/op (±1,008) vs 47,392 B/op. GC-norm metrics
+  are tight (±5 %), far beyond the run-to-run noise of the µs column, so this is a
+  real environmental/code delta — treated as confirmation that allocation pruning
+  survived the decomposition, not as a re-recordable headline (absolute byte
+  counts are JVM/classpath-sensitive; see limitations).
+- **Network matrix — group structure intact.** Fast group (OkHttp/HC5 raw +
+  Retrofit + jRestly on external engines) ~0.22–0.43 ms/op; JDK-transport group
+  (raw 1024, jRestly 1314 µs getUser) ~0.9–1.3 ms/op; Feign 1820 / Spring 2177
+  µs still trailing. Error bars this run were wide (shared machine), consistent
+  with the reading rule above; no group inversion appeared.
+
+*Conclusion: the "typical method" did not drift — dispatch cost and allocations
+are at or below the pre-refactor record, and the client ranking matches runs
+#147/#158.*
+
 ## Honest limitations
 
 - **Loopback, single machine, single thread.** No TLS handshake cost, no real
