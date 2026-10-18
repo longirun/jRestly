@@ -26,7 +26,6 @@ import java.util.zip.Inflater;
 import java.util.zip.InflaterInputStream;
 import java.util.zip.ZipException;
 import java.lang.reflect.Method;
-import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
 import java.net.URI;
 import java.net.URLEncoder;
@@ -739,13 +738,6 @@ class HttpTemplate {
         return -1;
     }
 
-    private static String extractResponseBodyString(WireResponse response) {
-        if (response == null || response.body() == null) {
-            return "";
-        }
-        return new String(response.body(), resolveCharset(response.headers()));
-    }
-
     // Shared tail of both exchange paths: auth-details capture, response
     // logging, @OnError handling, status check, payload decoding
     @SuppressWarnings("unchecked")
@@ -758,7 +750,7 @@ class HttpTemplate {
         // RFC 9110 §8.3.2: the declared Content-Type charset is authoritative
         // for text payloads — every String materialization honors it and
         // falls back to UTF-8, matching the line/SSE streaming path (ADR-0016)
-        Charset payloadCharset = resolveCharset(responseHeaders);
+        Charset payloadCharset = ResponseBody.resolveCharset(responseHeaders);
 
         // ADR-0022 & ADR-0038: Populate response headers holder and thread-local captor (lazy duration allocation)
         Consumer<ResponseHeaders> captor = ResponseHeaders.CURRENT_CAPTOR.get();
@@ -805,16 +797,16 @@ class HttpTemplate {
             final InputStream effectiveStream = stream;
 
             if (onErrorParser != null && onErrorParser.canParse(statusCode)) {
-                String errorPayload = consumePayload(effectiveStream, payloadCharset);
+                String errorPayload = ResponseBody.consumePayload(effectiveStream, payloadCharset);
                 handleOnError(statusCode, errorPayload, responseHeaders, payloadCharset);
             }
             if (!isExpectedStatus(statusCode)) {
-                String rawPayload = consumePayload(effectiveStream, payloadCharset);
+                String rawPayload = ResponseBody.consumePayload(effectiveStream, payloadCharset);
                 throw createUnexpectedStatusException(statusCode, rawPayload == null ? "" : rawPayload, responseHeaders);
             }
             // ADR-0016 Aspect 1 & 5: Stream<String> returns line stream;
             // Stream<ServerSentEvent> returns parsed event stream
-            if (isStreamType(returnType, String.class)) {
+            if (ResponseBody.isStreamType(returnType, String.class)) {
                 if (logger.isLoggable(System.Logger.Level.INFO)) {
                     logger.log(System.Logger.Level.INFO, streamingPayloadLine("streaming lines", responseHeaders));
                 }
@@ -833,7 +825,7 @@ class HttpTemplate {
                 }
                 return (T) lineStream;
             }
-            if (isStreamType(returnType, ServerSentEvent.class)) {
+            if (ResponseBody.isStreamType(returnType, ServerSentEvent.class)) {
                 if (logger.isLoggable(System.Logger.Level.INFO)) {
                     logger.log(System.Logger.Level.INFO, streamingPayloadLine("streaming events", responseHeaders));
                 }
@@ -949,69 +941,6 @@ class HttpTemplate {
         return responseCodec(responseHeaders).deserialize(bytes, returnType, contentTypeOf(responseHeaders));
     }
 
-    // ADR-0015 Aspect 3: the error paths' consumption — the stream's
-    // readAllBytes is the byte[] path's payload in stream form: an empty
-    // stream is a null payload, as an empty body is. The close follows the
-    // JDK contract (read to EOF, then close)
-    private static String consumePayload(InputStream stream, Charset charset) throws IOException {
-        try (stream) {
-            byte[] bytes = stream.readAllBytes();
-            return bytes.length > 0 ? new String(bytes, charset) : null;
-        }
-    }
-
-    static boolean isStreamType(Type type, Class<?> elementClass) {
-        if (type instanceof ParameterizedType pt && Stream.class.equals(pt.getRawType())) {
-            Type[] args = pt.getActualTypeArguments();
-            return args.length == 1 && elementClass.equals(args[0]);
-        }
-        return false;
-    }
-
-    static Charset resolveCharset(List<Header> headers) {
-        if (headers == null) {
-            return StandardCharsets.UTF_8;
-        }
-        for (Header header : headers) {
-            if (header.name() != null && header.name().equalsIgnoreCase("Content-Type")) {
-                String value = header.value();
-                if (value != null) {
-                    Charset cs = parseCharsetFromContentType(value);
-                    if (cs != null) {
-                        return cs;
-                    }
-                }
-            }
-        }
-        return StandardCharsets.UTF_8;
-    }
-
-    private static Charset parseCharsetFromContentType(String contentType) {
-        String[] parts = contentType.split(";");
-        for (int i = 1; i < parts.length; i++) {
-            String part = parts[i].trim();
-            int eq = part.indexOf('=');
-            if (eq > 0) {
-                String key = part.substring(0, eq).trim();
-                if ("charset".equalsIgnoreCase(key)) {
-                    String charsetName = part.substring(eq + 1).trim();
-                    if (charsetName.startsWith("\"") && charsetName.endsWith("\"") && charsetName.length() >= 2) {
-                        charsetName = charsetName.substring(1, charsetName.length() - 1).trim();
-                    }
-                    if (charsetName.isEmpty()) {
-                        return StandardCharsets.UTF_8;
-                    }
-                    try {
-                        return Charset.forName(charsetName);
-                    } catch (Exception e) {
-                        return StandardCharsets.UTF_8;
-                    }
-                }
-            }
-        }
-        return null;
-    }
-
     private void closeQuietly(InputStream stream) {
         if (stream == null) {
             return;
@@ -1109,7 +1038,7 @@ class HttpTemplate {
                 response = executeWithRedirects(request);
                 failure = "HTTP " + response.statusCode();
                 if (!isExpectedStatus(response.statusCode())) {
-                    failureThrowable = createUnexpectedStatusException(response.statusCode(), extractResponseBodyString(response), response.headers());
+                    failureThrowable = createUnexpectedStatusException(response.statusCode(), ResponseBody.extractText(response), response.headers());
                 }
             } catch (InterruptedException e) {
                 // the caller's thread was interrupted — fail fast, never retried
@@ -1333,7 +1262,7 @@ class HttpTemplate {
                         return scheduleAsyncRetry(request, attempt, maxAttempts, cause.getClass().getSimpleName(), null, hopsLeft, requestContext, cause, attemptsRef, previousDelayMillis, attemptOffset);
                     }
                     Throwable statusFailure = !isExpectedStatus(response.statusCode())
-                            ? createUnexpectedStatusException(response.statusCode(), extractResponseBodyString(response), response.headers())
+                            ? createUnexpectedStatusException(response.statusCode(), ResponseBody.extractText(response), response.headers())
                             : null;
                     notifyAttemptComplete(requestContext, request, attempt + attemptOffset, response, statusFailure, attemptStart);
                     if (last || !isRetryableStatus(response)) {

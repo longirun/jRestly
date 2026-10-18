@@ -959,8 +959,8 @@ final class MethodMetadata {
         }
 
         boolean streamBody = InputStream.class.equals(effective)
-                || HttpTemplate.isStreamType(effective, String.class)
-                || HttpTemplate.isStreamType(effective, ServerSentEvent.class);
+                || ResponseBody.isStreamType(effective, String.class)
+                || ResponseBody.isStreamType(effective, ServerSentEvent.class);
 
         return new ReturnTypeInfo(effective, async, optional, streamBody);
     }

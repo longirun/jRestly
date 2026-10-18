@@ -2180,7 +2180,7 @@ Gates (session #241):
 ---
 
 > **Current status (2026-10-18).** Highest ADR issued: **0066**; next free: **0067**.
-> Cycle 0.10.0 packaged and verified. Live gate: **1579/1579** tests green across all five modules, 0 warnings under `-Werror`. JaCoCo: 100% Class Coverage (147/147), 100% Method Coverage (1437/1437), 97.67% Instructions, 97.37% Lines, 88.82% Branches.
+> Cycle 0.10.0 packaged and verified. Live gate: **1586/1586** tests green across all five modules, 0 warnings under `-Werror`. JaCoCo: 100% Class Coverage (148/148), 100% Method Coverage (1437/1437), 97.67% Instructions, 97.37% Lines, 88.98% Branches.
 
 ### Cycle 0.11.0 — internal structure
 
@@ -2217,6 +2217,18 @@ Gates (session #241):
   `HttpTemplateCacheDispatchTest` → `CacheDispatchTest` (12 тестов, своя
   безсетевая матрица). `CacheDispatch` — 0 missed ветвей; CLASS 146 → 147,
   BRANCH 88.78% → **88.82%**. Публичный API не изменён.
+- **ADR-0066 (§session #276):** пятый шаг, первый под-шаг (5a) — примитивы
+  декодирования тела ответа вынесены из `HttpTemplate` в package-private
+  `ru.jrestly.http.ResponseBody` (`resolveCharset`, `isStreamType`,
+  `consumePayload`, `extractText` + приватный `parseCharsetFromContentType`) —
+  чистый `static`-хелпер (charset-резолюция RFC 9110 §8.3.2 / ADR-0056,
+  классификация `Stream<String>`/`Stream<ServerSentEvent>` ADR-0016,
+  потребление стримингового payload ADR-0015 Aspect 3). Швы переехали, а не
+  продублированы: charset-матрица ушла из `HttpTemplateLineAndEventStreamTest`
+  в свой безсетевой `ResponseBodyTest` (8 тестов; `isStreamType`/`consumePayload`/
+  `extractText` — прямые матрицы). `ResponseBody` — 0 missed ветвей; `HttpTemplate`
+  122 → **115** missed; CLASS 147 → 148, BRANCH 88.82% → **88.98%**, COMPLEXITY
+  86.79% → **86.98%**. Публичный API не изменён.
 
 ## Post-0.5.0 shortlist (not scheduled — see ADR-0003)
 

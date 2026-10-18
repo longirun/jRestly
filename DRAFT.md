@@ -1,5 +1,35 @@
 # DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
+> **Сессия #276 (ADR-0066, шаг №5a: примитивы декодирования тела ответа вынесены
+> из `HttpTemplate` в package-private `ResponseBody`; швы переехали в свой
+> безсетевой сьют (`ResponseBodyTest`, 8 тестов); гейт 1,586/1,586, CLASS 148/148
+> и METHOD 1437/1437 — 100%, BRANCH 88.98% и COMPLEXITY 86.98% — новые рекорды):**
+> начало шага №5 плана ADR-0066 (декодирование тела) — выбран **безопасный
+> под-шаг 5a** (чистые `static`-примитивы), т.к. весь `processResponse` — самый
+> связанный с состоянием участок (читает `onErrorParser`, `isExpectedStatus`,
+> `handleOnError`, `returnType`, `optional`, `logger`, `responseCodec`).
+> 1. *Извлечено (байт-в-байт):* `resolveCharset` → `ResponseBody.resolveCharset`
+>    (+ private `parseCharsetFromContentType`), `isStreamType` →
+>    `ResponseBody.isStreamType`, `consumePayload` → `ResponseBody.consumePayload`,
+>    `extractResponseBodyString` → `ResponseBody.extractText`.
+> 2. *Коллаборатор — чистый `static`-хелпер* (как `RetryAfter`/`ProblemDetailResolver`/
+>    `CacheDispatch`): поля шаблона не читает — все входы аргументы. Вызов
+>    `isStreamType` из `MethodMetadata` перенаправлен на `ResponseBody`.
+> 3. *Швы переехали, а не продублированы:* charset-матрица ушла из
+>    `HttpTemplateLineAndEventStreamTest` в `ResponseBodyTest`; добавлены прямые
+>    матрицы `isStreamType` (не-`ParameterizedType`, чужой raw-тип, неверная
+>    арность), `consumePayload` (декодирование + закрытие стрима + пустой → `null`),
+>    `extractText` (`null`-ответ/тело → `""`, honor charset) и тест искажённых
+>    charset-параметров (оборванная/одиночная кавычка, параметр без `=`).
+>    `ResponseBody` сразу даёт **0 missed ветвей** (40/40).
+> 4. *Гейты:* **1,586 / 1,586** green across all 5 modules, javadoc чист под
+>    `-Werror`. JaCoCo: **CLASS 148/148** и **METHOD 1437/1437 (100%)**,
+>    **INSTRUCTION 30,703/31,436 (97.67%)**, **LINE 6,677/6,857 (97.37%)**,
+>    **BRANCH 3,957/4,447 (88.98%)** и **COMPLEXITY 3,212/3,693 (86.98%)** — новые
+>    рекорды. `HttpTemplate`: 122 → **115** missed. Публичный API не изменён.
+> 5. *Дальше* — под-шаг 5b (стриминговые артефакты line/SSE + `optional`-обёртки
+>    в `processResponse`) или хвосты покрытия.
+
 > **Сессия #275 (ADR-0066, шаг №4: dispatch кэша вынесен из `HttpTemplate` в
 > package-private `CacheDispatch`; швы переехали в свой безсетевой сьют
 > (`HttpTemplateCacheDispatchTest` → `CacheDispatchTest`, 12 тестов); гейт
@@ -2457,8 +2487,14 @@
     (чистый static-хелпер: store/`streamBody`/запрос/ответ — аргументы);
     шов переехал в свой сьют `CacheDispatchTest` (12 тестов, 0 missed ветвей).
     Публичный API не изменён.
-  - **Шаг №5 (следующий):** декодирование тела ответа
-    (charset/streaming/`consumePayload`).
+  - **Шаг №5a — сделана (#276):** примитивы декодирования тела ответа
+    (`resolveCharset`/`parseCharsetFromContentType`/`isStreamType`/
+    `consumePayload`/`extractText`) вынесены в package-private `ResponseBody`
+    (чистый static-хелпер); шов переехал в свой сьют `ResponseBodyTest`
+    (8 тестов, 0 missed ветвей). `HttpTemplate` 122 → 115 missed.
+  - **Шаг №5b (следующий):** оставшаяся часть `processResponse` —
+    стриминговые артефакты line/SSE + `optional`-обёртки, затем ветка
+    буферного декодирования.
   - **Шаг №6:** уведомления метрик (`notify*`).
 
 **Активная зона пуста:** кандидаты №1 (test-javadoc) и №2/№3/№4 закрыты (§выше);

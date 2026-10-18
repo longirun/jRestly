@@ -181,3 +181,43 @@ package-private `ru.jrestly.http.ProblemDetailResolver`.
   javadoc чист под `-Werror`. JaCoCo: INSTRUCTION 30,703/31,436 (97.67%),
   LINE 6,677/6,857 (97.37%), BRANCH 3,950/4,447 (**88.82%** — новый рекорд),
   COMPLEXITY 3,205/3,693 (86.79% — новый рекорд), METHOD 1437/1437.
+
+## Amendment #276
+
+Шаг №5 плана начат и разбит на под-шаги; выполнен первый (5a) — примитивы
+декодирования тела ответа вынесены из `HttpTemplate` в package-private
+`ru.jrestly.http.ResponseBody`.
+
+- **Почему под-шаг.** Полный шаг №5 (весь `processResponse`) — самый связанный с
+  состоянием шага плана: приватный хаб читает сразу `onErrorParser`,
+  `isExpectedStatus`/`createUnexpectedStatusException`, `handleOnError`,
+  `returnType`, `optional`, `logger`, `responseHeadersHolder`, `responseCodec`.
+  Вместо рискованного одномоментного выноса 200-строчного метода сначала
+  вынесены его **чистые примитивы** (не читают состояние шаблона), а
+  `processResponse` остаётся и постепенно худеет на следующих под-шагах.
+- **Извлечено (байт-в-байт):** `resolveCharset` → `ResponseBody.resolveCharset`
+  (RFC 9110 §8.3.2, ADR-0056), `parseCharsetFromContentType` (private),
+  `isStreamType` → `ResponseBody.isStreamType` (ADR-0016), `consumePayload` →
+  `ResponseBody.consumePayload` (ADR-0015 Aspect 3), `extractResponseBodyString`
+  → `ResponseBody.extractText`.
+- **Коллаборатор — чистый `static`-хелпер** (как `RetryAfter`/`ProblemDetailResolver`/
+  `CacheDispatch`): ни один метод не читает поля шаблона, все входы — аргументы,
+  конструктор не нужен. Вызов `isStreamType` из `MethodMetadata` (проверка
+  стримингового возврата, ADR-0016) перенаправлен на `ResponseBody`.
+- **Швы переехали, а не продублированы:** charset-матрица (12 ассертов) ушла из
+  `HttpTemplateLineAndEventStreamTest` в собственный безсетевой `ResponseBodyTest`
+  (8 тестов); добавлены прямые матрицы `isStreamType` (включая не-
+  `ParameterizedType`, чужой raw-тип и неверную арность), `consumePayload`
+  (декодирование + закрытие стрима + пустой → `null`) и `extractText`
+  (`null`-ответ/тело → `""`, honor charset). Грабли ветвей: недостижимые на
+  happy-path ветви `parseCharsetFromContentType` (`eq == 0`/`eq == -1`, оборванная
+  кавычка `charset="utf-8`, одиночная `charset="`) закрыты отдельным тестом
+  искажённых параметров.
+- **Юнит-матрица:** `ResponseBody` — **0 missed ветвей** (40/40).
+- **Эффект:** `HttpTemplate` 122 → **115** missed по ветвям; CLASS 147 → **148**
+  (100% сохранены); LIVE-гейт **1,586/1,586**, javadoc чист под `-Werror`.
+  JaCoCo: INSTRUCTION 30,703/31,436 (97.67%), LINE 6,677/6,857 (97.37%),
+  BRANCH 3,957/4,447 (**88.98%** — новый рекорд), COMPLEXITY 3,212/3,693
+  (**86.98%** — новый рекорд), METHOD 1437/1437.
+- **Дальше:** под-шаг 5b — оставшаяся часть `processResponse` (стриминговые
+  артефакты line/SSE + `optional`-обёртки), затем ветка буферного декодирования.

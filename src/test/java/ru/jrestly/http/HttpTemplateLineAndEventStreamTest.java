@@ -13,7 +13,6 @@ import java.net.http.HttpClient;
 import java.net.http.HttpHeaders;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
-import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayDeque;
 import java.util.Deque;
@@ -36,7 +35,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * <ul>
  *     <li>Builder detection of {@code Stream<String>} and {@code Stream<ServerSentEvent>}
  *         (and their async twins), turning {@code streamBody} on.</li>
- *     <li>Charset resolution from the {@code Content-Type} header, with fallback to UTF-8.</li>
+ *     <li>The resolved {@code Content-Type} charset driving line/event decoding
+ *         (the charset matrix itself lives in {@code ResponseBodyTest}).</li>
  *     <li>{@code HttpTemplate.processResponse} returning live {@code Stream<String>} and
  *         {@code Stream<ServerSentEvent>}.</li>
  *     <li>Stream closing lifecycle: closing the downstream {@code Stream} closes the
@@ -73,48 +73,6 @@ class HttpTemplateLineAndEventStreamTest {
         assertFalse(detectsStream(StreamingTestController.class.getMethod("streamRaw")));
         assertFalse(detectsStream(StreamingTestController.class.getMethod("listStrings")));
         assertFalse(detectsStream(StreamingTestController.class.getMethod("stringResponse")));
-    }
-
-    // ------------------------------------------------------------------
-    // Charset resolution tests
-    // ------------------------------------------------------------------
-
-    @Test
-    @DisplayName("resolveCharset: parses charset from Content-Type, handles quotes, case-insensitivity, and fallback")
-    void resolveCharsetRules() {
-        // Explicit standard charsets
-        assertEquals(StandardCharsets.UTF_8,
-                HttpTemplate.resolveCharset(List.of(new Header("Content-Type", "text/event-stream; charset=utf-8"))));
-        assertEquals(StandardCharsets.ISO_8859_1,
-                HttpTemplate.resolveCharset(List.of(new Header("Content-Type", "text/plain; charset=ISO-8859-1"))));
-        assertEquals(StandardCharsets.US_ASCII,
-                HttpTemplate.resolveCharset(List.of(new Header("content-type", "application/x-ndjson; boundary=x; charset=us-ascii"))));
-
-        // Quoted charset parameter
-        assertEquals(StandardCharsets.ISO_8859_1,
-                HttpTemplate.resolveCharset(List.of(new Header("Content-Type", "text/event-stream; charset=\"ISO-8859-1\""))));
-
-        // Whitespace variations
-        assertEquals(StandardCharsets.UTF_8,
-                HttpTemplate.resolveCharset(List.of(new Header("Content-Type", "text/event-stream;  charset = UTF-8  "))));
-
-        // Invalid or empty charsets fallback to UTF-8
-        assertEquals(StandardCharsets.UTF_8,
-                HttpTemplate.resolveCharset(List.of(new Header("Content-Type", "text/event-stream; charset=non-existent-charset-xyz"))));
-        assertEquals(StandardCharsets.UTF_8,
-                HttpTemplate.resolveCharset(List.of(new Header("Content-Type", "text/event-stream; charset=\"\""))));
-        assertEquals(StandardCharsets.UTF_8,
-                HttpTemplate.resolveCharset(List.of(new Header("Content-Type", "text/event-stream; charset=" ))));
-
-        // Absent charset or absent Content-Type header fallback to UTF-8
-        assertEquals(StandardCharsets.UTF_8,
-                HttpTemplate.resolveCharset(List.of(new Header("Content-Type", "text/event-stream"))));
-        assertEquals(StandardCharsets.UTF_8,
-                HttpTemplate.resolveCharset(List.of(new Header("X-Custom", "123"))));
-        assertEquals(StandardCharsets.UTF_8,
-                HttpTemplate.resolveCharset(List.of()));
-        assertEquals(StandardCharsets.UTF_8,
-                HttpTemplate.resolveCharset(null));
     }
 
     // ------------------------------------------------------------------
