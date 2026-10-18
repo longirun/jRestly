@@ -1,6 +1,6 @@
 # ADR-0067: Public API Conciseness Review (Candidate #6)
 
-- **Status:** P1 реализован (#292), P2 реализован (#293); P3/P4 — после (P3 подтверждён словом Антона: лаконичность перевешивает самобытность); P5 — не трогать.
+- **Status:** P1 реализован (#292), P2 реализован (#293), P3 реализован (#294); P4 — после; P5 — не трогать.
 - **Session:** #285 (2026-10-18)
 - **Задача Антона (mailbox, 2026-10-18):** «Рассмотреть публичный апи на предмет лаконичности.
   Вроде даже у Ретрофита он менее многословный? Обратная совместимость нам не требуется —
@@ -217,3 +217,45 @@ integration). Правило, применённое программно: `@Ann
 — правки декларативные), javadoc чист под `-Werror`. Исторические снапшоты
 (`docs/0.9.0/`, `docs/0.10.0/`, `ROADMAP.md`, §1 «jRestly сегодня» этого
 ADR) не переписаны — осознанно. Дальше: **P3** (`${id}` → `{id}`).
+
+## Amendment #294 (2026-10-19): P3 реализован
+
+*Синтаксис path-плейсхолдеров сменён с `${id}` на индустриальный `{id}`*
+(Retrofit/JAX-RS/Spring/OpenFeign пишут `{id}` — теперь jRestly тоже).
+Семантика не меняется: именованный плейсхолдер в шаблоне пути, резолвится
+`@PathVariable`'ом, same-length маскирование перед гейтом `URI.create`
+(Amendment #211). TDD: красный тест `acceptsBraceStylePathPlaceholdersEagerly`
+(brace-стиль принимается валидатором) до смены маски, полный гейт после.
+
+*Механика:*
+
+- `ControllerValidator`: `PATH_PLACEHOLDER` = `\{([^}]*)}` (было
+  `\$\{([^}]*)}`); сообщения mismatch — `'{}' must not be blank`,
+  `'{X}' has no matching @PathVariable parameter`,
+  `does not match any {...} placeholder`; маска `validatePath` та же
+  (same-length `x`), но теперь маскирует `{…}`. Непарная/незакрытая скобка
+  (`/api/users/{id`) теперь ловится гейтом `URI.create` — тест
+  `InvalidPathController.singleBrace()` переименован в
+  `unterminatedBrace()` (пример стал некорректным: `{id` остаётся невалидным,
+  тогда как завершённый `{id`…`}` — валиден).
+- `HttpTemplateBuilder`: `path.replace("{" + name + "}", value)` (было
+  `"${" + name + "}"`).
+- Javadoc: `@Get/@Post/@Put/@Patch/@Delete` («May contain {var}
+  placeholders»), `@PathVariable`, `RequestMeta`, class-javadoc валидатора.
+- Все path-шаблоны в 22 тестовых файлах, shared fixtures
+  (`TestController`, `PathVariableController`), 8 вхождений README,
+  benchmarks (2). Формы `value = ` со вторым атрибутом сохранены (грабля
+  #292).
+- НЕ тронуты: traceparent-примеры `Trace.java`/`TraceContext.java`
+  (`00-${traceId}-…` — документация W3C, не path-шаблон); исторические
+  ADR 0.9.0/0.10.0, `ROADMAP.md` (OLD-снапшоты, паттерн #292/#293).
+
+*Грабля дня:* массовый sed с захват-группой, содержащей скобки, дал
+`${id}` → `{{id}}` (двойные скобки) — первый полный гейт упал на 489
+тестах; поправлено обратным замещением `{{X}}` → `{X}` и перепроверено
+сканом `{{` по дереву (остались только литеральные `"{{{` в codec-тестах —
+JSON-строки, не плейсхолдеры).
+
+Гейт **1,638/1,638** green across all 5 modules (+1 новый тест), javadoc
+чист под `-Werror`. Дальше: **P4-микропроверка** (статические query в пути
+`@Get("/items?size=10")` — merge с динамическими `@RequestParam`).

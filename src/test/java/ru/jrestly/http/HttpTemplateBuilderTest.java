@@ -93,10 +93,10 @@ class HttpTemplateBuilderTest {
     // -------------------------------------------------------------------------
 
     interface UrlApi {
-        @Get("/users/${id}")
+        @Get("/users/{id}")
         String getWithPathVariable(@PathVariable(name = "id") String id);
 
-        @Get("/users/${id}")
+        @Get("/users/{id}")
         String getWithEncodedPathVariable(@PathVariable(name = "id", encoded = true) String id);
 
         @Get("/items")

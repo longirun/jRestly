@@ -11,7 +11,7 @@ A declarative HTTP client for Java. Define an interface, get a working client â€
 - Declarative interface-based API via `java.lang.reflect.Proxy`
 - Dynamic endpoint override via `@TargetUrl`: call runtime-determined URLs (AWS S3 presigned URLs, HATEOAS Link pagination, webhooks, multi-tenant routing) directly from interface methods
 - HTTP methods: `@Get`, `@Post`, `@Put`, `@Patch`, `@Delete`
-- Path variables (`@PathVariable` + `${var}`), query params and form fields (`@RequestParam`, `@RequestDefaultParam`), headers (`@RequestHeader`), dynamic `Map<?, ?>` parameters and headers, repeatable class-level defaults and static headers, request body (`@RequestBody`)
+- Path variables (`@PathVariable` + `{var}`), query params and form fields (`@RequestParam`, `@RequestDefaultParam`), headers (`@RequestHeader`), dynamic `Map<?, ?>` parameters and headers, repeatable class-level defaults and static headers, request body (`@RequestBody`)
 - Content types: `application/json` (default), `application/x-www-form-urlencoded`, `multipart/form-data`, and pluggable media types (`application/xml`)
 - Transparent RFC 9111 HTTP cache: zero-dependency `HttpCache` SPI with bounded LRU `InMemoryHttpCache`, conditional `304 Not Modified` revalidation (`ETag`, `If-Modified-Since`), `Cache-Control` directives, and zero network attempts on fresh cache hits
 - Problem Details for HTTP APIs (RFC 7807 / RFC 9457): zero-dep `ProblemDetail` model and parser, auto-recognition on unexpected 4xx/5xx responses, and declarative `@OnError(errorObject = ProblemDetail.class)`
@@ -99,7 +99,7 @@ import java.util.List;
 
 public interface ItemApi {
 
-    @Get("/api/items/${id}")
+    @Get("/api/items/{id}")
     Item getItem(@PathVariable long id);
 
     @Get("/api/items")
@@ -108,10 +108,10 @@ public interface ItemApi {
     @Post("/api/items")
     Item createItem(@RequestBody Item item);
 
-    @Delete("/api/items/${id}")
+    @Delete("/api/items/{id}")
     void deleteItem(@PathVariable long id);
 
-    @Get("/api/items/${id}")
+    @Get("/api/items/{id}")
     @OnError(statuses = {404}, errorObject = ApiError.class)
     Item getItemOrThrow(@PathVariable long id);
 }
@@ -149,7 +149,7 @@ public interface StorageApi {
 ```
 
 - **Supported types:** `java.net.URI`, `java.net.URL`, and `CharSequence`/`String`.
-- **Composition:** Path variables (`${id}`) and `@RequestParam` seamlessly append to the target URL; relative paths in `@Get("...")` normalize slashes cleanly.
+- **Composition:** Path variables (`{id}`) and `@RequestParam` seamlessly append to the target URL; relative paths in `@Get("...")` normalize slashes cleanly.
 - **Fail-fast:** Passing `null` immediately throws an `IllegalArgumentException`. Declaring invalid types or multiple `@TargetUrl` parameters fails fast during proxy creation.
 - **Performance:** Dynamic URL dispatch is pre-indexed in `MethodMetadata` with zero runtime reflection.
 
@@ -221,10 +221,10 @@ Declare `InputStream` or `CompletableFuture<InputStream>` as the controller meth
 ```java
 public interface DownloadApi {
 
-    @Get("/files/${name}")
+    @Get("/files/{name}")
     InputStream download(@PathVariable String name);
 
-    @Get("/files/${name}")
+    @Get("/files/{name}")
     CompletableFuture<InputStream> downloadAsync(@PathVariable String name);
 }
 ```
@@ -345,7 +345,7 @@ JRestlyClient client = JRestlyClient.builder()
 
 public interface ItemApi {
 
-    @Get("/api/items/${id}")
+    @Get("/api/items/{id}")
     @Retry(times = 3, initialBackoffMs = 500)
     Item getItem(@PathVariable long id);
 }

@@ -89,7 +89,7 @@ class OnErrorWireMockTest {
     @OnError(statuses = {400}, errorObject = SharedAuthErrorDto.class)
     public interface ErrorTestClient {
 
-        @Get("/api/items/${id}")
+        @Get("/api/items/{id}")
         @OnError(statuses = {404}, errorObject = NotFoundDto.class)
         @OnError(statuses = {422}, errorObject = ValidationDto.class)
         String getItem(@PathVariable long id);
@@ -101,19 +101,19 @@ class OnErrorWireMockTest {
         @OnError(statuses = {400}, errorObject = MethodSpecificErrorDto.class)
         String callOverride();
 
-        @Get("/api/typed-exception/${id}")
+        @Get("/api/typed-exception/{id}")
         @OnError(statuses = {404}, errorObject = ItemNotFoundException.class)
         String getWithTypedException(@PathVariable long id);
 
-        @Get("/api/handled-subclass/${id}")
+        @Get("/api/handled-subclass/{id}")
         @OnError(statuses = {409}, errorObject = ItemConflictException.class)
         String getWithHandledSubclass(@PathVariable long id);
 
-        @Get("/api/typed-async/${id}")
+        @Get("/api/typed-async/{id}")
         @OnError(statuses = {404}, errorObject = ItemNotFoundException.class)
         CompletableFuture<String> getAsyncWithTypedException(@PathVariable long id);
 
-        @Get("/api/typed-stream/${id}")
+        @Get("/api/typed-stream/{id}")
         @OnError(statuses = {404}, errorObject = ItemNotFoundException.class)
         InputStream getStreamWithTypedException(@PathVariable long id);
 

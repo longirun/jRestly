@@ -41,7 +41,7 @@ class RequestBodyValidationTest {
     }
 
     interface CombinedPathApi {
-        @Put("/users/${id}")
+        @Put("/users/{id}")
         void updateUser(@RequestBody @PathVariable(name = "id") String payload);
     }
 

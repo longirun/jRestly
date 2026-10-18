@@ -44,10 +44,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class GzipDeflateDecompressionTest extends BaseWireMockTest {
 
     interface DecompressionApi {
-        @Get("/api/items/${id}")
+        @Get("/api/items/{id}")
         TestDto getItem(@PathVariable Long id);
 
-        @Get("/api/items/${id}/async")
+        @Get("/api/items/{id}/async")
         CompletableFuture<TestDto> getItemAsync(@PathVariable Long id);
 
         @Get("/api/text")

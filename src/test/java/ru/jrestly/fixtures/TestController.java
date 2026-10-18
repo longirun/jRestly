@@ -15,13 +15,13 @@ import java.util.stream.Stream;
 
 public interface TestController {
 
-    @Get("/api/items/${id}")
+    @Get("/api/items/{id}")
     TestDto getItem(@PathVariable Long id);
 
-    @Get("/api/items/${slug}")
+    @Get("/api/items/{slug}")
     TestDto getItemBySlug(@PathVariable String slug);
 
-    @Get("/api/items/${id}")
+    @Get("/api/items/{id}")
     CompletableFuture<TestDto> getItemAsync(@PathVariable Long id);
 
     @Get("/api/items")
@@ -78,7 +78,7 @@ public interface TestController {
     @Post(value = "/api/form",  requestType = RequestType.APPLICATION_FORM_URLENCODED)
     String submitForm(@RequestParam String field1, @RequestParam String field2);
 
-    @Delete("/api/items/${id}")
+    @Delete("/api/items/{id}")
     void deleteItem(@PathVariable Long id);
 
     @Delete("/api/items")
@@ -137,13 +137,13 @@ public interface TestController {
     @Get("/api/collection")
     List<TestDto> getWithCollectionParam(@RequestParam List<Long> ids);
 
-    @Patch("/api/items/${id}")
+    @Patch("/api/items/{id}")
     TestDto patchItem(@PathVariable Long id, @RequestBody TestDto item);
 
-    @Patch(value = "/api/items/${id}",  requestType = RequestType.APPLICATION_FORM_URLENCODED)
+    @Patch(value = "/api/items/{id}",  requestType = RequestType.APPLICATION_FORM_URLENCODED)
     String patchItemForm(@PathVariable Long id, @RequestParam String name);
 
-    @Put("/api/items/${id}")
+    @Put("/api/items/{id}")
     TestDto putItem(@PathVariable Long id, @RequestBody TestDto item);
 
     @Post("/api/async")
@@ -159,7 +159,7 @@ public interface TestController {
     @Get("/api/server-error")
     CompletableFuture<TestDto> getServerErrorFaultAsync();
 
-    @Delete("/api/items/${id}/silent")
+    @Delete("/api/items/{id}/silent")
     @ExpectStatus(statuses = {204})
     void deleteSilent(@PathVariable Long id);
 

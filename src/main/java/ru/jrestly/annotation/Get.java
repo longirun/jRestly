@@ -13,7 +13,7 @@ import java.lang.annotation.Target;
 public @interface Get {
 
     /**
-     * Target path or absolute URL. May contain ${var} placeholders.
+     * Target path or absolute URL. May contain {var} placeholders.
      * Defaults to empty string when the full URL is supplied dynamically via {@link TargetUrl}.
      *
      * @return the target path, or an absolute URL

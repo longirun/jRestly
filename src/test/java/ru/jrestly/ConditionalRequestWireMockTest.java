@@ -53,33 +53,33 @@ class ConditionalRequestWireMockTest extends BaseWireMockTest {
 
     interface ConditionalClient {
 
-        @Get("/items/${id}")
+        @Get("/items/{id}")
         ItemDto getItem(
                 @PathVariable long id,
                 @RequestHeader(name = "If-None-Match") String ifNoneMatch,
                 ResponseHeaders headers
         );
 
-        @Get("/items/${id}")
+        @Get("/items/{id}")
         ItemDto getItemNoHeaders(
                 @PathVariable long id,
                 @RequestHeader(name = "If-None-Match") String ifNoneMatch
         );
 
-        @Get("/items/${id}")
+        @Get("/items/{id}")
         Optional<ItemDto> findItem(
                 @PathVariable long id,
                 @RequestHeader(name = "If-None-Match") String ifNoneMatch
         );
 
-        @Get("/items/${id}")
+        @Get("/items/{id}")
         ItemDto getItemSince(
                 @PathVariable long id,
                 @RequestHeader(name = "If-Modified-Since") String ifModifiedSince,
                 ResponseHeaders headers
         );
 
-        @Get("/items/${id}/async")
+        @Get("/items/{id}/async")
         CompletableFuture<ItemDto> getItemAsync(
                 @PathVariable long id,
                 @RequestHeader(name = "If-None-Match") String ifNoneMatch,

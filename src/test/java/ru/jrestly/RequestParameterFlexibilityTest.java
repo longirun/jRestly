@@ -47,7 +47,7 @@ class RequestParameterFlexibilityTest extends BaseWireMockTest {
                 @RequestHeader(name = "X-Correlation-Id") String correlationId
         );
 
-        @Get("/api/catalog/items/${id}")
+        @Get("/api/catalog/items/{id}")
         String getItem(
                 @PathVariable String id,
                 @RequestHeader Map<String, Object> dynamicHeaders

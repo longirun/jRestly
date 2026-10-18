@@ -345,23 +345,23 @@ public class ControllerValidationTest {
     }
 
     interface PathOnlyFormController {
-        @ru.jrestly.annotation.Post(value = "/users/${id}",  requestType = ru.jrestly.http.RequestType.APPLICATION_FORM_URLENCODED)
+        @ru.jrestly.annotation.Post(value = "/users/{id}",  requestType = ru.jrestly.http.RequestType.APPLICATION_FORM_URLENCODED)
         String postForm(@ru.jrestly.annotation.PathVariable(name = "id") String id);
     }
 
     interface PathOnlyMultipartController {
-        @ru.jrestly.annotation.Post(value = "/users/${id}",  requestType = ru.jrestly.http.RequestType.MULTIPART_FORM_DATA)
+        @ru.jrestly.annotation.Post(value = "/users/{id}",  requestType = ru.jrestly.http.RequestType.MULTIPART_FORM_DATA)
         String postMultipart(@ru.jrestly.annotation.PathVariable(name = "id") String id);
     }
 
     interface PathAndFormParamController {
-        @ru.jrestly.annotation.Post(value = "/users/${id}",  requestType = ru.jrestly.http.RequestType.APPLICATION_FORM_URLENCODED)
+        @ru.jrestly.annotation.Post(value = "/users/{id}",  requestType = ru.jrestly.http.RequestType.APPLICATION_FORM_URLENCODED)
         String postForm(@ru.jrestly.annotation.PathVariable(name = "id") String id,
                         @ru.jrestly.annotation.RequestParam(name = "name") String name);
     }
 
     interface PathAndMultipartParamController {
-        @ru.jrestly.annotation.Post(value = "/users/${id}",  requestType = ru.jrestly.http.RequestType.MULTIPART_FORM_DATA)
+        @ru.jrestly.annotation.Post(value = "/users/{id}",  requestType = ru.jrestly.http.RequestType.MULTIPART_FORM_DATA)
         String postMultipart(@ru.jrestly.annotation.PathVariable(name = "id") String id,
                              @ru.jrestly.annotation.MultipartFormFile(partName = "file") java.io.File file);
     }
@@ -487,7 +487,7 @@ public class ControllerValidationTest {
     }
 
     interface UnresolvedPlaceholderController {
-        @ru.jrestly.annotation.Get("/users/${id}")
+        @ru.jrestly.annotation.Get("/users/{id}")
         String getUser();
     }
 
@@ -497,24 +497,37 @@ public class ControllerValidationTest {
     }
 
     interface ValidPathVariableController {
-        @ru.jrestly.annotation.Get("/users/${id}")
+        @ru.jrestly.annotation.Get("/users/{id}")
         String getUser(@ru.jrestly.annotation.PathVariable(name = "id") String id);
+    }
+
+    interface BraceStylePathVariableController {
+        @ru.jrestly.annotation.Get("/users/{id}")
+        String getUser(@ru.jrestly.annotation.PathVariable String id);
+    }
+
+    @Test
+    void acceptsBraceStylePathPlaceholdersEagerly() {
+        // ADR-0067 P3: the industry-standard {id} spelling (Retrofit/Feign/Spring/
+        // RFC 6570) is the native placeholder syntax.
+        List<String> problems = ControllerValidator.validate(BraceStylePathVariableController.class);
+        assertTrue(problems.isEmpty(), "Brace-style placeholders should be legal, but got: " + problems);
     }
 
     @Test
     void rejectsPathVariableTemplateMismatchEagerly() {
         // ADR-0025: the path template and its @PathVariable parameters must agree.
-        // An unresolved ${id} placeholder is only rejected at send time by
+        // An unresolved {id} placeholder is only rejected at send time by
         // URI.create ("Illegal character in path"), and a @PathVariable with no
         // matching placeholder is silently dropped from the URL. Both now join the
         // eager-validation channel.
         List<String> unresolved = ControllerValidator.validate(UnresolvedPlaceholderController.class);
         assertEquals(1, unresolved.size());
-        assertTrue(unresolved.getFirst().contains("getUser(): path placeholder '${id}' has no matching @PathVariable parameter"));
+        assertTrue(unresolved.getFirst().contains("getUser(): path placeholder '{id}' has no matching @PathVariable parameter"));
 
         List<String> unused = ControllerValidator.validate(UnusedPathVariableController.class);
         assertEquals(1, unused.size());
-        assertTrue(unused.getFirst().contains("getUser(): @PathVariable 'id' does not match any ${...} placeholder in path '/users'"));
+        assertTrue(unused.getFirst().contains("getUser(): @PathVariable 'id' does not match any {...} placeholder in path '/users'"));
 
         JRestlyClient client = JRestlyClient.builder().baseUrl("http://localhost:1").build();
         assertThrows(ControllerValidationException.class, () -> client.get(UnresolvedPlaceholderController.class));
@@ -528,8 +541,8 @@ public class ControllerValidationTest {
         @ru.jrestly.annotation.Get("/api/ us")
         String space();
 
-        @ru.jrestly.annotation.Get("/api/users/{id}")
-        String singleBrace();
+        @ru.jrestly.annotation.Get("/api/users/{id")
+        String unterminatedBrace();
 
         @ru.jrestly.annotation.Get("/api/100%")
         String malformedEscape();
@@ -547,20 +560,20 @@ public class ControllerValidationTest {
     void rejectsInvalidUriCharactersInPathEagerly() {
         // ADR-0025: a verb's path is another paired declarative construct. A path
         // (or absolute URL) carrying a character that is illegal in a URI -- a
-        // space, a CR/LF, or a Retrofit/JAX-RS-style {id} placeholder instead of
-        // ${id} -- is only rejected at send time by URI.create ("Illegal character
-        // in path at index N" / "Malformed escape pair"), naming neither the method
-        // nor the path. It now joins the eager-validation channel.
+        // space, a CR/LF, an unterminated {...} placeholder run, or a malformed
+        // escape pair -- is only rejected at send time by URI.create ("Illegal
+        // character in path at index N" / "Malformed escape pair"), naming neither
+        // the method nor the path. It now joins the eager-validation channel.
         List<String> problems = ControllerValidator.validate(InvalidPathController.class);
         assertEquals(3, problems.size());
         assertTrue(problems.stream().anyMatch(p -> p.startsWith("space(): path must be a valid URI reference")));
-        assertTrue(problems.stream().anyMatch(p -> p.startsWith("singleBrace(): path must be a valid URI reference")));
+        assertTrue(problems.stream().anyMatch(p -> p.startsWith("unterminatedBrace(): path must be a valid URI reference")));
         assertTrue(problems.stream().anyMatch(p -> p.startsWith("malformedEscape(): path must be a valid URI reference")));
 
         JRestlyClient client = JRestlyClient.builder().baseUrl("http://localhost:1").build();
         assertThrows(ControllerValidationException.class, () -> client.get(InvalidPathController.class));
 
-        // no false positive on legal path characters, including ${...} placeholders
+        // no false positive on legal path characters, including {...} placeholders
         // and IPv6 brackets (legal in the authority of an absolute URL)
         assertTrue(ControllerValidator.validate(ValidPathCharactersController.class).isEmpty());
         assertTrue(ControllerValidator.validate(ValidPathVariableController.class).isEmpty());
@@ -614,7 +627,7 @@ public class ControllerValidationTest {
     @Test
     void reportsUnnamedPathVariableWithoutParametersFlagActionably() throws Exception {
         Class<?> controller = compileController("NoParamsPathVarController", """
-                    @Get("/items/${id}")
+                    @Get("/items/{id}")
                     String item(@PathVariable String id);
                 """, false);
         List<String> problems = ControllerValidator.validate(controller);
@@ -624,7 +637,7 @@ public class ControllerValidationTest {
     }
 
     interface EmptyPlaceholderController {
-        @ru.jrestly.annotation.Get("/users/${}")
+        @ru.jrestly.annotation.Get("/users/{}")
         String emptyPlaceholder();
     }
 
@@ -644,7 +657,7 @@ public class ControllerValidationTest {
     void rejectsEmptyPlaceholderAndInvalidCircuitBreakerAndRetry() {
         List<String> placeholderProblems = ControllerValidator.validate(EmptyPlaceholderController.class);
         assertEquals(1, placeholderProblems.size());
-        assertTrue(placeholderProblems.getFirst().contains("path placeholder '${}' must not be blank"));
+        assertTrue(placeholderProblems.getFirst().contains("path placeholder '{}' must not be blank"));
 
         List<String> cbProblems = ControllerValidator.validate(InvalidCircuitBreakerController.class);
         assertTrue(cbProblems.stream().anyMatch(p -> p.contains("failureRateThreshold must be in (0.0, 100.0]")));

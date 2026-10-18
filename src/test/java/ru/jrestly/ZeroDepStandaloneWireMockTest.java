@@ -54,7 +54,7 @@ class ZeroDepStandaloneWireMockTest {
     }
 
     interface PureZeroDepApi {
-        @Get("/user/${id}")
+        @Get("/user/{id}")
         String getUser(@PathVariable UUID id);
 
         @Post("/echo")
@@ -69,10 +69,10 @@ class ZeroDepStandaloneWireMockTest {
         @Get("/optional")
         Optional<String> optionalValue();
 
-        @Get("/async-user/${id}")
+        @Get("/async-user/{id}")
         CompletableFuture<String> getUserAsync(@PathVariable UUID id);
 
-        @Delete("/item/${id}")
+        @Delete("/item/{id}")
         void deleteItem(@PathVariable long id);
 
         @Get("/user-dto")

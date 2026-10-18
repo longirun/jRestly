@@ -71,7 +71,7 @@ public class TargetUrlTest extends BaseWireMockTest {
         @Get("/subpath")
         String fetchSubpath(@TargetUrl String baseUrl);
 
-        @Get("/items/${id}")
+        @Get("/items/{id}")
         String fetchItemWithVar(@TargetUrl URI baseUri, @PathVariable String id);
 
         @Get

@@ -103,7 +103,7 @@ class MethodMetadataTest {
         void withMultipart(@ru.jrestly.annotation.MultipartFormFile(partName = "file") byte[] file,
                            @ru.jrestly.annotation.RequestParam(name = "desc") String desc);
 
-        @Get("/params-test/${id}")
+        @Get("/params-test/{id}")
         void withParams(@ru.jrestly.annotation.PathVariable(name = "id") String id,
                         @ru.jrestly.annotation.RequestHeader("X-Custom") String header);
     }

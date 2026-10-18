@@ -459,7 +459,7 @@ public class HttpTemplateBuilder {
                     String substitutedValue = p.pathVariableEncoded()
                             ? arg.toString()
                             : URLEncoder.encode(arg.toString(), StandardCharsets.UTF_8).replace("+", "%20");
-                    path = path.replace("${" + p.pathVariableName() + "}", substitutedValue);
+                    path = path.replace("{" + p.pathVariableName() + "}", substitutedValue);
                 }
             }
         }

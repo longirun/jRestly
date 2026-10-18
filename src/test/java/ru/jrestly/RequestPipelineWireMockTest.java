@@ -74,7 +74,7 @@ class RequestPipelineWireMockTest extends BaseWireMockTest {
         @Get("/api/trace")
         String traceRequest();
 
-        @Get("/api/users/${id}")
+        @Get("/api/users/{id}")
         String getUserById(@PathVariable String id);
 
         @Get("/api/resource-with-error")

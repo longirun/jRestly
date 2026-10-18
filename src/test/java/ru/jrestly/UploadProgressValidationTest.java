@@ -29,7 +29,7 @@ class UploadProgressValidationTest {
     }
 
     interface AnnotatedPathVariableController {
-        @Post("/upload/${p}")
+        @Post("/upload/{p}")
         String upload(@PathVariable(name = "p") UploadProgressListener progress);
     }
 

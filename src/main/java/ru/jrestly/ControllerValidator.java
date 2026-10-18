@@ -79,11 +79,11 @@ import java.util.regex.Pattern;
  * and methods have non-blank {@code name()} attributes.
  *
  * <p>Each verb path is checked against its {@code @PathVariable} parameters
- * (ADR-0025): every {@code ${name}} placeholder must have a matching
+ * (ADR-0025): every {@code {name}} placeholder must have a matching
  * parameter, and every {@code @PathVariable} must match a placeholder. The
  * path must also be a valid URI reference once placeholders are masked: a
- * space, CR/LF or a brace-style {@code {id}} placeholder fails here instead
- * of at send time inside {@code URI.create}.
+ * space, CR/LF or an unmatched brace fails here instead of at send time
+ * inside {@code URI.create}.
  *
  * <p>A binding whose name falls back to the Java parameter name
  * ({@code @PathVariable}, {@code @RequestParam}, {@code @RequestHeader},
@@ -116,8 +116,8 @@ import java.util.regex.Pattern;
  */
 public final class ControllerValidator {
 
-    // ${name} placeholders in a verb's path template (ADR-0025)
-    private static final Pattern PATH_PLACEHOLDER = Pattern.compile("\\$\\{([^}]*)}");
+    // {name} placeholders in a verb's path template (ADR-0025)
+    private static final Pattern PATH_PLACEHOLDER = Pattern.compile("\\{([^}]*)}");
 
     private ControllerValidator() {
     }
@@ -696,7 +696,7 @@ public final class ControllerValidator {
     }
 
     // ADR-0025: a path template and its @PathVariable parameters must agree.
-    // An unresolved ${name} placeholder never reaches the wire (URI.create throws
+    // An unresolved {name} placeholder never reaches the wire (URI.create throws
     // a cryptic "Illegal character in path" at send time), and a @PathVariable
     // with no matching placeholder is silently dropped from the URL. Both are
     // caught here, at proxy creation, through the aggregated channel.
@@ -727,28 +727,28 @@ public final class ControllerValidator {
 
         for (String placeholder : placeholders) {
             if (placeholder.isBlank()) {
-                problems.add(method.getName() + "(): path placeholder '${}' must not be blank");
+                problems.add(method.getName() + "(): path placeholder '{}' must not be blank");
             } else if (!pathVariables.contains(placeholder)) {
-                problems.add(method.getName() + "(): path placeholder '${" + placeholder
+                problems.add(method.getName() + "(): path placeholder '{" + placeholder
                     + "}' has no matching @PathVariable parameter");
             }
         }
         for (String pathVariable : pathVariables) {
             if (!placeholders.contains(pathVariable)) {
                 problems.add(method.getName() + "(): @PathVariable '" + pathVariable
-                        + "' does not match any ${...} placeholder in path '" + path + "'");
+                        + "' does not match any {...} placeholder in path '" + path + "'");
             }
         }
     }
 
     // ADR-0025: a verb's path is the other half of the path/@PathVariable pair.
     // A path (or absolute URL) carrying a character that is illegal in a URI --
-    // a space, a CR/LF, or a Retrofit/JAX-RS-style {id} placeholder instead of
-    // ${id} -- is only rejected at send time by URI.create ("Illegal character in
-    // path at index N" / "Malformed escape pair"), naming neither the method nor
-    // the path. It is caught here, at proxy creation. ${...} placeholders are
-    // masked with a same-length legal run first, so a valid template does not trip
-    // the check and reported indices stay aligned with the declared path.
+    // a space, a CR/LF, or an unmatched or unterminated brace -- is only rejected
+    // at send time by URI.create ("Illegal character in path at index N" /
+    // "Malformed escape pair"), naming neither the method nor the path. It is
+    // caught here, at proxy creation. {name} placeholders are masked with a
+    // same-length legal run first, so a valid template does not trip the check
+    // and reported indices stay aligned with the declared path.
     static void validatePath(String prefix, String path, List<String> problems) {
         if (path == null) {
             return;
@@ -765,7 +765,7 @@ public final class ControllerValidator {
     // A binding with a blank name() falls back to the Java parameter name, which
     // the compiler only retains under -parameters. Without the flag the fallback
     // silently becomes "arg0": a query/header/cookie goes out under the wrong name
-    // (the server ignores it), and a @PathVariable never matches its ${...}
+    // (the server ignores it), and a @PathVariable never matches its {...}
     // placeholder. Both are silent until the wire, so they are surfaced here, at
     // proxy creation. A Map parameter (and an HttpCookie) takes its names from the
     // entries/instance rather than the parameter name and is legitimately blank.

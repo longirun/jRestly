@@ -30,7 +30,7 @@ class DownloadProgressValidationTest {
     }
 
     interface AnnotatedPathVariableController {
-        @Get("/download/${p}")
+        @Get("/download/{p}")
         InputStream download(@PathVariable(name = "p") DownloadProgressListener progress);
     }
 
@@ -55,7 +55,7 @@ class DownloadProgressValidationTest {
     }
 
     interface ValidController {
-        @Get("/download/${id}")
+        @Get("/download/{id}")
         InputStream download(@PathVariable(name = "id") String id, DownloadProgressListener progress);
     }
 

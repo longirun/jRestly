@@ -30,7 +30,7 @@ class ResponseHeadersValidationTest {
     }
 
     interface AnnotatedPathVariableController {
-        @Get("/headers/${p}")
+        @Get("/headers/{p}")
         String getHeaders(@PathVariable(name = "p") ResponseHeaders headers);
     }
 
@@ -72,7 +72,7 @@ class ResponseHeadersValidationTest {
     }
 
     interface ValidController {
-        @Get("/items/${id}")
+        @Get("/items/{id}")
         String getItem(@PathVariable(name = "id") String id,
                        @RequestParam(name = "filter") String filter,
                        ResponseHeaders headers);

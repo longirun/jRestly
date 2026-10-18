@@ -35,7 +35,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 public class ProblemDetailWireMockTest extends BaseWireMockTest {
 
     interface ProblemApiClient {
-        @Get("/accounts/${id}")
+        @Get("/accounts/{id}")
         String getAccount(@PathVariable String id);
 
         @Post("/transfer")
