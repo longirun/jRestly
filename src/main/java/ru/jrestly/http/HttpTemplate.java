@@ -2654,7 +2654,10 @@ class HttpTemplate {
         return retryOnUnauthorized;
     }
 
-    private void handleOnError(int statusCode, String payload, List<Header> responseHeaders, Charset payloadCharset) {
+    // ADR-0064: package-private on purpose — the @OnError dispatch (decode,
+    // built-in fallback, ProblemDetail slicing, throwable instantiation) is
+    // pinned directly without a wire round-trip.
+    void handleOnError(int statusCode, String payload, List<Header> responseHeaders, Charset payloadCharset) {
         Class<?> targetErrorClass = onErrorParser.getErrorClass(statusCode);
         boolean isProblemException = ru.jrestly.problem.ProblemDetailException.class.isAssignableFrom(targetErrorClass);
         Class<?> deserializeClass = isProblemException ? ru.jrestly.problem.ProblemDetail.class : targetErrorClass;
@@ -2750,7 +2753,10 @@ class HttpTemplate {
         return new UnexpectedStatusException(statusCode, rawBody, responseHeaders, problemDetail);
     }
 
-    private ru.jrestly.problem.ProblemDetail resolveProblemDetail(int statusCode, String rawBody, List<Header> responseHeaders) {
+    // ADR-0064: package-private on purpose — the resolution rules (RFC 9457
+    // shape gate, media-type override, "likely problem" heuristic) are pinned
+    // directly by unit tests without a wire round-trip.
+    ru.jrestly.problem.ProblemDetail resolveProblemDetail(int statusCode, String rawBody, List<Header> responseHeaders) {
         if (rawBody == null || rawBody.isBlank()) {
             return null;
         }
@@ -2789,7 +2795,7 @@ class HttpTemplate {
         return null;
     }
 
-    private static boolean isProblemJsonContentType(List<Header> headers) {
+    static boolean isProblemJsonContentType(List<Header> headers) {
         if (headers == null || headers.isEmpty()) {
             return false;
         }
@@ -2805,7 +2811,7 @@ class HttpTemplate {
         return false;
     }
 
-    private static boolean isLikelyProblemDetail(ru.jrestly.problem.ProblemDetail pd) {
+    static boolean isLikelyProblemDetail(ru.jrestly.problem.ProblemDetail pd) {
         if (pd == null) {
             return false;
         }

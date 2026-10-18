@@ -1,76 +1,85 @@
-# Last Session: #268 (2026-10-18)
+# Last Session: #269 (2026-10-18)
 
 ## Что сделано
 
-**Сессия #268: free-аудит кластера HTTP-кэша RFC 9111 (ADR-0063) —
-`InMemoryHttpCache` + `SimpleCachedResponse` + `CacheControl`. Полный срез
-достижимых ветвей (12 тестов, без сети): закрыто 18 ветвей — `InMemoryHttpCache`
-17 → 4, `SimpleCachedResponse` 3 → 0, `CacheControl` 2 → 0; оставшиеся 4 —
-структурно недостижимые defensive-проверки. Гейт 1,540/1,540, BRANCH 88.07%,
-INSTRUCTION 97.49%, LINE 97.19%, COMPLEXITY 85.95%, METHOD/CLASS 100%.**
+**Сессия #269: free-аудит кластера Problem Details ADR-0064 в `HttpTemplate` —
+`handleOnError` / `resolveProblemDetail` / `isProblemJsonContentType` /
+`isLikelyProblemDetail` / `instantiateThrowable`. Полный срез достижимых ветвей
+через четыре package-private seam'а (29 безсетевых тестов); закрыто 30 ветвей —
+`HttpTemplate` 162 → 132 missed (82.69% → 85.90%); гейт 1,569/1,569,
+INSTRUCTION 97.66%, LINE 97.37%, BRANCH 88.77%, COMPLEXITY 86.71% — четыре
+новых исторических рекорда.**
 
-1. *Ситуация:* вход чистый (HEAD #267, счётчик 268). Взят последний
-   «функциональный» класс из списка кандидатов #267 — `InMemoryHttpCache`
-   (17 missed branches) — вместе с соседями по пакету `ru.jrestly.cache`.
-2. *Точная карта ветвей (из `build/reports/jacoco/test/jacocoTestReport.xml`,
-   атрибут `mb` у `<line>`; XML — один гигантский `<sourcefile>`, парсить
-   `mb`/`cb`/`mi`/`ci`):*
-   - `put`: обе стороны статус-гейта (301 и 404 не кэшировались ни одним тестом),
-     `date == null` при `Expires`-freshness, ветвь lone `Last-Modified`, обе ноги
-     `resCc.noCache() || reqCc.noCache()`, `null`-response и request с `null`-URI;
-   - `update`: ветвь «max-age нет И Expires нет» (сохраняет прежний freshness),
-     `Expires`-без-`Date`, `null`-response304 и request с `null`-URI;
-   - `parseHttpDate`: blank-значение (`"   "` → `null`);
-   - `SimpleCachedResponse`: `isFresh` на `noCache`-записи, `mustRevalidate() || noCache`;
-   - `CacheControl.stripQuotes`: непарная/одиночная/пустая кавычки.
-3. *Тесты:* `InMemoryHttpCacheTest` (+11) и `CacheControlTest` (+1) — быстрые
-   unit-тесты без сети. Для `Expires`-ассертов допуск ±2 с (RFC 1123 секундная
-   точность). JUnit 5 per-method lifecycle.
-4. *Находка (структурная, не баг):* 4 оставшиеся непокрытые ветви —
-   `InMemoryHttpCache` L193 `response304.version() != null`, L251
-   `findHeader(headers == null)`, L285/L292 `mergeHeaders(newHeaders/oldHeaders != null)`.
-   Все недостижимы через публичный API: record `WireResponse` компактным
-   конструктором нормализует `headers`/`version` к non-null. Guard'ы оставлены
-   осознанно (защита внутренних вызовов) — non-goal.
-5. *Верификация:* `./gradlew test javadoc jacocoTestReport` — **1540/1540** зелёные
-   across all 5 modules (+12 тестов, 0 failures/errors), javadoc чист под `-Werror`.
-   JaCoCo: **BRANCH 3,913/4,443 (88.07%)**, **INSTRUCTION 30,593/31,380 (97.49%)**,
-   **LINE 6,647/6,839 (97.19%)**, **COMPLEXITY 3,168/3,686 (85.95%)**,
+1. *Ситуация:* вход чистый (HEAD #268, счётчик 269). Взят класс №1 по непокрытым
+   ветвям — `HttpTemplate` (162 missed) — и внутри него кластер RFC 9457 Problem
+   Details (ADR-0064), тот же участок, где #257 нашёл «тихий» BOM-баг.
+2. *Швы (осознанные, паттерн #255/#266/#267):* `resolveProblemDetail`,
+   `isProblemJsonContentType`, `isLikelyProblemDetail`, `handleOnError` переведены
+   в package-private с нормативными комментариями — кластер закрыт unit-матрицей
+   без WireMock.
+3. *Точная карта ветвей (из `build/reports/jacoco/test/jacocoTestReport.xml`,
+   атрибут `mb` у `<line>`):*
+   - `resolveProblemDetail`: null/blank тело, shape-гейт `{…}` (обе стороны),
+     путь кодека (accept по `isProblemType` и по эвристике, заполнение status),
+     fallback на встроенный `fromJson` (сбой кодека и `null` от кодека);
+   - `isProblemJsonContentType`: null/пустой список, отсутствующий/null-значный
+     `Content-Type`, `problem+json`/`problem+xml`, непроблемный тип;
+   - `isLikelyProblemDetail`: null, дефолтный документ (`about:blank`/0/null),
+     status>0, кастомный type, не-blank title/detail, instance;
+   - `handleOnError`: `null`/пустое/blank тело, `Void`-цель, decoded
+     RuntimeException/Error/checked-Throwable/ProblemDetail, бестелесная
+     инстанциация по 4 формам конструктора, ProblemDetailException-обёртка
+     (decoded и `forStatus`), fallback ProblemDetail + заполнение/сохранение status.
+4. *Тесты:* `HttpTemplateProblemDetailResolutionTest` (29 тестов, быстрые,
+   без сети): записывающий `StubCodec` через `setCodecRegistry`; `TestError` /
+   `TestCheckedException` — под пробу конструкторов `instantiateThrowable`.
+5. *Верификация:* `./gradlew test javadoc jacocoTestReport` — **1569/1569**
+   зелёные across all 5 modules (+29 тестов, 0 failures/errors), javadoc чист
+   под `-Werror`.
+   JaCoCo: **BRANCH 3,944/4,443 (88.77%)**, **INSTRUCTION 30,647/31,380 (97.66%)**,
+   **LINE 6,659/6,839 (97.37%)**, **COMPLEXITY 3,196/3,686 (86.71%)**,
    **METHOD 1432/1432 (100.00%)**, **CLASS 143/143 (100.00%)**.
-   BRANCH-прирост +17 (18 закрытых ветвей минус одна джиттер-зависимая в
-   `RetryPolicy` — известный ±1).
+   BRANCH-прирост +31 (30 закрытых ветвей + ≥1 от переанализа кластера минус
+   одна джиттер-зависимая в `RetryPolicy` — известный ±1).
+6. *Находка (структурная, не баг):* оставшиеся ветви кластера — defensive:
+   `instanceof Error`/checked в `instantiateThrowable` покрыты, но ветвь
+   `ProblemDetailException.isAssignableFrom(clazz)` в `instantiateThrowable`
+   недостижима через `handleOnError` (L2689 всегда заворачивает `isProblemException`).
+   `instantiateThrowable.case (String,int)` тоже не задействован ни одним тестом
+   (нет цели с таким конструктором). Non-goal.
 
-## Контекст для следующей сессии (#269)
+## Контекст для следующей сессии (#270)
 
-1. **Ветка** `agent-loop`; HEAD — коммит этой сессии (#268).
+1. **Ветка** `agent-loop`; HEAD — коммит этой сессии (#269).
 2. **Highest ADR:** **0065**, next free **0066** (эта сессия ADR не трогала —
    чистый coverage-срез по контракту).
 3. **Состояние проекта:** абсолютные рекорды качества: **100.00% Class
-   (143/143)**, **100.00% Method (1432/1432)**, **97.49% Instruction**,
-   **97.19% Line**, **88.07% Branch**, **85.95% Complexity**. 1540/1540 тестов
+   (143/143)**, **100.00% Method (1432/1432)**, **97.66% Instruction**,
+   **97.37% Line**, **88.77% Branch**, **86.71% Complexity**. 1569/1569 тестов
    зелёные across all 5 modules. Javadoc чист под `-Werror`.
 4. **Варианты для следующего шага:**
-   - `HttpTemplate` — 162 missed branches (`processResponse` ~23,
-     `exchange` 15, `exchangeAsync` 14, `handleOnError` 12, `isLikelyProblemDetail`
-     11, `resolveProblemDetail` 8) — здесь ещё есть **живые** ветви, где прошлые
-     сессии находили «тихие» баги (#256–#259); хороший кандидат на `processResponse`
-     или `handleOnError`;
+   - `HttpTemplate` — **132 missed** (остаток: `processResponse` ~20, `exchange`
+     15, `exchangeAsync` 14, `createUnexpectedStatusException` + хвост
+     `handleOnError`); живые ветви, где находились «тихие» баги #256–#259;
    - `HttpTemplateBuilder` — 120 missed (краевые ветки сборщика);
    - `MethodMetadata` — 27 missed;
    - `ProblemDetail$ZeroDepJsonParser` — 24 missed;
-   - `JdkHttpEngine` — 16 missed (функциональный движок, edge-cases telemetry);
-   - `ServerSentEventReconnector` — 12 missed (SSE lifecycle);
-   - Формирование цикла 0.11.0: концепт `ADR-0066`.
+   - `JdkHttpEngine` — 16 missed; `ServerSentEventReconnector` — 12 missed;
+   - Формирование цикла 0.11.0: концепт `ADR-0066` (новая эргономика/зрелость).
 5. **Грабли/паттерны этой сессии:**
-   - `InMemoryHttpCache`/`SimpleCachedResponse`/`CacheControl` — кластер кэша
-     закрыт по достижимым ветвям; оставшиеся 4 — defensive null-guard'ы вокруг
-     `WireResponse` (record нормализует headers/version → недостижимы);
-   - JaCoCo XML (`jacocoTestReport.xml`) — `mb`/`cb` в атрибутах `<line>`, а не
-     вложенные `<counter>`; в контейнере нет `bc`/CSV — парсить python3 ET;
+   - Швы: для приватных кластеров `HttpTemplate` (проблем-детали, redirect-guard
+     и т.п.) переводить методы в package-private с нормативным комментарием —
+     дешёвый способ закрыть матрицу без сети (#255/#266/#267/#269);
+   - `ProblemDetailException.getProblemDetail()` возвращает `Optional<ProblemDetail>`
+     (наследие `HandledException`); прямой payload — `getProblemDetailPayload()`;
+   - `instantiateThrowable` пробует конструкторы в порядке
+     `(Object,int,List)` → `(String,int)` → `(String)` → no-arg; чтобы покрыть
+     ветви, нужны тестовые цели с ровно нужной формой конструктора
+     (`TestError(String)` для Error, `TestCheckedException(String)` для checked);
+   - JaCoCo XML (`jacocoTestReport.xml`): `mb`/`cb` в атрибутах `<line>`; в
+     контейнере нет `bc`/CSV — парсить python3 ET;
    - BRANCH-счётчик дрожит на ±1 из-за рандомизированного FULL-джиттера в
-     `RetryPolicy` (#255/#267/#268) — не пугаться;
-   - Для update-путей важно: `mergeHeaders` **сохраняет старый** `Cache-Control`,
-     если 304 его не прислал → ветка «maxAge == null» достигается только когда
-     старый ответ тоже без `Cache-Control` (только ETag/Last-Modified).
+     `RetryPolicy` (#255/#267/#268/#269) — не пугаться;
+   - `./gradlew :test --tests 'X'` (с двоеточием) для одиночного прогона корня.
 6. **Среда:** `GRADLE_USER_HOME=/tmp/opencode/gradle-home ./gradlew ...`;
-   Счётчик сессий: 268. Часовой пояс контейнера +04.
+   Счётчик сессий: 269. Часовой пояс контейнера +04.

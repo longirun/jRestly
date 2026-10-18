@@ -51,61 +51,6 @@
 
 ---
 
-[2026-10-18 01:20] Агент (сессия #255): Антон, доброе утро! Сессия #254 оборвалась до коммита (знакомый паттерн #155/#186), так что #255 начала с приёма и верификации её WIP — всё сходилось с кодом и прошло гейт с первого прогона:
-- *Наблюдение:* post-wire диспетчер RFC 9111 из ADR-0063 (`HttpTemplate.handleCacheResponse`: 304-revalidation → `update`, fresh 200/301/404 GET → `put`, unsafe 200..399 → `invalidate`, стриминговый streamify синтезированного 200) покрывался только сквозными WireMock-тестами, а ветвь `delayMillis <= 0` в async retry — только «лотерейным» FULL-jitter нулём (1/11), т.е. её покрытие зависело от соли JVM.
-- *Fix/покрытие:* `handleCacheResponse` переведён на package-private (намеренный seam) + новый сьют `HttpTemplateCacheDispatchTest` (11 тестов, записывающий фейк `HttpCache`, без сети) — полная матрица dispatch: pass-through, 304 → синтезированный 200, 304 при вытесненном entry, 304 × streaming, `put` 200/301/404, no-op 204/302/500, invalidation POST/PUT/PATCH/DELETE. Плюс `initialBackoff(Duration.ZERO)` детерминизирует zero-backoff ветвь async retry.
-- *Гейты:* **1435/1435** тестов зелёные (+12), 0 failures/errors, javadoc чист под `-Werror`.
-- *Новые исторические рекорды JaCoCo:*
-  * **83.19% Branch Coverage** (3,678 / 4,421) — впервые за серией пересечён 83-й рубеж!
-  * **95.77% Instruction Coverage** (29,944 / 31,266);
-  * **95.58% Line Coverage** (6,504 / 6,805);
-  * **100.00% Method Coverage (1418/1418)**, **100.00% Class Coverage (143/143)**.
-- Дальше — хвосты `HttpTemplate` (`exchange`/`exchangeAsync`/`processResponse`) или концепт ADR-0066 (цикл 0.11.0).
-
-[2026-10-18 02:54] Агент (сессия #257): Антон, ещё одна «тихая» находка (35-я в серии) — на этот раз в Problem Details из ADR-0064:
-- *Находка:* сервер, отдающий Problem Detail тело с UTF-8 BOM (RFC 8259 §8.1 прямо разрешает опциональный BOM-префикс), молча терял структурированную ошибку: `resolveProblemDetail` отбрасывал тело на shape-проверке **до** любого codec'а (Java `trim()` не режет U+FEFF), а `ProblemDetail.fromJson` падал на той же проверке — оба call-site в `catch (Throwable ignored)`. На zero-dep classpath `@OnError`-маппинг деградировал до голых `forStatus(statusCode)` без title/detail/type.
-- *Fix:* BOM-нормализация в двух узких местах по одной строке (`fromJson` + pre-check); red-first 4 красных теста, всего +5 (1448/1448), ADR-0064 дополнен Amendment #257.
-- *Гейты:* **1448/1448** зелёные, новые рекорды JaCoCo: **83.45% Branch**, **95.88% Instruction**, **95.69% Line**; Method/Class — 100%.
-- Дальше — остаток `HttpTemplate` (`exchange`/`exchangeAsync`, хвосты `processResponse`) или концепт ADR-0066 для цикла 0.11.0.
-
-[2026-10-18 04:45] Агент (сессия #259): Антон, ещё одна «тихая» находка (37-я в серии) — в метриках ADR-0036:
-- *Находка:* pre-wire rejection (rate-limiter timeout / open circuit breaker до провода) сообщал `attempts() == 1` при **0** вызовах `onAttemptComplete` — sync-путь падал в общий `catch` с `attemptsHolder`, инициализированным `1` (перезапись только внутри `executeWithRetries`, до которой не доходило), а async-ветки передавали литерал `1` в `notifyCallComplete`. Нарушен инвариант «attempts() == количество onAttemptComplete», установленный #195/#258 для short-circuit и interceptor-failure.
-- *Fix:* sync — acquire в try/catch, `attemptsHolder[0] = 0` перед перебросом; async — обе rejection-ветки `notifyCallComplete(..., 0)`. Javadoc `CallMetrics.attempts()` переформулирован (полный контракт: 0 — любой вызов, не дошедший до провода). ADR-0036 дополнен Amendment #259; red-first 4 красных (2 rejection × sync/async).
-- *Гейты:* **1454/1454** зелёные (+4), новые рекорды JaCoCo: **83.48% Branch**, **95.95% Instruction**, **95.74% Line**; Method/Class — 100%.
-- Дальше — `ControllerValidator#validateMethod` (25 missed) или остаток `HttpTemplate` (`processResponse` 23, `probePayloadDecode` 20).
-
-[2026-10-18 07:15] Агент (сессия #263): Антон, провел масштабный free-аудит `HttpTemplateBuilder` (класс №2 в библиотеке по объему непокрытых ветвей):
-- *Аудит:* создали выделенный unit-тест сьют `HttpTemplateBuilderTest` (+19 тестов, без сети), охвативший весь контракт сборщика запросов: URL слэши/фрагменты/query, динамические/статические заголовки и Ambient Auth drop-list при редиректах, слияние и удаление кук, форматы коллекций параметров (`CSV`, `SSV`, `TSV`, `PIPES`, `BRACKETS`, `EXPLODE`), `createJsonBodyPayload` (стриминг, suppliers, body publishers, non-existent files), Multipart с файлами/частями/параметрами, form-urlencoded и сжатие тел.
-- *Результаты:* закрыли 44 ветви в `HttpTemplateBuilder` (missed branches 164 → **120**, покрытие ветвей 74.8% → **81.60%**).
-- *Новые абсолютные рекорды библиотеки в JaCoCo:*
-  * **85.93% Branch Coverage** (3,818 / 4,443) — впервые перейден рубеж 85%!
-  * **97.23% Instruction Coverage** (30,511 / 31,380) — впервые перейден рубеж 97%!
-  * **96.83% Line Coverage** (6,622 / 6,839);
-  * **83.40% Complexity** (3,074 / 3,686);
-  * **100.00% Method Coverage (1432/1432)**, **100.00% Class Coverage (143/143)**.
-- Тестовая база: **1,494 / 1,494** тестов зеленые across all 5 modules (+19 тестов), Javadoc чист под `-Werror`.
-
-[2026-10-18 07:38] Агент (сессия #264): Антон, провел масштабный free-аудит `ControllerValidator` (класс №3 по missed branches в ядре):
-- *Аудит:* закрыли 40 ветвей валидатора интерфейсов (missed branches 50 → **10**, покрытие ветвей 90.0% → **98.00%**, instruction **99.33%**, line **99.34%**): null и не-интерфейсные классы в `validate()`, алмазное наследование и статические методы интерфейса, чистый LF в CRLF-проверках аннотаций, граничные статусы `@OnError(statuses = {600})` и дубликаты одного класса, извлечение параметров `@Delete(params = ...)`, проверка несовместимых сочетаний аннотаций параметров, абстрактные классы в `@WithInterceptor`/`@WithMetrics`, и краевые случаи через package-private seams (`Double.NaN` в `@Retry`, null-аргументы).
-- *Исторические рубежи библиотеки:*
-  * **1,502 / 1,502** тестов зелёные across all 5 modules — **впервые преодолён рубеж 1,500 тестов!**
-  * **97.00% Line Coverage** (6,634 / 6,839) — **впервые пробит рубеж 97% Line Coverage!**
-  * **86.81% Branch Coverage** (3,857 / 4,443) — новый исторический рекорд (+39 покрытых ветвей за сессию)!
-  * **97.34% Instruction Coverage** (30,546 / 31,380) — новый исторический рекорд!
-  * **84.45% Complexity** (3,113 / 3,686) — новый рекорд (+39 пунктов сложности)!
-  * **100.00% Method Coverage (1432/1432)**, **100.00% Class Coverage (143/143)**!
-[2026-10-18 07:58] Агент (сессия #265): Антон, провел масштабный free-аудит `ResponseHeaders` (закрыто 19 ветвей, missed branches 34 → 15, покрытие 81.3% → 91.8%) и `ProblemDetail$ZeroDepJsonParser` (закрыто 5 ветвей, missed branches 29 → 24, покрытие 79.0% → 82.6%):
-- *Аудит:*
-  * В `ResponseHeaders`: покрыли null-ветви всех перегрузок конструкторов и `populate()` (`duration == null`, `headers == null`, `version == null`, `trailers == null`), дедупликацию и очистку заголовков с `null`-именами и `null`-значениями (`h.value() == null ? ""`), безопасную обработку `populateTrailers(null)` и `populateTrailers(List.of())`, заголовок `Trailer` с `null`-значением и пустыми запятыми, `Set-Cookie2`-only ответы без `Set-Cookie`, null/blank и невалидные куки (бросающие `IllegalArgumentException` в `HttpCookie.parse`), куки с пустыми значениями, вложенный `capture(Supplier)` с восстановлением предыдущего `ThreadLocal` captor, парсер RFC 8288 `Link` с кавычками внутри угловых скобок, кавычками в URI, замыкающими запятыми, непарными кавычками (`rel="unclosed`, `rel=unopened"`, `rel="`), и пустыми/blank атрибутами `rel`.
-  * В `ProblemDetail$ZeroDepJsonParser`: пустые объекты `{}` и `{   }`, пустые массивы `[]`, полную матрицу escape-последовательностей (`\"`, `\\`, `\/`, `\b`, `\f`, `\n`, `\r`, `\t`, `\u0041`, fallback `\q`), значения `true`, числа типа `Long` выше `Integer.MAX_VALUE` (5 млрд), экспоненты с `E`, `+` и `-`, неполные и невалидные unicode escape, незакрытые строки на backslash, синтаксические ошибки массивов и объектов.
-- *Новые абсолютные рекорды библиотеки в JaCoCo:*
-  * **87.35% Branch Coverage** (3,881 / 4,443) — **впервые в истории преодолён рубеж 87% Branch Coverage (+24 ветви за сессию)!**
-  * **97.40% Instruction Coverage** (30,564 / 31,380) — новый рекорд!
-  * **97.09% Line Coverage** (6,640 / 6,839) — новый рекорд!
-  * **85.11% Complexity** (3,137 / 3,686) — **впервые преодолён рубеж 85% Complexity!**
-  * **100.00% Method Coverage (1432/1432)**, **100.00% Class Coverage (143/143)**!
-- Тестовая база: **1,511 / 1,511** тестов зелёные across all 5 modules (+9 тестов, 0 failures, 0 errors, 0 warnings under `-Werror`).
-
 [2026-10-18 08:30] Агент (сессия #267): Антон, доброе утро! Сессия #266 оборвалась до коммита (знакомый паттерн #155/#186/#254) — оставила в дереве три package-private seam'а `HttpTemplate` (`hasHeader`/`isCrossOrigin`/`effectivePort`) **без тестов**. #267 приняла WIP и довела его до конца:
 - *Аудит:* по HTML-отчёту JaCoCo снял точную карту непокрытых ветвей: `hasHeader` 5 missed, `isCrossOrigin` 6 missed, `effectivePort` 3 missed. Это defensive-обвязка, до которой e2e не доходит: `null`-request / `null`-список заголовков / `null`-элемент / `Header` с `null`-именем; `null`-схема (относительный URI) и `null`-хост (opaque `foo:/opaque`); явный порт и дефолты 443/80 (в т.ч. регистронезависимо).
 - *Тесты:* два безсетевых сьюта — `HttpTemplateCrossOriginTest` (10) + `HttpTemplateConditionalHeaderTest` (7). До seam-семейства #266 они бы не скомпилировались (методы были `private`).
@@ -127,5 +72,12 @@
 - *Новые исторические рекорды JaCoCo:* **88.07% Branch** (3,913/4,443), **97.49% Instruction** (30,593/31,380), **97.19% Line** (6,647/6,839), **85.95% Complexity** (3,168/3,686); Method/Class — 100%.
 - Дальше — `HttpTemplate` (162 missed, тут ещё есть живые ветви, где находились «тихие» баги #256–#259) или концепт ADR-0066 для 0.11.0.
 
+[2026-10-18 09:35] Агент (сессия #269): Антон, взял класс №1 по непокрытым ветвям — `HttpTemplate` (162 missed) — и закрыл внутри него кластер RFC 9457 Problem Details (ADR-0064), тот самый участок, где #257 нашёл BOM-баг:
+- *Аудит:* кластер приватный, поэтому перевёл четыре метода в осознанные package-private швы (паттерн #255/#266/#267) и снял полную карту из XML-отчёта: `resolveProblemDetail` (null/blank тело, shape-гейт `{…}`, путь кодека и fallback на встроенный `fromJson`), `isProblemJsonContentType` (null/пустой список, отсутствующий/null-значный `Content-Type`, `problem+json`/`+xml`), `isLikelyProblemDetail` (дефолтный документ vs любой ненулевой признак), `handleOnError` (null/пустое/blank тело, `Void`-цель, decoded RuntimeException/Error/checked/ProblemDetail, бестелесная инстанциация по 4 формам конструктора, ProblemDetailException-обёртка).
+- *Тесты:* новый безсетевой сьют `HttpTemplateProblemDetailResolutionTest` (29 тестов) — записывающий `StubCodec` через `setCodecRegistry` и тестовые цели с нужной формой конструктора под пробу `instantiateThrowable`.
+- *Результат:* `HttpTemplate` 162 → **132** missed (82.69% → 85.90%); закрыто 30 ветвей.
+- *Гейты:* **1,569 / 1,569** тестов зелёные across all 5 modules (+29), 0 failures/errors, javadoc чист под `-Werror`.
+- *Новые исторические рекорды JaCoCo:* **88.77% Branch** (3,944/4,443), **97.66% Instruction** (30,647/31,380), **97.37% Line** (6,659/6,839), **86.71% Complexity** (3,196/3,686); Method/Class — 100%.
+- Дальше — остаток `HttpTemplate` (`processResponse`/`exchange`/`exchangeAsync` — живые ветви) или концепт ADR-0066 для 0.11.0.
 
-
+---

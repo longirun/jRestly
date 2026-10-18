@@ -1,5 +1,48 @@
 # DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
+> **Сессия #269 (free-аудит кластера Problem Details ADR-0064 в `HttpTemplate` —
+> `handleOnError` / `resolveProblemDetail` / `isProblemJsonContentType` /
+> `isLikelyProblemDetail` / `instantiateThrowable`: полный срез достижимых ветвей
+> через четыре package-private seam'а; закрыто 30 ветвей — `HttpTemplate`
+> 162 → 132 missed (82.69% → 85.90%); 29 безсетевых тестов; гейт 1,569/1,569,
+> INSTRUCTION 97.66%, LINE 97.37%, BRANCH 88.77%, COMPLEXITY 86.71% — четыре
+> новых исторических рекорда):**
+> свободный ход по хвосту `HttpTemplate` (162 missed branches — класс №1 по
+> непокрытым ветвям, при этом именно здесь прошлые сессии находили «тихие» баги
+> #256–#259); сужение на кластер RFC 9457 Problem Details (ADR-0064) — тот же
+> участок, где #257 нашёл BOM-баг. Кластер приватный, поэтому четыре метода
+> получили осознанные package-private швы (паттерн #255/#266/#267).
+> 1. *Аудит (точная карта по XML-отчёту JaCoCo):*
+>    - `resolveProblemDetail`: `rawBody` null/blank, shape-гейт `{…}` (обе стороны),
+>      путь кодека (accept по `isProblemType`/эвристике, заполнение status),
+>      fallback на встроенный `fromJson` (при сбое кодека и при его `null`);
+>    - `isProblemJsonContentType`: null/пустой список, отсутствующий/null-значный
+>      `Content-Type`, `problem+json`/`problem+xml` (регистронезависимо), непроблемный тип;
+>    - `isLikelyProblemDetail`: null, дефолтный документ (`about:blank`/0/null),
+>      status>0, кастомный type, не-blank title/detail, instance;
+>    - `handleOnError`: `null`/пустое/blank тело, `Void`-цель, decoded
+>      RuntimeException/Error/checked-Throwable/ProblemDetail, бестелесная
+>      инстанциация `(Object,int,List)`/`(String,int)`/`(String)`/no-arg,
+>      ProblemDetailException-обёртка (decoded и `forStatus`), fallback
+>      ProblemDetail + заполнение/сохранение status.
+> 2. *TDD и гейт:* новый безсетевой сьют `HttpTemplateProblemDetailResolutionTest`
+>    (29 тестов: 16 — три предиката/резолвер, 13 — `handleOnError`, включая
+>    `TestError`/`TestCheckedException` под пробу конструкторов). Быстрые
+>    unit-проверки, без сети.
+>    - Всего тестов: **1,569 / 1,569** green across all 5 modules (+29, 0 failures, 0 errors, 0 warnings under `-Werror`).
+>    - **JaCoCo Coverage:**
+>      * **CLASS:** **143 / 143 (100.00%)**; **METHOD:** **1432 / 1432 (100.00%)** — абсолютные 100% сохранены!
+>      * **BRANCH:** **3,944 / 4,443 (88.77%)** — новый исторический рекорд (+31 за счёт среза; одна ветвь — джиттер-зависимая в `RetryPolicy`, вне среза)!
+>      * **INSTRUCTION:** **30,647 / 31,380 (97.66%)** — новый исторический рекорд!
+>      * **LINE:** **6,659 / 6,839 (97.37%)** — новый исторический рекорд!
+>      * **COMPLEXITY:** **3,196 / 3,686 (86.71%)** — новый исторический рекорд!
+>    - `HttpTemplate`: 162 → **132** missed (85.90%). Оставшиеся ветви кластера —
+>      defensive (`instanceof Error`/checked в `instantiateThrowable`,
+>      `ProblemDetailException.isAssignableFrom` — недостижимы, т.к. L2689 всегда
+>      заворачивает `isProblemException`), плюс `createUnexpectedStatusException`
+>      non-4xx/5xx и хвост `handleOnError`.
+>    - ADR не тронут — чистый coverage-срез по контракту (паттерн #192/#197/#198/#261/#268).
+
 > **Сессия #268 (free-аудит кэша RFC 9111 — `InMemoryHttpCache` / `SimpleCachedResponse` / `CacheControl`: полный срез достижимых ветвей кластера кэша; закрыто 18 ветвей — `InMemoryHttpCache` 17 → 4, `SimpleCachedResponse` 3 → 0, `CacheControl` 2 → 0; оставшиеся 4 — структурно недостижимые defensive-проверки `WireResponse`; гейт 1,540/1,540, INSTRUCTION 97.49%, LINE 97.19%, BRANCH 88.07%, COMPLEXITY 85.95% — новые рекорды):**
 > свободный ход по классам ядра с наибольшим хвостом непокрытых ветвей; сужение на
 > кластер прозрачного HTTP-кэша ADR-0063 (`InMemoryHttpCache` 17 missed, `SimpleCachedResponse`
