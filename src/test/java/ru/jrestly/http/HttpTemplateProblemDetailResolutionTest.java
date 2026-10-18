@@ -22,17 +22,19 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Unit tests for the Problem Details (RFC 9457) resolution cluster of
- * {@code HttpTemplate} (ADR-0064): the media-type override
+ * Unit tests for the Problem Details (RFC 9457) resolution cluster
+ * (ADR-0064): the media-type override
  * ({@code isProblemJsonContentType}), the "likely problem" shape heuristic
  * ({@code isLikelyProblemDetail}) and the two-stage resolver
- * ({@code resolveProblemDetail}) that tries the response codec first and
- * falls back to the built-in zero-dependency parser.
+ * ({@code resolve}) that tries the response codec first and falls back to the
+ * built-in zero-dependency parser.
  *
- * <p>No network: the three helpers are package-private on purpose, and the
- * codec is a stub installed through the package-private
- * {@code setCodecRegistry} seam so every branch (null/empty/override/
- * heuristic/codec-failure) is pinned directly.
+ * <p>No network: the resolution rules live on the package-private
+ * {@link ProblemDetailResolver} (extracted from {@code HttpTemplate}, ADR-0066)
+ * and the codec is a stub so every branch (null/empty/override/heuristic/
+ * codec-failure) is pinned directly. The {@code @OnError} dispatch
+ * ({@code handleOnError}) is still exercised through {@code HttpTemplate} with
+ * a stub registry.
  */
 class HttpTemplateProblemDetailResolutionTest {
 
@@ -54,30 +56,30 @@ class HttpTemplateProblemDetailResolutionTest {
     @Test
     @DisplayName("media type: null and empty header lists are not problem responses")
     void nullAndEmptyHeadersAreNotProblemContentType() {
-        assertFalse(HttpTemplate.isProblemJsonContentType(null));
-        assertFalse(HttpTemplate.isProblemJsonContentType(List.of()));
+        assertFalse(ProblemDetailResolver.isProblemJsonContentType(null));
+        assertFalse(ProblemDetailResolver.isProblemJsonContentType(List.of()));
     }
 
     @Test
     @DisplayName("media type: missing or null-valued Content-Type is not a problem response")
     void missingOrNullValuedContentTypeIsNotProblemContentType() {
-        assertFalse(HttpTemplate.isProblemJsonContentType(List.of(new Header("Accept", "application/json"))));
-        assertFalse(HttpTemplate.isProblemJsonContentType(List.of(new Header("Content-Type", null))));
+        assertFalse(ProblemDetailResolver.isProblemJsonContentType(List.of(new Header("Accept", "application/json"))));
+        assertFalse(ProblemDetailResolver.isProblemJsonContentType(List.of(new Header("Content-Type", null))));
     }
 
     @Test
     @DisplayName("media type: problem+json and problem+xml are recognized case-insensitively")
     void problemMediaTypesAreRecognized() {
-        assertTrue(HttpTemplate.isProblemJsonContentType(PROBLEM_JSON));
-        assertTrue(HttpTemplate.isProblemJsonContentType(PROBLEM_XML));
-        assertTrue(HttpTemplate.isProblemJsonContentType(List.of(new Header("content-type", "Application/Problem+Json"))));
+        assertTrue(ProblemDetailResolver.isProblemJsonContentType(PROBLEM_JSON));
+        assertTrue(ProblemDetailResolver.isProblemJsonContentType(PROBLEM_XML));
+        assertTrue(ProblemDetailResolver.isProblemJsonContentType(List.of(new Header("content-type", "Application/Problem+Json"))));
     }
 
     @Test
     @DisplayName("media type: a non-problem Content-Type short-circuits to false")
     void nonProblemContentTypeIsFalse() {
-        assertFalse(HttpTemplate.isProblemJsonContentType(PLAIN));
-        assertFalse(HttpTemplate.isProblemJsonContentType(List.of(new Header("Content-Type", "application/json"))));
+        assertFalse(ProblemDetailResolver.isProblemJsonContentType(PLAIN));
+        assertFalse(ProblemDetailResolver.isProblemJsonContentType(List.of(new Header("Content-Type", "application/json"))));
     }
 
     // ---- isLikelyProblemDetail ----
@@ -85,8 +87,8 @@ class HttpTemplateProblemDetailResolutionTest {
     @Test
     @DisplayName("heuristic: null and an all-defaults document are not likely problems")
     void nullAndDefaultDocumentsAreNotLikely() {
-        assertFalse(HttpTemplate.isLikelyProblemDetail(null));
-        assertFalse(HttpTemplate.isLikelyProblemDetail(new ProblemDetail()));
+        assertFalse(ProblemDetailResolver.isLikelyProblemDetail(null));
+        assertFalse(ProblemDetailResolver.isLikelyProblemDetail(new ProblemDetail()));
     }
 
     @Test
@@ -94,11 +96,11 @@ class HttpTemplateProblemDetailResolutionTest {
     void statusOrCustomTypeIsLikely() {
         ProblemDetail statusOnly = new ProblemDetail();
         statusOnly.setStatus(503);
-        assertTrue(HttpTemplate.isLikelyProblemDetail(statusOnly));
+        assertTrue(ProblemDetailResolver.isLikelyProblemDetail(statusOnly));
 
         ProblemDetail typeOnly = new ProblemDetail();
         typeOnly.setType("https://example.com/probs/out-of-credit");
-        assertTrue(HttpTemplate.isLikelyProblemDetail(typeOnly));
+        assertTrue(ProblemDetailResolver.isLikelyProblemDetail(typeOnly));
     }
 
     @Test
@@ -106,19 +108,19 @@ class HttpTemplateProblemDetailResolutionTest {
     void nonBlankTitleOrDetailIsLikely() {
         ProblemDetail titled = new ProblemDetail();
         titled.setTitle("Out of credit");
-        assertTrue(HttpTemplate.isLikelyProblemDetail(titled));
+        assertTrue(ProblemDetailResolver.isLikelyProblemDetail(titled));
 
         ProblemDetail detailed = new ProblemDetail();
         detailed.setDetail("The card has no remaining balance.");
-        assertTrue(HttpTemplate.isLikelyProblemDetail(detailed));
+        assertTrue(ProblemDetailResolver.isLikelyProblemDetail(detailed));
 
         ProblemDetail blankTitled = new ProblemDetail();
         blankTitled.setTitle("   ");
-        assertFalse(HttpTemplate.isLikelyProblemDetail(blankTitled));
+        assertFalse(ProblemDetailResolver.isLikelyProblemDetail(blankTitled));
 
         ProblemDetail blankDetailed = new ProblemDetail();
         blankDetailed.setDetail("\t");
-        assertFalse(HttpTemplate.isLikelyProblemDetail(blankDetailed));
+        assertFalse(ProblemDetailResolver.isLikelyProblemDetail(blankDetailed));
     }
 
     @Test
@@ -126,7 +128,7 @@ class HttpTemplateProblemDetailResolutionTest {
     void instanceUriIsLikely() {
         ProblemDetail pd = new ProblemDetail();
         pd.setInstance(URI.create("https://example.com/instances/42"));
-        assertTrue(HttpTemplate.isLikelyProblemDetail(pd));
+        assertTrue(ProblemDetailResolver.isLikelyProblemDetail(pd));
     }
 
     // ---- resolveProblemDetail ----
@@ -134,10 +136,10 @@ class HttpTemplateProblemDetailResolutionTest {
     @Test
     @DisplayName("resolver: null, blank and non-object bodies resolve to null")
     void nonObjectBodiesResolveToNull() {
-        assertNull(template.resolveProblemDetail(500, null, PROBLEM_JSON));
-        assertNull(template.resolveProblemDetail(500, "   ", PROBLEM_JSON));
-        assertNull(template.resolveProblemDetail(500, "not json at all", PROBLEM_JSON));
-        assertNull(template.resolveProblemDetail(500, "{\"title\":\"unterminated\"", PROBLEM_JSON));
+        assertNull(ProblemDetailResolver.resolve(500, null, PROBLEM_JSON, null, codec));
+        assertNull(ProblemDetailResolver.resolve(500, "   ", PROBLEM_JSON, null, codec));
+        assertNull(ProblemDetailResolver.resolve(500, "not json at all", PROBLEM_JSON, null, codec));
+        assertNull(ProblemDetailResolver.resolve(500, "{\"title\":\"unterminated\"", PROBLEM_JSON, null, codec));
     }
 
     @Test
@@ -148,7 +150,7 @@ class HttpTemplateProblemDetailResolutionTest {
         fromCodec.setTitle("Conflict");
         codec.result = fromCodec;
 
-        ProblemDetail resolved = template.resolveProblemDetail(503, "{\"title\":\"Conflict\"}", PROBLEM_JSON);
+        ProblemDetail resolved = ProblemDetailResolver.resolve(503, "{\"title\":\"Conflict\"}", PROBLEM_JSON, null, codec);
 
         assertSame(fromCodec, resolved);
         assertEquals(409, resolved.getStatus());
@@ -162,7 +164,7 @@ class HttpTemplateProblemDetailResolutionTest {
         fromCodec.setTitle("Out of credit");
 
         codec.result = fromCodec;
-        ProblemDetail resolved = template.resolveProblemDetail(402, "{\"title\":\"Out of credit\"}", PLAIN);
+        ProblemDetail resolved = ProblemDetailResolver.resolve(402, "{\"title\":\"Out of credit\"}", PLAIN, null, codec);
 
         assertSame(fromCodec, resolved);
         assertEquals(402, resolved.getStatus());
@@ -172,7 +174,7 @@ class HttpTemplateProblemDetailResolutionTest {
     @DisplayName("resolver: an unrecognized media type and an all-defaults document resolve to null")
     void unrecognizedMediaTypeAndDefaultDocumentResolveToNull() {
         codec.result = new ProblemDetail();
-        assertNull(template.resolveProblemDetail(500, "{}", PLAIN));
+        assertNull(ProblemDetailResolver.resolve(500, "{}", PLAIN, null, codec));
     }
 
     @Test
@@ -180,7 +182,17 @@ class HttpTemplateProblemDetailResolutionTest {
     void failingCodecFallsBackToBuiltInParser() {
         codec.failure = new IllegalStateException("codec cannot bind ProblemDetail");
 
-        ProblemDetail resolved = template.resolveProblemDetail(503, "{\"title\":\"Service Unavailable\"}", PROBLEM_JSON);
+        ProblemDetail resolved = ProblemDetailResolver.resolve(503, "{\"title\":\"Service Unavailable\"}", PROBLEM_JSON, null, codec);
+
+        assertEquals("Service Unavailable", resolved.getTitle());
+        assertEquals(503, resolved.getStatus());
+    }
+
+    @Test
+    @DisplayName("resolver: a null codec skips the codec stage and uses the built-in parser")
+    void nullCodecFallsBackToBuiltInParser() {
+        ProblemDetail resolved = ProblemDetailResolver.resolve(
+                503, "{\"title\":\"Service Unavailable\"}", PROBLEM_JSON, null, null);
 
         assertEquals("Service Unavailable", resolved.getTitle());
         assertEquals(503, resolved.getStatus());
@@ -190,14 +202,14 @@ class HttpTemplateProblemDetailResolutionTest {
     @DisplayName("resolver: a failing codec with an all-defaults body resolves to null")
     void failingCodecAndDefaultBodyResolveToNull() {
         codec.failure = new IllegalStateException("boom");
-        assertNull(template.resolveProblemDetail(500, "{}", PLAIN));
+        assertNull(ProblemDetailResolver.resolve(500, "{}", PLAIN, null, codec));
     }
 
     @Test
     @DisplayName("resolver: a problem media type accepts an all-defaults codec document and fills the wire status")
     void problemMediaTypeAcceptsDefaultsAndFillsStatus() {
         codec.result = new ProblemDetail();
-        ProblemDetail resolved = template.resolveProblemDetail(503, "{}", PROBLEM_JSON);
+        ProblemDetail resolved = ProblemDetailResolver.resolve(503, "{}", PROBLEM_JSON, null, codec);
 
         assertEquals(503, resolved.getStatus());
     }
@@ -206,7 +218,7 @@ class HttpTemplateProblemDetailResolutionTest {
     @DisplayName("resolver: a problem media type lets the built-in fallback accept an all-defaults body")
     void problemMediaTypeAcceptsFallbackDefaults() {
         codec.failure = new IllegalStateException("boom");
-        ProblemDetail resolved = template.resolveProblemDetail(503, "{}", PROBLEM_XML);
+        ProblemDetail resolved = ProblemDetailResolver.resolve(503, "{}", PROBLEM_XML, null, codec);
 
         assertEquals(503, resolved.getStatus());
     }

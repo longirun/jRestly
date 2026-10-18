@@ -2180,7 +2180,7 @@ Gates (session #241):
 ---
 
 > **Current status (2026-10-18).** Highest ADR issued: **0066**; next free: **0067**.
-> Cycle 0.10.0 packaged and verified. Live gate: **1577/1577** tests green across all five modules, 0 warnings under `-Werror`. JaCoCo: 100% Class Coverage (145/145), 100% Method Coverage (1436/1436), 97.67% Instructions, 97.37% Lines, 88.80% Branches.
+> Cycle 0.10.0 packaged and verified. Live gate: **1578/1578** tests green across all five modules, 0 warnings under `-Werror`. JaCoCo: 100% Class Coverage (146/146), 100% Method Coverage (1437/1437), 97.67% Instructions, 97.38% Lines, 88.78% Branches.
 
 ### Cycle 0.11.0 — internal structure
 
@@ -2202,6 +2202,14 @@ Gates (session #241):
   `HttpTemplateCrossOriginTest` → `RedirectsCrossOriginTest`). Новый
   безсетевой `RedirectsTest` (8 тестов) покрывает ветви коллаборатора на 100%.
   Публичный API не изменён.
+- **ADR-0066 (§session #274):** третий шаг — resolver Problem Details вынесен в
+  package-private `ru.jrestly.http.ProblemDetailResolver` (`resolve`,
+  `isProblemJsonContentType`, `isLikelyProblemDetail`, `instantiateThrowable`) —
+  чистый `static`-хелпер, выбранный кодек/media-тип передаются аргументами.
+  Завершение WIP прерванных #272–#273 с находкой: вынос вынул `responseCodec(...)` из
+  охранного `try` резолвера, и bare-template стал ронять unexpected-status
+  голым `NPE: jsonCodec`; фикс — best-effort `responseCodecOrNull`. `HttpTemplate`
+  128 → 122 missed; +1 unit-тест (null codec → built-in parser).
 
 ## Post-0.5.0 shortlist (not scheduled — see ADR-0003)
 

@@ -117,3 +117,40 @@ package-private коллаборатор `ru.jrestly.http.Redirects`.
   в god-классе стало на ~90 меньше; JaCoCo не просел — наоборот, BRANCH
   88.77% → **88.80%**, INSTRUCTION 97.66% → **97.67%**, COMPLEXITY 86.71% →
   **86.76%** (METHOD/CLASS — 100%).
+
+## Amendment #274
+
+Шаг №3 плана выполнен: resolver Problem Details вынесен из `HttpTemplate` в
+package-private `ru.jrestly.http.ProblemDetailResolver`.
+
+- **Извлечено:** `resolveProblemDetail` (→ `ProblemDetailResolver.resolve`),
+  `isProblemJsonContentType`, `isLikelyProblemDetail`, `instantiateThrowable`
+  (из `private static` → package-private `static`). Логика байт-в-байт.
+- **Коллаборатор — чистый `static`-хелпер** (как `RetryAfter`): он не завязан
+  на состояние шаблона — выбранный кодек и его media-тип передаются
+  аргументами, поэтому конструктор/поля не нужны. Call-site
+  (`createUnexpectedStatusException`) передаёт `contentTypeOf(...)` и
+  `responseCodecOrNull(...)`.
+- **Находка при завершении WIP (WIP #272–#273 оборвалась до коммита):** перенос
+  вытащил `responseCodec(responseHeaders)` из `try` resolver'а **наружу**, и на
+  bare-template (без `codecRegistry`/`jsonCodec`) разрешение кодека стало ронять
+  `createUnexpectedStatusException` голым `NullPointerException: jsonCodec`
+  вместо прежнего тихого пролёта к встроенному парсеру. Поймали e2e-гварды
+  `HttpTemplateOptionalStreamTest` / `HttpTemplateStreamWireTest` (4 «сетевых»
+  падения — на самом деле чистый unit-путь unexpected-status). Фикс — новый
+  private `responseCodecOrNull` (best-effort lookup, `catch (Throwable) → null`),
+  возвращающий исходное поведение: ошибка разрешения кодека не прерывает
+  Problem Details resolution. Плюс unit-тест «null codec → built-in parser».
+  Вывод: при выносе метода проверять **границы его `try`** — вынос из
+  охранного блока меняет контракт, даже когда тело метода перенесено дословно.
+- **Юнит-матрица:** `HttpTemplateProblemDetailResolutionTest` (30 тестов)
+  переведён на прямые вызовы `ProblemDetailResolver` для предикатов/резолвера;
+  `handleOnError`-часть по-прежнему гоняется через `HttpTemplate`. `resolve`
+  покрыт по обеим сторонам `if (responseCodec != null)` (новый тест с
+  `codec == null`). Остальные 5 missed ветвей — известные недостижимые
+  defensive-проверки (`instantiateThrowable`: `ProblemDetailException.isAssignableFrom`
+  и fallback-конструкторы).
+- **Эффект:** `HttpTemplate` 128 → **122** missed по ветвям (новый класс несёт
+  5 структурно недостижимых); METHOD 1436 → **1437**, CLASS 145 → **146**
+  (100% сохранены); LIVE-гейт 1,578/1,578, javadoc чист под `-Werror`. JaCoCo:
+  INSTRUCTION 97.67%, LINE 97.38%, BRANCH 88.78%, COMPLEXITY 86.73%.

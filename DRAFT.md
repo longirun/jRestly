@@ -1,5 +1,42 @@
 # DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
+> **Сессия #274 (ADR-0066, шаг №3: resolver Problem Details вынесен из
+> `HttpTemplate` в package-private `ProblemDetailResolver`; завершение WIP
+> прерванной #272–#273 + находка «вынос из `try` меняет контракт»; гейт 1,578/1,578,
+> METHOD 1437/1437 и CLASS 146/146 — 100%, INSTRUCTION 97.67%, LINE 97.38%,
+> BRANCH 88.78%, COMPLEXITY 86.73%):**
+> продолжение плана ADR-0066 (шаг №3 — resolver Problem Details).
+> 1. *Вход:* WIP прерванных сессий #272–#273 (паттерн #155/#186/#254/#261): в дереве
+>    уже лежал новый `ProblemDetailResolver.java` + правки `HttpTemplate`/теста,
+>    но коммита не было. Принят, верифицирован, завершён.
+> 2. *Извлечено:* `resolveProblemDetail` → `ProblemDetailResolver.resolve`,
+>    плюс `isProblemJsonContentType`, `isLikelyProblemDetail`,
+>    `instantiateThrowable` (`private static` → package-private `static`),
+>    байт-в-байт.
+> 3. *Коллаборатор — чистый `static`-хелпер* (в отличие от `Redirects`-value-
+>    объекта #271): не завязан на поля шаблона — выбранный кодек и его media-тип
+>    передаются аргументами, конструктор не нужен. `handleOnError` остаётся на
+>    `HttpTemplate` (dispatch, не резолвинг).
+> 4. *Находка (завершение WIP):* перенос вытащил `responseCodec(responseHeaders)`
+>    **из охранного `try`** наружу → на bare-template (без
+>    `codecRegistry`/`jsonCodec`) `createUnexpectedStatusException` стал падать
+>    голым `NullPointerException: jsonCodec` вместо тихого пролёта к встроенному
+>    парсеру. Поймали e2e-гварды `HttpTemplateOptionalStreamTest` /
+>    `HttpTemplateStreamWireTest` (4 падения). Фикс — private
+>    `responseCodecOrNull` (best-effort lookup, `catch (Throwable) → null`),
+>    поведение восстановлено точно.
+> 5. *TDD:* `HttpTemplateProblemDetailResolutionTest` (30 тестов) — предикаты и
+>    резолвер напрямую на `ProblemDetailResolver`, `handleOnError` по-прежнему
+>    через `HttpTemplate`; новый тест «null codec → built-in parser» закрывает
+>    обе стороны `if (responseCodec != null)`. Оставшиеся 5 missed ветвей
+>    резолвера — известные недостижимые defensive (`instantiateThrowable`).
+> 6. *Гейты:* **1,578 / 1,578** green across all 5 modules (+1), javadoc чист под
+>    `-Werror`. JaCoCo: **METHOD 1437/1437** и **CLASS 146/146 (100%)**,
+>    **INSTRUCTION 30,702/31,435 (97.67%)**, **LINE 6,677/6,857 (97.38%)**,
+>    **BRANCH 3,948/4,447 (88.78%)**, **COMPLEXITY 3,203/3,693 (86.73%)**.
+>    `HttpTemplate` 128 → **122** missed. Публичный API не изменён.
+> 7. *Дальше* — шаг №4 ADR-0066 (dispatch кэша) или хвосты покрытия.
+
 > **Сессия #271 (ADR-0066, шаг №2: политика редиректов вынесена из
 > `HttpTemplate` в package-private коллаборатор `Redirects`; новый безсетевой
 > `RedirectsTest` (8 тестов) даёт коллаборатору 100% ветвей; гейт 1,577/1,577,
@@ -2378,16 +2415,26 @@
     коллаборатор `Redirects` (`nextHop`, `dropAuthHeaders`, `logExhausted`,
     `location`, `isCrossOrigin`, `effectivePort`); `RedirectsTest` (8 тестов)
     покрывает коллаборатор на 100% ветвей. Публичный API не изменён.
-  - **Шаг №3 (следующий):** resolver Problem Details (`resolveProblemDetail`,
-    `isProblemJsonContentType`, `isLikelyProblemDetail`, `instantiateThrowable`).
-  - **Шаги №4–№6:** dispatch кэша → декодирование тела (charset/streaming) →
-    уведомления метрик.
+  - **Шаг №3 — сделана (#274):** resolver Problem Details
+    (`resolveProblemDetail`/`isProblemJsonContentType`/`isLikelyProblemDetail`/
+    `instantiateThrowable`) вынесен в package-private `ProblemDetailResolver`
+    (чистый `static`-хелпер: кодек/media-тип передаются аргументами). Завершение
+    WIP #272–#273 + находка: вынос `responseCodec(...)` из охранного `try`
+    резолвера ронял bare-template на unexpected-status (`NPE: jsonCodec`) —
+    вылечено best-effort `responseCodecOrNull`. `HttpTemplate` 128 → 122 missed.
+    Публичный API не изменён.
+  - **Шаг №4 (следующий):** dispatch кэша (`handleCacheResponse`,
+    `toStreamWireResponse`) — вынести в коллаборатор; шов `handleCacheResponse`
+    уже package-private (#255), `RecordingCache`-сьют есть
+    (`HttpTemplateCacheDispatchTest`).
+  - **Шаги №5–№6:** декодирование тела (charset/streaming) → уведомления метрик.
 
 **Активная зона пуста:** кандидаты №1 (test-javadoc) и №2/№3/№4 закрыты (§выше);
-кандидат №5 (ADR-0066) открыт и ведётся пошагово.
-Завершённые эпики ADR-0058/0059/0060 дистиллированы в `ROADMAP.md` (сессия #206),
-highest ADR **0060**, next free **0061**. Следующий ход — свободный: концепт
-ADR-0061+ (новая эргономика/зрелость) или свежий free-аудит. Хвосты-кандидаты
+кандидат №5 (ADR-0066) открыт и ведётся пошагово (шаги №1–№3 сделаны, №4 —
+dispatch кэша).
+Завершённые эпики ADR-0058/0059/0060 дистиллированы в `ROADMAP.md` (сессия #206);
+highest ADR **0066**, next free **0067**. Следующий ход — свободный: продолжение
+декомпозиции `HttpTemplate` по ADR-0066 (шаг №4) или свежий free-аудит. Хвосты-кандидаты
 из аудит-нити (не эпики): Path/File-тела метрик (-1 вместо размера;
 engine-reported byte accounting), валидация `@ExpectStatus`/`@FollowRedirects`
 (инварианты нигде не объявлены — фича, не дыра; #207), 15 вспомогательных

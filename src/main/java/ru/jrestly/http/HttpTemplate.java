@@ -2235,6 +2235,17 @@ class HttpTemplate {
         return effectiveCodecRegistry().resolveOrDefault(contentTypeOf(responseHeaders));
     }
 
+    // Best-effort codec lookup for bare unexpected-status bodies: the lookup is
+    // part of the Problem Details resolution, so its failure is swallowed (the
+    // lookup used to live inside the resolver's try; ADR-0066 / ADR-0064).
+    private PayloadCodec responseCodecOrNull(List<Header> responseHeaders) {
+        try {
+            return responseCodec(responseHeaders);
+        } catch (Throwable ignored) {
+            return null;
+        }
+    }
+
     private static String contentTypeOf(List<Header> headers) {
         if (headers == null) {
             return null;
@@ -2527,7 +2538,7 @@ class HttpTemplate {
             } else if (errorObject instanceof Throwable t) {
                 throw new RuntimeException(t);
             } else {
-                Throwable instance = instantiateThrowable(targetErrorClass, statusCode, responseHeaders);
+                Throwable instance = ProblemDetailResolver.instantiateThrowable(targetErrorClass, statusCode, responseHeaders);
                 if (instance instanceof RuntimeException re) {
                     throw re;
                 } else if (instance instanceof Error err) {
@@ -2541,36 +2552,11 @@ class HttpTemplate {
         throw new HandledException(errorObject, statusCode, responseHeaders);
     }
 
-    private static Throwable instantiateThrowable(Class<?> clazz, int statusCode, List<Header> responseHeaders) {
-        if (ru.jrestly.problem.ProblemDetailException.class.isAssignableFrom(clazz)) {
-            return new ru.jrestly.problem.ProblemDetailException(ru.jrestly.problem.ProblemDetail.forStatus(statusCode), responseHeaders);
-        }
-        try {
-            var ctor = clazz.getConstructor(Object.class, int.class, List.class);
-            return (Throwable) ctor.newInstance(null, statusCode, responseHeaders);
-        } catch (ReflectiveOperationException ignored) {
-        }
-        try {
-            var ctor = clazz.getConstructor(String.class, int.class);
-            return (Throwable) ctor.newInstance("HTTP " + statusCode, statusCode);
-        } catch (ReflectiveOperationException ignored) {
-        }
-        try {
-            var ctor = clazz.getConstructor(String.class);
-            return (Throwable) ctor.newInstance("HTTP " + statusCode);
-        } catch (ReflectiveOperationException ignored) {
-        }
-        try {
-            var ctor = clazz.getConstructor();
-            return (Throwable) ctor.newInstance();
-        } catch (ReflectiveOperationException ignored) {
-        }
-        return new HandledException(null, statusCode, responseHeaders);
-    }
-
     private UnexpectedStatusException createUnexpectedStatusException(
             int statusCode, String rawBody, List<Header> responseHeaders) {
-        ru.jrestly.problem.ProblemDetail problemDetail = resolveProblemDetail(statusCode, rawBody, responseHeaders);
+        ru.jrestly.problem.ProblemDetail problemDetail = ProblemDetailResolver.resolve(
+                statusCode, rawBody, responseHeaders, contentTypeOf(responseHeaders),
+                responseCodecOrNull(responseHeaders));
         if (statusCode >= 400 && statusCode < 500) {
             return new ClientErrorException(statusCode, rawBody, responseHeaders, problemDetail);
         }
@@ -2578,75 +2564,5 @@ class HttpTemplate {
             return new ServerErrorException(statusCode, rawBody, responseHeaders, problemDetail);
         }
         return new UnexpectedStatusException(statusCode, rawBody, responseHeaders, problemDetail);
-    }
-
-    // ADR-0064: package-private on purpose — the resolution rules (RFC 9457
-    // shape gate, media-type override, "likely problem" heuristic) are pinned
-    // directly by unit tests without a wire round-trip.
-    ru.jrestly.problem.ProblemDetail resolveProblemDetail(int statusCode, String rawBody, List<Header> responseHeaders) {
-        if (rawBody == null || rawBody.isBlank()) {
-            return null;
-        }
-        String trimmed = rawBody.trim();
-        if (trimmed.charAt(0) == '\uFEFF') {
-            trimmed = trimmed.substring(1).trim(); // mirror ProblemDetail.fromJson: RFC 8259 §8.1 BOM prefix
-        }
-        if (!trimmed.startsWith("{") || !trimmed.endsWith("}")) {
-            return null;
-        }
-        boolean isProblemType = isProblemJsonContentType(responseHeaders);
-        try {
-            ru.jrestly.codec.PayloadCodec codec = responseCodec(responseHeaders);
-            if (codec != null) {
-                byte[] bytes = trimmed.getBytes(StandardCharsets.UTF_8);
-                ru.jrestly.problem.ProblemDetail pd = codec.deserialize(bytes, ru.jrestly.problem.ProblemDetail.class, contentTypeOf(responseHeaders));
-                if (pd != null && (isProblemType || isLikelyProblemDetail(pd))) {
-                    if (pd.getStatus() <= 0) {
-                        pd.setStatus(statusCode);
-                    }
-                    return pd;
-                }
-            }
-        } catch (Throwable ignored) {
-        }
-        try {
-            ru.jrestly.problem.ProblemDetail pd = ru.jrestly.problem.ProblemDetail.fromJson(trimmed);
-            if (pd != null && (isProblemType || isLikelyProblemDetail(pd))) {
-                if (pd.getStatus() <= 0) {
-                    pd.setStatus(statusCode);
-                }
-                return pd;
-            }
-        } catch (Throwable ignored) {
-        }
-        return null;
-    }
-
-    static boolean isProblemJsonContentType(List<Header> headers) {
-        if (headers == null || headers.isEmpty()) {
-            return false;
-        }
-        for (Header h : headers) {
-            if ("Content-Type".equalsIgnoreCase(h.name())) {
-                String val = h.value();
-                if (val != null) {
-                    String lower = val.toLowerCase(java.util.Locale.ROOT);
-                    return lower.contains("application/problem+json") || lower.contains("application/problem+xml");
-                }
-            }
-        }
-        return false;
-    }
-
-    static boolean isLikelyProblemDetail(ru.jrestly.problem.ProblemDetail pd) {
-        if (pd == null) {
-            return false;
-        }
-        boolean hasNonDefaultType = pd.getType() != null && !"about:blank".equals(pd.getType().toString());
-        return pd.getStatus() > 0
-                || hasNonDefaultType
-                || (pd.getTitle() != null && !pd.getTitle().isBlank())
-                || (pd.getDetail() != null && !pd.getDetail().isBlank())
-                || pd.getInstance() != null;
     }
 }

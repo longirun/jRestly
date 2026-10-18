@@ -1,82 +1,92 @@
-# Last Session: #271 (2026-10-18)
+# Last Session: #274 (2026-10-18)
 
 ## Что сделано
 
-**Сессия #271: ADR-0066, шаг №2 — политика редиректов вынесена из `HttpTemplate`
-в package-private коллаборатор `ru.jrestly.http.Redirects`; новый безсетевой
-`RedirectsTest` (8 тестов) доводит коллаборатор до 100% ветвей. Гейт 1,577/1,577,
-публичный API не изменён.**
+**Сессия #274: ADR-0066, шаг №3 — resolver Problem Details вынесен из
+`HttpTemplate` в package-private `ru.jrestly.http.ProblemDetailResolver`;
+завершение WIP прерванных #272–#273 + находка «вынос из `try` меняет контракт».
+Гейт 1,578/1,578, METHOD 1437/1437 и CLASS 146/146 — 100%. Публичный API не
+изменён.**
 
-1. *Вход:* продолжение плана ADR-0066 (шаг №2). HEAD — коммит #270 (`c1d6ab4`).
-   В дереве был только изменённый `.agent/session_counter.txt` (270 → 271).
-2. *Рефактор — `Redirects`:*
-   - Из `HttpTemplate` извлечены `nextHop`, `dropAuthHeaders`,
-     `logExhaustedRedirects` (→ `Redirects.logExhausted`), `redirectLocation`
-     (→ `Redirects.location`), `isCrossOrigin`, `effectivePort` — логика
-     байт-в-байт.
-   - Коллаборатор — **value-объект конфигурации** (три неизменяемых настройки:
-     `followRedirectsNumber`, `authHeaderNames`, `logger`), не static-util.
-     `HttpTemplate.redirects()` строит его **лениво** и только при заданном
-     `@FollowRedirects` — zero-redirect hot-path не аллоцирует (ADR-0055).
-   - `executeWithRedirects` (sync) и `executeAsyncWithRedirects` (async) получили
-     `null`-бюджетный fast-path (`return send(...)`/`sendAsync(...)`); async-рекурсия
-     вынесена в новый `executeAsyncHop(request, hopsLeft, Redirects)`.
-   - Швы `isCrossOrigin`/`effectivePort` **переехали** на `Redirects` (не
-     продублированы); тест `HttpTemplateCrossOriginTest` → `RedirectsCrossOriginTest`
-     (git mv + обновлены ссылки).
-3. *TDD:* новый `RedirectsTest` (8 тестов, без сети) — stop-paths (нет бюджета,
-   не-редирект, нет `Location`), GET-downgrade vs. preserve 307/308,
-   cross-origin drop ambient-auth + pass-through при `null`-именах,
-   `Location`-lookup с `null`-именованным заголовком, все комбинации
-   `logExhausted`. `Redirects` — 0 missed ветвей.
-4. *Документация:* ADR-0066 → `## Amendment #271` (шаг №2 отмечен сделанным);
-   ROADMAP «Current status» обновлён (1577/1577, 88.80% Branch, 97.67%
-   Instruction) + запись про шаг №2 в секции Cycle 0.11.0.
-5. *Верификация:* `./gradlew test javadoc jacocoTestReport` — **1577/1577**
-   зелёные across all 5 modules (0 failures/errors), javadoc чист под `-Werror`.
-   JaCoCo: **BRANCH 3,949/4,447 (88.80%)**, **INSTRUCTION 30,696/31,429 (97.67%)**,
-   **LINE 6,673/6,853 (97.37%)**, **COMPLEXITY 3,203/3,692 (86.76%)**,
-   **METHOD 1436/1436 (100.00%)**, **CLASS 145/145 (100.00%)**.
-   `HttpTemplate`: 129 → **128** missed; новый класс `Redirects` — 0 missed.
+1. *Вход:* WIP прерванных сессий #272–#273 (паттерн #155/#186/#254/#261): в
+   дереве уже лежал новый `ProblemDetailResolver.java` + правки
+   `HttpTemplate.java` и `HttpTemplateProblemDetailResolutionTest.java`, но
+   коммита не было. HEAD — `8adfd99` (#271). Счётчик сессий gradle-триггером
+   доведён до 274 (`.agent/session_counter.txt` изменён в дереве — коммитить
+   вместе).
+2. *Рефактор — `ProblemDetailResolver` (чистый `static`-хелпер):*
+   - Из `HttpTemplate` извлечены `resolveProblemDetail` (→ `resolve`),
+     `isProblemJsonContentType`, `isLikelyProblemDetail`,
+     `instantiateThrowable` (`private static` → package-private `static`);
+     логика байт-в-байт.
+   - В отличие от `Redirects` (#271) — **не value-объект**: не завязан на поля
+     шаблона, поэтому конструктор/поля не нужны; выбранный кодек и его
+     media-тип передаются аргументами (`resolve(status, rawBody, headers,
+     contentType, codec)`).
+   - `handleOnError` **остаётся** на `HttpTemplate` (это dispatch, а не
+     резолвинг) — тесты `@OnError` по-прежнему гоняются через шаблон.
+3. *Находка (главная, при завершении WIP):* перенос вытащил
+   `responseCodec(responseHeaders)` **из охранного `try`** резолвера наружу
+   (аргумент вычисляется до вызова). На bare-template (без
+   `codecRegistry`/`jsonCodec`) `createUnexpectedStatusException` начинал падать
+   голым `NullPointerException: jsonCodec` вместо прежнего тихого пролёта к
+   встроенному `ProblemDetail.fromJson`. Поймали существующие гварды
+   `HttpTemplateOptionalStreamTest` / `HttpTemplateStreamWireTest` (4 падения,
+   выглядящие «сетевыми», а на деле unit-путь unexpected-status). Фикс — новый
+   private `responseCodecOrNull` (best-effort lookup, `catch (Throwable) → null`).
+4. *TDD:* `HttpTemplateProblemDetailResolutionTest` (30 тестов) — предикаты и
+   резолвер напрямую на `ProblemDetailResolver`; новый тест
+   `nullCodecFallsBackToBuiltInParser` (закрывает обе стороны
+   `if (responseCodec != null)`). Оставшиеся 5 missed ветвей резолвера —
+   известные недостижимые defensive в `instantiateThrowable`.
+5. *Документация:* ADR-0066 → `## Amendment #274` (шаг №3 сделан + находка);
+   ROADMAP «Current status» и секция Cycle 0.11.0 обновлены; DRAFT — запись
+   сессии + кандидат №5 (шаг №3 сделан, следующий №4).
+6. *Верификация:* `./gradlew test javadoc jacocoTestReport` — **1578/1578**
+   зелёные across all 5 modules (core 1498 + engine-okhttp 25 + engine-apache5 25
+   + codec-jackson-xml 15 + benchmarks 15, 0 failures/errors), javadoc чист под
+   `-Werror`. JaCoCo: **METHOD 1437/1437** и **CLASS 146/146 (100%)**,
+   **INSTRUCTION 30,702/31,435 (97.67%)**, **LINE 6,677/6,857 (97.38%)**,
+   **BRANCH 3,948/4,447 (88.78%)**, **COMPLEXITY 3,203/3,693 (86.73%)**.
+   `HttpTemplate`: 128 → **122** missed; `ProblemDetailResolver`: 5 missed
+   (недостижимые).
 
-## Контекст для следующей сессии (#272)
+## Контекст для следующей сессии (#275)
 
-1. **Ветка** `agent-loop`; HEAD — коммит этой сессии (#271).
+1. **Ветка** `agent-loop`; HEAD — коммит этой сессии (#274).
 2. **Highest ADR:** **0066** (`docs/0.11.0/`), next free **0067**.
-3. **Состояние проекта:** 100.00% Class (145/145), 100.00% Method (1436/1436),
-   97.67% Instruction, 97.37% Line, 88.80% Branch, 86.76% Complexity.
-   1577/1577 тестов зелёные across all 5 modules. Javadoc чист под `-Werror`.
+3. **Состояние проекта:** 100.00% Class (146/146), 100.00% Method (1437/1437),
+   97.67% Instruction, 97.38% Line, 88.78% Branch, 86.73% Complexity.
+   1578/1578 тестов зелёные across all 5 modules. Javadoc чист под `-Werror`.
 4. **Активная зона:** открыт **Кандидат №5 — декомпозиция `HttpTemplate`
-   (ADR-0066)**. Следующий шаг **№3 — resolver Problem Details**
-   (`resolveProblemDetail`, `isProblemJsonContentType`, `isLikelyProblemDetail`,
-   `instantiateThrowable`). Параллельные варианты: хвосты покрытия
-   (`HttpTemplate` 128 missed, `HttpTemplateBuilder` 120, `MethodMetadata` 27,
-   `ZeroDepJsonParser` 24, `JdkHttpEngine` 16, `ServerSentEventReconnector` 12).
-5. **Шаг №3 (подробно):** методы уже package-private швы и покрыты
-   `HttpTemplateProblemDetailResolutionTest` (29 тестов, #269) — при переносе в
-   новый коллаборатор (напр. `ProblemDetailResolver`) обновить ссылки в этом
-   сьюте. `instantiateThrowable` — статический, но зовётся из `handleOnError`;
-   `resolveProblemDetail` завязан на `codecRegistry`/`logger` (могут
-   понадобиться в конструкторе коллаборатора, как у `Redirects`).
-   `isProblemJsonContentType`/`isLikelyProblemDetail` — чистые static.
+   (ADR-0066)**. Сделаны шаги №1 (`RetryAfter`, #270), №2 (`Redirects`, #271),
+   №3 (`ProblemDetailResolver`, #274). Следующий шаг **№4 — dispatch кэша**
+   (`handleCacheResponse`, `toStreamWireResponse`). Параллельные варианты:
+   хвосты покрытия (`HttpTemplate` 122 missed, `HttpTemplateBuilder` 120,
+   `MethodMetadata` 27, `ZeroDepJsonParser` 24, `JdkHttpEngine` 16,
+   `ServerSentEventReconnector` 12).
+5. **Шаг №4 (подробно):** `handleCacheResponse` уже package-private шов
+   (паттерн #255) — покрыт `HttpTemplateCacheDispatchTest` (11 тестов,
+   `RecordingCache`); при переносе в коллаборатор (напр. `CacheDispatch`)
+   обновить ссылки в этом сьюте. `handleCacheResponse` завязан на поле
+   `httpCache` (ленивый коллаборатор с ним в конструкторе?), `toStreamWireResponse`
+   — на кодирование тела. Проверить, не читает ли метод ещё какие-то поля
+   шаблона (как `Redirects` читал три) — тогда value-объект, иначе `static`.
 6. **Грабли/паттерны (важно!):**
-   - **Извлечение коллаборатора сдвигает недостижимые defensive-ветви в новый
-     класс и роняет общий BRANCH** (в этой сессии 88.77% → 88.71% сразу после
-     переноса): лечится прямой unit-матрицей на швы (`RedirectsTest`), после
-     чего покрытие **выше** исходного (88.80%). Всегда добавлять unit-сьют на
-     извлечённый коллаборатор, а не только обновлять существующие тесты.
-   - При переносе static-методов проверять, не читают ли они поля шаблона
-     (`Redirects` был привязан к трём полям → value-объект; `RetryAfter` был
-     чист);
-   - Ленивый коллаборатор (`private Redirects redirects; private Redirects
-     redirects()`) безопасен: `HttpTemplate` создаётся на каждый вызов;
-   - `package-info.java` — обязателен doc-комментарий (`-Xdoclint:all -Werror`);
+   - **Вынос метода проверять по границам `try`/`catch`, а не только по телу:**
+     в этой сессии дословно перенесённый `resolve` изменил контракт, потому что
+     `responseCodec(...)` оказался снаружи охранного `try` → `NPE: jsonCodec`
+     на bare-template. Всегда сверять, что вычисление аргументов на call-site не
+     выбрасывает там, где раньше ошибка проглатывалась.
+   - Извлечение коллаборатора сдвигает недостижимые defensive-ветви в новый
+     класс (рекорд BRANCH дрожит): нужен прямой unit-сьют на шов (урок #271),
+     а не только переиспользование старых тестов.
+   - Ленивый коллаборатор (`private X x; private X x()`) безопасен:
+     `HttpTemplate` создаётся на каждый вызов.
    - JaCoCo XML (`build/reports/jacoco/test/jacocoTestReport.xml`): счётчики
      класса — `<counter>` внутри `<class>`; **пропущенные ветви по строкам — в
-     `<sourcefile>/<line mb= cb=>`**, не в `<class>/<line>` (там line-элементов
-     нет);
-   - счётчик сессий доведён gradle-триггером до 271 (`.agent/session_counter.txt`
-     уже изменён в дереве, коммитить вместе);
-   - BRANCH дрожит на ±1 из-за FULL-джиттера в `RetryPolicy`.
+     `<sourcefile>/<line mb= cb=>`**, не в `<class>/<line>`.
+   - Считать тесты надёжнее питоном/awk, `bc` в контейнере нет.
+   - Счётчик сессий: 274. Часовой пояс контейнера +04.
 7. **Среда:** `GRADLE_USER_HOME=/tmp/opencode/gradle-home ./gradlew ...`;
-   Счётчик сессий: 271. Часовой пояс контейнера +04.
+   фильтр `:test --tests 'X'` (без ведущего `:` Gradle заденет субмодули).
