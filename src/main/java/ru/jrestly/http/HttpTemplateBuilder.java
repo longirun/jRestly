@@ -754,6 +754,8 @@ public class HttpTemplateBuilder {
                             : defaultCollectionFormat;
 
                     if (arg instanceof Map<?, ?> map) {
+                        // Deliberately the raw annotation name, not the ADR-0017 effective name:
+                        // for a Map, name() is an optional namespace prefix — blank sends keys as-is (Amendment #296).
                         String prefix = p.rawRequestParamName();
                         for (Map.Entry<?, ?> entry : map.entrySet()) {
                             if (entry.getKey() == null || entry.getValue() == null) {
@@ -970,6 +972,8 @@ public class HttpTemplateBuilder {
                         : defaultCollectionFormat;
 
                 if (arg instanceof Map<?, ?> map) {
+                    // Deliberately the raw annotation name, not the ADR-0017 effective name:
+                    // for a Map, name() is an optional namespace prefix — blank sends keys as-is (Amendment #296).
                     String prefix = p.rawRequestParamName();
                     for (Map.Entry<?, ?> entry : map.entrySet()) {
                         if (entry.getKey() == null || entry.getValue() == null) {

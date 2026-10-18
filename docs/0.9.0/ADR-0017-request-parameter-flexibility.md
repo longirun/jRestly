@@ -162,3 +162,17 @@ Fix: `ControllerValidator.validateParameterNames` reports, for every parameter-l
 - (the same for `@RequestHeader`, `@Cookie`, `@PathVariable`)
 
 `@PathVariable` parameters whose fallback name is unavailable are also left out of the Amendment #210 mismatch set, so only the actionable message remains. No public API change; a controller compiled with `-parameters` (the documented requirement) behaves exactly as before. Covered by `ControllerValidationTest.rejectsParameterNameFallbackWithoutParametersFlagEagerly` and `reportsUnnamedPathVariableWithoutParametersFlagActionably` (red-first; the throwaway controller is compiled at runtime both with and without the flag to prove the guard keys on the flag, not on the declarations).
+
+## Amendment #296
+
+**The Map prefix deliberately reads the raw `name()`, not the ADR-0017 effective name — a bare `Map` sends flat keys.**
+
+Finding #293 (run of the ADR-0067 P2 pass) surfaced the asymmetry: `HttpTemplateBuilder` builds the Map-expansion prefix (query and multipart branches) from `rawRequestParamName()` — the raw annotation value — while scalar parameters use the effective name with the Java parameter name fallback. So a bare `@RequestParam Map filter` sends flat keys (`status=…`), whereas `@RequestParam(name = "filter") Map` sends `filter[status]=…`.
+
+Resolved as **by design** (documentation tightened, no wire-format change):
+
+- For scalar/collection parameters, `name()` is *the parameter name*; a blank value falls back to the Java parameter name (the ADR-0017 ergonomics formalized in Amendment #212).
+- For `Map` parameters, `name()` plays a different role: an *optional namespace prefix* for the entries. A blank value means "no prefix" — the map keys are sent as-is, the industry-standard dynamic-map wire format (Retrofit/Feign `@QueryMap`, Spring `@RequestParam Map`).
+- Extending the fallback to Map prefixes (bare ≡ named) would make flat keys unreachable — every `Map` would be prefixed, either explicitly or by its Java parameter name — a silent wire-format breaking change for existing bare-`Map` controllers, against this ADR's strict backward-compatibility constraint.
+
+Consistent with Amendment #212: a blank `name()` on a `Map` parameter is legitimate because the names come from the entries, so `ControllerValidator` does not require an explicit name there. Pinned end-to-end: `GetMethodTest` (bare flat `q=…` vs named `filter[status]=…`), `RequestParameterFlexibilityTest` (named query `Map`, bare query `Map`, bare form `Map`), `MultipartTest` (bare flat parts vs `meta[category]`), `HttpTemplateBuilderTest` (unit level, both modes). The README "Dynamic `Map<?, ?>` parameters" bullet now states the blank-`name()` default explicitly.

@@ -1,5 +1,39 @@
 # DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
+> **Сессия #296 (хвост Map-prefix fallback — решён: «задокументировано by
+> design», wire-формат не менялся; гейт 1,644/1,644 в силе):** хвост находки
+> #293: bare `@RequestParam Map filter` шлёт плоские `status=…`, а named
+> `@RequestParam(name="filter") Map` — `filter[status]=…`, т.к. Map-префикс
+> строится из `rawRequestParamName()`, а не из эффективного имени ADR-0017.
+> 1. *Исследование:* обе ветки (query `createRequestParams` ~L757 и multipart
+>    `createMultipartParts` ~L973) читают сырое имя аннотации, скалярный путь
+>    — эффективное. Поведение записано explicitly в ADR-0017 Aspect 2 («name()
+>    пусто → ключ карты становится именем параметра»), в Javadoc
+>    `@RequestParam.name()` («uses map keys directly») и README (префикс — «if
+>    name() is specified»). Оба режима e2e-зафиксированы: `GetMethodTest`
+>    (плоское `q=…` / `filter[status]`), `RequestParameterFlexibilityTest`
+>    (named query + bare query + bare form), `MultipartTest` (flat parts /
+>    `meta[category]`), `HttpTemplateBuilderTest` (unit, оба режима).
+> 2. *Решение — вариант (б), задокументировать:* для Map `name()` — не имя
+>    параметра, а **опциональный namespace-префикс**; пустой = «без префикса»
+>    (ключи как есть) — индустриальный формат `@QueryMap` (Retrofit/Feign/
+>    Spring шлют bare Map плоским). Вариант (а) (bare ≡ named) делал бы плоский
+>    режим недостижимым (любой Map получал бы префикс — явный или по имени
+>    Java-параметра) — тихий wire-брейк против «strict backward compatibility»
+>    самого ADR-0017. Согласовано с #212 (валидатор осознанно исключает Map из
+>    `-parameters`-проверки — имена у Map берутся из записей).
+> 3. *Изменения:* README — буллет «Dynamic `Map<?, ?>` parameters» теперь
+>    явно описывает дефолт (ключи как есть) и контраст со скалярами; ADR-0017
+>    — `## Amendment #296` (решение, обоснование, список закреплённых тестов);
+>    `HttpTemplateBuilder` — комментарии на обоих call-site (код не изменился,
+>    интент сделан самодокументируемым).
+> 4. *Гейт:* **1,644/1,644** green across all 5 modules (код — только
+>    комментарии), javadoc чист под `-Werror`. Новых публичных API нет.
+> 5. *Дальше:* кандидат №7 (rss/atom) всё ещё ждёт A/B-слова Антона
+>    (parse-only vs fetch-and-parse; ядро vs codec-субмодуль — с #284);
+>    хвосты: fixtures-javadoc (15 типов), Path/File-тела метрик (-1;
+>    engine-reported byte accounting). Highest ADR **0067**, next free **0068**.
+
 > **Сессия #295 (Кандидат №6, P4 — исполнен: микропроверка статических query
 > прямо в пути + TDD баг-фикс; гейт 1,644/1,644):**
 > 1. *Микропроверка:* статическая query в пути (`@Get("/items?size=10")`) без
