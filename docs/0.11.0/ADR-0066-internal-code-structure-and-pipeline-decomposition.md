@@ -61,7 +61,8 @@ Accepted
    1. `RetryAfter` — парсинг `Retry-After` (все три даты RFC 9110) — **сделано
       в этой сессии**;
    2. политика редиректов (`nextHop`, `dropAuthHeaders`, `isCrossOrigin`,
-      `effectivePort`, `redirectLocation`);
+      `effectivePort`, `redirectLocation`, `logExhaustedRedirects`) — **сделано
+      в сессии #271**;
    3. resolver Problem Details (`resolveProblemDetail`,
       `isProblemJsonContentType`, `isLikelyProblemDetail`,
       `instantiateThrowable`);
@@ -85,3 +86,34 @@ Accepted
   (`RetryAfter` чист: только аргумент, никаких полей).
 - **Инварианты:** zero-dep ядро, ADR-0001; инкапсуляция `HttpTemplate`,
   ADR-0048; `-Werror`-гейты компиляции и `javadoc` остаются зелёными.
+
+## Amendment #271
+
+Шаг №2 плана выполнен: политика редиректов вынесена из `HttpTemplate` в
+package-private коллаборатор `ru.jrestly.http.Redirects`.
+
+- **Извлечено:** `nextHop`, `dropAuthHeaders`, `logExhaustedRedirects`,
+  `redirectLocation` (→ `Redirects.location`), `isCrossOrigin`, `effectivePort`.
+  Логика перенесена байт-в-байт; поведение обоих контуров (sync
+  `executeWithRedirects` и async `executeAsyncWithRedirects`) не изменилось.
+- **Коллаборатор — не статическая утилита, а value-объект конфигурации:**
+  три неизменяемых настройки (`followRedirectsNumber`, `authHeaderNames`,
+  `logger`) передаются конструктором; `HttpTemplate` строит его лениво
+  (`redirects()`), только когда `@FollowRedirects` задан, — **zero-redirect
+  hot-path не аллоцирует** (ADR-0055). Async-рекурсия вынесена в отдельный
+  `executeAsyncHop`, чтобы коллаборатор и `null`-бюджетный fast-path не
+  смешивались.
+- **Package-private швы переехали, а не продублированы:** `isCrossOrigin` /
+  `effectivePort` теперь на `Redirects` (тонких делегатов на `HttpTemplate`
+  не оставлено — тесты обновлены: `HttpTemplateCrossOriginTest` →
+  `RedirectsCrossOriginTest`, ссылки на `Redirects`). `HttpTemplate` не
+  потерял ни одного публичного типа и не приобрёл dead-code.
+- **Юнит-матрица:** новый `RedirectsTest` (8 тестов, без сети) — stop-paths
+  (нет бюджета, не-редирект, нет `Location`), downgrade GET vs. preserve
+  307/308, cross-origin drop ambient-auth и pass-through при `null`-именах,
+  `Location`-lookup с `null`-именованным заголовком, все комбинации
+  `logExhausted`. `Redirects` покрыт ветвями на 100% (0 missed).
+- **Эффект:** `HttpTemplate` 129 → **128** missed по ветвям; строк/полей/методов
+  в god-классе стало на ~90 меньше; JaCoCo не просел — наоборот, BRANCH
+  88.77% → **88.80%**, INSTRUCTION 97.66% → **97.67%**, COMPLEXITY 86.71% →
+  **86.76%** (METHOD/CLASS — 100%).

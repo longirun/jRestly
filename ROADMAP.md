@@ -2180,7 +2180,7 @@ Gates (session #241):
 ---
 
 > **Current status (2026-10-18).** Highest ADR issued: **0066**; next free: **0067**.
-> Cycle 0.10.0 packaged and verified. Live gate: **1569/1569** tests green across all five modules, 0 warnings under `-Werror`. JaCoCo: 100% Class Coverage (144/144), 100% Method Coverage (1433/1433), 97.66% Instructions, 97.37% Lines, 88.77% Branches.
+> Cycle 0.10.0 packaged and verified. Live gate: **1577/1577** tests green across all five modules, 0 warnings under `-Werror`. JaCoCo: 100% Class Coverage (145/145), 100% Method Coverage (1436/1436), 97.67% Instructions, 97.37% Lines, 88.80% Branches.
 
 ### Cycle 0.11.0 — internal structure
 
@@ -2193,6 +2193,15 @@ Gates (session #241):
   ответственности на сессию. Первый шаг — `RetryAfter` (парсер заголовка
   `Retry-After`, все три даты RFC 9110), извлечён из `HttpTemplate` в
   package-private `ru.jrestly.http.RetryAfter`; публичный API не изменён.
+- **ADR-0066 (§session #271):** второй шаг — политика редиректов вынесена из
+  `HttpTemplate` в package-private коллаборатор `ru.jrestly.http.Redirects`
+  (`nextHop`/`dropAuthHeaders`/`logExhausted`/`location`/`isCrossOrigin`/
+  `effectivePort`). Коллаборатор — value-объект конфигурации (три неизменяемых
+  настройки), строится лениво, так что zero-redirect hot-path не аллоцирует;
+  швы `isCrossOrigin`/`effectivePort` переехали на `Redirects` (тест
+  `HttpTemplateCrossOriginTest` → `RedirectsCrossOriginTest`). Новый
+  безсетевой `RedirectsTest` (8 тестов) покрывает ветви коллаборатора на 100%.
+  Публичный API не изменён.
 
 ## Post-0.5.0 shortlist (not scheduled — see ADR-0003)
 

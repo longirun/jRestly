@@ -50,22 +50,6 @@
 а может какие-то вещи сделаны, а они уже лишние и лучше избавиться от них?
 
 ---
-
-[2026-10-18 09:05] Агент (сессия #268): Антон, закрыл последний «функциональный» хвост из списка кандидатов — кластер прозрачного HTTP-кэша RFC 9111 (ADR-0063):
-- *Аудит:* `InMemoryHttpCache` (17 missed branches) + `SimpleCachedResponse` (3) + `CacheControl` (2). Снял точную карту из XML-отчёта: статус-гейт `put` покрывал только 500 — **301 и 404 вообще не кэшировались ни одним тестом**; `Expires`-freshness считался только при наличии `Date`; ветвь «только `Last-Modified`» не проверялась; обе ноги `no-cache` (response и request) не задеты; `update` знал только `max-age`-путь.
-- *Тесты:* 12 безсетевых unit-тестов — 301/404 кэшируются, `Expires`-без-`Date` (база — время получения), lone `Last-Modified` (freshness 0, валидатор есть, не fresh), response/request `no-cache`, `null`-response/`null`-URI в put и update, update без freshness, update `Expires`-без-`Date`, blank http-date, флаги `noCache`/`mustRevalidate`, непарные/одиночные кавычки в `Cache-Control`.
-- *Результат:* `InMemoryHttpCache` 17 → **4** missed, `SimpleCachedResponse` 3 → 0, `CacheControl` 2 → 0. Оставшиеся 4 — **структурно недостижимые** defensive null-guard'ы: record `WireResponse` компактным конструктором нормализует headers/version, так что `version() != null`, `headers == null` и null-ветви `mergeHeaders` через публичный API не срабатывают (оставлены осознанно, non-goal).
-- *Гейты:* **1,540 / 1,540** тестов зелёные across all 5 modules (+12), 0 failures/errors, javadoc чист под `-Werror`.
-- *Новые исторические рекорды JaCoCo:* **88.07% Branch** (3,913/4,443), **97.49% Instruction** (30,593/31,380), **97.19% Line** (6,647/6,839), **85.95% Complexity** (3,168/3,686); Method/Class — 100%.
-
-[2026-10-18 09:35] Агент (сессия #269): Антон, взял класс №1 по непокрытым ветвям — `HttpTemplate` (162 missed) — и закрыл внутри него кластер RFC 9457 Problem Details (ADR-0064), тот самый участок, где #257 нашёл BOM-баг:
-- *Аудит:* кластер приватный, поэтому перевёл четыре метода в осознанные package-private швы (паттерн #255/#266/#267) и снял полную карту из XML-отчёта: `resolveProblemDetail` (null/blank тело, shape-гейт `{…}`, путь кодека и fallback на встроенный `fromJson`), `isProblemJsonContentType` (null/пустой список, отсутствующий/null-значный `Content-Type`, `problem+json`/`+xml`), `isLikelyProblemDetail` (дефолтный документ vs любой ненулевой признак), `handleOnError` (null/пустое/blank тело, `Void`-цель, decoded RuntimeException/Error/checked/ProblemDetail, бестелесная инстанциация по 4 формам конструктора, ProblemDetailException-обёртка).
-- *Тесты:* новый безсетевой сьют `HttpTemplateProblemDetailResolutionTest` (29 тестов) — записывающий `StubCodec` через `setCodecRegistry` и тестовые цели с нужной формой конструктора под пробу `instantiateThrowable`.
-- *Результат:* `HttpTemplate` 162 → **132** missed (82.69% → 85.90%); закрыто 30 ветвей.
-- *Гейты:* **1,569 / 1,569** тестов зелёные across all 5 modules (+29), 0 failures/errors, javadoc чист под `-Werror`.
-- *Новые исторические рекорды JaCoCo:* **88.77% Branch** (3,944/4,443), **97.66% Instruction** (30,647/31,380), **97.37% Line** (6,659/6,839), **86.71% Complexity** (3,196/3,686); Method/Class — 100%.
-
----
 Антон: Выглядит очень хорошо! Вопрос по организации внутренней структуры кода - у нас все хорошо с ней?
 
 [2026-10-18 10:05] Агент (сессия #270): Антон, спасибо за вопрос — он попал в цель. Провёл полный структурный аудит `src/main/java` (146 файлов, ~23 900 строк, 15 пакетов) и оформил ответ как **ADR-0066** (`docs/0.11.0/`). Коротко: **в целом — да, структура здоровая, но есть один крупный долг и одна мелочь.**
@@ -85,3 +69,10 @@
 - **Пакетная документация:** `package-info.java` во все 15 пакетов — ответственность, ключевые типы, ссылки на ADR.
 
 *Гейты:* **1,569 / 1,569** тестов зелёные across all 5 modules, javadoc чист под `-Werror`; JaCoCo сохранён (100% Class/Method, 97.66% Instruction, 88.77% Branch, 97.37% Line). Публичный API не изменён ни на байт. Следующий шаг — вынос политики редиректов (шаг №2 плана ADR-0066).
+
+[2026-10-18 11:20] Агент (сессия #271): Антон, продолжаю декомпозицию по ADR-0066 — сделал **шаг №2**:
+- *Извлёк* политику редиректов из `HttpTemplate` в package-private `ru.jrestly.http.Redirects` (`nextHop`, `dropAuthHeaders`, `logExhausted`, `location`, `isCrossOrigin`, `effectivePort`) — логика байт-в-байт, оба контура (sync/async) не изменили поведение.
+- *Коллаборатор — value-объект конфигурации*, а не static-util: три неизменяемых настройки в конструкторе. `HttpTemplate` строит его **лениво** и только при `@FollowRedirects` — zero-redirect hot-path не аллоцирует (наш эпик Zero-Garbage не тронут).
+- *Интересная грабля, которой поделюсь:* перенос «завязанного на состояние» кода сначала **уронил общий Branch Coverage** на 0.06pp — недостижимые defensive-ветви просто переехали в новый класс. Вылечил прямой unit-матрицей на новый шов (`RedirectsTest`, 8 тестов, без сети) — и покрытие стало **выше** исходного. Вывод: извлечённый коллаборатор нужно покрывать своим сьютом, а не только переиспользовать старые тесты.
+- *Швы не продублированы:* `isCrossOrigin`/`effectivePort` переехали на `Redirects`, тест переименован (`RedirectsCrossOriginTest`), dead-code делегатов не осталось.
+- *Итог:* `HttpTemplate` 129 → 128 missed; **1,577 / 1,577** тестов зелёные; новые рекорды: BRANCH **88.80%**, INSTRUCTION **97.67%**, COMPLEXITY **86.76%**; Method/Class — 100%. Публичный API не изменён ни на байт. Дальше — шаг №3 (resolver Problem Details).

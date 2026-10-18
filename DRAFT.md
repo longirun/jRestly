@@ -1,5 +1,36 @@
 # DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
+> **Сессия #271 (ADR-0066, шаг №2: политика редиректов вынесена из
+> `HttpTemplate` в package-private коллаборатор `Redirects`; новый безсетевой
+> `RedirectsTest` (8 тестов) даёт коллаборатору 100% ветвей; гейт 1,577/1,577,
+> BRANCH 88.80%, INSTRUCTION 97.67%, COMPLEXITY 86.76% — новые рекорды):**
+> продолжение плана ADR-0066 (шаг №2 — политика редиректов).
+> 1. *Извлечено:* `nextHop` / `dropAuthHeaders` / `logExhaustedRedirects` /
+>    `redirectLocation` (→ `Redirects.location`) / `isCrossOrigin` /
+>    `effectivePort` — логика байт-в-байт, оба контура (sync
+>    `executeWithRedirects`, async `executeAsyncWithRedirects`) не изменили
+>    поведение.
+> 2. *Коллаборатор — value-объект конфигурации,* а не статическая утилита:
+>    три неизменяемых настройки (`followRedirectsNumber`, `authHeaderNames`,
+>    `logger`) в конструкторе; `HttpTemplate` строит его **лениво** и только
+>    при заданном `@FollowRedirects` — zero-redirect hot-path не аллоцирует
+>    (ADR-0055). Async-рекурсия вынесена в `executeAsyncHop`, чтобы
+>    `null`-бюджетный fast-path не смешивался с хоп-логикой.
+> 3. *Швы переехали, а не продублированы:* `isCrossOrigin`/`effectivePort`
+>    теперь на `Redirects`; тест `HttpTemplateCrossOriginTest` →
+>    `RedirectsCrossOriginTest` (ссылки обновлены); dead-code делегатов нет.
+> 4. *TDD:* новый `RedirectsTest` (8 тестов, без сети) — stop-paths (нет
+>    бюджета, не-редирект, нет `Location`), GET-downgrade vs. preserve 307/308,
+>    cross-origin drop ambient-auth + pass-through при `null`-именах,
+>    `Location`-lookup с `null`-именованным заголовком, все комбинации
+>    `logExhausted`.
+> 5. *Гейты:* **1,577 / 1,577** green across all 5 modules (+8, 0 failures/errors),
+>    javadoc чист под `-Werror`. JaCoCo: **BRANCH 3,949/4,447 (88.80%)**,
+>    **INSTRUCTION 30,696/31,429 (97.67%)**, **LINE 6,673/6,853 (97.37%)**,
+>    **COMPLEXITY 3,203/3,692 (86.76%)**, METHOD 1436/1436 и CLASS 145/145 (100%).
+>    `HttpTemplate` 129 → **128** missed; `Redirects` — 0 missed по ветвям.
+> 6. *Дальше* — шаг №3 ADR-0066 (resolver Problem Details) или хвосты покрытия.
+
 > **Сессия #270 (структурный аудит по вопросу Антона + ADR-0066 + первый шаг
 > декомпозиции `HttpTemplate`: `RetryAfter` вынесен в package-private
 > коллаборатор; `package-info.java` для всех 15 пакетов; гейт 1,569/1,569,
@@ -2343,10 +2374,14 @@
   когезивной ответственности на сессию, без изменения публичного API и швов.
   - **Шаг №1 — сделана (#270):** `RetryAfter` (парсер `Retry-After`, три даты
     RFC 9110) извлечён; `package-info.java` для всех 15 пакетов.
-  - **Шаг №2 (следующий):** политика редиректов (`nextHop`, `dropAuthHeaders`,
-    `isCrossOrigin`, `effectivePort`, `redirectLocation`, `logExhaustedRedirects`).
-  - **Шаги №3–№6:** Problem Details resolver → dispatch кэша → декодирование
-    тела (charset/streaming) → уведомления метрик.
+  - **Шаг №2 — сделана (#271):** политика редиректов вынесена в package-private
+    коллаборатор `Redirects` (`nextHop`, `dropAuthHeaders`, `logExhausted`,
+    `location`, `isCrossOrigin`, `effectivePort`); `RedirectsTest` (8 тестов)
+    покрывает коллаборатор на 100% ветвей. Публичный API не изменён.
+  - **Шаг №3 (следующий):** resolver Problem Details (`resolveProblemDetail`,
+    `isProblemJsonContentType`, `isLikelyProblemDetail`, `instantiateThrowable`).
+  - **Шаги №4–№6:** dispatch кэша → декодирование тела (charset/streaming) →
+    уведомления метрик.
 
 **Активная зона пуста:** кандидаты №1 (test-javadoc) и №2/№3/№4 закрыты (§выше);
 кандидат №5 (ADR-0066) открыт и ведётся пошагово.

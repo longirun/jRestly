@@ -132,6 +132,8 @@ class HttpTemplate {
     private boolean retryOnUnauthorized;
     private ru.jrestly.engine.HttpEngineOptions engineOptions;
     private ru.jrestly.cache.HttpCache httpCache;
+    // ADR-0066: redirect policy collaborator, built lazily on the first hop
+    private Redirects redirects;
 
     void setHttpCache(ru.jrestly.cache.HttpCache httpCache) {
         this.httpCache = httpCache;
@@ -139,6 +141,16 @@ class HttpTemplate {
 
     ru.jrestly.cache.HttpCache getHttpCache() {
         return httpCache;
+    }
+
+    // Lazily built (redirects only run when @FollowRedirects is present, so the
+    // zero-redirect hot path allocates nothing) from the fields the builder
+    // populated before exchange() runs.
+    private Redirects redirects() {
+        if (redirects == null) {
+            redirects = new Redirects(followRedirectsNumber, authHeaderNames, logger);
+        }
+        return redirects;
     }
 
     /**
@@ -1065,11 +1077,16 @@ class HttpTemplate {
     // Handles redirects according to HTTP spec:
     // 301/302/303 downgrade to GET and drop the body; 307/308 re-send the method and body.
     private WireResponse executeWithRedirects(WireRequest request) throws IOException, InterruptedException {
-        int hopsLeft = followRedirectsNumber == null ? 0 : followRedirectsNumber;
+        if (followRedirectsNumber == null) {
+            return send(request);
+        }
+
+        Redirects redirects = redirects();
+        int hopsLeft = followRedirectsNumber;
 
         WireResponse response = send(request);
         while (hopsLeft > 0) {
-            WireRequest next = nextHop(request, response);
+            WireRequest next = redirects.nextHop(request, response);
             if (next == null) {
                 break;
             }
@@ -1079,7 +1096,7 @@ class HttpTemplate {
             response = send(request);
         }
 
-        logExhaustedRedirects(response);
+        redirects.logExhausted(response);
         return response;
     }
 
@@ -1281,15 +1298,22 @@ class HttpTemplate {
 
     // Async twin: same hop semantics, chained over sendAsync
     private CompletableFuture<WireResponse> executeAsyncWithRedirects(WireRequest request, int hopsLeft) {
+        if (followRedirectsNumber == null) {
+            return sendAsync(request);
+        }
+        return executeAsyncHop(request, hopsLeft, redirects());
+    }
+
+    private CompletableFuture<WireResponse> executeAsyncHop(WireRequest request, int hopsLeft, Redirects redirects) {
         return sendAsync(request).thenCompose(response -> {
-            WireRequest next = nextHop(request, response);
+            WireRequest next = redirects.nextHop(request, response);
             if (next == null || hopsLeft <= 0) {
                 return CompletableFuture.completedFuture(response);
             }
             closeIntermediateStream(response);
-            return executeAsyncWithRedirects(next, hopsLeft - 1);
+            return executeAsyncHop(next, hopsLeft - 1, redirects);
         }).thenApply(response -> {
-            logExhaustedRedirects(response);
+            redirects.logExhausted(response);
             return response;
         });
     }
@@ -1410,53 +1434,6 @@ class HttpTemplate {
         return CompletableFuture.runAsync(() -> {
         }, scheduler)
                 .thenCompose(ignored -> attemptAsync(request, attempt + 1, maxAttempts, hopsLeft, requestContext, attemptsRef, delayMillis, attemptOffset));
-    }
-
-    // The next redirect hop, or null if the chain stops here
-    // (no @FollowRedirects, a non-redirect status, or a missing Location)
-    private WireRequest nextHop(WireRequest request, WireResponse response) {
-        if (followRedirectsNumber == null) {
-            return null;
-        }
-
-        String location = redirectLocation(response);
-        if (location == null) {
-            return null;
-        }
-
-        boolean preserveMethod = response.statusCode() == 307 || response.statusCode() == 308;
-        HttpMethod nextMethod = preserveMethod ? request.method() : HttpMethod.GET;
-
-        URI nextUri = request.uri().resolve(location);
-        List<Header> nextHeaders = request.headers();
-        if (isCrossOrigin(request.uri(), nextUri)) {
-            // Drop the ambient client auth headers (the AuthProvider names the
-            // controller does not explicitly declare) to prevent credential
-            // leakage; an explicit @RequestHeader value is the caller's
-            // intentional choice and survives the redirect (ADR-0002).
-            nextHeaders = dropAuthHeaders(nextHeaders);
-            logger.log(System.Logger.Level.INFO,
-                    "Cross-origin redirect to " + nextUri + ", auth headers dropped");
-        }
-
-        logger.log(System.Logger.Level.INFO,
-                "Following redirect (" + response.statusCode() + ") to: " + location);
-
-        return new WireRequest(
-                nextMethod,
-                nextUri,
-                nextHeaders,
-                preserveMethod ? request.contentType() : null,
-                preserveMethod ? request.body() : null,
-                preserveMethod ? request.parts() : null,
-                preserveMethod ? request.boundary() : null,
-                preserveMethod ? request.bodyPublisherSupplier() : null);
-    }
-
-    private void logExhaustedRedirects(WireResponse response) {
-        if (followRedirectsNumber != null && redirectLocation(response) != null) {
-            logger.log(System.Logger.Level.INFO, "Too many redirects, returning the last response");
-        }
     }
 
     // ADR-0015 Aspect 2: the effective return type picks the body handler —
@@ -1633,51 +1610,6 @@ class HttpTemplate {
         }
     }
 
-
-    private String redirectLocation(WireResponse response) {
-        int statusCode = response.statusCode();
-        if (statusCode != 301 && statusCode != 302 && statusCode != 303 && statusCode != 307 && statusCode != 308) {
-            return null;
-        }
-
-        return response.headers().stream()
-                .filter(h -> h.name() != null && h.name().equalsIgnoreCase("Location"))
-                .map(Header::value)
-                .findFirst()
-                .orElse(null);
-    }
-
-    // Package-private seam: unit tests verify all cross-origin comparison branches
-    static boolean isCrossOrigin(URI from, URI to) {
-        if (from.getScheme() == null || to.getScheme() == null
-                || !from.getScheme().equalsIgnoreCase(to.getScheme())) {
-            return true;
-        }
-        if (from.getHost() == null || to.getHost() == null
-                || !from.getHost().equalsIgnoreCase(to.getHost())) {
-            return true;
-        }
-        return effectivePort(from) != effectivePort(to);
-    }
-
-    // Package-private seam: unit tests verify default-port resolution
-    static int effectivePort(URI uri) {
-        if (uri.getPort() != -1) {
-            return uri.getPort();
-        }
-        return "https".equalsIgnoreCase(uri.getScheme()) ? 443 : 80;
-    }
-
-    private List<Header> dropAuthHeaders(List<Header> headers) {
-        if (authHeaderNames == null || authHeaderNames.isEmpty()) {
-            return headers;
-        }
-
-        return headers.stream()
-                .filter(header -> authHeaderNames.stream()
-                        .noneMatch(name -> name.equalsIgnoreCase(header.name())))
-                .toList();
-    }
 
     /**
      * Resolves the target URI by combining the base URL and query parameters.

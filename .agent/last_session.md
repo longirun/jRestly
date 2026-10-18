@@ -1,87 +1,82 @@
-# Last Session: #270 (2026-10-18)
+# Last Session: #271 (2026-10-18)
 
 ## Что сделано
 
-**Сессия #270: прямой вопрос Антона об организации внутренней структуры кода
-(mailbox, 2026-10-18) → полный структурный аудит + ADR-0066 + первый шаг
-декомпозиции god-класса `HttpTemplate` (`RetryAfter` вынесен в package-private
-коллаборатор) + `package-info.java` для всех 15 пакетов. Гейт 1,569/1,569,
+**Сессия #271: ADR-0066, шаг №2 — политика редиректов вынесена из `HttpTemplate`
+в package-private коллаборатор `ru.jrestly.http.Redirects`; новый безсетевой
+`RedirectsTest` (8 тестов) доводит коллаборатор до 100% ветвей. Гейт 1,577/1,577,
 публичный API не изменён.**
 
-1. *Вход:* mailbox Антона — «Вопрос по организации внутренней структуры кода —
-   у нас всё хорошо с ней?». HEAD был коммит Антона `f85c02f` («концептуальная
-   развилка» — добавлен только этот вопрос в mailbox).
-2. *Аудит структуры (146 файлов main, ~23 900 строк, 15 пакетов):*
-   - **Хорошо:** таксономия пакетов осмысленна (пакет на ось ответственности),
-     SPI-границы честные (`ServiceLoader`-провайдеры, zero-dep ядро),
-     направление зависимостей предсказуемо (`ru.jrestly.http` — хаб; пакеты-
-     возможности зависят от публичной модели `http`).
-   - **Долги:** (1) god-класс `HttpTemplate` — 2825 строк, 48 полей, 63 метода;
-     (2) осознанное кольцо пакетов `ru.jrestly` ⇄ `ru.jrestly.http`
-     (`http` импортирует `AuthProvider`/`ModuleInfo`, корень — `HttpTemplateBuilder`/
-     `MethodMetadata`/`RetryPolicy`); (3) полное отсутствие `package-info.java`.
-3. *ADR-0066* — `docs/0.11.0/ADR-0066-internal-code-structure-and-pipeline-decomposition.md`
-   (новая папка цикла 0.11.0): план инкрементальной декомпозиции `HttpTemplate`
-   по одной когезивной ответственности на сессию, порядок:
-   1. `RetryAfter` — **сделано**; 2. политика редиректов; 3. Problem Details
-   resolver; 4. dispatch кэша; 5. декодирование тела (charset/streaming);
-   6. уведомления метрик. Non-goals: не дробить пакеты, не вводить DI,
-   не трогать публичные SPI/имена.
-4. *Шаг №1 — `RetryAfter`:* новый package-private
-   `src/main/java/ru/jrestly/http/RetryAfter.java` — три формата HTTP-date
-   RFC 9110 (IMF-fixdate, RFC 850, asctime) + набор дней недели + методы
-   `delayMillis(WireResponse)`/`parse`/`delayFromParsedDate`/`pivotRfc850Year`.
-   Из `HttpTemplate` удалены эти константы и 4 private-static метода, два
-   call-site перенаправлены на `RetryAfter.delayMillis(response)`, убраны 4
-   осиротевших импорта (`ZoneOffset`, `ZonedDateTime`, `DateTimeFormatter`,
-   `DateTimeParseException`; `Locale` оставлен — используется стримингом).
-   Тест `HttpTemplateRetryAfterTest` → `RetryAfterTest` (git mv, seam тот же,
-   11 тестов).
-5. *Пакетная документация:* `package-info.java` во все 15 пакетов `ru.jrestly.*`.
-6. *Верификация:* `./gradlew test javadoc jacocoTestReport` — **1569/1569**
-   зелёные across all 5 modules (0 failures/errors), javadoc чист под `-Werror`
-   (`-Xdoclint:all`).
-   JaCoCo: **BRANCH 3,944/4,443 (88.77%)**, **INSTRUCTION 30,648/31,381 (97.66%)**,
-   **LINE 6,659/6,839 (97.37%)**, **COMPLEXITY 3,197/3,687 (86.71%)**,
-   **METHOD 1433/1433 (100.00%)**, **CLASS 144/144 (100.00%)**.
-   `HttpTemplate`: 132 → **129** missed (3 missed-ветви `Retry-After` переехали в
-   `RetryAfter`); CLASS/METHOD +1 — новый класс и его приватный конструктор.
-7. *ROADMAP:* блок «Current status» обновлён (highest ADR **0066**, next free
-   **0067**, гейт 1569/1569) + секция «Cycle 0.11.0 — internal structure».
+1. *Вход:* продолжение плана ADR-0066 (шаг №2). HEAD — коммит #270 (`c1d6ab4`).
+   В дереве был только изменённый `.agent/session_counter.txt` (270 → 271).
+2. *Рефактор — `Redirects`:*
+   - Из `HttpTemplate` извлечены `nextHop`, `dropAuthHeaders`,
+     `logExhaustedRedirects` (→ `Redirects.logExhausted`), `redirectLocation`
+     (→ `Redirects.location`), `isCrossOrigin`, `effectivePort` — логика
+     байт-в-байт.
+   - Коллаборатор — **value-объект конфигурации** (три неизменяемых настройки:
+     `followRedirectsNumber`, `authHeaderNames`, `logger`), не static-util.
+     `HttpTemplate.redirects()` строит его **лениво** и только при заданном
+     `@FollowRedirects` — zero-redirect hot-path не аллоцирует (ADR-0055).
+   - `executeWithRedirects` (sync) и `executeAsyncWithRedirects` (async) получили
+     `null`-бюджетный fast-path (`return send(...)`/`sendAsync(...)`); async-рекурсия
+     вынесена в новый `executeAsyncHop(request, hopsLeft, Redirects)`.
+   - Швы `isCrossOrigin`/`effectivePort` **переехали** на `Redirects` (не
+     продублированы); тест `HttpTemplateCrossOriginTest` → `RedirectsCrossOriginTest`
+     (git mv + обновлены ссылки).
+3. *TDD:* новый `RedirectsTest` (8 тестов, без сети) — stop-paths (нет бюджета,
+   не-редирект, нет `Location`), GET-downgrade vs. preserve 307/308,
+   cross-origin drop ambient-auth + pass-through при `null`-именах,
+   `Location`-lookup с `null`-именованным заголовком, все комбинации
+   `logExhausted`. `Redirects` — 0 missed ветвей.
+4. *Документация:* ADR-0066 → `## Amendment #271` (шаг №2 отмечен сделанным);
+   ROADMAP «Current status» обновлён (1577/1577, 88.80% Branch, 97.67%
+   Instruction) + запись про шаг №2 в секции Cycle 0.11.0.
+5. *Верификация:* `./gradlew test javadoc jacocoTestReport` — **1577/1577**
+   зелёные across all 5 modules (0 failures/errors), javadoc чист под `-Werror`.
+   JaCoCo: **BRANCH 3,949/4,447 (88.80%)**, **INSTRUCTION 30,696/31,429 (97.67%)**,
+   **LINE 6,673/6,853 (97.37%)**, **COMPLEXITY 3,203/3,692 (86.76%)**,
+   **METHOD 1436/1436 (100.00%)**, **CLASS 145/145 (100.00%)**.
+   `HttpTemplate`: 129 → **128** missed; новый класс `Redirects` — 0 missed.
 
-## Контекст для следующей сессии (#271)
+## Контекст для следующей сессии (#272)
 
-1. **Ветка** `agent-loop`; HEAD — коммит этой сессии (#270).
+1. **Ветка** `agent-loop`; HEAD — коммит этой сессии (#271).
 2. **Highest ADR:** **0066** (`docs/0.11.0/`), next free **0067**.
-3. **Состояние проекта:** 100.00% Class (144/144), 100.00% Method (1433/1433),
-   97.66% Instruction, 97.37% Line, 88.77% Branch, 86.71% Complexity.
-   1569/1569 тестов зелёные across all 5 modules. Javadoc чист под `-Werror`.
+3. **Состояние проекта:** 100.00% Class (145/145), 100.00% Method (1436/1436),
+   97.67% Instruction, 97.37% Line, 88.80% Branch, 86.76% Complexity.
+   1577/1577 тестов зелёные across all 5 modules. Javadoc чист под `-Werror`.
 4. **Активная зона:** открыт **Кандидат №5 — декомпозиция `HttpTemplate`
-   (ADR-0066)**; следующий шаг №2 — политика редиректов. Параллельные варианты:
-   хвосты покрытия (`HttpTemplate` 129 missed, `HttpTemplateBuilder` 120,
-   `MethodMetadata` 27, `ZeroDepJsonParser` 24, `JdkHttpEngine` 16,
-   `ServerSentEventReconnector` 12).
-5. **Шаг №2 (подробно):** кандидаты на вынос из `HttpTemplate` в новый
-   package-private коллаборатор (напр. `Redirects`):
-   `nextHop` (L~1522), `dropAuthHeaders` (~1776), `isCrossOrigin` (~1756),
-   `effectivePort` (~1769), `redirectLocation` (~1742), `logExhaustedRedirects`
-   (~1561), `closeIntermediateStream` (~1735). ВНИМАНИЕ: часть методов уже
-   package-private швы и покрыты тестами `HttpTemplateCrossOriginTest` /
-   `HttpTemplateConditionalHeaderTest` — при переносе обновить их ссылки;
-   `dropAuthHeaders`/`nextHop` завязаны на поля (`authHeaderNames`,
-   `followRedirectsNumber`, url) — вероятно, коллаборатору понадобится
-   небольшой value-объект конфигурации, а не поля шаблона.
-6. **Грабли/паттерны:**
-   - При выносе static-методов проверять, что они не читают поля `HttpTemplate`
-     (`RetryAfter` был чист — только аргумент);
-   - `package-info.java` — обязателен doc-комментарий (иначе `-Xdoclint:all
-     -Werror` падает);
-   - `{@link}` только на публичные типы, для package-private — `{@code}`;
-   - JaCoCo XML (`build/reports/jacoco/test/jacocoTestReport.xml`): `mb`/`cb`
-     у `<line>`, счётчики класса — `<counter type="BRANCH" missed= covered=>`;
-     `bc`/CSV в контейнере нет — парсить python3 ET;
-   - счётчик сессий доведён gradle-триггером до 270 (файл `.agent/session_counter.txt`
+   (ADR-0066)**. Следующий шаг **№3 — resolver Problem Details**
+   (`resolveProblemDetail`, `isProblemJsonContentType`, `isLikelyProblemDetail`,
+   `instantiateThrowable`). Параллельные варианты: хвосты покрытия
+   (`HttpTemplate` 128 missed, `HttpTemplateBuilder` 120, `MethodMetadata` 27,
+   `ZeroDepJsonParser` 24, `JdkHttpEngine` 16, `ServerSentEventReconnector` 12).
+5. **Шаг №3 (подробно):** методы уже package-private швы и покрыты
+   `HttpTemplateProblemDetailResolutionTest` (29 тестов, #269) — при переносе в
+   новый коллаборатор (напр. `ProblemDetailResolver`) обновить ссылки в этом
+   сьюте. `instantiateThrowable` — статический, но зовётся из `handleOnError`;
+   `resolveProblemDetail` завязан на `codecRegistry`/`logger` (могут
+   понадобиться в конструкторе коллаборатора, как у `Redirects`).
+   `isProblemJsonContentType`/`isLikelyProblemDetail` — чистые static.
+6. **Грабли/паттерны (важно!):**
+   - **Извлечение коллаборатора сдвигает недостижимые defensive-ветви в новый
+     класс и роняет общий BRANCH** (в этой сессии 88.77% → 88.71% сразу после
+     переноса): лечится прямой unit-матрицей на швы (`RedirectsTest`), после
+     чего покрытие **выше** исходного (88.80%). Всегда добавлять unit-сьют на
+     извлечённый коллаборатор, а не только обновлять существующие тесты.
+   - При переносе static-методов проверять, не читают ли они поля шаблона
+     (`Redirects` был привязан к трём полям → value-объект; `RetryAfter` был
+     чист);
+   - Ленивый коллаборатор (`private Redirects redirects; private Redirects
+     redirects()`) безопасен: `HttpTemplate` создаётся на каждый вызов;
+   - `package-info.java` — обязателен doc-комментарий (`-Xdoclint:all -Werror`);
+   - JaCoCo XML (`build/reports/jacoco/test/jacocoTestReport.xml`): счётчики
+     класса — `<counter>` внутри `<class>`; **пропущенные ветви по строкам — в
+     `<sourcefile>/<line mb= cb=>`**, не в `<class>/<line>` (там line-элементов
+     нет);
+   - счётчик сессий доведён gradle-триггером до 271 (`.agent/session_counter.txt`
      уже изменён в дереве, коммитить вместе);
    - BRANCH дрожит на ±1 из-за FULL-джиттера в `RetryPolicy`.
 7. **Среда:** `GRADLE_USER_HOME=/tmp/opencode/gradle-home ./gradlew ...`;
-   Счётчик сессий: 270. Часовой пояс контейнера +04.
+   Счётчик сессий: 271. Часовой пояс контейнера +04.
