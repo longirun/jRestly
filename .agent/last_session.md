@@ -1,85 +1,88 @@
-# Last Session: #261 (2026-10-18)
+# Last Session: #262 (2026-10-18)
 
 ## Что сделано
 
-**Сессия #261: free-аудит `HttpTemplate` (`probePayloadDecode` ×
-Optional-возврат, ADR-0011 Aspect 2) — чистый coverage-срез: optional-ветвь
-decode-probe (строки 1282–1290) была 100% непокрыта (16 branches, 0 covered),
-при этом логика верифицирована диффом против optional-ветви
-`processResponse` (935–965) как точное зеркало — бага нет; 7 guard-тестов в
-`HttpTemplateDecodeProbeTest`, код без изменений; гейт 1461/1461, BRANCH
-83.84%, INSTRUCTION 96.11%, LINE 95.82% — новые исторические рекорды.**
+**Сессия #262: free-аудит `MethodMetadata`: исчерпывающий coverage-срез контракта
+декларативного парсинга контроллеров (+14 тестов, без сети); 42 ветви класса
+`MethodMetadata` закрыто (missed branches 69 → 27, ветви 80.4% → 92.33%);
+впервые пробит исторический рубеж 84% Branch Coverage — 84.88%; гейт 1475/1475,
+INSTRUCTION 96.37%, LINE 95.99% — новые рекорды библиотеки.**
 
-1. *Ситуация:* #260 оборвалась до коммита (паттерн #155/#186) — в дереве
-   только счётчик 259→261, HEAD 7bfc1eb (#259); принят как есть.
-2. *Цель:* продолжение free-аудита `HttpTemplate` (193 missed branches,
-   ветви 79.38%); сужение на `probePayloadDecode` (1269–1303) — единственный
-   метод класса, чья optional-ветвь была полностью без покрытия (существующий
-   `HttpTemplateDecodeProbeTest` из ADR-0011 ходил только по
-   non-optional-пути).
-3. *Аудит:* probe вызывается только из retry-цикла (`!last &&
-   isRetryDecodeFailures()`, строки 1189/1472) — ни один тест не сочетал
-   Optional-возврат с decode-retry. Diff против `processResponse`: ветви
-   идентичны — 404/304/204/пустое тело → «decode не может упасть»
-   (`payload == null` в probe ≡ `bytes == null || bytes.length == 0`);
-   String/byte[]/Void/void → сырой возврат/отброс; DTO-нога →
-   `responseCodec(...).deserialize`, само исключение codec'а. При
-   `optional=true` и без явного `expectStatuses` `isExpectedStatus`
-   (1904–1918) пропускает 2xx/304/404 — probe доходит до optional-ветви.
-   Вывод: логика верна → чистый срез (паттерн #192/#197/#198).
-4. *Тесты (7):* optional 404/304/204 с телом и 200 с пустым телом → true при
-   0 вызовах codec'а (каждый дизъюнкт первой конъюнкции — первым истинным);
-   String/byte[]/Void/void → true при 0 вызовах (вторая конъюнкция);
-   декодируемый DTO-пейлоад → true, codec ровно один раз; небиндящийся →
-   исключение codec'а, тот же инстанс, unwrapped.
-5. *Верификация:* `./gradlew test javadoc jacocoTestReport` — **1461/1461**
-   (core 1381 + engine-okhttp 25 + engine-apache5 25 + codec-jackson-xml 15 +
+1. *Цель:* свободный ход по классам ядра с наибольшим хвостом непокрытых
+   ветвей; сужение на `MethodMetadata` (69 missed branches на входе, 80.4%
+   coverage — третий по рангу класс по объёму missed branches после `HttpTemplate`
+   и `HttpTemplateBuilder`).
+2. *Аудит:* детальный анализ выявил кластеры непокрытых веток контрактов
+   аннотаций `jRestly`, которые не проверялись на уровне метаданных:
+   - `@WithMetrics`: иерархия интерфейсов (`BaseMetricsApi -> SubMetricsApi ->
+     method`), дедупликация (`seen.add`), фильтрация не-`ClientMetricsListener`;
+   - `@WithInterceptor`: сортировка по `@Order(1) < @Order(2)` внутри массива,
+     разделение на request/response, поддержка дуальных интерцепторов (`implements
+     RequestInterceptor, ResponseInterceptor`), дедупликация;
+   - `@QueryCollectionFormat`: приоритеты (метод `CSV`, fallback `DEFAULT` →
+     `SSV`, глобальный дефолт `EXPLODE`);
+   - `@OnError`: регистрация статусных и default-парсеров с интерфейса и метода;
+   - `@Compress`: наследование, отключение (`enabled = false`), параметры
+     (`DEFLATE`, `minSizeBytes = 1024`);
+   - `@CircuitBreaker` и `@RateLimiter`: переопределение методом и наследование;
+   - `@HttpVersion` и `@FollowRedirects`: версии и счетчик редиректов;
+   - `@Retry`: парсинг `maxAttempts` и опционального `maxRetryAfterMs` (`>= 0` и `-1`);
+   - `@Timeout`: fail-fast валидация `IllegalArgumentException` при неположительных
+     значениях на методе и интерфейсе;
+   - `isStaticConditional`: распознавание условных заголовков (`If-Match`,
+     `If-Unmodified-Since`, `If-Modified-Since`, `If-None-Match`);
+   - `staticCookies` и `staticDefaultParams`: фильтрация пустых имен кук
+     (`isBlank()`) и слияние `params` из HTTP-глаголов (`@Get(params = ...)`)
+     со статическими аннотациями;
+   - `ReturnTypeInfo`: сырой `Optional` (`effectiveReturnType == Object.class`),
+     стриминг `Stream<ServerSentEvent>` и `Stream<String>`;
+   - `ParameterDescriptor`: полное извлечение всех дескрипторов параметров
+     (`@TargetUrl`, `@RequestBody`, `@RequestParam` с кастомным форматом,
+     `@PathVariable(encoded = true)`, `@Cookie`, `@RequestHeader`,
+     `@MultipartFormFile`, `ResponseHeaders`, `UploadProgressListener`,
+     `DownloadProgressListener`, `@SetAuthDetails`, `@Authorization`);
+   - `MethodMetadata.of(null, Interface.class)` и `MethodMetadata.of(null, null)`:
+     поддержка интерфейсных метаданных без метода (закрыло 22 ветки `method == null`).
+3. *Тесты (14):* добавлены в `MethodMetadataTest` (без сети, чистый unit-тест);
+   все тесты и assertions зеленые.
+4. *Верификация:* `./gradlew test javadoc jacocoTestReport` — **1475/1475**
+   (core 1395 + engine-okhttp 25 + engine-apache5 25 + codec-jackson-xml 15 +
    benchmarks 15), 0 failures/errors, javadoc чист под `-Werror`.
-   JaCoCo: **BRANCH 3,725/4,443 (83.84%)** (+16 — ровно целевая ветвь),
-   **INSTRUCTION 30,119/31,338 (96.11%)**, **LINE 6,540/6,825 (95.82%)**,
-   COMPLEXITY 2,979/3,672 (81.13%), METHOD 1418/1418 (100%), CLASS 143/143
-   (100%). `HttpTemplate`: missed branches 193 → **177** (ветви 81.09%).
+   JaCoCo: **BRANCH 3,771/4,443 (84.88%)** (+46 ветвей, преодолен рубеж 84%),
+   **INSTRUCTION 30,200/31,338 (96.37%)**, **LINE 6,551/6,825 (95.99%)**,
+   COMPLEXITY 3,021/3,672 (82.27%), METHOD 1418/1418 (100%), CLASS 143/143 (100%).
+   `MethodMetadata`: missed branches 69 → **27** (покрытие ветвей 80.4% → **92.33%**).
 
-## Контекст для следующей сессии (#262)
+## Контекст для следующей сессии (#263)
 
-1. **Ветка** `agent-loop`; HEAD — коммит этой сессии (#261).
+1. **Ветка** `agent-loop`; HEAD — коммит этой сессии (#262).
 2. **Highest ADR:** **0065**, next free **0066** (эта сессия ADR не трогала —
-   код без изменений, чистый срез).
+   код ядра без изменений, чистый срез по контракту).
 3. **Состояние проекта:** абсолютные рекорды качества: **100.00% Class
-   (143/143)**, **100.00% Method (1418/1418)**, **96.11% Instruction**,
-   **95.82% Line**, **83.84% Branch**, **81.13% Complexity**. 1461/1461 тестов
+   (143/143)**, **100.00% Method (1418/1418)**, **96.37% Instruction**,
+   **95.99% Line**, **84.88% Branch**, **82.27% Complexity**. 1475/1475 тестов
    зелёные across all 5 modules. Javadoc чист под `-Werror`.
 4. **Варианты для следующего шага:**
    - `HttpTemplateBuilder` — 164 missed branches (следующий по рангу отдельный
-     класс).
-   - `MethodMetadata` — 69 missed branches класса (`parseMetricsListeners` 13,
-     `parseRequestMeta`/`parseStaticDefaultParams` — хвосты if-цепочек).
-   - `ControllerValidator` — 50 missed (полностью аудировано в #261: хвосты
-     if-цепочек; кандидат на мёртвую ветвь — строка 431
-     `rp.format() == null`, дефолт `CollectionFormat.DEFAULT` статически не
-     null — аналог «аспирационного валидирования» #190).
-   - Остаток `HttpTemplate` (177 missed): `processResponse` 23,
-     `exchangeAsync`/`exchange` ~14+13, нулевое покрытие строк 1770/2644.
+     класс ядра: URL builder, headers, query params, cookies).
+   - `HttpTemplate` — 177 missed branches (`processResponse` 23,
+     `exchangeAsync`/`exchange` ~14+13, нулевое покрытие строк 1770/2644).
+   - `ControllerValidator` — 50 missed branches (хвосты валидаций и edge-cases).
+   - `MethodMetadata` — остаток 27 missed branches (201/206).
    - Формирование цикла 0.11.0: концепт `ADR-0066` (например, декларативная
      эргономика SSE/NDJSON streaming API, LLM stream consumption).
 5. **Грабли/паттерны этой сессии:**
-   - clean-slice паттерн (#192/#197/#198): логика верифицирована диффом
-     против родни (здесь — `processResponse`) → guard-тесты вместо фикса, ADR
-     не трогается;
-   - сложная конъюнкция `a || b || c || d` в JaCoCo = 8 branches — каждый
-     дизъюнкт покрывается отдельным кейсом, где он **первый истинный**;
-   - JUnit 5 per-method lifecycle: поля-фикстуры класса (template/codec)
-     свежие на каждый тест — `setOptional(true)` не течёт между тестами
-     (проверять `@TestInstance(PER_CLASS)` перед использованием этого
-     допущения);
-   - при `optional=true` и без явного `expectStatuses` `isExpectedStatus`
-     пропускает 2xx/304/404 (строки 1904–1918) — это то, что делает
-     404/304/204 достижимыми в optional-ветви probe;
-   - JaCoCo XML — только в корневом модуле (root == aggregate), headline-числа
-     из `build/reports/jacoco/test/jacocoTestReport.xml` (top-level
-     `<counter>`);
-   - `:test --tests 'X'` (bare `--tests` падает на `:benchmarks:test`);
-   - в контейнере нет `bc` — считать через `awk`/`python3`;
-   - в .agent-файлах continuation-отступ списков = 2 пробела (не 3).
+   - `ClientMetricsListener.onCallComplete(CallMetrics metrics)` — обязательный
+     метод интерфейса, не default;
+   - `ResponseInterceptor.onResponse(ResponseContext context)` — функциональный
+     интерфейс пост-обработки ответа (void-возврат);
+   - `RetryPolicy.getMaxRetryAfter()` — возвращает `Duration` (или `null`),
+     акцессор с префиксом `get`;
+   - `@Timeout` на интерфейсе и на методе валидируется в `MethodMetadata.parseTimeout`
+     fail-fast исключением `IllegalArgumentException`, если `value <= 0`;
+   - `MethodMetadata.of(null, Controller.class)` — штатный сценарий для получения
+     метаданных уровня интерфейса без привязки к конкретному методу;
+   - в .agent-файлах continuation-отступ списков = 2 пробела (не 3);
+   - JaCoCo XML — только в aggregate root, bare `--tests` не запускать для jacoco-отчета.
 6. **Среда:** `GRADLE_USER_HOME=/tmp/opencode/gradle-home ./gradlew ...`;
-   Счётчик сессий: 261. Часовой пояс контейнера +04.
+   Счётчик сессий: 262. Часовой пояс контейнера +04.

@@ -1,5 +1,35 @@
 # DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
+> **Сессия #262 (free-аудит `MethodMetadata`: исчерпывающий coverage-срез контракта декларативного парсинга контроллеров; пробит рубеж 84% Branch Coverage — 84.88%, закрыто 42 ветви класса `MethodMetadata`, 14 новых тестов, гейт 1475/1475, INSTRUCTION 96.37% и LINE 95.99% — новые рекорды):**
+> свободный ход по классам ядра с наибольшим хвостом непокрытых ветвей;
+> сужение на `MethodMetadata` (69 missed branches на входе, 80.4% coverage):
+> аудит выявил кластеры непокрытых веток контрактов:
+> 1. *Аудит (кластеры `MethodMetadata`):*
+>    - `@WithMetrics`: наследование из иерархии интерфейсов (`BaseMetricsApi -> SubMetricsApi -> method`), дедупликация (`seen.add`), и фильтрация не-`ClientMetricsListener` классов;
+>    - `@WithInterceptor`: внутримассивная сортировка по `@Order(1) < @Order(2)`, разделение на `RequestInterceptor` и `ResponseInterceptor`, поддержка дуальных интерцепторов (`implements RequestInterceptor, ResponseInterceptor`), дедупликация;
+>    - `@QueryCollectionFormat`: приоритеты разрешения: метод (`CSV`), `DEFAULT` fallback на интерфейс (`SSV`), и глобальный дефолт (`EXPLODE`);
+>    - `@OnError`: регистрация статусных и default-обработчиков с уровня интерфейса и метода;
+>    - `@Compress`: наследование с интерфейса, кастомные параметры (`DEFLATE`, `minSizeBytes = 1024`), и явное отключение (`enabled = false`) на методе и интерфейсе;
+>    - `@CircuitBreaker` и `@RateLimiter`: переопределение методом и наследование с интерфейса;
+>    - `@HttpVersion` и `@FollowRedirects`: разрешение версий и количества хопов;
+>    - `@Retry`: парсинг `maxAttempts` и опционального `maxRetryAfterMs` (`>= 0` и `-1`);
+>    - `@Timeout`: fail-fast валидация `IllegalArgumentException` при неположительных значениях на методе и интерфейсе;
+>    - `isStaticConditional`: распознавание всех условных заголовков (`If-Match`, `If-Unmodified-Since`, `If-Modified-Since`, `If-None-Match`);
+>    - `staticCookies` и `staticDefaultParams`: фильтрация пустых имен кук (`isBlank()`) и слияние `params` из HTTP-глаголов (`@Get(params = ...)`) со статическими аннотациями;
+>    - `ReturnTypeInfo`: сырой `Optional` (`effectiveReturnType == Object.class`), стриминг `Stream<ServerSentEvent>` и `Stream<String>`;
+>    - `ParameterDescriptor`: полное извлечение всех дескрипторов параметров (`@TargetUrl`, `@RequestBody`, `@RequestParam` с кастомным форматом, `@PathVariable(encoded = true)`, `@Cookie`, `@RequestHeader`, `@MultipartFormFile`, `ResponseHeaders`, `UploadProgressListener`, `DownloadProgressListener`, `@SetAuthDetails`, `@Authorization`);
+>    - `MethodMetadata.of(null, Interface.class)` и `MethodMetadata.of(null, null)`: поддержка интерфейсных метаданных без метода.
+> 2. *TDD и гейты:*
+>    - Добавлено 14 тестов в `MethodMetadataTest` (без сети, быстрые unit-тесты): 1,475/1475 green across all 5 modules (+14 тестов, 0 failures, 0 errors, 0 warnings under `-Werror`).
+>    - `MethodMetadata`: missed branches 69 → **27** (покрытие ветвей выросло с 80.4% до **92.33%**, +42 ветви)!
+>    - **JaCoCo Coverage:**
+>      * **CLASS:** **143 / 143 (100.00%)**; **METHOD:** **1418 / 1418 (100.00%)** — абсолютные 100% сохранены!
+>      * **BRANCH:** **3,771 / 4,443 (84.88%)** — новый исторический рекорд (+46 покрытых ветвей, впервые перейдён рубеж 84% и почти достигнут 85%)!
+>      * **INSTRUCTION:** **30,200 / 31,338 (96.37%)** — новый исторический рекорд (+0.26%)!
+>      * **LINE:** **6,551 / 6,825 (95.99%)** — новый исторический рекорд (вплотную к 96%)!
+>      * **COMPLEXITY:** **3,021 / 3,672 (82.27%)** — новый исторический рекорд!
+>    - ADR не тронут — код без изменений (чистый coverage-срез по контракту, паттерн #192/#197/#198/#261).
+
 > **Сессия #261 (free-аудит `HttpTemplate`, `probePayloadDecode` × Optional-возврат (ADR-0011 Aspect 2): чистый срез — optional-ветвь decode-probe была 100% непокрыта, логика верифицирована как точное зеркало optional-ветви `processResponse`; 7 guard-тестов, код не тронут; гейт 1461/1461, BRANCH 83.84% и INSTRUCTION 96.11% и LINE 95.82% — новые рекорды):**
 > свободный ход по хвосту `HttpTemplate` (193 missed branches на входе),
 > сужение на `probePayloadDecode` (1269–1303): ветвь `if (optional)`
