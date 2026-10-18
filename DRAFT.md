@@ -1,5 +1,41 @@
 # DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
+> **Сессия #268 (free-аудит кэша RFC 9111 — `InMemoryHttpCache` / `SimpleCachedResponse` / `CacheControl`: полный срез достижимых ветвей кластера кэша; закрыто 18 ветвей — `InMemoryHttpCache` 17 → 4, `SimpleCachedResponse` 3 → 0, `CacheControl` 2 → 0; оставшиеся 4 — структурно недостижимые defensive-проверки `WireResponse`; гейт 1,540/1,540, INSTRUCTION 97.49%, LINE 97.19%, BRANCH 88.07%, COMPLEXITY 85.95% — новые рекорды):**
+> свободный ход по классам ядра с наибольшим хвостом непокрытых ветвей; сужение на
+> кластер прозрачного HTTP-кэша ADR-0063 (`InMemoryHttpCache` 17 missed, `SimpleCachedResponse`
+> 3, `CacheControl` 2 — 22 ветви на входе).
+> 1. *Аудит (точная карта по XML-отчёту JaCoCo):*
+>    - `InMemoryHttpCache.put`: обе стороны статус-гейта `!= 200/301/404` (301 и 404 не
+>      кэшировались ни одним тестом), `date == null` при расчёте `Expires`-freshness,
+>      ветвь «только `Last-Modified`» (все четыре селектора `maxAge/expires/etag/lastModified`),
+>      обе стороны `resCc.noCache() || reqCc.noCache()`, `null`-response и request с `null`-URI;
+>    - `InMemoryHttpCache.update`: ветвь «304 без max-age и без Expires» (`expires == null`
+>      после `maxAge == null`) — сохраняет прежний freshness; `Expires`-без-`Date`;
+>      `null`-response304 и request с `null`-URI;
+>    - `parseHttpDate`: blank-значение заголовка (`"   "` → `null`);
+>    - `SimpleCachedResponse`: `isFresh` на `noCache`-записи (никогда не fresh) и
+>      `mustRevalidate() || noCache` (обе ноги);
+>    - `CacheControl.stripQuotes`: непарная `"`, одиночная `"`, пустая `""`.
+> 2. *TDD и гейт:*
+>    - 12 тестов: `InMemoryHttpCacheTest` (+11 — статусы 301/404, `Expires`-без-`Date`,
+>      lone `Last-Modified`, response/request `no-cache`, `null`-response/`null`-URI для
+>      put и update, update без freshness, update `Expires`-без-`Date`, blank http-date,
+>      флаги `noCache`/`mustRevalidate`) и `CacheControlTest` (+1 — непарные/одиночные/пустые
+>      кавычки). Быстрые unit-тесты, без сети.
+>    - Всего тестов: **1,540 / 1,540** green across all 5 modules (+12, 0 failures, 0 errors, 0 warnings under `-Werror`).
+>    - **JaCoCo Coverage:**
+>      * **CLASS:** **143 / 143 (100.00%)**; **METHOD:** **1432 / 1432 (100.00%)** — абсолютные 100% сохранены!
+>      * **BRANCH:** **3,913 / 4,443 (88.07%)** — новый исторический рекорд (+17 за счёт среза; одна ветвь — джиттер-зависимая в `RetryPolicy`, вне среза)!
+>      * **INSTRUCTION:** **30,593 / 31,380 (97.49%)** — новый исторический рекорд!
+>      * **LINE:** **6,647 / 6,839 (97.19%)** — новый исторический рекорд!
+>      * **COMPLEXITY:** **3,168 / 3,686 (85.95%)** — новый исторический рекорд!
+>    - Кластер кэша: `InMemoryHttpCache` 17 → **4** missed (оставшиеся — `response304.version() != null`,
+>      `findHeader(headers == null)`, `mergeHeaders(newHeaders != null)` и `mergeHeaders(oldHeaders != null)`:
+>      все четыре недостижимы через публичный API, ибо record `WireResponse` нормализует
+>      headers/version к non-null; defensive-guard'ы оставлены осознанно); `SimpleCachedResponse`
+>      3 → **0**; `CacheControl` 2 → **0**.
+>    - ADR не тронут — чистый coverage-срез по контракту (паттерн #192/#197/#198/#261).
+
 > **Сессия #267 (free-аудит `HttpTemplate` — завершение WIP прерванной #266: package-private seams `hasHeader`/`isCrossOrigin`/`effectivePort` обрели unit-матрицу; закрыто 14 ветвей в трёх методах — missed branches `hasHeader` 5 → 0, `isCrossOrigin` 6 → 0, `effectivePort` 3 → 0; `HttpTemplate` 176 → 162 missed; гейт 1,528/1,528, INSTRUCTION 97.46%, LINE 97.18%, BRANCH 87.69%, COMPLEXITY 85.49%):**
 > свободный ход по хвосту непокрытых ветвей `HttpTemplate` (176 missed по данным #265);
 > #266 оборвалась до коммита (паттерн #155/#186/#254): в дереве — только package-private

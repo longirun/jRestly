@@ -119,5 +119,13 @@
 - `HttpTemplate`: 176 → **162** missed branches (82.69%).
 - Дальше — остаток `HttpTemplate` (`processResponse` ~23, `exchange`/`exchangeAsync`) или концепт ADR-0066 для цикла 0.11.0.
 
+[2026-10-18 09:05] Агент (сессия #268): Антон, закрыл последний «функциональный» хвост из списка кандидатов — кластер прозрачного HTTP-кэша RFC 9111 (ADR-0063):
+- *Аудит:* `InMemoryHttpCache` (17 missed branches) + `SimpleCachedResponse` (3) + `CacheControl` (2). Снял точную карту из XML-отчёта: статус-гейт `put` покрывал только 500 — **301 и 404 вообще не кэшировались ни одним тестом**; `Expires`-freshness считался только при наличии `Date`; ветвь «только `Last-Modified`» не проверялась; обе ноги `no-cache` (response и request) не задеты; `update` знал только `max-age`-путь.
+- *Тесты:* 12 безсетевых unit-тестов — 301/404 кэшируются, `Expires`-без-`Date` (база — время получения), lone `Last-Modified` (freshness 0, валидатор есть, не fresh), response/request `no-cache`, `null`-response/`null`-URI в put и update, update без freshness, update `Expires`-без-`Date`, blank http-date, флаги `noCache`/`mustRevalidate`, непарные/одиночные кавычки в `Cache-Control`.
+- *Результат:* `InMemoryHttpCache` 17 → **4** missed, `SimpleCachedResponse` 3 → 0, `CacheControl` 2 → 0. Оставшиеся 4 — **структурно недостижимые** defensive null-guard'ы: record `WireResponse` компактным конструктором нормализует headers/version, так что `version() != null`, `headers == null` и null-ветви `mergeHeaders` через публичный API не срабатывают (оставлены осознанно, non-goal).
+- *Гейты:* **1,540 / 1,540** тестов зелёные across all 5 modules (+12), 0 failures/errors, javadoc чист под `-Werror`.
+- *Новые исторические рекорды JaCoCo:* **88.07% Branch** (3,913/4,443), **97.49% Instruction** (30,593/31,380), **97.19% Line** (6,647/6,839), **85.95% Complexity** (3,168/3,686); Method/Class — 100%.
+- Дальше — `HttpTemplate` (162 missed, тут ещё есть живые ветви, где находились «тихие» баги #256–#259) или концепт ADR-0066 для 0.11.0.
+
 
 

@@ -117,5 +117,20 @@ class CacheControlTest {
         CacheControl noCc = CacheControl.parse(List.of(new Header("Content-Type", "text/plain")));
         assertEquals(CacheControl.empty(), noCc);
     }
+
+    @Test
+    @DisplayName("quote stripping tolerates unbalanced, lone, and empty quotes")
+    void parseUnbalancedQuotes() {
+        // Lone opening quote: startsWith and endsWith both true, but length == 1
+        assertNull(CacheControl.parse("max-age=\"").maxAgeSeconds());
+        // Unbalanced opening quote: startsWith true, endsWith false
+        assertNull(CacheControl.parse("max-age=\"120").maxAgeSeconds());
+        // Empty quoted value: stripQuotes yields "" which is not a number
+        assertNull(CacheControl.parse("stale-while-revalidate=\"\"").staleWhileRevalidateSeconds());
+        // Well-formed quoted values still parse on both directives
+        CacheControl cc = CacheControl.parse("max-age=\"90\", stale-while-revalidate=\"45\"");
+        assertEquals(90L, cc.maxAgeSeconds());
+        assertEquals(45L, cc.staleWhileRevalidateSeconds());
+    }
 }
 
