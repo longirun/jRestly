@@ -14,15 +14,15 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /**
  * Unit gate for the ADR-0036 metrics byte accounting seams
- * ({@link HttpTemplate#computeRequestBytes(WireRequest)} /
- * {@link HttpTemplate#computeResponseBytes(WireResponse)}):
+ * ({@link MetricsNotifier#requestBytes(WireRequest)} /
+ * {@link MetricsNotifier#responseBytes(WireResponse)}, ADR-0066 step 6):
  * buffered bodies are measured, supplier-rendered (streaming) bodies are
  * reported as unknown without invoking the user's producer
  * (ADR-0036 Amendment #193), and response bytes fall back to
  * {@code Content-Length} when the body is not buffered.
  */
-@DisplayName("HttpTemplateMetricsBytesTest")
-class HttpTemplateMetricsBytesTest {
+@DisplayName("MetricsNotifierBytesTest")
+class MetricsNotifierBytesTest {
 
     private static WireRequest request(byte[] body, Supplier<? extends HttpRequest.BodyPublisher> supplier) {
         return new WireRequest(
@@ -47,7 +47,7 @@ class HttpTemplateMetricsBytesTest {
                     () -> new java.io.ByteArrayInputStream("payload".getBytes(StandardCharsets.UTF_8)));
         };
 
-        assertEquals(-1, HttpTemplate.computeRequestBytes(request(null, counting)));
+        assertEquals(-1, MetricsNotifier.requestBytes(request(null, counting)));
         assertEquals(0, invocations.get(), "metrics probe must not materialize the streaming body");
     }
 
@@ -57,7 +57,7 @@ class HttpTemplateMetricsBytesTest {
         byte[] body = "1234567890".getBytes(StandardCharsets.UTF_8);
         AtomicInteger invocations = new AtomicInteger();
 
-        assertEquals(body.length, HttpTemplate.computeRequestBytes(request(body, () -> {
+        assertEquals(body.length, MetricsNotifier.requestBytes(request(body, () -> {
             invocations.incrementAndGet();
             return HttpRequest.BodyPublishers.noBody();
         })));
@@ -67,8 +67,8 @@ class HttpTemplateMetricsBytesTest {
     @Test
     @DisplayName("Body-less and null requests are unknown (-1)")
     void bodylessRequestIsUnknown() {
-        assertEquals(-1, HttpTemplate.computeRequestBytes(request(null, null)));
-        assertEquals(-1, HttpTemplate.computeRequestBytes(null));
+        assertEquals(-1, MetricsNotifier.requestBytes(request(null, null)));
+        assertEquals(-1, MetricsNotifier.requestBytes(null));
     }
 
     @Test
@@ -83,7 +83,7 @@ class HttpTemplateMetricsBytesTest {
                 java.net.http.HttpClient.Version.HTTP_1_1,
                 List.of()
         );
-        assertEquals(body.length, HttpTemplate.computeResponseBytes(response));
+        assertEquals(body.length, MetricsNotifier.responseBytes(response));
     }
 
     @Test
@@ -97,13 +97,41 @@ class HttpTemplateMetricsBytesTest {
                 java.net.http.HttpClient.Version.HTTP_1_1,
                 List.of()
         );
-        assertEquals(4242L, HttpTemplate.computeResponseBytes(response));
+        assertEquals(4242L, MetricsNotifier.responseBytes(response));
+    }
+
+    @Test
+    @DisplayName("Non-Content-Length headers are inspected and skipped (-1 when none matched)")
+    void responseBytesSkipUnrelatedHeaders() {
+        WireResponse response = new WireResponse(
+                200,
+                List.of(new Header("X-Other", "ignored"), new Header("Content-Type", "text/plain")),
+                null,
+                null,
+                java.net.http.HttpClient.Version.HTTP_1_1,
+                List.of()
+        );
+        assertEquals(-1, MetricsNotifier.responseBytes(response));
+    }
+
+    @Test
+    @DisplayName("Negative Content-Length is rejected (-1)")
+    void responseBytesRejectNegativeContentLength() {
+        WireResponse response = new WireResponse(
+                200,
+                List.of(new Header("Content-Length", "-5")),
+                null,
+                null,
+                java.net.http.HttpClient.Version.HTTP_1_1,
+                List.of()
+        );
+        assertEquals(-1, MetricsNotifier.responseBytes(response));
     }
 
     @Test
     @DisplayName("Null response and unparsable Content-Length are unknown (-1)")
     void responseBytesUnknown() {
-        assertEquals(-1, HttpTemplate.computeResponseBytes(null));
+        assertEquals(-1, MetricsNotifier.responseBytes(null));
         WireResponse chunked = new WireResponse(
                 200,
                 List.of(new Header("Content-Length", "not-a-number")),
@@ -112,6 +140,6 @@ class HttpTemplateMetricsBytesTest {
                 java.net.http.HttpClient.Version.HTTP_1_1,
                 List.of()
         );
-        assertEquals(-1, HttpTemplate.computeResponseBytes(chunked));
+        assertEquals(-1, MetricsNotifier.responseBytes(chunked));
     }
 }

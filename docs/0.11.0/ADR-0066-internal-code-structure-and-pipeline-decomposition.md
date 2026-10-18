@@ -2,7 +2,10 @@
 
 ## Status
 
-Accepted
+Accepted — план закрыт: все шесть шагов декомпозиции `HttpTemplate` выполнены
+(№1 RetryAfter #270, №2 Redirects #271, №3 ProblemDetailResolver #274,
+№4 CacheDispatch #275, №5 ResponseBody 5a/5b/5c #276/#277/#281,
+№6 MetricsNotifier #283). Осталось: дистилляция в `ROADMAP.md`.
 
 ## Context
 
@@ -221,3 +224,50 @@ package-private `ru.jrestly.http.ProblemDetailResolver`.
   (**86.98%** — новый рекорд), METHOD 1437/1437.
 - **Дальше:** под-шаг 5b — оставшаяся часть `processResponse` (стриминговые
   артефакты line/SSE + `optional`-обёртки), затем ветка буферного декодирования.
+
+## Amendment #283
+
+Шаг №6 плана — последний — выполнен: уведомления метрик (`notify*`) вынесены
+из `HttpTemplate` в package-private `ru.jrestly.http.MetricsNotifier`.
+**План ADR-0066 закрыт полностью.**
+
+- **Извлечено (байт-в-байт):** `notifyCallStart` → `MetricsNotifier.callStart`,
+  `notifyAttemptComplete` → `attemptComplete`, `notifyRetry` → `retry`,
+  `notifyCallComplete` → `callComplete` (17 call-site'ов двух контуров:
+  sync `exchange`/`executeWithRetries` и async `exchangeAsync`/`attemptAsync`),
+  плюс байт-учётный шов ADR-0036 Amendment #193: `computeRequestBytes` →
+  `MetricsNotifier.requestBytes`, `computeResponseBytes` → `responseBytes`.
+- **Коллаборатор — чистый `static`-хелпер** (паттерн `CacheDispatch`/
+  `ResponseBody`): все 17 call-site'ов передают `(metricsListener, logger)`
+  аргументами — коллаборатор не читает поля шаблона, поэтому оба mutabельных
+  сеттера (`setMetricsListener`/`setLogger`) не создают проблемы «устаревшего
+  производного кэша». Грабли: пустой no-arg **package-private** конструктор
+  не режется встроенным JaCoCo-фильтром (он выкидывает только **private**
+  пустые no-arg-конструкторы — у прецедентов `CacheDispatch`/`ResponseBody`
+  именно `private`) — единственный недостижимый метод убран превентивно.
+- **Шов переехал, а не продублирован:** `HttpTemplateMetricsBytesTest`
+  переименован в `MetricsNotifierBytesTest` (6 → 8 тестов: добавлены
+  не-`Content-Length` заголовок в списке — false-сторона `equalsIgnoreCase`
+  — и отрицательный `Content-Length` — false-сторона `val >= 0`). Новый
+  безсетевой сьют `MetricsNotifierTest` (22 теста) — матрица ветвей всех
+  четырёх точек диспетчеризации: no-listener no-op, `null`-context skip,
+  pass-through аргументов (включая попытку/задержку анти-клампа отрицательного
+  delay), listener-сбой проглатывается с логгером и без него, контракт
+  `SimpleCallMetrics` (число передач 0–N, байт-учёт, Optionals — ADR-0036
+  Amendments #195/#259).
+- **Остаток:** 1 missed ветвь `responseBytes` (`headers() == null`) —
+  структурно недостижимая defensive (record `WireResponse` нормализует
+  headers к non-null); guard оставлен и задокументирован (паттерн
+  unreachable-ветвей `InMemoryHttpCache`, ADR-0063).
+- **Юнит-матрица:** `MetricsNotifier` — 39/40 ветвей (0 missed методов,
+  0 missed классов; единственная missed — документированная defensive).
+- **Эффект:** `HttpTemplate` 95 → **82** missed по ветвям; CLASS **149/149**,
+  METHOD **1444/1444** (100% сохранены); LIVE-гейт **1,636/1,636**, javadoc
+  чист под `-Werror`. JaCoCo: INSTRUCTION 30,799/31,455 (**97.91%** — рекорд),
+  LINE 6,696/6,856 (**97.62%** — рекорд), BRANCH 3,977/4,437 (**89.63%** —
+  рекорд), COMPLEXITY 3,242/3,695 (**87.74%** — рекорд). Публичный API не
+  изменён.
+- **Дальше:** дистилляция закрытого эпика в `ROADMAP.md`; после — беклог
+  Антона №6–№8 (по его формулировке — «после завершения текущих задач и
+  текущего беклога» — оба условия теперь выполнены; по №7 уточнить
+  объём до старта).

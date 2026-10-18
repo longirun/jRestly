@@ -1,5 +1,45 @@
 # DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
+> **Сессия #283 (ADR-0066, шаг №6 — последний: уведомления метрик вынесены из
+> `HttpTemplate` в package-private `MetricsNotifier`; шов ADR-0036 #193
+> переехал в свой сейт; **план ADR-0066 закрыт полностью**; гейт 1,636/1,636,
+> CLASS 149/149 и METHOD 1444/1444 — 100%, INSTRUCTION 97.91%, LINE 97.62%,
+> BRANCH 89.63%, COMPLEXITY 87.74% — рекорды; `HttpTemplate` 95 → **82**
+> missed):**
+> 1. *Извлечено (байт-в-байт):* четыре точки диспетчеризации
+>    (`notifyCallStart`/`notifyAttemptComplete`/`notifyRetry`/
+>    `notifyCallComplete` — 17 call-site'ов sync/async контуров) →
+>    `MetricsNotifier.callStart`/`attemptComplete`/`retry`/`callComplete`
+>    + байт-учётный шов ADR-0036 Amendment #193 (`computeRequestBytes` →
+>    `requestBytes`, `computeResponseBytes` → `responseBytes`).
+> 2. *Коллаборатор — чистый `static`-хелпер* (паттерн CacheDispatch/ResponseBody):
+>    `(metricsListener, logger)` передаются аргументами на каждом call-site —
+>    mutable-сеттеры `setMetricsListener`/`setLogger` не создают «устаревшего
+>    производного кэша» (урок #281 в минус — вариант с ленивым value-объектом
+>    отсечён сознательно).
+> 3. *Грабля JaCoCo:* встроенный фильтр режет только **private** пустые
+>    no-arg-конструкторы; пакетно-приватный `<init>` живёт как missed метод —
+>    у прецедентов (`CacheDispatch`/`ResponseBody`/`RetryAfter`/
+>    `ProblemDetailResolver`) `private` → METHOD 1444/1444 (100%) сохранены.
+> 4. *TDD:* compile-red (2 ошибки компиляции) → зелёный; сьют
+>    `MetricsNotifierTest` (22 безсетевых теста) — матрица ветвей всех четырёх
+>    точек (no-listener / null-context / pass-through / listener-сбой ± логгер /
+>    SimpleCallMetrics-контракт). Шов байт-учёта переименован:
+>    `HttpTemplateMetricsBytesTest` → `MetricsNotifierBytesTest` (6 → 8:
+>    +не-CL заголовок = false-сторона `equalsIgnoreCase`, +отрицательный
+>    `Content-Length` = false-сторона `val >= 0`).
+> 5. *Остаток:* 1 missed ветвь `responseBytes` (`headers() == null`) —
+>    structurally недостижимая defensive (record нормализует headers);
+>    guard оставлен осознанно (паттерн #268 InMemoryHttpCache).
+> 6. *Гейты:* **1,636 / 1,636** green across all 5 modules (+24), javadoc чист
+>    под `-Werror`. JaCoCo: CLASS **149/149**, METHOD **1444/1444 (100%)**,
+>    INSTRUCTION 30,799/31,455 (**97.91%** — рекорд), LINE 6,696/6,856
+>    (**97.62%** — рекорд), BRANCH 3,977/4,437 (**89.63%** — рекорд),
+>    COMPLEXITY 3,242/3,695 (**87.74%** — рекорд). `HttpTemplate` 95 → 82.
+> 7. *Дальше:* дистилляция закрытого эпика ADR-0066 в `ROADMAP.md`; затем
+>    беклог Антона №6–№8 (оба условия «после завершения» выполнены; по №7
+>    уточнить объём бенчмарка до старта).
+
 > **Сессия #281 (ADR-0066, под-шаг 5c: буферное декодирование вынесено из
 > `processResponse` в `ResponseBody` (`bufferedOptional`/`bufferedRaw` — две
 > зеркальные ноги; кодек передаётся лениво через `Supplier<PayloadCodec>`;
@@ -2606,8 +2646,16 @@
     числу использований, как раньше. Сьют `ResponseBodyTest` 20 → 33 теста,
     **118/118 ветвей, 0 missed**. `HttpTemplate` 108 → **95** missed.
     Публичный API не изменён.
-  - **Шаг №6 (следующий):** уведомления метрик (`notify*`) — последний
-    пункт плана ADR-0066.
+  - **Шаг №6 — сделана (#283):** уведомления метрик (`notify*`, 17
+    call-site'ов) вынесены в package-private `MetricsNotifier`
+    (чистый static-хелпер: `(metricsListener, logger)` аргументами на каждом
+    call-site → mutable-сеттеры не ломают коллаборатора); шов ADR-0036 #193
+    переехал в renamed-сейт `MetricsNotifierBytesTest` (8 тестов); новый
+    `MetricsNotifierTest` (22 теста) — матрица ветвей четырёх точек
+    диспетчеризации; 39/40 ветвей (1 документированная недостижимая
+    defensive). `HttpTemplate` 95 → **82** missed. Публичный API не изменён.
+    **План ADR-0066 закрыт полностью** (ADR → Status «план закрыт»,
+    Amendment #283); осталось — дистилляция в `ROADMAP.md`.
 
 - **Кандидат №6 — лаконичность публичного API** *(Антон, 2026-10-18 14:37,
   «Браво! …» — после завершения ADR-0066)*: рассмотреть публичный API на
@@ -2626,15 +2674,16 @@
   не убежали ли мы от самого главного (нет ли регрессии dispath-оверхеда
   и аллокаций после Zero-Garbage/ADR-0055/декомпозиции `HttpTemplate`).
 
-**Активная зона пуста:** кандидаты №1 (test-javadoc) и №2/№3/№4 закрыты (§выше);
-кандидат №5 (ADR-0066) открыт и ведётся пошагово (шаги №1–№4 и весь №5 —
-5a/5b/5c — сделаны; дальше — №6 `notify*`, последний пункт плана).
+**Активная зона:** кандидат №5 (ADR-0066) **закрыт** — все шесть шагов плана
+сделаны (№1–№4, №5a/5b/5c, №6; see выше; гейт 1,636/1,636). Немедленный
+следующий ход — **дистилляция ADR-0066 в `ROADMAP.md`** (паттерн #206).
 Кандидаты №6–№8 — новый беклог Антона от 2026-10-18,
 по его явной формулировке: **не стартовать раньше закрытия ADR-0066**
-(«переходить к нему только после завершения текущих задач и текущего беклога»);
-Завершённые эпики ADR-0058/0059/0060 дистиллированы в `ROADMAP.md` (сессия #206);
-highest ADR **0066**, next free **0067**. Следующий ход — свободный: продолжение
-декомпозиции `HttpTemplate` по ADR-0066 (шаг №4) или свежий free-аудит. Хвосты-кандидаты
+(«переходить к нему только после завершения текущих задач и текущего беклога»)
+— **обоих условия теперь выполнены**, кандидат №6 (лаконичность API) — первый
+в очереди (исследование, не код: сверка объёма деклараций с Retrofit/
+OpenFeign/Spring HTTP Interfaces). Highest ADR **0066**, next free **0067**.
+Хвосты-кандидаты
 из аудит-нити (не эпики): Path/File-тела метрик (-1 вместо размера;
 engine-reported byte accounting), валидация `@ExpectStatus`/`@FollowRedirects`
 (инварианты нигде не объявлены — фича, не дыра; #207), 15 вспомогательных
