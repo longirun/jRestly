@@ -64,6 +64,7 @@ import java.net.http.HttpRequest;
 import java.nio.ByteBuffer;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -305,11 +306,13 @@ public class HttpTemplateBuilder {
 
         byte[] body = null;
         Supplier<? extends HttpRequest.BodyPublisher> bodyPublisherSupplier = null;
+        Long knownBodySize = null;
         List<MultipartPart> parts = null;
         if (RequestType.APPLICATION_JSON.equals(requestType)) {
             BodyPayload payload = createJsonBodyPayload(effectiveContentType, isContentTypeExplicit);
             body = payload.bytes();
             bodyPublisherSupplier = payload.publisherSupplier();
+            knownBodySize = payload.knownSize();
             effectiveContentType = payload.effectiveContentType();
             result.setContentType(effectiveContentType);
         } else if (RequestType.APPLICATION_FORM_URLENCODED.equals(requestType)) {
@@ -352,6 +355,7 @@ public class HttpTemplateBuilder {
 
         result.setBody(body);
         result.setBodyPublisherSupplier(bodyPublisherSupplier);
+        result.setKnownBodySize(knownBodySize);
         result.setMultipartFormParts(parts);
 
         MethodMetadata.ReturnTypeInfo rt = methodMetadata.returnTypeInfo();
@@ -787,31 +791,32 @@ public class HttpTemplateBuilder {
     private record BodyPayload(
             byte[] bytes,
             Supplier<? extends HttpRequest.BodyPublisher> publisherSupplier,
-            String effectiveContentType
+            String effectiveContentType,
+            Long knownSize
     ) {}
 
     private BodyPayload createJsonBodyPayload(String effectiveContentType, boolean isContentTypeExplicit) {
         Object body = createBody(method, args);
         if (body == null) {
-            return new BodyPayload(null, null, effectiveContentType);
+            return new BodyPayload(null, null, effectiveContentType, null);
         }
 
         Charset charset = parseCharset(effectiveContentType, StandardCharsets.UTF_8);
 
         if (body instanceof HttpRequest.BodyPublisher bp) {
             String ct = isContentTypeExplicit ? effectiveContentType : "application/octet-stream";
-            return new BodyPayload(null, () -> bp, ct);
+            return new BodyPayload(null, () -> bp, ct, null);
         }
 
         if (body instanceof Flow.Publisher<?> publisher) {
             String ct = isContentTypeExplicit ? effectiveContentType : "application/octet-stream";
             Flow.Publisher<ByteBuffer> adapted = adaptToByteBufferPublisher(publisher, charset);
-            return new BodyPayload(null, () -> HttpRequest.BodyPublishers.fromPublisher(adapted), ct);
+            return new BodyPayload(null, () -> HttpRequest.BodyPublishers.fromPublisher(adapted), ct, null);
         }
 
         if (body instanceof InputStream inputStream) {
             String ct = isContentTypeExplicit ? effectiveContentType : "application/octet-stream";
-            return new BodyPayload(null, () -> HttpRequest.BodyPublishers.ofInputStream(() -> inputStream), ct);
+            return new BodyPayload(null, () -> HttpRequest.BodyPublishers.ofInputStream(() -> inputStream), ct, null);
         }
 
         if (body instanceof Path path) {
@@ -822,7 +827,7 @@ public class HttpTemplateBuilder {
                 } catch (FileNotFoundException e) {
                     throw new UncheckedIOException(e);
                 }
-            }, ct);
+            }, ct, fileSizeBytes(path));
         }
 
         if (body instanceof File file) {
@@ -834,7 +839,7 @@ public class HttpTemplateBuilder {
                 } catch (FileNotFoundException e) {
                     throw new UncheckedIOException(e);
                 }
-            }, ct);
+            }, ct, fileSizeBytes(path));
         }
 
         if (body instanceof Supplier<?> supplier) {
@@ -875,15 +880,15 @@ public class HttpTemplateBuilder {
                 }
                 throw new IllegalArgumentException("Unsupported Supplier body type: " + supplied.getClass().getName());
             };
-            return new BodyPayload(null, publisherSupplier, ct);
+            return new BodyPayload(null, publisherSupplier, ct, null);
         }
 
         if (body instanceof byte[] rawBytes) {
-            return new BodyPayload(rawBytes, null, effectiveContentType);
+            return new BodyPayload(rawBytes, null, effectiveContentType, null);
         }
 
         if (body instanceof String stringBody) {
-            return new BodyPayload(stringBody.getBytes(charset), null, effectiveContentType);
+            return new BodyPayload(stringBody.getBytes(charset), null, effectiveContentType, null);
         }
 
         PayloadCodec codec = moduleInfo.getCodecRegistry().resolve(effectiveContentType);
@@ -894,7 +899,18 @@ public class HttpTemplateBuilder {
                     + "Flow.Publisher, BodyPublisher).");
         }
         byte[] bodyBytes = codec.serialize(body, effectiveContentType);
-        return new BodyPayload(bodyBytes, null, effectiveContentType);
+        return new BodyPayload(bodyBytes, null, effectiveContentType, null);
+    }
+
+    // ADR-0036 Amendment #298: the engine-known size of a file body, for the
+    // metrics byte-accounting seam — the size is readable without touching the
+    // stream the send reads from; a vanished file degrades to unknown (null)
+    static Long fileSizeBytes(Path path) {
+        try {
+            return Files.size(path);
+        } catch (IOException e) {
+            return null;
+        }
     }
 
     static Flow.Publisher<ByteBuffer> adaptToByteBufferPublisher(Flow.Publisher<?> source, Charset charset) {

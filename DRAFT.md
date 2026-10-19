@@ -1,5 +1,40 @@
 # DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
+> **Сессия #299 (приём и верификация WIP прерванной #298 — engine-reported byte
+> accounting для Path/File-тел и полностью известных multipart-тел: хвост
+> non-goal ADR-0036 Amendment #193 закрыт; гейт 1,656/1,656):**
+> 1. *Приём WIP (паттерн #155/#186/#254):* счётчик сессий был уже докручен до 299,
+>    HEAD стоял на #297 — в дереве лежал полный комплект (9 файлов: код + тесты)
+>    по хвосту Path/File-тел метрик. Диффы прочитаны байт-в-байт и сверены с
+>    семантикой: (a) `WireRequest` получил 9-й nullable record-компонент
+>    `knownBodySize` (Long) с сохранившимся 8-аргументным
+>    backward-compatible-конструктором; (b) `HttpTemplateBuilder.fileSizeBytes(Path)`
+>    (через `Files.size`, исчезнувший файл → null) заполняет его для
+>    Path/File-аргументов `@RequestBody`; (c) порядок резолва
+>    `MetricsNotifier.requestBytes`: буферный `byte[]` → `knownBodySize` →
+>    rendered `contentLength()` у multipart (сбой → -1) → -1; supplier-rendered
+>    тела остаются -1 (контракт Amendment #193 не сломан).
+> 2. *Wither-семантика (проверена payload-aware):* transport-витеры сохраняют
+>    `knownBodySize`; `withBody`/`withBodyPublisher`/`withBodyPublisherSupplier`
+>    очищают его; `withParts` — только когда выставлены непустые parts;
+>    `Redirects.nextHop` сохраняет на 307/308 и сбрасывает при GET-downgrade.
+>    Единственная точка `new WireRequest(...)` — `HttpTemplate.exchange()`; async
+>    переиспользует тот же запрос (второй конструктор не упущен).
+> 3. *Тесты:* +12 — юнит-матрица `MetricsNotifierBytesTest` (+5: knownBodySize
+>    приоритет, multipart contentLength, fallback -1), `WireRequestTest` (+4:
+>    wither/builder-матрица), e2e `RequestBodyStreamingWireMockTest` (+3: новые
+>    эндпоинты `/upload/path-metrics` и `/upload/file-metrics`, метрики против
+>    реального размера файла).
+> 4. *Документация:* ADR-0036 — `## Amendment #298` (non-goal «Path/File-тела —
+>    -1» закрыт: движок репортит то, что сам измерил; supplier-контракт и
+>    -1 для неизвестных размеров не тронуты).
+> 5. *Гейт:* **1,656/1,656** green across all 5 modules (+12, 0 failures/errors),
+>    javadoc чист под `-Werror`.
+> 6. *Дальше:* оставшийся хвост — валидация `@ExpectStatus`/`@FollowRedirects`
+>    (#207 «фича, не дыра», трогать лишь при тихом исходе) или свободный аудит;
+>    кандидат №7 (rss/atom) всё ещё ждёт A/B-ответа Антона (с #284). Highest ADR
+>    **0067**, next free **0068**.
+
 > **Сессия #297 (хвост fixtures-javadoc — закрыт: class-level javadoc у всех
 > 17 типов `ru.jrestly.fixtures`; гейт 1,644/1,644 в силе, код — только
 > doc-комментарии):** последний незакрытый хвост кандидата №1 (test-javadoc):
@@ -2946,16 +2981,21 @@
 **решён (#296**, «задокументировано by design», ADR-0017 Amendment #296,
 wire-формат не менялся). **Кандидат №1 (test-javadoc) закрыт с хвостом
 (#297):** class-level javadoc у всех 17 типов `ru.jrestly.fixtures` — в
-дереве не осталось классов без class-level javadoc. Текущий гейт —
-**1,644/1,644** во всех 5 модулях. Следующий ход: Path/File-тела метрик
-(хвост ниже) или новый свободный аудит.
+дереве не осталось классов без class-level javadoc. **Хвост Path/File-тел
+метрик — закрыт (#299):** WIP прерванной #298 принят и верифицирован —
+engine-reported byte accounting (`WireRequest.knownBodySize`,
+`HttpTemplateBuilder.fileSizeBytes`, `MetricsNotifier.requestBytes`),
+ADR-0036 Amendment #298, гейт **1,656/1,656**. Следующий ход: свободный
+аудит или валидация `@ExpectStatus`/`@FollowRedirects` (хвост ниже).
 **Кандидат №8 проверен (#287): регрессии dispatch/аллокаций нет** (см.
 пометку выше). №7 (rss/atom) — разблокируется ответом Антона
 (вопрос A/B задан в mailbox #284/#285). Highest ADR **0067**, next free **0068**.
 Хвосты-кандидаты
-из аудит-нити (не эпики): Path/File-тела метрик (-1 вместо размера;
-engine-reported byte accounting), валидация `@ExpectStatus`/`@FollowRedirects`
-(инварианты нигде не объявлены — фича, не дыра; #207).
+из аудит-нити (не эпики): валидация `@ExpectStatus`/`@FollowRedirects`
+(инварианты нигде не объявлены — фича, не дыра; #207, трогать лишь при
+тихом исходе). **Path/File-тела метрик — закрыты в #299** (WIP прерванной
+#298: engine-reported byte accounting, ADR-0036 Amendment #298, гейт
+1,656/1,656).
 **Семантика `Duration.ZERO`-таймаута закрыта в #213**: `0` формально означает
 «без таймаута» на всех движках (ADR-0027 Amendment #213), `@ExpectStatus`/
 `@FollowRedirects` остаются решением #207 «фича, не дыра». **`@MultipartFormFile.partName`

@@ -126,17 +126,34 @@ final class MetricsNotifier {
         }
     }
 
-    // Package-private seam (ADR-0036 Amendment #193): a supplier-rendered
+    // Package-private seam (ADR-0036 Amendments #193 / #298): a supplier-rendered
     // body (ADR-0035 streaming payloads) is materialized per send, so the
     // probe must not invoke the supplier — it would run the user's producer
-    // one extra time per call and swallow its exceptions. Like multipart
-    // bodies, a streaming body's size is unknown to the metrics layer (-1)
+    // one extra time per call and swallow its exceptions. When the engine knew
+    // the body size at build time (Path/File streaming bodies, carried in
+    // WireRequest.knownBodySize), report it; otherwise a streaming body's size
+    // is unknown to the metrics layer (-1). Fully-known multipart bodies are
+    // measured from the rendered publisher (same seam as the INFO log).
     static long requestBytes(WireRequest request) {
         if (request == null) {
             return -1;
         }
         if (request.body() != null) {
             return request.body().length;
+        }
+        if (request.knownBodySize() != null) {
+            return request.knownBodySize();
+        }
+        if (request.parts() != null && request.boundary() != null) {
+            try {
+                long length = MultipartBodyPublisher.of(request.boundary(), request.parts()).contentLength();
+                if (length >= 0) {
+                    return length;
+                }
+            } catch (RuntimeException ignored) {
+                // a part that cannot be rendered (e.g. a missing file) does
+                // not fail the metrics probe
+            }
         }
         return -1;
     }

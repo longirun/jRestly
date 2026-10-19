@@ -16,15 +16,20 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
  * Unit gate for the ADR-0036 metrics byte accounting seams
  * ({@link MetricsNotifier#requestBytes(WireRequest)} /
  * {@link MetricsNotifier#responseBytes(WireResponse)}, ADR-0066 step 6):
- * buffered bodies are measured, supplier-rendered (streaming) bodies are
- * reported as unknown without invoking the user's producer
- * (ADR-0036 Amendment #193), and response bytes fall back to
- * {@code Content-Length} when the body is not buffered.
+ * buffered bodies are measured, engine-known streaming sizes (Path/File,
+ * fully-known multipart) are reported without invoking the user's producer
+ * (ADR-0036 Amendments #193 / #298), unknown streaming bodies stay -1,
+ * and response bytes fall back to {@code Content-Length} when the body
+ * is not buffered.
  */
 @DisplayName("MetricsNotifierBytesTest")
 class MetricsNotifierBytesTest {
 
     private static WireRequest request(byte[] body, Supplier<? extends HttpRequest.BodyPublisher> supplier) {
+        return request(body, supplier, null);
+    }
+
+    private static WireRequest request(byte[] body, Supplier<? extends HttpRequest.BodyPublisher> supplier, Long knownBodySize) {
         return new WireRequest(
                 HttpMethod.POST,
                 URI.create("https://example.com/upload"),
@@ -33,7 +38,22 @@ class MetricsNotifierBytesTest {
                 body,
                 null,
                 null,
-                supplier
+                supplier,
+                knownBodySize
+        );
+    }
+
+    private static WireRequest multipartRequest(String boundary, List<MultipartPart> parts) {
+        return new WireRequest(
+                HttpMethod.POST,
+                URI.create("https://example.com/multipart"),
+                List.of(),
+                "multipart/form-data; boundary=" + boundary,
+                null,
+                parts,
+                boundary,
+                null,
+                null
         );
     }
 
@@ -69,6 +89,62 @@ class MetricsNotifierBytesTest {
     void bodylessRequestIsUnknown() {
         assertEquals(-1, MetricsNotifier.requestBytes(request(null, null)));
         assertEquals(-1, MetricsNotifier.requestBytes(null));
+    }
+
+    @Test
+    @DisplayName("Engine-known streaming body size (Path/File) is reported without invoking the supplier (Amendment #298)")
+    void knownBodySizeIsReportedWithoutInvokingSupplier() {
+        AtomicInteger invocations = new AtomicInteger();
+        Supplier<HttpRequest.BodyPublisher> counting = () -> {
+            invocations.incrementAndGet();
+            return HttpRequest.BodyPublishers.noBody();
+        };
+
+        assertEquals(42L, MetricsNotifier.requestBytes(request(null, counting, 42L)));
+        assertEquals(0, invocations.get(), "metrics probe must not materialize the streaming body");
+    }
+
+    @Test
+    @DisplayName("Buffered byte[] body takes precedence over knownBodySize")
+    void bufferedBodyPrecedesKnownBodySize() {
+        byte[] body = "0123456789".getBytes(StandardCharsets.UTF_8);
+
+        assertEquals(body.length, MetricsNotifier.requestBytes(request(body, null, 99L)));
+    }
+
+    @Test
+    @DisplayName("Multipart size is measured from the rendered publisher when all parts are known (Amendment #298)")
+    void multipartSizeIsMeasured() {
+        String boundary = "jrestly-test-boundary";
+        List<MultipartPart> parts = List.of(
+                MultipartPart.text("field", "value"),
+                MultipartPart.file("doc", "doc.bin", "payload-bytes".getBytes(StandardCharsets.UTF_8))
+        );
+
+        long expected = MultipartBodyPublisher.of(boundary, parts).contentLength();
+        assertEquals(expected, MetricsNotifier.requestBytes(multipartRequest(boundary, parts)));
+    }
+
+    @Test
+    @DisplayName("Multipart with an unknown-size part is reported as -1")
+    void multipartWithUnknownPartSizeIsUnknown() {
+        String boundary = "jrestly-test-boundary";
+        List<MultipartPart> parts = List.of(
+                MultipartPart.text("field", "value"),
+                MultipartPart.file("doc", "doc.bin", () -> new java.io.ByteArrayInputStream(new byte[8]))
+        );
+
+        assertEquals(-1, MetricsNotifier.requestBytes(multipartRequest(boundary, parts)));
+    }
+
+    @Test
+    @DisplayName("A multipart rendering failure never fails the probe (-1)")
+    void multipartRenderingFailureIsUnknown() throws java.io.IOException {
+        String boundary = "jrestly-test-boundary";
+        java.nio.file.Path missing = java.nio.file.Files.createTempDirectory("jrestly-metrics-probe").resolve("missing.bin");
+        List<MultipartPart> parts = List.of(MultipartPart.file("doc", missing));
+
+        assertEquals(-1, MetricsNotifier.requestBytes(multipartRequest(boundary, parts)));
     }
 
     @Test

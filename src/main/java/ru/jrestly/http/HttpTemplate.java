@@ -99,6 +99,7 @@ class HttpTemplate {
     private List<Param> requestParams;
     private byte[] body;
     private Supplier<? extends HttpRequest.BodyPublisher> bodyPublisherSupplier;
+    private Long knownBodySize;
     private List<MultipartPart> multipartFormParts;
     private String multipartBoundary;
     private Type returnType;
@@ -173,7 +174,7 @@ class HttpTemplate {
      */
     @SuppressWarnings("unchecked")
     <T> T exchange() {
-        WireRequest request = new WireRequest(httpMethod, createUri(), headers, contentType, body, multipartFormParts, multipartBoundary, bodyPublisherSupplier);
+        WireRequest request = new WireRequest(httpMethod, createUri(), headers, contentType, body, multipartFormParts, multipartBoundary, bodyPublisherSupplier, knownBodySize);
 
         long start = System.nanoTime();
         boolean hasInterceptors = !requestInterceptors.isEmpty() || !responseInterceptors.isEmpty();
@@ -1688,6 +1689,26 @@ class HttpTemplate {
      */
     void setBodyPublisherSupplier(Supplier<? extends HttpRequest.BodyPublisher> bodyPublisherSupplier) {
         this.bodyPublisherSupplier = bodyPublisherSupplier;
+    }
+
+    /**
+     * The engine-known size in bytes of the streaming request body, or
+     * {@code null} when unknown. Carried into the wire request for the metrics
+     * byte-accounting seam (ADR-0036 Amendment #298).
+     *
+     * @return the known body size, or {@code null}
+     */
+    Long getKnownBodySize() {
+        return knownBodySize;
+    }
+
+    /**
+     * Sets the engine-known size in bytes of the streaming request body.
+     *
+     * @param knownBodySize the known body size in bytes, or {@code null} when unknown
+     */
+    void setKnownBodySize(Long knownBodySize) {
+        this.knownBodySize = knownBodySize;
     }
 
     /**

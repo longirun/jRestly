@@ -259,3 +259,59 @@ circuits). Unit-gated (sync + async, 4 tests):
 `RequestPipelineTest.circuitBreakerOpenRejectionPairedMetricsLifecycle`, and
 their async twins (onCallStart x1 before onCallComplete x1, no
 `onAttemptComplete`, `attempts() == 0`, no wire request captured).
+
+## Amendment #298
+
+2026-10-19 · Session #298 (backlog tail from Amendment #193:
+engine-reported byte accounting for Path/File streaming bodies and
+fully-known multipart bodies).
+
+Amendment #193 settled the supplier-rendered bodies (`-1`, no supplier
+invocation) but explicitly left a known refinement: file-backed
+`Path`/`File` streaming bodies still reported `-1` although the engine
+knows the exact size at build time, and fully-known multipart bodies
+(every part with a determined length) were also reported `-1` although
+the rendered publisher's `contentLength()` is exact by construction.
+
+Resolution:
+
+1. `WireRequest` carries a new, nullable ninth component
+   `knownBodySize` (Long) — the body size in bytes when the engine knows
+   it at build time. The builder populates it for `Path`/`File`
+   `@RequestBody` payloads via `Files.size(path)`; a vanished file degrades
+   to unknown (`null`) and the send fails at send time as before. A
+   backward-compatible eight-argument constructor is retained (canonical
+   constructor is now the nine-argument one; public API addition only).
+   Wither semantics are payload-aware: transport withers
+   (`withHeader`/`withoutHeader`/`withUri`/`withMethod`/`withContentType`)
+   preserve the value; payload withers (`withBody` ×2,
+   `withBodyPublisher`, `withBodyPublisherSupplier`) clear it, because the
+   replaced payload is not the measured one; `withParts` clears it only
+   when non-`null` parts are set. `Redirects.nextHop` preserves it on
+   307/308 method-preserving hops and drops it on the GET downgrade,
+   mirroring the body/parts/supplier triple.
+2. `MetricsNotifier.requestBytes` (the #193 seam, relocated by ADR-0066
+   step 6) now resolves, in order: buffered `byte[]` → exact length;
+   `knownBodySize` → the engine-known size; multipart (`parts` and
+   `boundary` present) → the rendered
+   `MultipartBodyPublisher.of(boundary, parts).contentLength()` (the sum
+   of part framing plus content, exact when every part's length is
+   known); otherwise `-1`. A rendering failure (e.g. a missing multipart
+   file) never fails the probe — it degrades to `-1`, matching the
+   fault-tolerance rule of the SPI.
+
+Supplier-rendered (`Supplier<…>`-backed) bodies remain `-1`: their size
+is only known after materialization, and #193's «do not invoke the
+supplier» contract is unchanged. The multipart probe renders the
+publisher once per completed call, so it allocates — but only with an
+active listener (opt-in), the same cost class as the INFO-level request
+log. Caveat: `knownBodySize` is measured at build time; a file modified
+between build and send reports the pre-send size (best-effort
+accounting, consistent with «size the engine knows»).
+
+Gates: unit — `MetricsNotifierBytesTest` (+5: known size without
+supplier invocation, buffered precedence, multipart exact / unknown-part
+/ rendering-failure) and `WireRequestTest` (+4: constructors, wither
+matrix, parts semantics, builder round-trip); e2e —
+`RequestBodyStreamingWireMockTest` (+3: Path body and File body report
+the real size to the listener, supplier body stays `-1`).

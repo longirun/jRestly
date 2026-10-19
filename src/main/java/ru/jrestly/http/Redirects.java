@@ -77,7 +77,8 @@ final class Redirects {
                 preserveMethod ? request.body() : null,
                 preserveMethod ? request.parts() : null,
                 preserveMethod ? request.boundary() : null,
-                preserveMethod ? request.bodyPublisherSupplier() : null);
+                preserveMethod ? request.bodyPublisherSupplier() : null,
+                preserveMethod ? request.knownBodySize() : null);
     }
 
     // The hop budget ran out while the server still answered with a redirect

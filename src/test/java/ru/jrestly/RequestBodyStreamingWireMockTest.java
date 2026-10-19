@@ -82,6 +82,12 @@ class RequestBodyStreamingWireMockTest {
         @Put("/upload/path")
         String uploadPath(@RequestBody Path path);
 
+        @Put("/upload/path-metrics")
+        String uploadPathMetrics(@RequestBody Path path);
+
+        @Put("/upload/file-metrics")
+        String uploadFileMetrics(@RequestBody java.io.File file);
+
         @Post("/upload/body-pub")
         String uploadBodyPublisher(@RequestBody HttpRequest.BodyPublisher bodyPublisher);
 
@@ -397,6 +403,101 @@ class RequestBodyStreamingWireMockTest {
             wireMock.verify(putRequestedFor(urlEqualTo("/upload/path")));
         } finally {
             Files.deleteIfExists(tempFile);
+        }
+    }
+
+    @Test
+    @DisplayName("Metrics listener reports the real size for a Path body, not -1 (ADR-0036 Amendment #298)")
+    void testUploadPathWithMetricsListenerReportsFileSize() throws IOException {
+        Path tempFile = Files.createTempFile("jrestly-upload-path-metrics-", ".txt");
+        try {
+            byte[] fileBytes = "metrics-path-body-12345".getBytes(StandardCharsets.UTF_8);
+            Files.write(tempFile, fileBytes);
+
+            wireMock.stubFor(put(urlEqualTo("/upload/path-metrics"))
+                    .withHeader("Content-Length", equalTo(String.valueOf(fileBytes.length)))
+                    .withRequestBody(equalTo("metrics-path-body-12345"))
+                    .willReturn(ok("OK_PATH_METRICS")));
+
+            long[] requestBytes = {-2};
+            JRestlyClient metricsClient = JRestlyClient.builder()
+                    .baseUrl("http://localhost:" + wireMock.port())
+                    .httpVersion(java.net.http.HttpClient.Version.HTTP_1_1)
+                    .metricsListener(metrics -> requestBytes[0] = metrics.requestBytes())
+                    .build();
+            try {
+                StreamingClient metricsApi = metricsClient.get(StreamingClient.class);
+                String result = metricsApi.uploadPathMetrics(tempFile);
+                assertEquals("OK_PATH_METRICS", result);
+                assertEquals(fileBytes.length, requestBytes[0],
+                        "Path body size must be reported to the metrics listener, not -1");
+                wireMock.verify(putRequestedFor(urlEqualTo("/upload/path-metrics")));
+            } finally {
+                metricsClient.close();
+            }
+        } finally {
+            Files.deleteIfExists(tempFile);
+        }
+    }
+
+    @Test
+    @DisplayName("Metrics listener reports the real size for a File body, not -1 (ADR-0036 Amendment #298)")
+    void testUploadFileWithMetricsListenerReportsFileSize() throws IOException {
+        Path tempFile = Files.createTempFile("jrestly-upload-file-metrics-", ".bin");
+        try {
+            byte[] fileBytes = "metrics-file-body-98765".getBytes(StandardCharsets.UTF_8);
+            Files.write(tempFile, fileBytes);
+
+            wireMock.stubFor(put(urlEqualTo("/upload/file-metrics"))
+                    .withHeader("Content-Length", equalTo(String.valueOf(fileBytes.length)))
+                    .withRequestBody(equalTo("metrics-file-body-98765"))
+                    .willReturn(ok("OK_FILE_METRICS")));
+
+            long[] requestBytes = {-2};
+            JRestlyClient metricsClient = JRestlyClient.builder()
+                    .baseUrl("http://localhost:" + wireMock.port())
+                    .httpVersion(java.net.http.HttpClient.Version.HTTP_1_1)
+                    .metricsListener(metrics -> requestBytes[0] = metrics.requestBytes())
+                    .build();
+            try {
+                StreamingClient metricsApi = metricsClient.get(StreamingClient.class);
+                String result = metricsApi.uploadFileMetrics(tempFile.toFile());
+                assertEquals("OK_FILE_METRICS", result);
+                assertEquals(fileBytes.length, requestBytes[0],
+                        "File body size must be reported to the metrics listener, not -1");
+                wireMock.verify(putRequestedFor(urlEqualTo("/upload/file-metrics")));
+            } finally {
+                metricsClient.close();
+            }
+        } finally {
+            Files.deleteIfExists(tempFile);
+        }
+    }
+
+    @Test
+    @DisplayName("Supplier-rendered body is still reported as -1 by the metrics listener (ADR-0036 Amendment #298 boundary)")
+    void testUploadSupplierWithMetricsListenerReportsUnknownSize() {
+        wireMock.stubFor(post(urlEqualTo("/upload/supplier-once"))
+                .withRequestBody(equalTo("supplier-once-payload"))
+                .willReturn(aResponse().withStatus(200).withBody("OK_SUPPLIER_ONCE")));
+
+        long[] requestBytes = {-2};
+        JRestlyClient metricsClient = JRestlyClient.builder()
+                .baseUrl("http://localhost:" + wireMock.port())
+                .httpVersion(java.net.http.HttpClient.Version.HTTP_1_1)
+                .metricsListener(metrics -> requestBytes[0] = metrics.requestBytes())
+                .build();
+        try {
+            StreamingClient metricsApi = metricsClient.get(StreamingClient.class);
+            Supplier<InputStream> supplier = () -> new ByteArrayInputStream("supplier-once-payload".getBytes(StandardCharsets.UTF_8));
+
+            String result = metricsApi.uploadSupplierOnce(supplier);
+            assertEquals("OK_SUPPLIER_ONCE", result);
+            assertEquals(-1, requestBytes[0],
+                    "Supplier-rendered bodies stay unknown (-1) — the size is only known after materialization");
+            wireMock.verify(postRequestedFor(urlEqualTo("/upload/supplier-once")));
+        } finally {
+            metricsClient.close();
         }
     }
 

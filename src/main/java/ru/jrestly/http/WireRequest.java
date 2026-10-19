@@ -29,6 +29,10 @@ import java.util.function.Supplier;
  * @param parts the multipart parts, or {@code null} for non-multipart requests; rendered per send as a streaming publisher
  * @param boundary the multipart boundary used to render {@code parts}, or {@code null} for non-multipart requests
  * @param bodyPublisherSupplier the body publisher supplier for streaming payloads, or {@code null}
+ * @param knownBodySize the request body size in bytes when the engine knows it at build time
+ *                      (Path/File streaming bodies), or {@code null} when unknown
+ *                      (ADR-0036 Amendment #298: the metrics byte-accounting seam reads
+ *                      it without materializing the body); unused when {@code body} is present
  */
 public record WireRequest(
         HttpMethod method,
@@ -38,7 +42,8 @@ public record WireRequest(
         byte[] body,
         List<MultipartPart> parts,
         String boundary,
-        Supplier<? extends HttpRequest.BodyPublisher> bodyPublisherSupplier
+        Supplier<? extends HttpRequest.BodyPublisher> bodyPublisherSupplier,
+        Long knownBodySize
 ) {
 
     /**
@@ -61,7 +66,33 @@ public record WireRequest(
             List<MultipartPart> parts,
             String boundary
     ) {
-        this(method, uri, headers, contentType, body, parts, boundary, null);
+        this(method, uri, headers, contentType, body, parts, boundary, null, null);
+    }
+
+    /**
+     * Backward-compatible canonical constructor without a known body size
+     * (ADR-0036 Amendment #298: {@code knownBodySize} stays {@code null}).
+     *
+     * @param method the HTTP method
+     * @param uri the target URI
+     * @param headers the headers
+     * @param contentType the Content-Type header
+     * @param body the raw payload bytes
+     * @param parts the multipart parts
+     * @param boundary the multipart boundary
+     * @param bodyPublisherSupplier the body publisher supplier for streaming payloads, or {@code null}
+     */
+    public WireRequest(
+            HttpMethod method,
+            URI uri,
+            List<Header> headers,
+            String contentType,
+            byte[] body,
+            List<MultipartPart> parts,
+            String boundary,
+            Supplier<? extends HttpRequest.BodyPublisher> bodyPublisherSupplier
+    ) {
+        this(method, uri, headers, contentType, body, parts, boundary, bodyPublisherSupplier, null);
     }
 
     /**
@@ -108,7 +139,7 @@ public record WireRequest(
         Objects.requireNonNull(header, "header");
         List<Header> updated = new ArrayList<>(this.headers != null ? this.headers : List.of());
         updated.add(header);
-        return new WireRequest(method, uri, Collections.unmodifiableList(updated), contentType, body, parts, boundary, bodyPublisherSupplier);
+        return new WireRequest(method, uri, Collections.unmodifiableList(updated), contentType, body, parts, boundary, bodyPublisherSupplier, knownBodySize);
     }
 
     /**
@@ -122,7 +153,7 @@ public record WireRequest(
         Objects.requireNonNull(newHeaders, "newHeaders");
         List<Header> updated = new ArrayList<>(this.headers != null ? this.headers : List.of());
         updated.addAll(newHeaders);
-        return new WireRequest(method, uri, Collections.unmodifiableList(updated), contentType, body, parts, boundary, bodyPublisherSupplier);
+        return new WireRequest(method, uri, Collections.unmodifiableList(updated), contentType, body, parts, boundary, bodyPublisherSupplier, knownBodySize);
     }
 
     /**
@@ -143,7 +174,7 @@ public record WireRequest(
         if (filtered.size() == headers.size()) {
             return this;
         }
-        return new WireRequest(method, uri, filtered, contentType, body, parts, boundary, bodyPublisherSupplier);
+        return new WireRequest(method, uri, filtered, contentType, body, parts, boundary, bodyPublisherSupplier, knownBodySize);
     }
 
     /**
@@ -155,7 +186,7 @@ public record WireRequest(
      */
     public WireRequest withUri(URI newUri) {
         Objects.requireNonNull(newUri, "newUri");
-        return new WireRequest(method, newUri, headers, contentType, body, parts, boundary, bodyPublisherSupplier);
+        return new WireRequest(method, newUri, headers, contentType, body, parts, boundary, bodyPublisherSupplier, knownBodySize);
     }
 
     /**
@@ -167,49 +198,53 @@ public record WireRequest(
      */
     public WireRequest withMethod(HttpMethod newMethod) {
         Objects.requireNonNull(newMethod, "newMethod");
-        return new WireRequest(newMethod, uri, headers, contentType, body, parts, boundary, bodyPublisherSupplier);
+        return new WireRequest(newMethod, uri, headers, contentType, body, parts, boundary, bodyPublisherSupplier, knownBodySize);
     }
 
     /**
      * Returns a copy of this request with the specified payload body and Content-Type.
+     * A new body replaces the measured payload, so {@code knownBodySize} is cleared.
      *
      * @param newBody the new raw payload bytes, or {@code null}
      * @param newContentType the new Content-Type header value, or {@code null}
      * @return a new {@link WireRequest} with the body and content type updated
      */
     public WireRequest withBody(byte[] newBody, String newContentType) {
-        return new WireRequest(method, uri, headers, newContentType, newBody, parts, boundary, null);
+        return new WireRequest(method, uri, headers, newContentType, newBody, parts, boundary, null, null);
     }
 
     /**
      * Returns a copy of this request with the specified payload body, preserving existing Content-Type.
+     * A new body replaces the measured payload, so {@code knownBodySize} is cleared.
      *
      * @param newBody the new raw payload bytes, or {@code null}
      * @return a new {@link WireRequest} with the body updated
      */
     public WireRequest withBody(byte[] newBody) {
-        return new WireRequest(method, uri, headers, contentType, newBody, parts, boundary, null);
+        return new WireRequest(method, uri, headers, contentType, newBody, parts, boundary, null, null);
     }
 
     /**
      * Returns a copy of this request with the specified streaming body publisher.
+     * The new publisher is not the size-measured one, so {@code knownBodySize} is cleared.
      *
      * @param publisher the body publisher, or {@code null}
      * @return a new {@link WireRequest} with the streaming body publisher set and raw body cleared
      */
     public WireRequest withBodyPublisher(HttpRequest.BodyPublisher publisher) {
         Supplier<? extends HttpRequest.BodyPublisher> supplier = publisher != null ? () -> publisher : null;
-        return new WireRequest(method, uri, headers, contentType, null, parts, boundary, supplier);
+        return new WireRequest(method, uri, headers, contentType, null, parts, boundary, supplier, null);
     }
 
     /**
      * Returns a copy of this request with the specified streaming body publisher supplier.
+     * The new supplier is not the size-measured one, so {@code knownBodySize} is cleared.
      *
      * @param supplier the body publisher supplier, or {@code null}
      * @return a new {@link WireRequest} with the streaming body supplier set and raw body cleared
      */
     public WireRequest withBodyPublisherSupplier(Supplier<? extends HttpRequest.BodyPublisher> supplier) {
-        return new WireRequest(method, uri, headers, contentType, null, parts, boundary, supplier);
+        return new WireRequest(method, uri, headers, contentType, null, parts, boundary, supplier, null);
     }
 
     /**
@@ -219,18 +254,22 @@ public record WireRequest(
      * @return a new {@link WireRequest} with the content type updated
      */
     public WireRequest withContentType(String newContentType) {
-        return new WireRequest(method, uri, headers, newContentType, body, parts, boundary, bodyPublisherSupplier);
+        return new WireRequest(method, uri, headers, newContentType, body, parts, boundary, bodyPublisherSupplier, knownBodySize);
     }
 
     /**
      * Returns a copy of this request with the specified multipart parts and boundary.
+     * Setting multipart parts replaces the measured payload, so a non-{@code null}
+     * {@code newParts} clears {@code knownBodySize}; clearing the parts back to
+     * {@code null} keeps the existing value.
      *
      * @param newParts the multipart parts, or {@code null}
      * @param newBoundary the multipart boundary, or {@code null}
      * @return a new {@link WireRequest} with parts and boundary updated
      */
     public WireRequest withParts(List<MultipartPart> newParts, String newBoundary) {
-        return new WireRequest(method, uri, headers, contentType, body, newParts, newBoundary, bodyPublisherSupplier);
+        return new WireRequest(method, uri, headers, contentType, body, newParts, newBoundary, bodyPublisherSupplier,
+                newParts != null ? null : knownBodySize);
     }
 
     /**
@@ -246,7 +285,8 @@ public record WireRequest(
                 .body(body)
                 .parts(parts)
                 .boundary(boundary)
-                .bodyPublisherSupplier(bodyPublisherSupplier);
+                .bodyPublisherSupplier(bodyPublisherSupplier)
+                .knownBodySize(knownBodySize);
         if (headers != null) {
             builder.headers(headers);
         }
@@ -274,6 +314,7 @@ public record WireRequest(
         private List<MultipartPart> parts;
         private String boundary;
         private Supplier<? extends HttpRequest.BodyPublisher> bodyPublisherSupplier;
+        private Long knownBodySize;
 
         private Builder() {
         }
@@ -408,13 +449,25 @@ public record WireRequest(
         }
 
         /**
+         * Sets the engine-known request body size (ADR-0036 Amendment #298).
+         *
+         * @param knownBodySize the request body size in bytes when the engine knows it
+         *                      at build time (Path/File streaming bodies), or {@code null} when unknown
+         * @return this builder, for chaining
+         */
+        public Builder knownBodySize(Long knownBodySize) {
+            this.knownBodySize = knownBodySize;
+            return this;
+        }
+
+        /**
          * Builds an immutable {@link WireRequest} instance.
          *
          * @return the constructed {@link WireRequest}
          */
         public WireRequest build() {
             List<Header> finalHeaders = headers != null ? Collections.unmodifiableList(new ArrayList<>(headers)) : null;
-            return new WireRequest(method, uri, finalHeaders, contentType, body, parts, boundary, bodyPublisherSupplier);
+            return new WireRequest(method, uri, finalHeaders, contentType, body, parts, boundary, bodyPublisherSupplier, knownBodySize);
         }
     }
 }

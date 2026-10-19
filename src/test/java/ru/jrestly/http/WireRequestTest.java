@@ -209,4 +209,63 @@ class WireRequestTest {
         assertNotNull(copy.bodyPublisherSupplier());
         assertSame(publisher, copy.bodyPublisherSupplier().get());
     }
+
+    @Test
+    @DisplayName("knownBodySize: 9-arg constructor carries it, 8-arg compatible ctor defaults to null (ADR-0036 Amendment #298)")
+    void knownBodySizeConstructors() {
+        java.net.http.HttpRequest.BodyPublisher publisher = java.net.http.HttpRequest.BodyPublishers.noBody();
+
+        WireRequest compat = new WireRequest(HttpMethod.POST, URI_A, List.of(), "application/octet-stream", null, null, null, () -> publisher);
+        assertNull(compat.knownBodySize());
+
+        WireRequest withSize = new WireRequest(HttpMethod.POST, URI_A, List.of(), "application/octet-stream", null, null, null, () -> publisher, 42L);
+        assertEquals(42L, withSize.knownBodySize());
+    }
+
+    @Test
+    @DisplayName("knownBodySize: transport withers preserve it, payload withers clear it (ADR-0036 Amendment #298)")
+    void knownBodySizeWitherSemantics() {
+        java.net.http.HttpRequest.BodyPublisher publisher = java.net.http.HttpRequest.BodyPublishers.noBody();
+        WireRequest initial = new WireRequest(HttpMethod.POST, URI_A, List.of(new Header("A", "1")), "application/octet-stream", null, null, null, () -> publisher, 42L);
+
+        assertEquals(42L, initial.withHeader("B", "2").knownBodySize());
+        assertEquals(42L, initial.withoutHeader("A").knownBodySize());
+        assertEquals(42L, initial.withUri(URI_B).knownBodySize());
+        assertEquals(42L, initial.withMethod(HttpMethod.PUT).knownBodySize());
+        assertEquals(42L, initial.withContentType("application/x-bin").knownBodySize());
+
+        assertNull(initial.withBody(new byte[]{1}, null).knownBodySize());
+        assertNull(initial.withBody(new byte[]{1}).knownBodySize());
+        assertNull(initial.withBodyPublisher(publisher).knownBodySize());
+        assertNull(initial.withBodyPublisherSupplier(() -> publisher).knownBodySize());
+    }
+
+    @Test
+    @DisplayName("knownBodySize: withParts clears it when parts are set, preserves it when parts stay null (ADR-0036 Amendment #298)")
+    void knownBodySizeWithPartsSemantics() {
+        java.net.http.HttpRequest.BodyPublisher publisher = java.net.http.HttpRequest.BodyPublishers.noBody();
+        WireRequest initial = new WireRequest(HttpMethod.POST, URI_A, List.of(), "application/octet-stream", null, null, null, () -> publisher, 42L);
+
+        assertNull(initial.withParts(List.of(MultipartPart.text("a", "b")), "boundary-1").knownBodySize());
+        assertEquals(42L, initial.withParts(null, null).knownBodySize());
+    }
+
+    @Test
+    @DisplayName("knownBodySize: builder and toBuilder round-trip (ADR-0036 Amendment #298)")
+    void knownBodySizeBuilderRoundTrip() {
+        java.net.http.HttpRequest.BodyPublisher publisher = java.net.http.HttpRequest.BodyPublishers.noBody();
+        WireRequest initial = WireRequest.builder()
+                .method(HttpMethod.POST)
+                .uri(URI_A)
+                .bodyPublisher(publisher)
+                .knownBodySize(42L)
+                .build();
+        assertEquals(42L, initial.knownBodySize());
+
+        WireRequest copy = initial.toBuilder().build();
+        assertEquals(42L, copy.knownBodySize());
+
+        WireRequest resized = initial.toBuilder().knownBodySize(7L).build();
+        assertEquals(7L, resized.knownBodySize());
+    }
 }
