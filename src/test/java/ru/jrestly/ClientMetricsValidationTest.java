@@ -24,6 +24,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -212,6 +213,38 @@ class ClientMetricsValidationTest {
         // Default interface onRetry is a no-op
         ClientMetricsListener defaultListener = metrics -> {};
         defaultListener.onRetry(context, wireReq, 1, new IOException("default-retry"), Duration.ZERO);
+    }
+
+    @Test
+    @DisplayName("ClientMetricsListener.composite passes a single listener through unchanged")
+    void testCompositeSingleListenerPassthrough() throws NoSuchMethodException {
+        int[] called = new int[]{0};
+        ClientMetricsListener only = metrics -> called[0]++;
+
+        // Zero-indirection fast path: composite of exactly one listener must be that listener itself
+        ClientMetricsListener passthrough = ClientMetricsListener.composite(only);
+        assertSame(only, passthrough);
+
+        passthrough.onCallComplete(singleListenerDummyMetrics());
+        assertEquals(1, called[0]);
+    }
+
+    private SimpleCallMetrics singleListenerDummyMetrics() throws NoSuchMethodException {
+        return new SimpleCallMetrics(
+                new SimpleRequestContext(
+                        "test-mod",
+                        ValidController.class,
+                        Object.class.getMethod("toString"),
+                        new Object[0]
+                ),
+                new WireRequest(HttpMethod.GET, URI.create("http://localhost/api"), List.of(), null, null, null, null),
+                Optional.empty(),
+                Optional.empty(),
+                Duration.ofMillis(10),
+                1,
+                -1,
+                -1
+        );
     }
 
     @Test

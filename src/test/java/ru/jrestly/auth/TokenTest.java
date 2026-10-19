@@ -67,6 +67,17 @@ class TokenTest {
     }
 
     @Test
+    @DisplayName("Token.isExpired(null) treats the missing refresh buffer as zero")
+    void nullRefreshBufferTreatedAsZero() {
+        Instant expiresAt = Instant.now().plusSeconds(5);
+        Token token = Token.of("null-buffered-token", expiresAt);
+
+        // A null buffer collapses to the zero window, identical to the no-arg isExpired()
+        assertFalse(token.isExpired(null));
+        assertFalse(token.isExpired());
+    }
+
+    @Test
     @DisplayName("Token constructor and factories reject null values")
     void nullValidation() {
         assertThrows(NullPointerException.class, () -> Token.of(null));

@@ -1,5 +1,15 @@
 # DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
+> **Сессия #304 (**пересечён рубеж 90% BRANCH coverage впервые в истории библиотеки**: 3,992/4,429 = **90.13%**; гейт 1,665/1,665; 4 новых теста — 4 целевых недостающих ветви закрыты байт-в-байт по XML-отчёту):**
+> 1. *Цели выбраны по XML-отчёту JaCoCo (12 файлов с ровно 1 missed branch):* (a) `MultipartPart.part(name, filename, contentType, null)` — документированный `@param content … or null for empty content`, 3-арг-перегрузка была покрыта, 4-арг — нет; (b) `ClientMetricsListener.composite(single)` — zero-indirection fast-path `return list.getFirst()` при единственном слушателе (дух ADR-0055); (c) `ShortCircuitInterceptor.intercept` — терпимый null-возврат `shortCircuit` (guard `synthetic != null` в default-методе, L34);
+>    (d) `Token.isExpired(null)` — null-buffer коллапсирует в `Duration.ZERO`, поведение идентично no-arg-перегрузке.
+> 2. *Тесты (+4, точно по стилю сьютов):* `MultipartPartFlexibilityTest.partWithFilenameNullContent` (filename сохраняется, content = `byte[0]`); `ClientMetricsValidationTest.testCompositeSingleListenerPassthrough` (`assertSame(only, composite(only))` + делегирование); `ShortCircuitInterceptorTest.shortCircuitReturningNullProceedsNormally` (никаких NPE, request тот же, не short-circuited); `TokenTest.nullRefreshBufferTreatedAsZero`.
+> 3. *Проверка по XML после гейта:* все 4 целевые строки покрыты полностью (`ShortCircuitInterceptor:34` 4/4, `MultipartPart:118` 2/2, `ClientMetricsListener:114` 2/2, `Token:80` 2/2).
+> 4. *Гейты:* **1,665/1,665** green во всех 5 модулях (+4, 0 failures/errors), javadoc чист под `-Werror`. Код `src/main` не тронут — файлы только тестовые (javadoc-гейт прогаран отдельно для порядка).
+> 5. *JaCoCo (четыре новых исторических рекорда за сессию):* CLASS **149/149 (100.00%)**; METHOD **1449/1449 (100.00%)**; **BRANCH 3,992/4,429 (90.13%)** — **впервые пробит рубеж 90%** (было 89.98%); INSTRUCTION 30,936/31,525 (**98.13%**, было 98.09%); LINE 6,725/6,878 (**97.78%**, было 97.75%); COMPLEXITY 3,263/3,696 (**88.28%**, было 88.10%).
+>    *Оговорка о марже:* разница full-run'ов — джиттер-зависимые ветви RetryPolicy/RateLimiters (±1–2 ветви из прогона к прогону); запас над рубежом +5 ветвей — джиттер его не съест, но ближайшие +N ветвей из этого пула дадут дополнительный запас.
+> 6. *Дальше:* `byte[]`-скаляр в headers/params (решить wire-формат: ISO-8859-1/Base64/`IllegalArgumentException` — TDD + javadoc аннотаций) или аудит engine/tracing/codec. Кандидат №7 (rss/atom) ждёт A/B-ответа Антона. Highest ADR **0067**, next free **0068**.
+
 > **Сессия #303 (свободный аудит ResponseHeaders & CircuitBreakers: устранены dead checks в ResponseHeaders и CircuitBreakers, покрыт CircuitBreakerOpenException(null); 100% METHOD/CLASS coverage — 1449/1449, 149/149; BRANCH 89.98%, COMPLEXITY 88.10%; гейт 1,661/1,661):**
 > 1. *ResponseHeaders dead-checks:* (a) `version()` — `this.version` гарантированно non-null (инициализирован и нормализуется в `doPopulate`), тернарный оператор заменен на прямой возврат; (b) `firstTrailer` и `firstValue` — списки в `trailerMap` и `headerMap` не бывают пустыми, убраны избыточные `values.isEmpty()` проверки; (c) `declaredTrailers` — убран избыточный `val != null`; (d) `parseCookies` — убраны избыточные `header != null`; (e) `cookieMap` — убраны мертвые `c.getName() != null` и `c.getValue() != null ? ... : ""` (парсер `HttpCookie` гарантирует не-null). `ResponseHeaders` достиг 100% инструкций (1222/1222) и строк (281/281), missed branches упали с 15 до 7.
 > 2. *CircuitBreakers:* в `evaluateHalfOpenTransition()` устранена недостижимая ветка `else -> tripToOpen()`: неудачи в `HALF_OPEN` мгновенно триггерят `tripToOpen()` в `recordFailure`, поэтому в `evaluateHalfOpenTransition()` приходят только успешные вызовы (схема возвращается в `CLOSED` при достижении порога пробных вызовов).
@@ -3103,6 +3113,10 @@ Path knownBodySize проверен, достигнуто 100% METHOD/CLASS cove
 в `ResponseHeaders` (version, firstTrailer, declaredTrailers, firstValue, parseCookies, cookieMap),
 устранена dead else-ветка в `CircuitBreakers.evaluateHalfOpenTransition()`, покрыт
 `CircuitBreakerOpenException(null)`, гейт **1,661/1,661**, BRANCH достигла **89.98%**.
+**Рубеж 90% BRANCH coverage — взят (#304):** 4 целевых недостающих ветви закрыты тестами
+(4-арг `MultipartPart.part(null)`, `composite(single)` fast-path, null-возврат `ShortCircuitInterceptor.shortCircuit`,
+`Token.isExpired(null)`), **BRANCH 3,992/4,429 = 90.13%** — впервые в истории библиотеки;
+INSTRUCTION 98.13%, LINE 97.78%, COMPLEXITY 88.28% — новые рекорды; гейт **1,665/1,665**.
 Следующий ход: хвост byte[]-скаляра в headers/params (решить wire-формат) или аудит engine/tracing/codec.
 **Кандидат №8 проверен (#287): регрессии dispatch/аллокаций нет** (см.
 пометку выше). №7 (rss/atom) — разблокируется ответом Антона

@@ -136,6 +136,21 @@ class ShortCircuitInterceptorTest {
     }
 
     @Test
+    @DisplayName("shortCircuit returning null is tolerated as pass-through")
+    void shortCircuitReturningNullProceedsNormally() throws Exception {
+        var method = Object.class.getMethod("toString");
+        SimpleRequestContext context = new SimpleRequestContext("testModule", Object.class, method, new Object[0]);
+
+        ShortCircuitInterceptor interceptor = (request, ctx) -> null;
+
+        WireRequest req = new WireRequest(HttpMethod.GET, URI.create("http://localhost/test"), List.of(), null, null);
+        WireRequest returnedReq = interceptor.intercept(req, context);
+
+        assertSame(req, returnedReq);
+        assertFalse(context.isShortCircuited());
+    }
+
+    @Test
     @DisplayName("ShortCircuitInterceptor.matching() applies conditional short-circuit")
     void shortCircuitInterceptorMatching() throws Exception {
         var method = Object.class.getMethod("toString");

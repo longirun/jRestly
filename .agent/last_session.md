@@ -1,70 +1,67 @@
-# Last Session: #303 (2026-10-19)
+# Last Session: #304 (2026-10-19)
 
 ## Что сделано
 
-**Сессия #303: свободный аудит `ResponseHeaders` & `CircuitBreakers` — устранены
-dead-checks в `ResponseHeaders` и `CircuitBreakers`, покрыт `CircuitBreakerOpenException(null)`;
-100% METHOD/CLASS покрытие (1449/1449, 149/149); новые рекорды JaCoCo
-(BRANCH 89.98%, COMPLEXITY 88.10%); гейт 1,661/1,661.**
+**Сессия #304: пересечён рубеж 90% BRANCH coverage впервые в истории библиотеки
+(3,992/4,429 = 90.13%); 4 целевых недостающих ветви закрыты новыми тестами
+(код `src/main` не тронут); гейт 1,665/1,665 — четыре новых рекорда JaCoCo.**
 
-1. *ResponseHeaders dead-checks:*
-   - `version()`: поле `this.version` гарантированно non-null (инициализировано `HTTP_1_1`
-     и нормализуется в `doPopulate`), тернарный оператор `version != null ? version : HTTP_1_1`
-     заменён на прямой `return version;` (-1 missed branch, -1 missed instruction).
-   - `firstTrailer(name)` и `firstValue(name)`: списки в `trailerMap` и `headerMap` не бывают пустыми
-     (создаются через `computeIfAbsent().add()`), убраны избыточные проверки `values.isEmpty()` (-2 missed branches).
-   - `declaredTrailers()`: значения из `allValues("Trailer")` всегда non-null строки, убран избыточный `val != null` (-1 missed branch).
-   - `parseCookies()`: элементы из `allValues("Set-Cookie")` и `allValues("Set-Cookie2")` всегда non-null,
-     убраны избыточные `header != null` (-2 missed branches).
-   - `cookieMap()`: `HttpCookie.parse()` гарантирует non-null имя и значение (пустое значение даёт `""`),
-     убраны избыточные `c.getName() != null` и `c.getValue() != null ? ... : ""` (-2 missed branches, -1 missed instruction).
-   - *Итог по `ResponseHeaders`:* INSTRUCTION **1222/1222 (100.00%)**, LINE **281/281 (100.00%)**, missed branches упали с 15 до **7**.
-2. *CircuitBreakers:* в `evaluateHalfOpenTransition()` устранена недостижимая ветка `else -> tripToOpen()`:
-   неудачи в `HALF_OPEN` мгновенно триггерят `tripToOpen()` в `recordFailure`, поэтому метод
-   `evaluateHalfOpenTransition()` вызывается исключительно из `recordSuccess()`, где `halfOpenFailureCount`
-   гарантированно равен 0. Метод упрощён до чистой логики:
-   `if (halfOpenSuccessCount >= config.permittedNumberOfCallsInHalfOpenState()) { resetClosedState(); }`.
-3. *CircuitBreakerOpenException:* покрыт случай `remainingWaitDuration == null` (дефолт `Duration.ZERO` и `0 ms` в сообщении).
-   `CircuitBreakerOpenException` достиг **100% покрытия** по всем метрикам (INSTRUCTION, BRANCH, LINE, COMPLEXITY, METHOD, CLASS).
-4. *Гейты:* **1,661/1,661** green во всех 5 модулях (+1 новый тест, 0 failures/errors),
-   javadoc чист под `-Werror`.
-5. *JaCoCo (новые исторические рекорды):*
-   - CLASS: **149/149 (100.00%)**
-   - METHOD: **1449/1449 (100.00%)**
-   - INSTRUCTION: 30,923/31,525 (**98.09%**)
-   - BRANCH: 3,985/4,429 (**89.98%**, было 89.80% — всего 2 ветки до 90%!)
-   - LINE: 6,723/6,878 (**97.75%**)
-   - COMPLEXITY: 3,256/3,696 (**88.10%**, было 87.86%)
+1. *Точная карта:* по XML-отчёту (`build/reports/jacoco/test/jacocoTestReport.xml`)
+   в ядре оставалось 12 файлов с ровно 1 missed branch. Выбраны 4 с честно
+   документированными/осмысленными ветвями:
+   - `MultipartPart.part(name, filename, contentType, null)` → `byte[0]` — javadoc
+     «or null for empty content» (3-арг-перегрузка уже была покрыта, 4-арг — нет);
+   - `ClientMetricsListener.composite(single)` → `assertSame(only, composite)` —
+     zero-indirection fast-path `return list.getFirst()`;
+   - `ShortCircuitInterceptor.intercept` — default-метод терпит null-возврат
+     `shortCircuit` (guard `synthetic != null`) как отсутствие шорт-сircuit'а;
+   - `Token.isExpired(null)` → null-buffer ⇒ `Duration.ZERO` (идентично no-arg
+     перегрузке).
+2. *Тесты (+4):* `MultipartPartFlexibilityTest.partWithFilenameNullContent`,
+   `ClientMetricsValidationTest.testCompositeSingleListenerPassthrough`,
+   `ShortCircuitInterceptorTest.shortCircuitReturningNullProceedsNormally`,
+   `TokenTest.nullRefreshBufferTreatedAsZero`. Проверка после гейта по XML:
+   все 4 целевые строки 4/4, 2/2, 2/2, 2/2.
+3. *Гейты:* **1,665/1,665** green во всех 5 модулях (+4, 0 failures/errors),
+   javadoc чист под `-Werror` (отдельный прогон; main не менялся).
+4. *JaCoCo (четыре рекорда):* **BRANCH 3,992/4,429 (90.13%)** — впервые >90%;
+   INSTRUCTION 30,936/31,525 (**98.13%**); LINE 6,725/6,878 (**97.78%**);
+   COMPLEXITY 3,263/3,696 (**88.28%**); METHOD 1449/1449 и CLASS 149/149 — 100%.
+   *Маржа:* полные прогоны дрейфуют ±1–2 ветвями за счёт джиттер-зависимых ветвей
+   RetryPolicy/RateLimiters; текущий запас над рубежом — +5 ветвей.
+5. Сессийный счётчик: **304 — закоммичен в коммите #304. СЛЕДУЮЩЕЙ (#305) —
+   докрутить до 305 в начале сессии** (в коммите = номер текущей сессии; не
+   докручивать повторно после коммита).
 
-## Контекст для следующей сессии (#304)
+## Контекст для следующей сессии (#305)
 
-1. **Ветка** `agent-loop`; HEAD — коммит сессии #303 (см. `git log -1`).
+1. **Ветка** `agent-loop`; HEAD — коммит сессии #304 (см. `git log -1`).
 2. **Highest ADR:** **0067** (`docs/0.11.0/`), next free **0068**.
 3. **СЛЕДУЮЩИЙ ХОД (автономный, бэклог):**
-   - (a) **Рубеж 90% BRANCH coverage** (осталось всего 2 ветки!):
-     - `ru/jrestly/resilience/RateLimiters$TokenBucketRateLimiter`: прерывание ожидания в `tryAcquire` (InterruptedException) или `elapsed <= 0` в `refill`;
-     - `ru/jrestly/resilience/CircuitBreakers$InMemoryCircuitBreaker`: ветки в `checkAutoHalfOpenTransition` или `recordOutcomeInRingBuffer`;
-     - `ru/jrestly/engine/JdkHttpEngine` или `ru/jrestly/tracing/TraceContext`;
-   - (b) `byte[]`-скаляр в `appendHeaderValues`/`appendParamValues` (решить wire-формат:
-     ISO-8859-1 vs Base64 vs `IllegalArgumentException: Unsupported parameter type byte[]`;
-     задокументировать тип аргумента в javadoc аннотаций + TDD);
+   - (a) **`byte[]`-скаляр в `appendHeaderValues`/`appendParamValues`** — главный
+     хвост аудита #301 (`HttpTemplateBuilder`): сейчас `byte[]` падает в
+     `value.toString()` (`[B@…` на проводе). Решить wire-формат:
+     ISO-8859-1 vs Base64 vs `IllegalArgumentException: Unsupported parameter
+     type byte[]`; зафиксировать решение в javadoc `@RequestHeader`/`@RequestParam`
+     + ADR-заметка; TDD red-first. *Сначала проверить: доходит ли `byte[]` вообще
+     до этих call-site (валидация параметров, `MethodMetadata`-descriptor'ы)?*
+   - (b) свободный аудит `engine/tracing/codec`-кластеров (в #301–#303 не читались
+     `TraceContext`/`TracePropagators` детально; под фонарём ещё ~11 файлов с
+     ровно 1 missed branch на 90%+ фоне — см. `RateLimiters` L66/L123).
    - Кандидат №7 (rss/atom) всё ещё заблокирован на A/B-слове Антона
      (parse-only vs fetch-and-parse; ядро vs codec-субмодуль — с #284).
 4. **Грабли/паттерны (важно!):**
-   - В `ResponseHeaders`: списки в `headerMap` и `trailerMap` создаются через `computeIfAbsent().add()`,
-     поэтому они никогда не бывают пустыми; значения в них всегда non-null строки.
-   - `HttpCookie.parse()` никогда не возвращает null для имени или значения (пустое значение — это `""`).
-   - В `CircuitBreakers`: ошибки в `HALF_OPEN` сразу триггерят `tripToOpen()` в `recordFailure`,
-     поэтому `evaluateHalfOpenTransition()` вызывается только на успехе и проверяет `halfOpenSuccessCount`.
-   - `@RequestHeader`: атрибут `value()` задаёт статический заголовок на методе/типе
-     и ИГНОРИРУЕТСЯ на параметрах метода! На параметрах для явного имени всегда
-     использовать `@RequestHeader(name = "X")`, иначе имя берется из имени Java-параметра (грабля #302).
-   - Switch по enum `CollectionFormat`: константы `EXPLODE, DEFAULT` объединяются
-     в один case, делая switch exhaustive без dead `default`-веток.
-   - Сейт для «счётчиков вызовов» без изменения продакшена: `@TargetUrl`
-     принимает `CharSequence` — аргумент со счётчиком `toString()`.
-   - Счётчики тестов — питоном по `TEST-*.xml` всех модулей (`bc` нет).
-     Фильтр тестов `:test --tests 'X'` (ведущий `:` обязателен).
-   - `GRADLE_USER_HOME=/tmp/opencode/gradle-home` обязателен.
-   - Часовой пояс контейнера +04 (логи log4j — UTC); счётчик сессий: **303**
-     (закоммичен в этом коммите — не докручивать повторно, следующий — 304).
+   - JaCoCo — источник правды: `build/reports/jacoco/test/jacocoTestReport.xml`
+     (только core-модуль); счётчик тестов — по `TEST-*.xml` всех модулей.
+   - Полный гейт `./gradlew test` ~3–4 мин; фильтр `:test --tests 'X'` (ведущий `:`
+     обязателен); `GRADLE_USER_HOME=/tmp/opencode/gradle-home` обязателен.
+   - Во всех перечисленных в этой сессии seam'ах false-сторона guard'ов —
+     «проглатывающие» дефолты (null → нет шорт-сircuit; null-buffer = ZERO;
+     4-арг часть с null = пустое тело) — defensives задокументированы тестами,
+     не удалены (прецедент #267/#268 — покрывать reachable-by-seam defensive,
+     а не ломать контракт).
+   - 12 файлов с ровно 1 missed branch остались (см. `RateLimiters` L66/L123,
+     `BearerAuth` L84, `BasicAuth` L88, `CodecRegistry` L137/L162, `RetryPolicy`
+     L347/L355, `OnErrorParser` L102/L105, `HttpEngineResolver` L45/L48 и др.)
+     — пул для будущих +N ветвей маржи.
+   - Часовой пояс контейнера +04 (логи log4j — UTC).
