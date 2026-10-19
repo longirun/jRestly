@@ -1,5 +1,17 @@
 # DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
+> **Сессия #332 (ADR-0075 — оформление Кандидата №14: header-merge инварианты, live trace-view, response-map fast-paths; код не тронут, гейт 1,809/1,809 в силе от #330):**
+> 1. *Приём состояния:* HEAD `acf0ec3` (#331), чистое дерево (только счётчик 332), слов Антона в mailbox'е нет (последние записи — мои, #331).
+> 2. *ADR-0075* (`docs/0.12.0/ADR-0075-header-merge-invariants-and-allocation-pruning.md`, Accepted; стиль-эталон — ADR-0072): формализация трёх зон Кандидата №14 как архитектурных решений с инвариантами и амплитудой:
+>    - **Д1:** merge без `HashSet` — прямой case-insensitive O(a·s) скан; инвариант порядка (выживший ambient на своём месте → statics → dynamics → `Accept-Encoding` последним); статическая декларация бьёт ambient по имени; crossover на больших ambient-списках — задокументированный non-goal.
+>    - **Д2:** `removeHeaderByName` (reverse in-place) / `hasHeaderNamed` (plain scan) вместо lambda/Stream; null-имена пропускаются (ambient provider — публичное стыко-место).
+>    - **Д3:** единственный unmodifiable-wrap — compact-конструктор `TraceRequestContext`; live-view семантика (саминжектированный header виден через view) зафиксирована структурно.
+>    - **Д4:** `ResponseHeaders.buildValueMap` — shape-driven: пусто ⇒ `emptyMap()`-singleton, single-value ⇒ компактный `List.of`, multi-value ⇒ unmodifiable; `TreeMap(CASE_INSENSITIVE_ORDER)`-контракт байт-в-байт.
+>    - Known gaps: O(a·s) для малых списков, backing `ArrayList` multi-value-накопления, `--add-opens java.base/java.util` (test-JVM only).
+> 3. *ROADMAP:* баннер Current status — Highest ADR **0075**, next free **0076**; в строке цикла 0.12.0 Кандидату №14 добавлен тег ADR-0075; в секции №14 пометка «оформление последовало как ADR-0075 (#332)».
+> 4. *Гейты:* код main не тронут (ADR + ROADMAP + DRAFT) — гейт **1,809/1,809** держится от #330 без пере-прогона (прецедент #331).
+> 5. *Дальше (#333):* (a) `@ExpectStatus`/`@FollowRedirects` eager-валидация (#207 «фича, не дыра» — только при тихом исходе); (b) свободный аудит следующего hot-path (dispatch `HttpTemplate`, cookie-разбор, `MethodMetadata`-кэши).
+
 > **Сессия #331 (дистилляция Кандидатов №12 + №14 в `ROADMAP.md` как выполненные эпики, пакетом; баннер Current status; пул 0.12.0 обновлён; код не тронут, гейт 1,809/1,809 в силе от #330):**
 > 1. *Приём состояния:* HEAD `4d6c117` (#330, Кандидат №14), чистое дерево (только счётчик 331), слов Антона в mailbox'е нет (последнее — мой #329).
 > 2. *Дистилляция в `ROADMAP.md`* (стиль — секции ADR-0070…ADR-0072; факты сверены по ADR-0073/ADR-0074 и коммитам `2c46c34`/`1a505cc`/`4d6c117`):
@@ -3636,8 +3648,8 @@ INSTRUCTION 98.15%, LINE 97.82%, COMPLEXITY 88.69% — рекорды; гейт 
 **Кандидат №13 закрыт полностью (#327):** Zero-Allocation URI Composition & RFC 3986 Fast-Paths (ADR-0072 Accepted). Single-pass сборка в `createUri`/`appendQuery`, unreserved ASCII fast-path в `UriEncoder`, кэширование `placeholderToken` в `MethodMetadata.ParameterDescriptor`. Гейт вырос до **1,747/1,747**, ветви JaCoCo на рекорде **90.65%**. Highest ADR **0072**, next free **0073**.
 **Кандидат №14 закрыт полностью (#330, дистиллирован в ROADMAP в #331):** дальнейшая оптимизация аллокаций HTTP заголовков и W3C Tracing context — TDD-шаг, 5 структурных тестов, header-мердж без `HashSet`, single-wrap trace-view, `ResponseHeaders.buildValueMap`; гейт **1,809/1,809**.
 
-**Актуальный пул цикла 0.12.0 (после #331):** активных эпиков нет — все заявленные кандидаты (№10, №11, №12, №13, №14) закрыты и дистиллированы. Остались хвосты:
-- **ADR-0075 — опциональное оформление Кандидата №14** (шаг был определён как TDD; стиль-эталон — `docs/0.12.0/ADR-0072-zero-allocation-uri-composition-and-fast-paths.md`).
+**Актуальный пул цикла 0.12.0 (после #332):** активных эпиков нет — все заявленные кандидаты (№10, №11, №12, №13, №14) закрыты и дистиллированы. Остались хвосты:
+- ~~**ADR-0075 — оформление Кандидата №14**~~ — **закрыт в #332** (`docs/0.12.0/ADR-0075-header-merge-invariants-and-allocation-pruning.md`, Accepted; баннер ROADMAP: Highest ADR **0075**, next free **0076**).
 Хвосты-кандидаты
 из аудит-нити (не эпики): валидация `@ExpectStatus`/`@FollowRedirects`
 (инварианты нигде не объявлены — фича, не дыра; #207, трогать лишь при
