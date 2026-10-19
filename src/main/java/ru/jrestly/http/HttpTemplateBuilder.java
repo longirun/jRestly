@@ -1065,12 +1065,7 @@ public class HttpTemplateBuilder {
                     parts.add(createPartFromValue(bracketName, item, explicitContentType));
                 }
             }
-            case EXPLODE -> {
-                for (Object item : items) {
-                    parts.add(createPartFromValue(name, item, explicitContentType));
-                }
-            }
-            default -> {
+            case EXPLODE, DEFAULT -> {
                 for (Object item : items) {
                     parts.add(createPartFromValue(name, item, explicitContentType));
                 }
@@ -1297,12 +1292,7 @@ public class HttpTemplateBuilder {
                     result.add(new Param(bracketName, item));
                 }
             }
-            case EXPLODE -> {
-                for (String item : items) {
-                    result.add(new Param(name, item));
-                }
-            }
-            default -> {
+            case EXPLODE, DEFAULT -> {
                 for (String item : items) {
                     result.add(new Param(name, item));
                 }

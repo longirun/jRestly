@@ -48,8 +48,8 @@ import java.net.HttpCookie;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.nio.ByteBuffer;
-import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -145,6 +145,12 @@ class HttpTemplateBuilderTest {
                 @ru.jrestly.annotation.Cookie(name = "dynCookie") String dynCookie,
                 @ru.jrestly.annotation.Cookie Map<String, Object> cookieMap,
                 @ru.jrestly.annotation.Cookie HttpCookie httpCookie
+        );
+
+        @Get("/cookies-combined")
+        @Cookie(name = "annotatedCookie", value = "annotatedVal")
+        String getWithExistingCookieHeader(
+                @RequestHeader(name = "Cookie") String existingCookieHeader
         );
     }
 
@@ -477,6 +483,20 @@ class HttpTemplateBuilderTest {
     }
 
     @Test
+    @DisplayName("resolveCookies appends annotated cookies to existing Cookie header")
+    void testResolveCookiesAppendsToExistingCookieHeader() throws Exception {
+        Method method = CookieApi.class.getMethod("getWithExistingCookieHeader", String.class);
+        HttpTemplate template = new HttpTemplateBuilder(defaultModuleInfo, httpClient, method,
+                new Object[]{"manual=value"}, CookieApi.class).build();
+
+        Header cookieHeader = template.getHeaders().stream()
+                .filter(h -> "Cookie".equalsIgnoreCase(h.name()))
+                .findFirst().orElse(null);
+        assertNotNull(cookieHeader);
+        assertEquals("manual=value; annotatedCookie=annotatedVal", cookieHeader.value());
+    }
+
+    @Test
     @DisplayName("Tracing headers apply w3c and custom headers with forceNew override")
     void testTracingHeaders() throws Exception {
         Method w3cMethod = TracingApi.class.getMethod("traceW3c");
@@ -606,6 +626,16 @@ class HttpTemplateBuilderTest {
         Method getMethod = BodyApi.class.getMethod("getWithBodyIgnored", String.class);
         HttpTemplate t5 = new HttpTemplateBuilder(defaultModuleInfo, httpClient, getMethod, new Object[]{"ignored"}, BodyApi.class).build();
         assertNull(t5.getBody());
+
+        // Path body sets knownBodySize
+        Path tempFile = Files.createTempFile("jrestly-test", ".txt");
+        try {
+            Files.writeString(tempFile, "sample-content");
+            HttpTemplate tPath = new HttpTemplateBuilder(defaultModuleInfo, httpClient, postMethod, new Object[]{tempFile}, BodyApi.class).build();
+            assertEquals(Files.size(tempFile), tPath.getKnownBodySize());
+        } finally {
+            Files.deleteIfExists(tempFile);
+        }
 
         // Missing codec for DTO throws IllegalStateException
         Method dtoMethod = BodyApi.class.getMethod("postDto", DummyDto.class);

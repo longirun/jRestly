@@ -1,5 +1,27 @@
 # DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
+> **Сессия #302 (хвосты HttpTemplateBuilder-аудита: удалены dead default-ветки
+> switch CollectionFormat; покрыто объединение заголовка Cookie с @Cookie;
+> проверен Path knownBodySize; 100% METHOD/CLASS coverage — 1449/1449,
+> INSTRUCTION 98.09%, BRANCH 89.80%; гейт 1,660/1,660):**
+> 1. *Удаление dead default-веток:* в `appendFormattedItems` и
+>    `appendMultipartCollectionParts` нормализация `DEFAULT`→`EXPLODE`
+>    оставляла ветку `default ->` мёртвым кодом (дублировала `EXPLODE`).
+>    Заменено на исчерпывающий switch `case EXPLODE, DEFAULT ->`, покрывающий
+>    все 7 констант `CollectionFormat` без `default`-ветки (-4 пропущенных ветви в JaCoCo).
+> 2. *Cookie merging:* покрыта ветка `createHeaders`: объединение существующего
+>    заголовка `Cookie` (статического или переданного через `@RequestHeader(name = "Cookie")`)
+>    с вычисленными куками из `@Cookie` аннотаций (`h.value() + "; " + cookieHeader`).
+>    *Грабля отлова:* `@RequestHeader("Cookie")` по ошибке биндит в `value` (игнорируемый на параметрах),
+>    а имя бралось из имени Java-параметра — закреплена форма `name = "Cookie"`.
+> 3. *METHOD coverage 100%:* добавлен тест чтения `HttpTemplate.getKnownBodySize()`
+>    для Path тела, подтверждающий соответствие размеру файла на диске (ADR-0036 Amendment #298).
+> 4. *Гейты:* **1,660/1,660** green across all 5 modules (+1 новый тест), javadoc чист под `-Werror`.
+>    JaCoCo: CLASS **149/149 (100%)**, METHOD **1449/1449 (100%)**, INSTRUCTION **98.09%**,
+>    BRANCH **89.80%**, LINE **97.75%**, COMPLEXITY **87.86%** — все показатели на абсолютном рекорде.
+> 5. *Дальше:* хвост `byte[]`-скаляра в headers/params (решить wire-формат) или концепт/аудит
+>    resilience/codec/engine. Кандидат №7 (rss/atom) ждёт A/B-ответа Антона. Highest ADR **0067**, next free **0068**.
+
 > **Сессия #301 (свободный аудит HttpTemplateBuilder-кластера — найден и
 > закрыт двойной расчёт URL на ambient-пути TracePropagator;
 > гейт 1,659/1,659):**
