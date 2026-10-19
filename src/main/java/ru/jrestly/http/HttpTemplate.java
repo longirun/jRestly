@@ -281,11 +281,18 @@ class HttpTemplate {
                     // ADR-0036 Amendment #194: attempts() is the total across all
                     // transmissions of the call — the refresh phase must not
                     // clobber the first phase's count; Amendment #196: listener
-                    // attempt numbers stay continuous (per-call) across phases
+                    // attempt numbers stay continuous (per-call) across phases;
+                    // Amendment #300: the accumulation runs on completion (success
+                    // OR failure), mirroring the async twin's whenComplete — a
+                    // refresh phase that dies on the wire must not leave the
+                    // holder at the phase-local count
                     int firstPhaseAttempts = attemptsHolder != null ? attemptsHolder[0] : 1;
-                    response = executeWithRetries(effectiveRequest, requestContext, attemptsHolder, firstPhaseAttempts);
-                    if (attemptsHolder != null) {
-                        attemptsHolder[0] = firstPhaseAttempts + attemptsHolder[0];
+                    try {
+                        response = executeWithRetries(effectiveRequest, requestContext, attemptsHolder, firstPhaseAttempts);
+                    } finally {
+                        if (attemptsHolder != null) {
+                            attemptsHolder[0] = firstPhaseAttempts + attemptsHolder[0];
+                        }
                     }
                 }
                 response = CacheDispatch.handle(effectiveRequest, response, httpCache, streamBody);

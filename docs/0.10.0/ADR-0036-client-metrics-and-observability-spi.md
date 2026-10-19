@@ -315,3 +315,40 @@ supplier invocation, buffered precedence, multipart exact / unknown-part
 matrix, parts semantics, builder round-trip); e2e —
 `RequestBodyStreamingWireMockTest` (+3: Path body and File body report
 the real size to the listener, supplier body stays `-1`).
+
+## Amendment #300
+
+2026-10-19 · Session #300 (free-audit slice: ADR-0036 × the transparent
+401-refresh flow, failure leg of the second transmission phase).
+
+Amendment #194 declared «the sync path captures the first phase's count
+before the second `executeWithRetries` and adds it to the holder
+afterwards; the async path … adds it to `attemptsRef` on the second
+phase's completion (success **or** failure)». The two legs were written
+asymmetrically: the async accumulation rides a `whenComplete` (success or
+failure), but the sync accumulation sat **after** the second
+`executeWithRetries` call body. When the refresh phase itself died on the
+wire — a transport `IOException` after retry exhaustion or an
+`InterruptedException` — the addition was skipped and the `finally`
+read the holder at the refresh phase's local count. For a call that
+physically went to the wire twice (401 → refresh → connection reset) a
+listener saw `attempts() == 1` and `isRetried() == false`, and the
+Amendment #196 invariant «the last reported `onAttemptComplete` number
+equals `CallMetrics.attempts()`» broke on the failure leg (the second
+`onAttemptComplete` was numbered 2, `attempts()` said 1) — the same
+self-contradiction #194/#196 eliminated, one exception path over. The
+async twin already summed correctly (the `whenComplete` fires on
+failure too).
+
+Resolution: the sync path wraps the second `executeWithRetries` in a
+`try/finally` so the first-phase count is added to the holder on
+completion, success or failure — the exact `whenComplete` semantics of
+the async twin. The success leg is value-identical to the old code (the
+addition happens before any reader on that path); the pre-wire,
+short-circuit and cache-hit legs are untouched. E2E-gated (sync red-first
+plus async twin parity): `ClientMetricsWireMockTest`
+`refresh401WireFailureStillSumsBothPhases` (sync: 401 → refresh →
+connection reset, two `onAttemptComplete` numbered 1, 2,
+`attempts() == 2`, `isRetried() == true`, transport failure kept as the
+cause) and `refresh401WireFailureStillSumsBothPhasesAsync` (async: the
+same scenario sums to 2 — already correct, now pinned).

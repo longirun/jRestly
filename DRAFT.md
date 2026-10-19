@@ -1,5 +1,42 @@
 # DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
+> **Сессия #300 (свободный аудит HttpTemplate/Redirects — найден и закрыт
+> тихий баг: sync 401-refresh failure leg терял суммарный attempts();
+> гейт 1,658/1,658):**
+> 1. *Аудит (кандидаты выверены по коду + ADR, три закрыты как by design):*
+>    (a) `isExpectedStatus` при `expectStatuses != null` игнорирует
+>    `conditional`/`optional`-allowances — это «strict precedence»
+>    `@ExpectStatus` по ADR-0023 Decision 1 (пустой список отрезан eager-
+>    валидацией, ADR-0004 Amendment #235); (b) sync `acquire()`/
+>    `acquirePermission()` vs async `tryAcquire`/`tryAcquirePermission` —
+>    стилистическая асимметрия, дефолты resilience-интерфейсов реализованы
+>    через те же try-варианты, семантика идентична; (c) CFE-порядок
+>    `attemptsRef`-аккумуляции async 401-refresh верен — `whenComplete`
+>    регистрируется раньше downstream-стадий, CFE гонит dependents по
+>    порядку регистрации.
+> 2. *Найденный баг:* sync 401-refresh — аккумуляция счёта первой фазы
+>    стояла ПОСЛЕ `executeWithRetries` (только success-нога). Refresh-фаза,
+>    умершая на проводе (IOException после retry-исчерпания /
+>    InterruptedException), пропускала аккумуляцию: вызов 401 → refresh →
+>    connection reset репортил `attempts() == 1`, `isRetried() == false` и
+>    ломал инвариант Amendment #196 (последнее число `onAttemptComplete` =
+>    `attempts()`). Async twin уже суммировал (whenComplete на failure тоже
+>    срабатывает).
+> 3. *TDD + фикс:* red-first `ClientMetricsWireMockTest.
+>    refresh401WireFailureStillSumsBothPhases` (sync: expected 2, was 1) +
+>    twin-parity `…Async` (зелёный, зафиксирован). Фикс — `try/finally`
+>    вокруг второй `executeWithRetries`: аккумуляция на завершении (success
+>    OR failure), точные `whenComplete`-семантики async-двойника;
+>    success-нога value-идентична старой.
+> 4. *Документация:* ADR-0036 — `## Amendment #300`.
+> 5. *Гейт:* **1,658/1,658** green across all 5 modules (+2, 0
+>    failures/errors). Javadoc в main не тронут.
+> 6. *Дальше:* кандидат №7 (rss/atom) ждёт A/B-ответа Антона (с #284);
+>    оставшийся хвост — валидация `@ExpectStatus`/`@FollowRedirects`
+>    (#207, трогать лишь при тихом исходе) или свободный аудит
+>    `HttpTemplateBuilder`-кластера (в #300 не читался). Highest ADR
+>    **0067**, next free **0068**.
+
 > **Сессия #299 (приём и верификация WIP прерванной #298 — engine-reported byte
 > accounting для Path/File-тел и полностью известных multipart-тел: хвост
 > non-goal ADR-0036 Amendment #193 закрыт; гейт 1,656/1,656):**

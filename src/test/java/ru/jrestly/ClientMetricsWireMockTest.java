@@ -1,12 +1,14 @@
 package ru.jrestly;
 
 import com.github.tomakehurst.wiremock.WireMockServer;
+import com.github.tomakehurst.wiremock.http.Fault;
 import com.github.tomakehurst.wiremock.stubbing.Scenario;
 import java.io.IOException;
 import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.AfterEach;
@@ -179,6 +181,12 @@ class ClientMetricsWireMockTest {
 
         @Get("/api/secure-async")
         CompletableFuture<TestDto> getSecureAsync();
+
+        @Get("/api/secure-fail")
+        TestDto getSecureFail();
+
+        @Get("/api/secure-fail-async")
+        CompletableFuture<TestDto> getSecureFailAsync();
     }
 
     @BeforeEach
@@ -636,6 +644,91 @@ class ClientMetricsWireMockTest {
             assertEquals(200, metrics.statusCode());
             assertTrue(metrics.isSuccess());
             assertEquals(3, metrics.attempts(), "2 retry-loop attempts + 1 refresh attempt");
+        } finally {
+            authClient.close();
+        }
+    }
+
+    @Test
+    @DisplayName("401 refresh whose refresh phase dies on the wire: attempts() still sums both phases (sync)")
+    void refresh401WireFailureStillSumsBothPhases() {
+        wireMock.stubFor(get(urlEqualTo("/api/secure-fail"))
+                .withHeader("Authorization", equalTo("Bearer stale-token"))
+                .willReturn(aResponse().withStatus(401).withBody("Unauthorized: token expired")));
+        wireMock.stubFor(get(urlEqualTo("/api/secure-fail"))
+                .withHeader("Authorization", equalTo("Bearer fresh-token"))
+                .willReturn(aResponse().withFault(Fault.CONNECTION_RESET_BY_PEER)));
+
+        AtomicInteger tokenFetchCounter = new AtomicInteger();
+        TokenManager tokenManager = TokenManager.of(() -> {
+            int count = tokenFetchCounter.incrementAndGet();
+            return Token.of(count == 1 ? "stale-token" : "fresh-token");
+        });
+
+        JRestlyClient authClient = JRestlyClient.builder()
+                .baseUrl(wireMock.baseUrl())
+                .bearerAuth(tokenManager)
+                .metricsListener(recordingListener)
+                .build();
+        try {
+            RefreshMetricsClient authApi = (RefreshMetricsClient) authClient.createController(RefreshMetricsClient.class);
+            RuntimeException exception = assertThrows(RuntimeException.class, authApi::getSecureFail);
+            assertNotNull(exception.getCause(), "the transport failure must be kept as the cause");
+            assertEquals(2, tokenFetchCounter.get());
+
+            assertEquals(2, recordingListener.attempts.size(), "one onAttemptComplete per transmission");
+            assertEquals(1, recordingListener.attempts.get(0).attempt(), "first phase transmission is attempt 1");
+            assertEquals(2, recordingListener.attempts.get(1).attempt(), "refresh phase continues the per-call numbering");
+            assertTrue(recordingListener.attempts.get(1).failure().isPresent(), "the refresh phase transmission failed on the wire");
+
+            assertEquals(1, recordingListener.completedCalls.size());
+            CallMetrics metrics = recordingListener.completedCalls.getFirst();
+            assertFalse(metrics.isSuccess());
+            assertEquals(2, metrics.attempts(), "attempts() is the total across both phases, failure or not");
+            assertTrue(metrics.isRetried(), "two transmissions went to the wire");
+        } finally {
+            authClient.close();
+        }
+    }
+
+    @Test
+    @DisplayName("401 refresh whose refresh phase dies on the wire: attempts() still sums both phases (async)")
+    void refresh401WireFailureStillSumsBothPhasesAsync() {
+        wireMock.stubFor(get(urlEqualTo("/api/secure-fail-async"))
+                .withHeader("Authorization", equalTo("Bearer stale-token"))
+                .willReturn(aResponse().withStatus(401).withBody("Unauthorized: token expired")));
+        wireMock.stubFor(get(urlEqualTo("/api/secure-fail-async"))
+                .withHeader("Authorization", equalTo("Bearer fresh-token"))
+                .willReturn(aResponse().withFault(Fault.CONNECTION_RESET_BY_PEER)));
+
+        AtomicInteger tokenFetchCounter = new AtomicInteger();
+        TokenManager tokenManager = TokenManager.of(() -> {
+            int count = tokenFetchCounter.incrementAndGet();
+            return Token.of(count == 1 ? "stale-token" : "fresh-token");
+        });
+
+        JRestlyClient authClient = JRestlyClient.builder()
+                .baseUrl(wireMock.baseUrl())
+                .bearerAuth(tokenManager)
+                .metricsListener(recordingListener)
+                .build();
+        try {
+            RefreshMetricsClient authApi = (RefreshMetricsClient) authClient.createController(RefreshMetricsClient.class);
+            CompletableFuture<TestDto> future = authApi.getSecureFailAsync();
+            CompletionException exception = assertThrows(CompletionException.class, future::join);
+            assertNotNull(exception.getCause(), "the transport failure must be kept in the cause chain");
+            assertEquals(2, tokenFetchCounter.get());
+
+            assertEquals(2, recordingListener.attempts.size(), "one onAttemptComplete per transmission");
+            assertEquals(1, recordingListener.attempts.get(0).attempt(), "first phase transmission is attempt 1");
+            assertEquals(2, recordingListener.attempts.get(1).attempt(), "refresh phase continues the per-call numbering");
+            assertTrue(recordingListener.attempts.get(1).failure().isPresent(), "the refresh phase transmission failed on the wire");
+
+            assertEquals(1, recordingListener.completedCalls.size());
+            CallMetrics metrics = recordingListener.completedCalls.getFirst();
+            assertFalse(metrics.isSuccess());
+            assertEquals(2, metrics.attempts(), "attempts() is the total across both phases, failure or not");
+            assertTrue(metrics.isRetried(), "two transmissions went to the wire");
         } finally {
             authClient.close();
         }
