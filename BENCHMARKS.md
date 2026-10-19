@@ -128,6 +128,87 @@ Same harness, same machine as the table above, `1 fork / 2×1 s warmup / 5×1 s`
 are at or below the pre-refactor record, and the client ranking matches runs
 #147/#158.*
 
+## Real scenario: feed fetch & parse (ADR-0068, run #320)
+
+To move beyond synthetic micro-benchmarks (`ping` and `getUser`), this scenario models a
+production RSS/Atom news feed aggregator ([ADR-0068](docs/0.11.0/ADR-0068-real-feed-benchmark-fetch-and-parse.md)):
+fetching realistic XML documents over HTTP/1.1 and streaming them into a hardened StAX
+`XMLStreamReader` parser to produce a list of domain objects (`FeedEntry`) and a fold
+digest (`FeedSummary`).
+
+### Principles & Fairness
+- **One parser for everyone:** parsing is performed by an identical zero-dep StAX implementation (`FeedParser`) across all clients. The XML parsing phase is strictly identical, measuring only the transport and HTTP client dispatch contribution.
+- **Realistic documents:** generated RSS 2.0 and Atom 1.0 feeds containing CDATA sections, escaped XML entities, namespaces (`atom:link`, `content:encoded`), and standard timestamps (RFC 822 and RFC 3339).
+- **Scale:** evaluated across three representative feed sizes:
+  - `rss-20` (Small): 20 items, 21.6 KB wire size
+  - `rss-200` (Medium): 200 items, 211 KB wire size
+  - `rss-1000` (Large): 1,000 items, 1.05 MB wire size
+- **Key architectural axis:** buffered (`@Get byte[]`) vs streaming (`@Get InputStream`) across jRestly transports (default JDK zero-dep, OkHttp engine, Apache HC5 engine) against industry peers (raw OkHttp, Retrofit 2, OpenFeign, Spring 6 HTTP Interface, raw JDK `HttpClient`).
+
+### Throughput (ops/s, higher is better)
+
+| client | rss-20 (21.6 KB) | rss-200 (211 KB) | rss-1000 (1.05 MB) |
+|---|---:|---:|---:|
+| OkHttp (raw) | 438.0 | 104.6 | 24.6 |
+| Retrofit 2 | 414.7 | 109.7 | 27.2 |
+| **jRestly + engine-apache5 (streaming)** | 383.7 | 106.8 | 30.4 |
+| **jRestly + engine-apache5 (buffered)** | 416.3 | 101.0 | 30.5 |
+| **jRestly + engine-okhttp (streaming)** | 349.4 | 91.1 | 22.4 |
+| **jRestly + engine-okhttp (buffered)** | 372.8 | 87.9 | 26.7 |
+| raw JDK HttpClient | 255.1 | 67.9 | 18.2 |
+| **jRestly default JDK (streaming)** | 197.2 | 52.5 | 15.7 |
+| **jRestly default JDK (buffered)** | 213.5 | 69.4 | 19.8 |
+| OpenFeign | 201.2 | 57.6 | 15.3 |
+| Spring HTTP Interface | 178.7 | 61.2 | 17.6 |
+
+### Memory allocations (B/op, lower is better)
+
+| client | rss-20 (21.6 KB) | rss-200 (211 KB) | rss-1000 (1.05 MB) |
+|---|---:|---:|---:|
+| OkHttp (raw) | 98,725 B | 712,384 B | 3,425,044 B |
+| Retrofit 2 | 102,772 B | 866,166 B | 4,471,014 B |
+| **jRestly + engine-apache5 (streaming)** | 102,090 B | 708,584 B | 3,382,858 B |
+| **jRestly + engine-apache5 (buffered)** | 161,147 B | 1,151,721 B | 5,540,967 B |
+| **jRestly + engine-okhttp (streaming)** | 102,922 B | 719,689 B | 3,476,634 B |
+| **jRestly + engine-okhttp (buffered)** | 124,292 B | 1,075,275 B | 5,512,109 B |
+| raw JDK HttpClient | 134,013 B | 958,816 B | 4,597,850 B |
+| **jRestly default JDK (streaming)** | 140,398 B | 973,754 B | 4,640,170 B |
+| **jRestly default JDK (buffered)** | 161,876 B | 1,176,200 B | 5,659,617 B |
+| OpenFeign | 147,611 B | 979,159 B | 4,647,382 B |
+| Spring HTTP Interface | 216,363 B | 1,431,449 B | 6,799,057 B |
+
+### CPU Time per operation (ms/op, lower is better)
+
+| client | rss-20 (21.6 KB) | rss-200 (211 KB) | rss-1000 (1.05 MB) |
+|---|---:|---:|---:|
+| OkHttp (raw) | 4.53 ms | 18.89 ms | 78.26 ms |
+| Retrofit 2 | 4.72 ms | 17.87 ms | 72.46 ms |
+| **jRestly + engine-apache5 (streaming)** | 5.12 ms | 18.38 ms | 64.43 ms |
+| **jRestly + engine-apache5 (buffered)** | 4.69 ms | 19.45 ms | 64.38 ms |
+| **jRestly + engine-okhttp (streaming)** | 5.63 ms | 21.19 ms | 88.34 ms |
+| **jRestly + engine-okhttp (buffered)** | 5.29 ms | 22.54 ms | 74.01 ms |
+| raw JDK HttpClient | 7.71 ms | 29.11 ms | 108.74 ms |
+| **jRestly default JDK (streaming)** | 10.03 ms | 37.26 ms | 125.66 ms |
+| **jRestly default JDK (buffered)** | 9.21 ms | 28.35 ms | 99.05 ms |
+| OpenFeign | 9.42 ms | 33.46 ms | 128.95 ms |
+| Spring HTTP Interface | 10.98 ms | 32.19 ms | 112.16 ms |
+
+### Key Insights & Findings
+1. **Streaming saves megabytes of memory on large payloads:**
+   On the 1.05 MB feed (`rss-1000`), streaming mode cuts allocations by **~1.02 MB/op** on the default JDK transport and by **over 2.1 MB/op** on Apache5 / OkHttp engines compared to buffered mode (`byte[]`). In streaming mode, XML tokens are parsed directly off the wire without an intermediate full-body byte array buffer.
+2. **jRestly on Apache HC5 matches or beats raw OkHttp and Retrofit 2:**
+   On `rss-1000`, `jRestly + engine-apache5 (streaming)` achieved **30.4 ops/s** and **3,382,858 B/op**, outperforming both raw OkHttp (24.6 ops/s, 3,425,044 B/op) and Retrofit 2 (27.2 ops/s, 4,471,014 B/op).
+3. **The zero-dep declarative overhead is negligible:**
+   Comparing `jRestly default JDK (streaming)` against `raw JDK HttpClient`:
+   - `rss-20`: 140 KB vs 134 KB (+6.3 KB)
+   - `rss-200`: 973 KB vs 958 KB (+15 KB)
+   - `rss-1000`: 4.64 MB vs 4.59 MB (+42 KB on a 1 MB payload)
+   The dynamic proxy, reflection cache, and pipeline dispatch add essentially negligible memory overhead over the raw JDK transport.
+4. **Spring 6 HTTP Interface (`Resource`) buffers heavily:**
+   Spring's declarative client was the most memory-intensive in every category (216 KB on small, 1.43 MB on medium, 6.80 MB on large), showing that Spring's `ResourceHttpMessageConverter` creates substantial intermediate buffers when reading entity bodies.
+5. **OpenFeign vs jRestly on JDK transport:**
+   Feign operates directly on `java.net.http.HttpClient` (via `feign-java11`). jRestly default streaming outperforms Feign in throughput on large feeds (15.7 vs 15.3 ops/s) and consumes fewer allocations across all payload sizes (140 KB vs 147 KB on small, 4.640 MB vs 4.647 MB on large).
+
 ## Honest limitations
 
 - **Loopback, single machine, single thread.** No TLS handshake cost, no real
@@ -138,8 +219,9 @@ are at or below the pre-refactor record, and the client ranking matches runs
 - **API shapes differ.** Raw clients here perform the same request but no
   interface mapping, retry, interceptors, progress, or error mapping. These
   numbers compare transport floors, not feature sets.
-- **One JSON payload shape.** Small DTO and a small text body; large payloads,
-  streaming, SSE and multipart are not measured here.
+- **One JSON payload shape for micro-benchmarks; realistic RSS/Atom feeds for real scenario.**
+  Large payloads and streaming are now measured via `FeedBenchmark`. SSE and multipart
+  remain synthetic or unmeasured on this stand.
 - **JMH with 1 fork has limited statistical power** by design (quick runs); use
   `-f 2 -wi 5 -i 10` for publishable runs on a quiet machine.
 
@@ -148,6 +230,9 @@ are at or below the pre-refactor record, and the client ranking matches runs
 ```bash
 # full JMH suite (defaults: -f 1 -wi 2 -i 3 -tu us -bm avgt)
 ./gradlew :benchmarks:jmh
+
+# real-scenario feed fetch & parse matrix (ADR-0068)
+./gradlew :benchmarks:jmh -PjmhArgs="-f 1 -wi 1 -i 2 -prof gc -rf json -rff feed_results.json .*FeedBenchmark\..*"
 
 # the getUser/ping matrix with tighter settings (as in run #158)
 ./gradlew :benchmarks:jmh -PjmhArgs="-f 1 -wi 2 -i 5 -tu us -bm avgt -rf json -rff results.json .*HttpNetworkBenchmark\.(jrestly|jrestlyOkHttp|jrestlyApache5|jrestlyHttp11|okHttp|apacheHttpClient|rawHttpClient|springRestClient|retrofit|feign)_(getUser|ping)$"

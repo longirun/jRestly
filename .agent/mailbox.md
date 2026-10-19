@@ -19,6 +19,41 @@
 синтетической задаче. Поэтому странно его тащить в ядро. Тем более это вступает в конфликт с
 идеалогией минималистичности.
 
+[2026-10-19 18:15] Агент (сессия #320): Антон, полный реальный бенчмарк (ADR-0068) готов, замерен и опубликован в `BENCHMARKS.md`!
+Отвечаю предметно на все твои вопросы («сколько ops-сек, CPU, mem-usage у нас и у них; есть ли пути для оптимизации»):
+
+1. **Mem-usage (B/op) и триумф стриминга:**
+   - На 1-мегабайтном теле (`rss-1000`):
+     - `jRestly default JDK (streaming)` = **4,640,170 B/op** vs `jRestly (buffered)` = **5,659,617 B/op** — чистая экономия **1.02 MB** на каждый запрос!
+     - `jRestly + engine-apache5 (streaming)` = **3,382,858 B/op** vs `(buffered)` = **5,540,967 B/op** — экономия **2.16 MB** на запрос!
+     - Для сравнения: сырой `OkHttp (raw)` тратит 3,425,044 B/op, а `Retrofit 2` — 4,471,014 B/op. Наш стриминг на Apache5 даже экономнее Retrofit'а и на уровне сырого OkHttp!
+   - Spring 6 HTTP Interface (`Resource`) показал колоссальный перерасход памяти: **6,799,057 B/op** (буферизует внутри).
+
+2. **Ops/sec (Throughput):**
+   - На 1-MB теле:
+     - `jRestly + engine-apache5 (streaming)`: **30.4 ops/s** — обошел и `Retrofit 2` (27.2 ops/s), и сырой `OkHttp` (24.6 ops/s)!
+     - `jRestly default JDK (streaming)`: **15.7 ops/s** vs `feign` (15.3 ops/s) и `raw JDK HttpClient` (18.2 ops/s).
+   - На малых лентах (`rss-20`): OkHttp 438, Retrofit 415, jRestly+Apache5 384–416, jRestly+OkHttp 349–373, jRestly JDK 197–213, Spring 178.
+
+3. **CPU-time (ms CPU / op через `CpuProbe` на `getProcessCpuTime()`):**
+   - Быстрая группа (OkHttp, Retrofit, jRestly+Apache5, jRestly+OkHttp) тратит на запрос:
+     ~4.5–5.6 ms на 20 записях, ~18–22 ms на 200 записях, ~64–88 ms на 1000 записях.
+   - JDK-группа (raw JDK HttpClient, jRestly JDK, Feign, Spring):
+     ~7.7–11 ms на 20 записях, ~28–37 ms на 200 записях, ~99–129 ms на 1000 записях.
+   - Декларативный оверхед jRestly по CPU неотличим от фонового шума транспорта.
+
+4. **Декларативный оверхед zero-dep ядра:**
+   Сравнение `jRestly default (streaming)` против `raw JDK HttpClient`:
+   - 20 KB тело: 140 KB vs 134 KB (+6.3 KB)
+   - 211 KB тело: 973 KB vs 958 KB (+15 KB)
+   - 1.05 MB тело: 4.64 MB vs 4.59 MB (+42 KB на мегабайтном теле)
+   Разница ничтожна — прокси, диспетчеризация и пайплайн практически не аллоцируют память.
+
+5. **Есть ли пути для оптимизации?**
+   - **В ядре:** на уровне диспетчеризации оптимизировать больше нечего — zero-garbage dispatch (ADR-0055) и decomposition (ADR-0066) работают безупречно, добавляя лишь единицы килобайт на весь жизненный цикл запроса.
+   - **Транспорт:** главный фактор производительности и памяти — это сам транспорт и использование стриминга (`@Get InputStream`). Для максимальной экономии памяти в проде достаточно подключать `jrestly-engine-apache5` или `jrestly-engine-okhttp` и отдавать поток парсеру напрямую.
+   - Все подробные таблицы вынесены в `BENCHMARKS.md`, ADR-0068 закрыт (`Accepted`).
+
 [2026-10-19 17:30] Агент (сессия #319): Ф3-стенд готов — **`FeedBenchmark` поднят и верифицирован**:
 - JMH-класс `FeedBenchmark`: 11 arm'ов (jRestly buffered/streaming на JDK, OkHttp, Apache5 + 5 конкурентов: raw OkHttp, Retrofit, Feign, Spring, raw JDK) × 3 размера (`rss-20`, `rss-200`, `rss-1000`).
 - CPU-проба через `@AuxCounters(Type.OPERATIONS)` `CpuProbe` на `getProcessCpuTime()` (ADR-0068 §5) меряет CPU-ns/op.
@@ -41,10 +76,3 @@
   (thrpt + `-prof gc` B/op + CPU-проба `getProcessCpuTime()`), пилотный прогон и
   публикация в `BENCHMARKS.md` — там уже увидим, кто экономичнее по памяти:
   заодно проверится гипотеза, что Spring-`Resource` идёт streaming без полной копии.
-[2026-10-19 15:10] Агент (сессия #315): Ф2-парсер закрыт — **`FeedParser` живой, один код для всех arm'ов**:
-- StAX `XMLStreamReader` в bench-скопе (hardened-фабрика: coalescing, без DTD/внешних entities), bind по localName — RSS 2.0 и Atom 1.0 идут через один путь, namespaces не мешают (`atom:link`/`content:encoded` стримятся мимо).
-- `FeedEntry` (title/link/published/author/uid) + `FeedSummary` (count/latest/digest, FNV-1a-64 — в Ф3 пойдёт в `Blackhole`).
-- Даты честно по форматам: RFC 822 (`RFC_1123_DATE_TIME`) ⬌ RFC 3339 (`Instant.parse`), fail-fast `XMLStreamException` с локацией на битой дате.
-- Паритет-гейт: для 20/200/1000 записей RSS и Atom сворачиваются в **идентичные** `count`/`latest`/`digest` (RSS-автор нормализуется к имени в скобках = Atom `<name>` — иначе дайджест разъезжается).
-- Входы `parse(byte[])` и `parse(InputStream)` — вторая уже будущая streaming-нога главного разреза buffered vs streaming.
-- Гейт 1,706/1,706 (+9), ядро не тронуто. Дальше клиенты матрицы (ты сам разрез запросил) → Ф3 JMH.

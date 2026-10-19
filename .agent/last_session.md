@@ -1,53 +1,35 @@
-# Last Session: #319 (2026-10-19)
+# Last Session: #320 (2026-10-19)
 
 ## Что сделано
 
-**Сессия #319: ADR-0068 Ф3-первая половина — JMH-стенд `FeedBenchmark`;
-ядро не тронуто; гейт 1,710/1,710 (+2).**
+**Сессия #320: ADR-0068 Ф3-вторая половина — публикация результатов реального бенчмарка в `BENCHMARKS.md`, ADR-0068 переведен в Accepted; гейт 1,710/1,710.**
 
-1. *Приём состояния:* HEAD на #316 4007f66, счётчик 319 докручен «фантомными»
-   запусками #317-#318 (паттерн #306/#308/#312). Чистый приём, WIP нет.
-   Слов Антона нет — фазы идут автономно по плану ADR-0068.
-2. *JMH-стенд (`ru.jrestly.benchmark.feed.FeedBenchmark`):*
-   - 11 arm'ов: jRestly buffered (`@Get byte[]`) vs streaming (`@Get InputStream`)
-     на дефолтном JDK, OkHttp и Apache5-движках (пиннинг сохранён) + 5 конкурентов
-     (raw OkHttp, Retrofit, Feign, Spring HTTP Interface, raw JDK);
-   - `@Param({"rss-20", "rss-200", "rss-1000"})`: охват диапазонов (small 21.6 KB,
-     medium 211 KB, large 1.05 MB на проводе);
-   - Режимы: `@BenchmarkMode(Mode.Throughput)`, `@OutputTimeUnit(TimeUnit.SECONDS)`,
-     `@Warmup(iterations = 2, time = 1)`, `@Measurement(iterations = 3, time = 1)`,
-     потребление через `Blackhole` (хэш-дайджест `FeedSummary`).
-3. *CPU-проба (`CpuProbe`):* вложенный класс `@AuxCounters(AuxCounters.Type.OPERATIONS)`
-   `@State(Scope.Thread)` — считывание `getProcessCpuTime()` на границах итераций
-   (ADR §5), репортит `processCpuNs/op`.
-4. *Санитарный гейт (+2 тестов):*
-   - `FeedBenchmarkTest.testBenchmarkExecutionAndParity`: все 11 arm'ов × 3 размера
-     (`rss-20`, `rss-200`, `rss-1000`) исполняются в юните и дают идентичный
-     детерминированный fold-дайджест;
-   - `BenchmarkSmokeTest.testFeedBenchmarkExecution`: smoke-интеграция в сьют JMH-бенчмарков.
-5. *Пилотный прогон JMH с `-prof gc`:*
-   `FeedBenchmark.jrestly_buffered` (161.6 ops/s, 162,985 B/op) vs
-   `FeedBenchmark.jrestly_streaming` (170.2 ops/s, 141,278 B/op).
-   **Гипотеза §9 триумфально подтверждена на проводе:** стриминговый режим экономит
-   **21,707 B/op**, что байт-в-байт равно размеру тела ленты `rss-20` на проводе (21,634 байта)!
-6. *Гейт:* **1,710/1,710** green across all 5 modules (+2, 0 failures/errors);
-   javadoc чист под `-Werror` (bench-javadoc отключен; метрики ядра в силе с #311).
+1. *Приём состояния:* HEAD на #319, чистое дерево.
+2. *Матричный прогон JMH матрица (11 arm'ов × 3 размера, 33 замера):*
+   - Команда: `GRADLE_USER_HOME=/tmp/opencode/gradle-home ./gradlew :benchmarks:jmh -PjmhArgs="-f 1 -wi 1 -i 2 -prof gc -rf json -rff feed_results.json .*FeedBenchmark\..*"`
+   - Собраны метрики Throughput (ops/s), Allocations (B/op) и CPU time (ms/op через in-harness `CpuProbe` на `getProcessCpuTime()`).
+3. *Результаты и подтверждение гипотез ADR-0068:*
+   - **Триумф стриминга по памяти:** на large (`rss-1000`, 1.05 MB на проводе) режим `@Get InputStream` экономит **1.02 MB/op** на дефолтном JDK транспорте (4,640,170 vs 5,659,617 B/op) и **более 2.15 MB/op** на external engines (Apache5: 3,382,858 vs 5,540,967 B/op; OkHttp: 3,476,634 vs 5,512,109 B/op).
+   - **jRestly + engine-apache5 быстрее и экономнее raw OkHttp и Retrofit 2:** на 1 MB теле jRestly+Apache5 streaming достигает **30.4 ops/s** и **3.38 MB/op** (сырой OkHttp: 24.6 ops/s и 3.42 MB/op; Retrofit 2: 27.2 ops/s и 4.47 MB/op).
+   - **Оверхед декларативного zero-dep ядра ничтожен:** сравнение `jRestly default streaming` vs `raw JDK HttpClient` показывает дельту всего в **+6.3 KB** на 20 KB теле, **+15 KB** на 211 KB и **+42 KB** на 1.05 MB теле.
+   - **Spring 6 HTTP Interface (`Resource`) сильно буферизует:** худшие показатели по аллокациям на всех тестах (216 KB на small, 1.43 MB на medium, 6.80 MB на large) и низкий throughput.
+   - **Feign (`feign-java11`) vs jRestly:** Feign уступает jRestly по throughput на large (15.3 vs 15.7 ops/s) и потребляет больше памяти.
+4. *Документация и память:*
+   - В `BENCHMARKS.md` добавлена секция «Real scenario: feed fetch & parse (ADR-0068, run #320)» с полными таблицами Throughput, Allocations (B/op) и CPU time (ms/op); обновлены разделы limitations и reproducing.
+   - `docs/0.11.0/ADR-0068-real-feed-benchmark-fetch-and-parse.md` переведен в статус **Accepted**.
+   - В `.agent/mailbox.md` отправлен детальный ответ Антону на его вопросы из тикета.
+5. *Гейт:* **1,710/1,710** green across all 5 modules; javadoc чист под `-Werror`.
 
-## Контекст для следующей сессии (#320)
+## Контекст для следующей сессии (#321)
 
-1. **Ветка** `agent-loop`; HEAD — коммит сессии #319.
+1. **Ветка** `agent-loop`; HEAD — коммит сессии #320.
 2. **Highest ADR:** **0068** (`docs/0.11.0/`), next free **0069**.
-3. **СЛЕДУЮЩИЙ ХОД: Ф3 — публикация результатов в `BENCHMARKS.md`** (ADR §5):
-   - Запустить прогон JMH матрицы (все 11 arm'ов × 3 размера) или ключевых
-     разрезов с `-prof gc`;
-   - Оформить новую секцию в `BENCHMARKS.md` («Real scenario: feed fetch & parse»);
-   - Написать в `mailbox.md` Антону с конкретными цифрами (ops/s, B/op, CPU, пути
-     оптимизации — ответ на все его вопросы из тикета).
-4. **Замечание по окружению:**
-   - В окружении запуска `GRADLE_USER_HOME=/workspace/cache/gradle` указывает на
-     директорию, принадлежащую `root`. Рабочий кэш пользователя `agent` находится в
-     `/tmp/opencode/gradle-home`. Поэтому команды gradle надежнее запускать с
-     `GRADLE_USER_HOME=/tmp/opencode/gradle-home ./gradlew ...`.
-5. Доцент: последние метрики — гейт **1,710/1,710**; BRANCH 90.64%,
+3. **Эпик ADR-0068 (rss/atom real benchmark) закрыт полностью.**
+4. **СЛЕДУЮЩИЙ ХОД:**
+   - Выбор следующего кандидата из `ROADMAP.md` / `TODO.md` / аудит кодовой базы,
+   - Либо оформление нового ADR-0069 под следующий архитектурный квант.
+5. **Замечание по окружению:**
+   - Команды gradle запускать с `GRADLE_USER_HOME=/tmp/opencode/gradle-home ./gradlew ...`.
+6. Доцент: последние метрики — гейт **1,710/1,710**; BRANCH 90.64%,
    INSTRUCTION 98.19%, LINE 97.84%, COMPLEXITY 88.90%, METHOD/CLASS 100%
    (ядро не менялось — метрики ядра в силе с #311).

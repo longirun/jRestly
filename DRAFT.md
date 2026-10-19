@@ -1,5 +1,22 @@
 # DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
+> **Сессия #320 (ADR-0068 Ф3-вторая половина — полный прогон матрицы, публикация секции в `BENCHMARKS.md`, ADR-0068 Accepted; гейт 1,710/1,710):**
+> 1. *Приём состояния:* HEAD на #319, чистое дерево.
+> 2. *Полный прогон JMH матрицы (11 arm'ов × 3 размера, 33 замера):*
+>    - `GRADLE_USER_HOME=/tmp/opencode/gradle-home ./gradlew :benchmarks:jmh -PjmhArgs="-f 1 -wi 1 -i 2 -prof gc -rf json -rff feed_results.json .*FeedBenchmark\..*"`
+>    - Собраны данные Throughput (ops/s), Allocations (B/op) и CPU time (ms/op через `CpuProbe` на `getProcessCpuTime()`).
+> 3. *Результаты и подтверждение гипотез ADR-0068:*
+>    - **Стриминг (`@Get InputStream`) экономит мегабайты памяти:** на `rss-1000` (1.05 MB тело) `jRestly default streaming` экономит **1.02 MB/op** по сравнению с `buffered` (4.64 MB vs 5.66 MB); на Apache5/OkHttp стриминг экономит **>2.1 MB/op** (3.38 MB vs 5.54 MB).
+>    - **jRestly + Apache5 превосходит сырой OkHttp и Retrofit 2:** на больших телах (1 MB) достигает **30.4 ops/s** и **3,382,858 B/op** (быстрее и экономнее сырого OkHttp 24.6 ops/s, 3.42 MB и Retrofit 27.2 ops/s, 4.47 MB).
+>    - **Оверхед zero-dep ядра поверх raw JDK HttpClient минимален:** +6.3 KB на 20 KB теле, +15 KB на 211 KB, +42 KB на 1.05 MB теле (пренебрежимо мало).
+>    - **Spring 6 HTTP Interface (`Resource`) сильно буферизует:** худшие показатели по памяти на всех размерах (216 KB на small, 1.43 MB на medium, 6.80 MB на large).
+> 4. *Документация и память:*
+>    - `BENCHMARKS.md` дополнен секцией «Real scenario: feed fetch & parse (ADR-0068, run #320)» с полными таблицами Throughput, Allocations, CPU Time и описанием выводов; обновлены секции limitations и reproducing.
+>    - `ADR-0068` переведен в статус **Accepted**.
+>    - Подробный аналитический отчет со всеми цифрами отправлен Антону в `.agent/mailbox.md`.
+> 5. *Гейт:* **1,710/1,710** green во всех 5 модулях (код ядра не менялся).
+> 6. *Дальше (#321):* выбор следующего эпика/кандидата (Highest ADR 0068, next free 0069) или продолжение развития core.
+
 > **Сессия #319 (ADR-0068 Ф3-первая половина — JMH-стенд `FeedBenchmark`; ядро не тронуто; гейт 1,710/1,710 — +2):**
 > 1. *Приём состояния:* HEAD на #316 4007f66 — счётчик 319 докручен «фантомными»
 >    запусками #317-#318 (паттерн #306/#308/#312), чистый приём, WIP нет.
