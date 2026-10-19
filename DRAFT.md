@@ -1,5 +1,22 @@
 # DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
+> **Сессия #324 (ADR-0070 Фаза 2: реализация NettyHttpEngine, connection pool, NettyChunkedInputStream, 21 паритетный тест, гейт 1,736/1,736):**
+> 1. *Приём состояния:* HEAD на #323, чистое дерево.
+> 2. *Реализация `NettyHttpEngine` (ADR-0070 Фаза 2):*
+>    - Архитектура пула: `AbstractChannelPoolMap<EndpointKey, FixedChannelPool>` с dynamic route isolation (`scheme`, `host`, `port`), `ChannelHealthChecker.ACTIVE`, keep-alive reuse.
+>    - Сборка запроса: HTTP/1.1 (`DefaultHttpRequest`, `DefaultFullHttpRequest`), RFC-нормализация path + query, формирование заголовков Host, Cookie, замена Content-Type (`request.contentType()` имеет строгий приоритет), поддержка `Connection: keep-alive`.
+>    - Поддержка тел запросов: `byte[]` с почанковой отправкой под `uploadProgressListener`, `parts()` (multipart RFC 7578) и `bodyPublisherSupplier()` через credit-based `PublisherInputStream`.
+>    - Обработка ответов: Buffered mode и Streaming mode (`WireResponse` с живым `NettyChunkedInputStream`).
+> 3. *Push-to-Pull Streaming Bridge `NettyChunkedInputStream`:*
+>    - Backpressure через `setAutoRead(false)` при `HIGH_WATERMARK` (8) и возобновлением при `LOW_WATERMARK` (2).
+>    - Строгий контроль памяти: `ByteBuf.retain()` и `release()` под `-Dio.netty.leakDetection.level=PARANOID` — ноль утечек.
+>    - Немедленная разблокировка читателя при `stream.close()`: гарантированный выброс `IOException("Stream closed")`.
+>    - Отложенная видимость trailers: `trailersSupplier().get()` возвращает пустой список до полного вычитывания тела.
+> 4. *Паритетный сьют тестов (+21 тест, `NettyHttpEngineParityTest`):*
+>    - 21 тест против WireMock, полный паритет контракта `HttpEngine` (buffered, streaming, async stream readability, progress listeners, chunked transfer, trailers, passive compression, call timeouts, cancel).
+> 5. *Гейты:* **1,736 / 1,736** green во всех 6 модулях (root 1609 + engine-okhttp 25 + engine-apache5 25 + engine-netty 26 + codec-jackson-xml 15 + benchmarks 36). Javadoc чист под `-Werror`. JaCoCo ядра: BRANCH 90.64%, INSTRUCTION 98.19%, LINE 97.84%, COMPLEXITY 88.90%, METHOD/CLASS 100%.
+> 6. *Дальше (#325):* Фаза 3 ADR-0070 — подключение `engine-netty` к `benchmarks/build.gradle`, добавление 12-го arm'а `jrestlyNetty_buffered` и `jrestlyNetty_streaming` в `FeedBenchmark`, замеры Throughput, Allocations (`-prof gc`) и CPU vs Apache5/OkHttp/JDK.
+>
 > **Сессия #323 (старт цикла 0.12.0: Netty Transport Engine ADR-0070 Фаза 1, субмодуль engine-netty, SPI регистрация, гейт 1,715/1,715):**
 > 1. *Приём состояния:* HEAD на #322, чистое дерево. Релиз 0.11.0 упакован.
 > 2. *ADR-0070 оформлен (`docs/0.12.0/ADR-0070-http-engine-netty-transport.md`, Proposed):*

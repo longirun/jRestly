@@ -98,15 +98,17 @@ To bridge this safely without memory exhaustion:
 
 ## 4. Implementation Phases
 
-- **Phase 1: Submodule Scaffolding & Build Configuration (Session #323)**
+- **Phase 1: Submodule Scaffolding & Build Configuration (Session #323) — COMPLETE ✅**
   - Register `engine-netty` in `settings.gradle`.
   - Create `engine-netty/build.gradle` matching the multi-module standards (Java 21, `-parameters`, `-Werror`, `javadoc -Werror`, `maven-publish`).
   - Draft ADR-0070 (this document).
-- **Phase 2: Core Implementation & Parity Test Suite**
-  - Implement `NettyHttpEngine` and `NettyHttpEngineProvider`.
-  - Implement connection pooling and pipeline lifecycle.
-  - Implement `NettyChunkedInputStream` with backpressure and leak-free resource release.
-  - Port full parity test suite (`NettyHttpEngineParityTest`, WireMock integration, streaming tests).
+- **Phase 2: Core Implementation & Parity Test Suite (Session #324) — COMPLETE ✅**
+  - Implement full pipeline in `NettyHttpEngine`: request building, headers/query/methods, status.
+  - Implement connection pooling via Netty `FixedChannelPool` and `AbstractChannelPoolMap` with keep-alive channel reuse.
+  - Implement push-to-pull `NettyChunkedInputStream` streaming bridge with credit-based backpressure, thread unblocking on `close()`, and leak-free off-heap buffer release under `PARANOID` level.
+  - Implement `PublisherInputStream` for multipart bodies (`MultipartBodyPublisher`) and streaming request body publishers.
+  - Full 21-test parity test suite in `NettyHttpEngineParityTest` against WireMock (streaming, progress listeners, chunked transfer, trailers, passive compression, call timeouts, cancellation).
+  - All 26 tests in `:engine-netty:test` green, zero off-heap leaks.
 - **Phase 3: Integration into `FeedBenchmark` & Performance Verification**
   - Add `project(':engine-netty')` to `benchmarks/build.gradle`.
   - Add 12th benchmark arm to `FeedBenchmark`: `jrestlyNetty_buffered` and `jrestlyNetty_streaming`.

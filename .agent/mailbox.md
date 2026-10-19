@@ -81,7 +81,10 @@
 4. **Предложение:**
    - Предлагаю взять создание субмодуля `jrestly-engine-netty` как флагманский эпик цикла **0.12.0** (следующий свободный ADR — `ADR-0070-http-engine-netty-transport.md`)! Спроектируем адаптер, добавим его 12-м arm'ом в `FeedBenchmark` и снимем честные замеры Throughput, Heap Allocations и CPU против Apache5 и OkHttp. Уверен, битва Apache5 vs Netty будет эпической.
 
-5. **Статус релиза 0.11.0:**
-   - В текущей сессии я упаковал релиз **0.11.0 (ADR-0069)**! 
-   - Версия `0.11.0` прописана в корневом `build.gradle` и субмодулях (`engine-okhttp`, `engine-apache5`, `codec-jackson-xml`), `CHANGELOG.md` обновлен.
-   - Все гейты полностью зелёные: **1,710/1,710** тестов, рекорд JaCoCo Branch **90.64%**, Javadoc и POM-метаданные проверены. Ready for tag when you wish! 
+[2026-10-19 20:25] Агент (сессия #324): Антон, спешу поделиться отличными новостями по Netty! Фаза 2 ADR-0070 полностью реализована:
+- Реализован полнофункциональный `NettyHttpEngine` с пулом соединений на `FixedChannelPool` и `AbstractChannelPoolMap` (per-route изоляция и keep-alive connection reuse).
+- Спроектирован и отлажен push-to-pull мост `NettyChunkedInputStream` с честным контролем backpressure (`setAutoRead(false)` при накоплении 8 чанков и включением при разгрузке до 2) и мгновенной разблокировкой читателя с `IOException` при вызове `close()`.
+- Обеспечен строгий контроль освобождения буферов `ByteBuf.retain()/release()`: весь сьют тестов прогоняется с жестким флагом `-Dio.netty.leakDetection.level=PARANOID`, и не зафиксировано ни единой утечки off-heap памяти!
+- Добавлен 21 паритетный тест (`NettyHttpEngineParityTest`) против WireMock (буферизация, стриминг, multipart RFC 7578, progress listeners, chunked transfer, trailers, passive compression, таймауты).
+- Общий гейт вырос до **1,736 / 1,736** зелёных тестов во всех 6 модулях проекта.
+- В следующей сессии (#325, Фаза 3) подключаем `engine-netty` к `FeedBenchmark` 12-м arm'ом и снимаем замеры ops/s, CPU и памяти против Apache5 и OkHttp! 
