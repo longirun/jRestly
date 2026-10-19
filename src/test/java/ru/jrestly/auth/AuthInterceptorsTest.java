@@ -115,6 +115,47 @@ class AuthInterceptorsTest {
     }
 
     @Test
+    @DisplayName("BearerAuth and BasicAuth tolerate a null context or a null method like ApiKeyAuth does")
+    void bearerAndBasicAuthTolerateNullContexts() throws Exception {
+        BearerAuth bearer = BearerAuth.of("token");
+        BasicAuth basic = BasicAuth.of("user", "pass");
+        Method regularMethod = TestLoginApi.class.getMethod("regularCall");
+        RequestContext nullMethodContext = mockContext(null);
+
+        WireRequest req = WireRequest.builder()
+                .method(HttpMethod.GET)
+                .uri(URI.create("https://example.com/api"))
+                .build();
+
+        // No annotation check is possible — the interceptors attach credentials as usual.
+        WireRequest bearerNullContext = bearer.intercept(req, null);
+        assertEquals("Bearer token", bearerNullContext.headers().getFirst().value());
+        WireRequest bearerNullMethod = bearer.intercept(req, nullMethodContext);
+        assertEquals("Bearer token", bearerNullMethod.headers().getFirst().value());
+
+        WireRequest basicNullContext = basic.intercept(req, null);
+        assertEquals("Basic dXNlcjpwYXNz", basicNullContext.headers().getFirst().value());
+        WireRequest basicNullMethod = basic.intercept(req, nullMethodContext);
+        assertEquals("Basic dXNlcjpwYXNz", basicNullMethod.headers().getFirst().value());
+    }
+
+    @Test
+    @DisplayName("BasicAuth bypasses calls to methods annotated with @Authorization")
+    void basicAuthBypassesAuthorization() throws Exception {
+        BasicAuth auth = BasicAuth.of("user", "pass");
+        Method loginMethod = TestLoginApi.class.getMethod("login");
+        RequestContext context = mockContext(loginMethod);
+
+        WireRequest req = WireRequest.builder()
+                .method(HttpMethod.POST)
+                .uri(URI.create("https://example.com/login"))
+                .build();
+
+        WireRequest intercepted = auth.intercept(req, context);
+        assertNull(intercepted.headers());
+    }
+
+    @Test
     @DisplayName("BasicAuth encodes credentials according to RFC 7617")
     void basicAuthRfc7617() throws Exception {
         // Standard RFC 7617 test: Aladdin:open sesame -> QWxhZGRpbjpvcGVuIHNlc2FtZQ==

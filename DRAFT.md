@@ -1,5 +1,46 @@
 # DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
+> **Сессия #309 (аудит codec/auth-кластера: закрыты 7 недостающих ветвей — все
+> документированные контракты, код main не тронут; гейт 1,675/1,675;
+> BRANCH 4,010/4,443 = 90.46% — рекорд, маржа над 90% рубежом +20 ветвей):**
+> 1. *Карта по свежему XML-отчёту JaCoCo (49 файлов с missed branches; эстафетный
+>    пул «~11 файлов с ровно 1 missed branch» уточнён и расширен).* Взят кластер
+>    codec + auth: `PayloadCodecResolver` L82, `CodecRegistry` L137/L162,
+>    `JsonCodecAdapter` L44/L63/L66, `BearerAuth` L84, `BasicAuth` L88.
+> 2. *Все ветви — честно документированные контракты (паттерн #192/#197/#198/#261/#268,
+>    код `src/main` не тронут):* (a) `Builder.codec(null)` — «ignored when null»
+>    по javadoc; (b) `build()` не дублирует default-кодек, уже зарегистрированный
+>    явно; (c) `JsonCodecAdapter.supports("text/json")` — задокументированный claim
+>    (class-javadoc: application/json, text/json, `*+json`); (d) `prettyPrint`
+>    адаптера: пустой payload → `""` (short-circuit до обёрнутого кодека) и
+>    null-charset → UTF-8 fallback (семантика default-метода `PayloadCodec`);
+>    (e) `discoverFromSpi` пропускает null-элементы iterable (defensive против
+>    чужого seam-итератора; null-Iterable и null-кодек провайдера уже были покрыты);
+>    (f) Bearer/Basic-интерцепторы терпят `null`-context и `null`-method — как
+>    ApiKeyAuth (покрытый ранее): аннотацию проверить не на чем → креда
+>    прикрепляется как обычно; (g) BasicAuth bypass при `@Authorization` —
+>    контракт из javadoc, у Bearer был покрыт, у Basic нет.
+> 3. *TDD (только тесты):* +4 в `CodecRegistryTest` (null-codec ignored;
+>    no-duplicate default; text/json claim; prettyPrint empty + UTF-8 fallback —
+>    маркер-кодек «MARKER» доказывает short-circuit), +1 в `PayloadCodecResolverTest`
+>    (null-элемент iterable, `ArrayList` — `List.of` null не принимает), +2 в
+>    `AuthInterceptorsTest` (null-context/null-method × Bearer/Basic; Basic bypass).
+>    Второй полный гейт потребовался, когда XML показал остаточную ветвь BasicAuth
+>    (cb=5/6 → bypass-кейс) — добран отдельным тестом.
+> 4. *Гейты:* **1,675/1,675** green во всех 5 модулях (+7, 0 failures/errors),
+>    javadoc чист под `-Werror`. JaCoCo: **BRANCH 4,010/4,443 (90.46%)**,
+>    INSTRUCTION **98.15%**, LINE **97.82%**, COMPLEXITY **88.69%** — рекорды;
+>    METHOD 1455/1455 и CLASS 149/149 — 100% сохранены. Целевые ветви по XML:
+>    все CLOSED (PayloadCodecResolver:82, CodecRegistry:137/162,
+>    JsonCodecAdapter:44/63/66, BearerAuth:84, BasicAuth:88).
+> 5. *Дальше:* остатки пула 1-2-branch-файлов (`ApiKeyAuth` L127 — недостижимая
+>    defensive `fragment != null && !contains("#")`; `RateLimiters` L66/L123,
+>    `RetryPolicy` L347/L355 — джиттер-зависимые; `OnErrorParser` L102/L105,
+>    `HttpEngineResolver` L45/L48, `TraceIdGenerators` L76, `GsonCodec` L111,
+>    `MoshiCodec` L167, `CircuitBreakerConfig` L54, `FileContent` L104,
+>    `TrailerCompletingInputStream` L36) или Кандидат №7 (rss/atom, ждёт A/B-ответа
+>    Антона). Highest ADR **0067**, next free **0068**.
+
 > **Сессия #305 (главный хвост аудита #301 закрыт: `byte[]`-скаляр в headers/params — fail-fast вместо тихого `[B@…` на проводе; гейт 1,668/1,668; BRANCH 90.21% — рекорд):**
 > 1. *Карта (5 позиций просачивания по коду):* `appendHeaderValues`/`appendParamValues` исключали `byte[]` из array-expansion (`!byte[].class.equals(...)`) и фолбэкили в `value.toString()` → под объявленным ключом уезжал `[B@1a2b3c4d` (тихая порча payload'а); плюс текстовая multipart-часть без `contentType()` и 4 join'а CSV/SSV/TSV/PIPES. Скаляр, элемент списка, элемент массива, Map-значение — все пути.
 > 2. *Решение wire-формата (ISO-8859-1 / Base64 / fail-fast):* **fail-fast** — «header and parameter values are text on the wire»; ISO-8859-1 навязывал бы HTTP-1 семантику заголовков query-ключам и молча пропускал бы искажённые байты, Base64 навязывает недокументированную трансформацию; выбор кодировки остаётся на call-site (сообщение подсказывает `@RequestBody` либо явное кодирование — Base64/ISO-8859-1). Прецеденты: «bare byte[] cannot be a multipart file» (тот же файл), fail-fast селекции кодека #178. **Сохранён нарочно:** raw-bytes канал `@RequestParam(contentType = "...") byte[]` в multipart (ADR-0031/0033); byte[]-часть без явного Content-Type тоже fail-fast.
@@ -3130,7 +3171,15 @@ INSTRUCTION 98.13%, LINE 97.78%, COMPLEXITY 88.28% — новые рекорды
 канал multipart `@RequestParam(contentType = ...) byte[]`; ADR-0017 Amendment #305;
 **BRANCH 3,999/4,433 = 90.21%**, INSTRUCTION 98.14%, LINE 97.79%, COMPLEXITY 88.39% —
 рекорды; гейт **1,668/1,668**.
-Следующий ход: аудит engine/tracing/codec (пул ~11 файлов с ровно 1 missed branch)
+**Аудит codec/auth-кластера — выполнен (#309):** закрыты 7 недостающих ветвей
+(`Builder.codec(null)`, no-duplicate default в `build()`, `text/json`-claim и
+prettyPrint-контракты `JsonCodecAdapter`, null-элементы SPI-итерации,
+null-context/null-method Bearer/Basic, Basic bypass при `@Authorization`) — все
+документированные контракты, код main не тронут; **BRANCH 4,010/4,443 = 90.46%**,
+INSTRUCTION 98.15%, LINE 97.82%, COMPLEXITY 88.69% — рекорды; гейт **1,675/1,675**.
+Следующий ход: остатки пула 1-2-branch-файлов (`RateLimiters`, `RetryPolicy`,
+`OnErrorParser`, `HttpEngineResolver`, `TraceIdGenerators`, `GsonCodec`,
+`MoshiCodec`, `CircuitBreakerConfig`, `FileContent`, `TrailerCompletingInputStream`)
 или Кандидат №7 (rss/atom, ждёт A/B-ответа Антона).
 **Кандидат №8 проверен (#287): регрессии dispatch/аллокаций нет** (см.
 пометку выше). №7 (rss/atom) — разблокируется ответом Антона

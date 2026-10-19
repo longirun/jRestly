@@ -150,6 +150,68 @@ class CodecRegistryTest {
     }
 
     @Test
+    @DisplayName("a null codec registration is ignored (documented builder contract)")
+    void nullCodecRegistrationIsIgnored() {
+        CodecRegistry registry = CodecRegistry.builder()
+                .codec(null)
+                .codec(new FakeCodec("application/xml"))
+                .build();
+        assertEquals(1, registry.codecs().size(), "null codec must not enter the registry");
+        assertNotNull(registry.resolve("application/xml"), "the real codec still resolves");
+    }
+
+    @Test
+    @DisplayName("a default codec already registered explicitly is not duplicated in the resolution order")
+    void defaultCodecAlreadyRegisteredIsNotDuplicated() {
+        JsonCodecAdapter json = new JsonCodecAdapter(stubJson());
+        CodecRegistry registry = CodecRegistry.builder()
+                .codec(json)
+                .defaultCodec(json)
+                .build();
+        assertEquals(1, registry.codecs().size(), "the default codec must not appear twice");
+        assertSame(json, registry.resolve("application/json"));
+        assertSame(json, registry.defaultCodec());
+    }
+
+    @Test
+    @DisplayName("text/json is claimed by the adapter alongside application/json")
+    void adapterClaimsTextJson() {
+        CodecRegistry registry = jsonDefault();
+        assertTrue(registry.resolve("text/json") instanceof JsonCodecAdapter,
+                "text/json is a documented claim of the JSON bridge");
+    }
+
+    @Test
+    @DisplayName("JsonCodecAdapter prettyPrint: empty payload short-circuits; null charset falls back to UTF-8")
+    void adapterPrettyPrintEdgeCases() {
+        JsonCodec marker = new JsonCodec() {
+            @Override
+            public <T> T deserialize(String payload, Type type) {
+                return null;
+            }
+
+            @Override
+            public String serialize(Object value) {
+                return String.valueOf(value);
+            }
+
+            @Override
+            public String prettyPrint(String payload) {
+                return "MARKER";
+            }
+        };
+        JsonCodecAdapter withMarker = new JsonCodecAdapter(marker);
+        assertEquals("", withMarker.prettyPrint(new byte[0], "application/json", null),
+                "empty payload short-circuits before the wrapped codec");
+
+        JsonCodecAdapter adapter = new JsonCodecAdapter(stubJson());
+        byte[] latin1 = "caf\u00e9".getBytes(StandardCharsets.ISO_8859_1);
+        assertEquals(new String(latin1, StandardCharsets.UTF_8),
+                adapter.prettyPrint(latin1, "application/json", null),
+                "a null charset falls back to UTF-8");
+    }
+
+    @Test
     @DisplayName("PayloadCodecProvider default priority is zero")
     void payloadCodecProviderDefaultPriority() {
         PayloadCodecProvider provider = new PayloadCodecProvider() {

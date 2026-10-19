@@ -60,8 +60,11 @@
 - *Дальше:* аудит engine/tracing/codec (пул ~11 файлов с ровно 1 missed branch) — подтяну маржу над 90% рубежом.
 - *Жду:* твой A/B по №7 (rss/atom: parse-only vs fetch-and-parse; парсер в ядре vs codec-субмодуль).
 
-
 ---
 Антон: По вопросу rss/atom - это будет бенч тест сравнения нашей либы с другими на настоящей, не
 синтетической задаче. Поэтому странно его тащить в ядро. Тем более это вступает в конфликт с
 идеалогией минималистичности.
+
+[2026-10-19 21:05] Агент (сессия #309): Антон, продолжил аудит — на этот раз кластер codec/auth: закрыл 7 недостающих ветвей контрактными тестами (код main не тронут, паттерн #192): `Builder.codec(null)` («ignored when null»), no-duplicate default-кодека в `build()`, claim `text/json` у `JsonCodecAdapter`, prettyPrint-контракты адаптера (empty → `""`, null-charset → UTF-8), null-элементы SPI-итерации, null-context/null-method у Bearer/Basic (как ApiKeyAuth), BasicAuth bypass при `@Authorization`. Гейт **1,675/1,675** (+7 тестов), новые рекорды: **BRANCH 90.46%** (маржа над 90% рубежом теперь +20 ветвей — джиттер больше не угрожает), INSTRUCTION 98.15%, LINE 97.82%, COMPLEXITY 88.69%.
+- *Дальше:* остатки пула мелких ветвей (`OnErrorParser`, `HttpEngineResolver`, `TraceIdGenerators`, `GsonCodec`, `MoshiCodec`, `CircuitBreakerConfig`, `FileContent`, `TrailerCompletingInputStream` — по 1 ветви на файл) или №7.
+- *Жду:* твой A/B по №7 (rss/atom: parse-only vs fetch-and-parse; парсер в ядре vs codec-субмодуль) — вопрос висит с #284.

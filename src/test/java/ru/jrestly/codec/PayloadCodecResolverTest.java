@@ -112,6 +112,19 @@ class PayloadCodecResolverTest {
     }
 
     @Test
+    @DisplayName("discovery skips null provider elements inside the iterable")
+    void skipsNullProviderElements() {
+        List<PayloadCodecProvider> withNull = new java.util.ArrayList<>();
+        withNull.add(null);
+        withNull.add(new FakeProvider(true, 0, new TaggedCodec("on")));
+
+        List<PayloadCodec> discovered = PayloadCodecResolver.discoverFromSpi(withNull);
+
+        assertEquals(1, discovered.size(), "null provider elements are skipped, real ones survive");
+        assertInstanceOf(TaggedCodec.class, discovered.get(0));
+    }
+
+    @Test
     @DisplayName("registry(json, explicit) puts explicit codecs first, discovered after, JSON as default")
     void registryAssemblesExplicitThenDiscovered() {
         PayloadCodec explicit = new TaggedCodec("explicit");
