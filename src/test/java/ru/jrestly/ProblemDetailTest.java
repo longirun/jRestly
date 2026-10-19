@@ -818,6 +818,38 @@ class ProblemDetailTest {
         assertTrue(pd1.equals(pdIdentical));
         assertEquals(pd1.hashCode(), pdIdentical.hashCode());
     }
+
+    @Test
+    @DisplayName("ProblemDetail toJson covers all pattern matching switch branches")
+    void patternMatchingJsonSerializationCoversAllTypes() {
+        ProblemDetail pd = ProblemDetail.forStatus(400);
+        pd.setProperty("nullProp", null);
+        pd.setProperty("stringProp", "hello \"world\"");
+        pd.setProperty("numberProp", 42);
+        pd.setProperty("booleanProp", true);
+        pd.setProperty("uriProp", URI.create("https://example.com/item"));
+        pd.setProperty("mapProp", Map.of("nestedKey", "nestedVal"));
+        pd.setProperty("listProp", List.of("elem1", 100));
+        pd.setProperty("arrayProp", new int[]{1, 2, 3});
+        pd.setProperty("customProp", new Object() {
+            @Override
+            public String toString() {
+                return "customValue";
+            }
+        });
+
+        String json = pd.toJson();
+        assertNotNull(json);
+        assertTrue(json.contains("\"nullProp\":null"));
+        assertTrue(json.contains("\"stringProp\":\"hello \\\"world\\\"\""));
+        assertTrue(json.contains("\"numberProp\":42"));
+        assertTrue(json.contains("\"booleanProp\":true"));
+        assertTrue(json.contains("\"uriProp\":\"https://example.com/item\""));
+        assertTrue(json.contains("\"mapProp\":{\"nestedKey\":\"nestedVal\"}"));
+        assertTrue(json.contains("\"listProp\":[\"elem1\",100]"));
+        assertTrue(json.contains("\"arrayProp\":[1,2,3]"));
+        assertTrue(json.contains("\"customProp\":\"customValue\""));
+    }
 }
 
 

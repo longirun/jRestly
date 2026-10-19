@@ -200,12 +200,11 @@ class HttpTemplate {
                     failed.completeExceptionally(t);
                     return (T) failed;
                 }
-                if (t instanceof RuntimeException re) {
-                    throw re;
-                } else if (t instanceof Error err) {
-                    throw err;
-                } else {
-                    throw new RuntimeException(t);
+                switch (t) {
+                    case RuntimeException re -> throw re;
+                    case Error err -> throw err;
+                    case null -> throw new NullPointerException("t is null");
+                    default -> throw new RuntimeException(t);
                 }
             }
         }
@@ -482,21 +481,19 @@ class HttpTemplate {
             Throwable cause = unwrapCause(ex);
             // the future completes exceptionally with this exception as the
             // CompletionException cause of join() / ExecutionException cause of get()
-            if (cause instanceof RuntimeException re && !(cause instanceof CompletionException)) {
-                if (cause instanceof InterruptedException) {
-                    Thread.currentThread().interrupt();
-                }
-                throw re; // HandledException, ClientErrorException, ServerErrorException, custom typed exceptions
-            }
-            if (cause instanceof Error err) {
-                throw err;
-            }
-            logger.log(System.Logger.Level.ERROR,
-                    "Request failed: " + activeRequestRef.get().method() + " " + activeRequestRef.get().uri(), cause);
             if (cause instanceof InterruptedException) {
                 Thread.currentThread().interrupt();
             }
-            throw new RuntimeException(cause);
+            switch (cause) {
+                case RuntimeException re when !(re instanceof CompletionException) -> throw re;
+                case Error err -> throw err;
+                case null -> throw new NullPointerException("cause is null");
+                default -> {
+                    logger.log(System.Logger.Level.ERROR,
+                            "Request failed: " + activeRequestRef.get().method() + " " + activeRequestRef.get().uri(), cause);
+                    throw new RuntimeException(cause);
+                }
+            }
         });
 
         if (hasResponseInterceptors || hasMetrics) {
@@ -2210,20 +2207,18 @@ class HttpTemplate {
         }
 
         if (Throwable.class.isAssignableFrom(targetErrorClass)) {
-            if (errorObject instanceof RuntimeException re) {
-                throw re;
-            } else if (errorObject instanceof Error err) {
-                throw err;
-            } else if (errorObject instanceof Throwable t) {
-                throw new RuntimeException(t);
-            } else {
-                Throwable instance = ProblemDetailResolver.instantiateThrowable(targetErrorClass, statusCode, responseHeaders);
-                if (instance instanceof RuntimeException re) {
-                    throw re;
-                } else if (instance instanceof Error err) {
-                    throw err;
-                } else {
-                    throw new RuntimeException(instance);
+            switch (errorObject) {
+                case RuntimeException re -> throw re;
+                case Error err -> throw err;
+                case Throwable t -> throw new RuntimeException(t);
+                case null, default -> {
+                    Throwable instance = ProblemDetailResolver.instantiateThrowable(targetErrorClass, statusCode, responseHeaders);
+                    switch (instance) {
+                        case RuntimeException re -> throw re;
+                        case Error err -> throw err;
+                        case null -> throw new NullPointerException("instantiateThrowable returned null");
+                        default -> throw new RuntimeException(instance);
+                    }
                 }
             }
         }

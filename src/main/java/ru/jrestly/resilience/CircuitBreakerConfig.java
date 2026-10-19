@@ -58,13 +58,13 @@ public record CircuitBreakerConfig(
     };
 
     private static boolean isFailureType(Throwable t) {
-        if (t instanceof IOException || t instanceof TimeoutException || t instanceof ServerErrorException) {
-            return true;
-        }
-        if (t instanceof UnexpectedStatusException use) {
-            return use.getStatusCode() >= 500;
-        }
-        return false;
+        return switch (t) {
+            case IOException ioEx -> true;
+            case TimeoutException timeoutEx -> true;
+            case ServerErrorException serverErrorEx -> true;
+            case UnexpectedStatusException use -> use.getStatusCode() >= 500;
+            case null, default -> false;
+        };
     }
 
     /**

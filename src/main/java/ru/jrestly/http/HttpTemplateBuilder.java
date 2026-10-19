@@ -929,14 +929,12 @@ public class HttpTemplateBuilder {
 
             @Override
             public void onNext(Object item) {
-                if (item instanceof ByteBuffer bb) {
-                    subscriber.onNext(bb);
-                } else if (item instanceof byte[] b) {
-                    subscriber.onNext(ByteBuffer.wrap(b));
-                } else if (item instanceof String s) {
-                    subscriber.onNext(ByteBuffer.wrap(s.getBytes(charset)));
-                } else if (item != null) {
-                    subscriber.onNext(ByteBuffer.wrap(item.toString().getBytes(charset)));
+                switch (item) {
+                    case ByteBuffer bb -> subscriber.onNext(bb);
+                    case byte[] b -> subscriber.onNext(ByteBuffer.wrap(b));
+                    case String s -> subscriber.onNext(ByteBuffer.wrap(s.getBytes(charset)));
+                    case null -> {}
+                    default -> subscriber.onNext(ByteBuffer.wrap(item.toString().getBytes(charset)));
                 }
             }
 
@@ -1125,27 +1123,25 @@ public class HttpTemplateBuilder {
     }
 
     private MultipartPart createFilePart(String partName, Object arg, String explicitContentType) {
-        if (arg instanceof FileContent content) {
-            return MultipartPart.file(partName, content.fileName(), explicitContentType,
-                    content.content(), content.contentLength());
+        if (arg == null) {
+            throw new IllegalArgumentException("Multipart file argument cannot be null");
         }
-        if (arg instanceof byte[]) {
-            throw new IllegalArgumentException(
+        return switch (arg) {
+            case FileContent content -> MultipartPart.file(partName, content.fileName(), explicitContentType,
+                    content.content(), content.contentLength());
+            case byte[] ignored -> throw new IllegalArgumentException(
                     "A bare byte[] cannot be a multipart file: the wire file name cannot be derived from it. "
                             + "Wrap in-memory bytes in FileContent.of(fileName, bytes)");
-        }
-        Path path = arg instanceof File file
-                ? file.toPath()
-                : arg instanceof Path p
-                        ? p
-                        : arg instanceof String str
-                                ? Path.of(str)
-                                : null;
-        if (path == null) {
-            throw new IllegalArgumentException(
+            case File file -> createFilePartFromPath(partName, file.toPath(), explicitContentType);
+            case Path p -> createFilePartFromPath(partName, p, explicitContentType);
+            case String str -> createFilePartFromPath(partName, Path.of(str), explicitContentType);
+            default -> throw new IllegalArgumentException(
                     "Unsupported multipart file argument of type " + arg.getClass().getName()
                             + ". Expected Path, File, String, or FileContent");
-        }
+        };
+    }
+
+    private MultipartPart createFilePartFromPath(String partName, Path path, String explicitContentType) {
         if (path.getFileName() == null) {
             throw new IllegalArgumentException("Path must have a file name: " + path);
         }
@@ -1154,16 +1150,12 @@ public class HttpTemplateBuilder {
 
     // Unpacks collections, arrays, and varargs into individual part values
     private static List<?> multipartFileValues(Object arg) {
-        if (arg == null) {
-            return List.of();
-        }
-        if (arg instanceof Collection<?> collection) {
-            return collection.stream().filter(Objects::nonNull).toList();
-        }
-        if (arg instanceof Object[] array) {
-            return Arrays.stream(array).filter(Objects::nonNull).toList();
-        }
-        return List.of(arg);
+        return switch (arg) {
+            case null -> List.of();
+            case Collection<?> collection -> collection.stream().filter(Objects::nonNull).toList();
+            case Object[] array -> Arrays.stream(array).filter(Objects::nonNull).toList();
+            default -> List.of(arg);
+        };
     }
 
     byte[] createUrlEncodedBody() {
@@ -1249,13 +1241,14 @@ public class HttpTemplateBuilder {
     // Header and parameter positions are text on the wire; a byte[] has no defined
     // text rendering, so it fails fast instead of silently sending "[B@...'" garbage.
     private static String textValue(Object value, String position) {
-        if (value instanceof byte[]) {
-            throw new IllegalArgumentException(
+        return switch (value) {
+            case null -> "null";
+            case byte[] ignored -> throw new IllegalArgumentException(
                     "A byte[] cannot be a " + position + " value: header and parameter values are text on the wire. "
                             + "Send raw bytes as @RequestBody, or encode the bytes to text explicitly "
                             + "(e.g. Base64 or new String(bytes, StandardCharsets.ISO_8859_1)) before passing.");
-        }
-        return value.toString();
+            default -> value.toString();
+        };
     }
 
     private static void appendParamValues(List<Param> result, String name, Object value, CollectionFormat format) {

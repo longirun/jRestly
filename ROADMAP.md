@@ -2179,9 +2179,9 @@ Gates (session #241):
 
 ---
 
-> **Current status (2026-10-19).** Highest ADR issued: **0070**; next free: **0071**.
-> Cycle 0.11.0 packaged and verified (ADR-0069); version bumped to `0.11.0` in root and all published submodules. Cycle 0.12.0 flagship epic Netty Transport Engine (`jrestly-engine-netty`, ADR-0070) COMPLETE ✅ (Phases 1–3, Accepted).
-> Live gate: **1,737/1,737** tests green across all six modules, 0 warnings under `-Werror`. JaCoCo: **100% Class Coverage (149/149)**, **100% Method Coverage (1455/1455)**, **98.19% Instructions**, **97.84% Lines**, **90.64% Branches (4,018/4,433)**, **88.90% Complexity** (historical records). The Netty transport engine provides non-blocking I/O with connection pooling (`FixedChannelPool`), push-to-pull streaming with credit-based backpressure, verified zero off-heap leaks under `-Dio.netty.leakDetection.level=PARANOID`, record-low heap allocations (98 KB/op on small feeds), and is integrated into `FeedBenchmark` with published results in `BENCHMARKS.md`.
+> **Current status (2026-10-19).** Highest ADR issued: **0071**; next free: **0072**.
+> Cycle 0.11.0 packaged and verified (ADR-0069); version bumped to `0.11.0` in root and all published submodules. Cycle 0.12.0 flagship epic Netty Transport Engine (`jrestly-engine-netty`, ADR-0070) COMPLETE ✅, Java 21+ Pattern Matching & Sealed Architecture Audit (ADR-0071) COMPLETE ✅.
+> Live gate: **1,739/1,739** tests green across all six modules, 0 warnings under `-Werror`. JaCoCo: **100% Class Coverage (149/149)**, **100% Method Coverage (1456/1456)**, **98.11% Instructions**, **97.76% Lines**, **90.52% Branches (3,993/4,411)**, **88.81% Complexity** (historical records). Modern Java 21 type patterns, pattern guards (`when`), and declarative switch dispatches adopted across core pipeline with 0 allocations penalty. Public SPI and telemetry contexts verified non-sealed for mockability and user extensibility.
 
 ## Internal Code Structure: HttpTemplate Decomposition (ADR-0066) — COMPLETE ✅ (2026-10-18, unreleased)
 
@@ -2315,6 +2315,29 @@ Synthetic microbenchmarks (ping, small JSON DTOs) only measure proxy dispatch an
 - **Record Heap Allocations on Small Payloads:** With Netty's off-heap pooled buffer allocator (`PooledByteBufAllocator`), `jRestly + engine-netty (streaming)` achieved an absolute record **98,342 B/op** on `rss-20` (lower than raw OkHttp 98,725 B, Retrofit 102,772 B, and Apache5 101,141 B).
 - **Streaming Cuts Megabytes on Netty:** Streaming mode saves **6.26 MB/op** on 1 MB feeds (`rss-1000`: 3.49 MB vs 9.75 MB).
 - **Substantial Advantage over Default JDK Transport:** Throughput on `rss-20` reached **308.3 ops/s** (53% higher than default JDK 201.5 ops/s and OpenFeign 201.2 ops/s), while CPU time dropped to **6.39 ms/op** (vs 9.75 ms on JDK and 9.42 ms on Feign).
+
+---
+
+## Java 21+ Pattern Matching & Sealed Architecture Audit (ADR-0071) — COMPLETE ✅ (2026-10-19, unreleased)
+
+> Source of truth: [`docs/0.12.0/ADR-0071-java-21-pattern-matching-and-sealed-architecture.md`](docs/0.12.0/ADR-0071-java-21-pattern-matching-and-sealed-architecture.md).
+> Candidate №11 of Cycle 0.12.0: Comprehensive modernization of internal dispatching, exception re-throwing, payload serialization, and argument classification onto Java 21 Pattern Matching for `switch` (JEP 441) with pattern guards (`when`). Architectural policy established on sealed types vs mockability. ADR-0071 status: **Accepted**.
+
+**Key Architectural Decisions & Implementation:**
+1. **Policy on Sealed Types (Mockability Invariant):**
+   - Public SPI contracts (`HttpEngine`, `PayloadCodec`, `RequestInterceptor`, `ResponseInterceptor`, `ClientMetricsListener`, `TokenManager`, `CircuitBreaker`, `RateLimiter`) and invocation contexts (`RequestContext`, `ResponseContext`, `CallMetrics`, `HandledException`) MUST NOT be sealed. Sealing these interfaces would break unit test mocking (e.g. Mockito dynamic proxies) in downstream consumer applications and prevent custom domain exception subclassing in `@OnError`.
+2. **Java 21 Pattern Matching for `switch`:**
+   - **Failure Classification (`CircuitBreakerConfig.isFailureType`):** Type-dispatched switch evaluating direct failure types (`IOException`, `TimeoutException`, `ServerErrorException`), status-guarded `UnexpectedStatusException` (status >= 500), and cause hierarchies.
+   - **Zero-Dep JSON Value Serialization (`ProblemDetail.appendJsonValue`):** Modernized from 9-branch `if-else` cascade to type-matching switch covering null, String, Number, Boolean, URI, Map, Iterable, array, and fallback objects.
+   - **RFC 9457 Status Parsing (`ProblemDetail` case "status"):** Type pattern matching on Number vs String representation.
+   - **Multipart File Argument Classifier (`HttpTemplateBuilder.createFilePart`):** Clean switch over `FileContent`, `File`, `Path`, `String`, bare `byte[]` fail-fast, and unsupported argument types.
+   - **Collections / Arrays Unpacking (`HttpTemplateBuilder.multipartFileValues` & `textValue`):** Declarative switch handling null, Collection, Object[], and scalar types.
+   - **Reactive Body Publisher (`HttpTemplateBuilder.onNext`):** Switch pattern matching over ByteBuffer, byte[], and String items.
+   - **Exception Re-throw with Pattern Guards (`HttpTemplate.exchangeAsync` & `exchange`):** `switch (cause) { case RuntimeException re when !(re instanceof CompletionException) -> throw re; ... }`.
+3. **Verification & Gates:**
+   - Gate grew to **1,739 / 1,739** tests green across all 6 modules (+2 tests: `CircuitBreakerTest.defaultRecordExceptionClassificationParity`, `ProblemDetailTest.patternMatchingJsonSerializationCoversAllTypes`).
+   - Javadoc 100% clean under `-Werror`.
+   - JaCoCo: Branch coverage solidly at **90.52%** (3,993/4,411), Instruction **98.11%**, Line **97.76%**, Method **100%**, Class **100%**.
 
 ---
 

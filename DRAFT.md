@@ -1,5 +1,25 @@
 # DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
+> **Сессия #326 (Java 21+ Pattern Matching & Sealed Architecture Audit: ADR-0071, рефакторинг dispatch/failure/serialization switch, 100% паритет, гейт 1,739/1,739):**
+> 1. *Приём состояния:* HEAD на #325, чистое дерево. Субмодуль `engine-netty` и бенчмарк-матрица зафиксированы.
+> 2. *ADR-0071 оформлен (`docs/0.12.0/ADR-0071-java-21-pattern-matching-and-sealed-architecture.md`, Accepted):*
+>    - Архитектурная политика по Sealed типам: публичные контракты SPI (`HttpEngine`, `PayloadCodec`, `RequestInterceptor`, `ResponseInterceptor`, `ClientMetricsListener`, `TokenManager`, `CircuitBreaker`, `RateLimiter`) и контексты (`RequestContext`, `ResponseContext`, `CallMetrics`, `HandledException`) **НЕ** должны запечатываться (non-sealed), чтобы сохранить возможность мокирования (Mockito) в юнит-тестах пользователей и расширения кастомными исключениями в `@OnError`.
+>    - Внедрение Java 21 Pattern Matching for `switch` (JEP 441) и pattern guards (`when`):
+>      * `CircuitBreakerConfig.isFailureType`: декларативный switch по типам исключений (`IOException`, `TimeoutException`, `ServerErrorException`), status-guarded `UnexpectedStatusException` (status >= 500) и cause-иерархии;
+>      * `ProblemDetail.appendJsonValue`: современный type pattern matching switch (null, String, Number, Boolean, URI, Map, Iterable, array, fallback object);
+>      * `ProblemDetail` case "status": pattern matching switch по Number vs String;
+>      * `HttpTemplateBuilder.createFilePart`: switch по FileContent, byte[] (fail-fast), File, Path, String, unsupported type;
+>      * `HttpTemplateBuilder.multipartFileValues` & `textValue`: pattern matching switch по типам значений;
+>      * `HttpTemplateBuilder.onNext`: switch по ByteBuffer, byte[], String;
+>      * `HttpTemplate.exchangeAsync` & `handleOnError`: switch с pattern guard `when !(re instanceof CompletionException)`.
+> 3. *Инженерная находка (Java 21 vs Java 22 preview):*
+>    - В Java 21 безымянные шаблоны (`_`) являются preview-фичей (JEP 443/456), поэтому в соответствии с принципом zero-warning и отсутствием preview-флагов в проде использованы стандартные именованные переменные (`ignored`, `ioEx`).
+> 4. *Тесты (+2 теста, гейт 1,739/1,739):*
+>    - `CircuitBreakerTest.defaultRecordExceptionClassificationParity`: проверка всех ветвей классификации отказов в `DEFAULT_RECORD_EXCEPTION`;
+>    - `ProblemDetailTest.patternMatchingJsonSerializationCoversAllTypes`: проверка сериализации всех типов в JSON через `appendJsonValue`.
+> 5. *Гейты:* **1,739 / 1,739** green во всех 6 модулях (root 1611 + engine-okhttp 25 + engine-apache5 25 + engine-netty 26 + codec-jackson-xml 15 + benchmarks 37). Javadoc чист под `-Werror`. JaCoCo: BRANCH 90.52%, INSTRUCTION 98.11%, LINE 97.76%, COMPLEXITY 88.81%, METHOD/CLASS 100%.
+> 6. *Дальше (#327):* выбор следующего эпика цикла 0.12.0: Кандидат №12 (исследование экосистемы кодеков Proto/YAML) или другие задачи бэклога.
+>
 > **Сессия #325 (ADR-0070 Фаза 3: интеграция Netty в FeedBenchmark, замеры Throughput/Allocations/CPU, публикация в BENCHMARKS.md, ADR-0070 Accepted; гейт 1,737/1,737):**
 > 1. *Приём состояния:* HEAD на #324, чистое дерево.
 > 2. *Интеграция `engine-netty` в модуль бенчмарков (ADR-0070 Фаза 3):*
@@ -3531,17 +3551,14 @@ INSTRUCTION 98.15%, LINE 97.82%, COMPLEXITY 88.69% — рекорды; гейт 
 **№7 (rss/atom) закрыт полностью (#320):** стенд `FeedBenchmark` прогнан на 33 конфигурациях, результаты и аналитика занесены в `BENCHMARKS.md`, `ADR-0068` Accepted, эпик дистиллирован в `ROADMAP.md`. Гейт **1,710/1,710**.
 **Кандидат №9 закрыт полностью (#322):** цикл 0.11.0 упакован (ADR-0069), версия 0.11.0 выставлена в `build.gradle` и субмодулях, `CHANGELOG.md` обновлен, POM проверен, `ROADMAP.md` актуализирован. Highest ADR **0069**, next free **0070**.
 
-**Новый пул кандидатов на цикл 0.12.0:**
-- **Кандидат №10 — Netty Transport Engine (`jrestly-engine-netty`, ADR-0070):**
-  Исследование и создание нового субмодуля транспорта `jrestly-engine-netty` на базе SPI `HttpEngine` (по предложению Антона в mailbox). Pooled off-heap ByteBuf, асинхронный I/O, push-to-pull streaming мост для `InputStream`, включение в матрицу `FeedBenchmark` 12-м arm'ом для замера throughput и heap-аллокаций против Apache5 и OkHttp.
-  * **Фаза 1 — выполнена (#323):** оформлен `docs/0.12.0/ADR-0070-http-engine-netty-transport.md` (Proposed), зарегистрирован субмодуль `engine-netty` в `settings.gradle`, создан `engine-netty/build.gradle` (Netty 4.1.118.Final), каркас `NettyHttpEngine` и `NettyHttpEngineProvider` (priority = 60), регистрация SPI, гейт-тесты `NettyHttpEngineProviderTest` (+5 тестов, гейт 1,715/1,715).
-  * **Фаза 2 (в плане #324):** реализация пайплайна (HttpClientCodec, HttpObjectAggregator, decompressor), connection pool через `AbstractChannelPoolMap`, streaming мост `NettyChunkedInputStream` с backpressure и защитой от утечек ByteBuf.
-  * **Фаза 3:** паритет-тесты с WireMock (`NettyHttpEngineParityTest`).
-  * **Фаза 4:** подключение в `FeedBenchmark` 12-м arm'ом и снятие замеров против Apache5 и OkHttp.
-- **Кандидат №11 — Java 21+ Pattern Matching & Sealed Architecture Audit:**
-  Исследование возможностей Java 21 pattern matching for switch / record patterns в горячих точках пайплайна (разбор типов возврата, классификация ошибок в `ProblemDetailResolver`, обработка HTTP-статусов), дальнейшее устранение мелких оверхедов.
-- **Кандидат №12 — Экосистема кодеков: исследование субмодуля Proto / YAML:**
+**Кандидат №10 закрыт полностью (#325):** Netty Transport Engine (`jrestly-engine-netty`, ADR-0070) реализован, все фазы 1–3 завершены, замеры опубликованы в `BENCHMARKS.md`, ADR-0070 Accepted, дистиллирован в `ROADMAP.md`.
+**Кандидат №11 закрыт полностью (#326):** Java 21+ Pattern Matching & Sealed Architecture Audit (ADR-0071 Accepted). Рефакторинг на pattern matching switch в `CircuitBreakerConfig`, `ProblemDetail`, `HttpTemplateBuilder`, `HttpTemplate`. Доказан и закреплен non-sealed статус публичных SPI и контекстов. Гейт вырос до **1,739/1,739**.
+
+**Актуальный пул кандидатов цикла 0.12.0:**
+- **Кандидат №12 — Экосистема кодеков: исследование субмодуля Proto / YAML (`codec-protobuf` / `codec-yaml`):**
   Исследование необходимости создания легковесного адаптера для Protocol Buffers или YAML на базе существующего `PayloadCodec` SPI (по образу `jrestly-codec-jackson-xml`).
+- **Кандидат №13 — Аудит и оптимизация URI-композиции и RFC 3986/RFC 9110 Fast-Paths:**
+  Исследование возможностей прямого zero-allocation форматирования query параметров и path плейсхолдеров для дальнейшего снижения наносекундных оверхедов.
 Хвосты-кандидаты
 из аудит-нити (не эпики): валидация `@ExpectStatus`/`@FollowRedirects`
 (инварианты нигде не объявлены — фича, не дыра; #207, трогать лишь при

@@ -105,3 +105,8 @@
    - На `rss-20`: Netty streaming тратит всего **6.39 ms/op** (vs 9.75 ms на JDK, 9.42 ms на Feign и 10.98 ms на Spring HTTP Interface).
 
 Эпик `ADR-0070` успешно закрыт (`Accepted`), все таблицы опубликованы в `BENCHMARKS.md`, общий гейт вырос до **1,737 / 1,737** тестов. Теперь у пользователей jRestly есть полный спектр транспортов на любой вкус!
+
+[2026-10-19 21:50] Агент (сессия #326): Привет, Антон! В сессии #326 я провел аудит и модернизацию кодовой базы на современные идиомы Java 21 (ADR-0071):
+- Устранили устаревшие лесенки `instanceof` и ручные приведения типов на горячих путях (`CircuitBreakerConfig`, `ProblemDetail`, `HttpTemplateBuilder`, `HttpTemplate.exchangeAsync`), переведя их на Java 21 Pattern Matching for `switch` (JEP 441) с pattern guards (`when`).
+- Закрепили архитектурный инвариант по Sealed Types: публичные SPI (`HttpEngine`, `PayloadCodec`, `RequestInterceptor` и др.) и контексты (`RequestContext`, `CallMetrics`, `HandledException`) намеренно оставлены **non-sealed**, чтобы не ломать генерацию динамических моков (Mockito) в юнит-тестах пользователей библиотеки и давать возможность объявлять кастомные доменные исключения в `@OnError`.
+- Общий гейт вырос до **1,739 / 1,739** зелёных тестов во всех 6 модулях, JaCoCo держит ветви на **90.52%**, Javadoc чист под `-Werror`. Двигаемся дальше!

@@ -402,12 +402,14 @@ public class ProblemDetail {
                 case "type" -> pd.setType(val != null ? val.toString() : null);
                 case "title" -> pd.setTitle(val != null ? val.toString() : null);
                 case "status" -> {
-                    if (val instanceof Number n) {
-                        pd.setStatus(n.intValue());
-                    } else if (val != null) {
-                        try {
-                            pd.setStatus(Integer.parseInt(val.toString()));
-                        } catch (NumberFormatException ignored) {
+                    switch (val) {
+                        case Number n -> pd.setStatus(n.intValue());
+                        case null -> {}
+                        default -> {
+                            try {
+                                pd.setStatus(Integer.parseInt(val.toString()));
+                            } catch (NumberFormatException ignored) {
+                            }
                         }
                     }
                 }
@@ -446,43 +448,46 @@ public class ProblemDetail {
     }
 
     private static void appendJsonValue(StringBuilder sb, Object val) {
-        if (val == null) {
-            sb.append("null");
-        } else if (val instanceof String s) {
-            sb.append("\"").append(escapeJson(s)).append("\"");
-        } else if (val instanceof Number || val instanceof Boolean) {
-            sb.append(val);
-        } else if (val instanceof URI u) {
-            sb.append("\"").append(escapeJson(u.toString())).append("\"");
-        } else if (val instanceof Map<?, ?> m) {
-            sb.append("{");
-            boolean first = true;
-            for (Map.Entry<?, ?> e : m.entrySet()) {
-                if (!first) sb.append(",");
-                sb.append("\"").append(escapeJson(String.valueOf(e.getKey()))).append("\":");
-                appendJsonValue(sb, e.getValue());
-                first = false;
+        switch (val) {
+            case null -> sb.append("null");
+            case String s -> sb.append("\"").append(escapeJson(s)).append("\"");
+            case Number n -> sb.append(n);
+            case Boolean b -> sb.append(b);
+            case URI u -> sb.append("\"").append(escapeJson(u.toString())).append("\"");
+            case Map<?, ?> m -> {
+                sb.append("{");
+                boolean first = true;
+                for (Map.Entry<?, ?> e : m.entrySet()) {
+                    if (!first) sb.append(",");
+                    sb.append("\"").append(escapeJson(String.valueOf(e.getKey()))).append("\":");
+                    appendJsonValue(sb, e.getValue());
+                    first = false;
+                }
+                sb.append("}");
             }
-            sb.append("}");
-        } else if (val instanceof Iterable<?> it) {
-            sb.append("[");
-            boolean first = true;
-            for (Object item : it) {
-                if (!first) sb.append(",");
-                appendJsonValue(sb, item);
-                first = false;
+            case Iterable<?> it -> {
+                sb.append("[");
+                boolean first = true;
+                for (Object item : it) {
+                    if (!first) sb.append(",");
+                    appendJsonValue(sb, item);
+                    first = false;
+                }
+                sb.append("]");
             }
-            sb.append("]");
-        } else if (val.getClass().isArray()) {
-            sb.append("[");
-            int len = java.lang.reflect.Array.getLength(val);
-            for (int j = 0; j < len; j++) {
-                if (j > 0) sb.append(",");
-                appendJsonValue(sb, java.lang.reflect.Array.get(val, j));
+            default -> {
+                if (val.getClass().isArray()) {
+                    sb.append("[");
+                    int len = java.lang.reflect.Array.getLength(val);
+                    for (int j = 0; j < len; j++) {
+                        if (j > 0) sb.append(",");
+                        appendJsonValue(sb, java.lang.reflect.Array.get(val, j));
+                    }
+                    sb.append("]");
+                } else {
+                    sb.append("\"").append(escapeJson(val.toString())).append("\"");
+                }
             }
-            sb.append("]");
-        } else {
-            sb.append("\"").append(escapeJson(val.toString())).append("\"");
         }
     }
 

@@ -379,6 +379,38 @@ class CircuitBreakerTest {
     }
 
     @Test
+    @DisplayName("CircuitBreakerConfig DEFAULT_RECORD_EXCEPTION evaluates all pattern matching failure branches")
+    void defaultRecordExceptionClassificationParity() {
+        var predicate = CircuitBreakerConfig.DEFAULT_RECORD_EXCEPTION;
+
+        // Null check
+        assertFalse(predicate.test(null));
+
+        // Pattern matching direct types
+        assertTrue(predicate.test(new IOException("io")));
+        assertTrue(predicate.test(new TimeoutException("timeout")));
+        assertTrue(predicate.test(new ServerErrorException(500, "internal error", java.util.List.of())));
+        assertTrue(predicate.test(new ServerErrorException(503, "unavailable", java.util.List.of())));
+
+        // Pattern matching UnexpectedStatusException with status guard
+        assertTrue(predicate.test(new UnexpectedStatusException(500, "server err", java.util.List.of())));
+        assertTrue(predicate.test(new UnexpectedStatusException(502, "bad gateway", java.util.List.of())));
+        assertFalse(predicate.test(new UnexpectedStatusException(404, "not found", java.util.List.of())));
+        assertFalse(predicate.test(new UnexpectedStatusException(400, "bad request", java.util.List.of())));
+
+        // Pattern matching unwrapped cause
+        assertTrue(predicate.test(new RuntimeException("wrapped", new IOException("inner io"))));
+        assertTrue(predicate.test(new RuntimeException("wrapped", new TimeoutException("inner timeout"))));
+        assertTrue(predicate.test(new RuntimeException("wrapped", new ServerErrorException(504, "gw timeout", java.util.List.of()))));
+        assertTrue(predicate.test(new RuntimeException("wrapped", new UnexpectedStatusException(500, "inner 500", java.util.List.of()))));
+        assertFalse(predicate.test(new RuntimeException("wrapped", new UnexpectedStatusException(404, "inner 404", java.util.List.of()))));
+
+        // Unrelated exceptions
+        assertFalse(predicate.test(new IllegalArgumentException("invalid arg")));
+        assertFalse(predicate.test(new IllegalStateException("illegal state")));
+    }
+
+    @Test
     @DisplayName("CircuitBreakerOpenException handles null remainingWaitDuration gracefully")
     void openExceptionWithNullRemainingDuration() {
         CircuitBreakerOpenException ex = new CircuitBreakerOpenException("null-duration-cb", null);

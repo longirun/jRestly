@@ -1,36 +1,35 @@
-# Last Session: #325 (2026-10-19)
+# Last Session: #326 (2026-10-19)
 
 ## Что сделано
 
-**Сессия #325: Интеграция Netty в FeedBenchmark (ADR-0070 Фаза 3), замеры Throughput/Allocations/CPU, публикация в BENCHMARKS.md, ADR-0070 Accepted, гейт 1,737/1,737 (+1).**
+**Сессия #326: Java 21+ Pattern Matching & Sealed Architecture Audit (ADR-0071, Accepted), рефакторинг dispatch/failure/serialization switch, гейт 1,739/1,739 (+2).**
 
-1. *Приём состояния:* HEAD на #324, чистое дерево. Субмодуль `engine-netty` реализован, 21 паритетный тест зелёный.
-2. *Интеграция в модуль бенчмарков:*
-   - `benchmarks/build.gradle`: добавлена зависимость `implementation project(':engine-netty')`.
-   - `FeedBenchmark.java`: добавлен `jrestlyNettyClient` (`NettyHttpEngine`), настроены lifecycle (`setup()` / `tearDown()`) и новые JMH-методы `jrestlyNetty_buffered` и `jrestlyNetty_streaming`.
-3. *Тесты санитарного паритета (+1 тест):*
-   - `FeedBenchmarkClientsTest`: добавлен тест `jRestlyNettyBufferedAndStreamingArmsFoldIdenticalSummaries` на fold-паритет и совпадение числа записей на всех 6 маршрутах (`rss-*`, `atom-*`).
-   - `FeedBenchmarkTest`: расширен до 13 arm'ов (включая Netty buffered/streaming) с проверкой детерминированного дайджеста.
-4. *Эмпирические замеры на стенде JMH (`-prof gc`, `CpuProbe` на `getProcessCpuTime()`):*
-   - **Рекорд аллокаций в куче на малых телах:** `jRestly + engine-netty (streaming)` показал **98,342 B/op** на `rss-20` (абсолютный рекорд стенда, опередил raw OkHttp 98,725 B/op и Apache5 101,141 B/op благодаря `PooledByteBufAllocator`).
-   - **Стриминг на Netty экономит гигабайты:** на 1 MB телах (`rss-1000`) стриминг экономит **6.26 MB/op** по сравнению с buffered mode (3.49 MB vs 9.75 MB).
-   - **Превосходство над дефолтным JDK:** Throughput на `rss-20` составил **308.3 ops/s** (+53% к JDK 201.5 ops/s), CPU time составил **6.39 ms/op** (vs JDK 9.75 ms/op и Feign 9.42 ms/op).
-5. *Документация и артефакты:*
-   - В `BENCHMARKS.md` добавлены строки Netty во все таблицы (Throughput, Allocations, CPU Time) и новый пункт в Key Insights.
-   - `docs/0.12.0/ADR-0070-http-engine-netty-transport.md` переведен в статус **Accepted**, Фаза 3 отмечена завершенной.
-   - В `ROADMAP.md` зафиксировано завершение флагманского эпика Netty цикла 0.12.0.
-   - В `.agent/mailbox.md` отправлен детальный ответ Антону на его вопросы.
-6. *Гейты:* **1,737 / 1,737** green во всех 6 модулях (root 1609 + engine-okhttp 25 + engine-apache5 25 + engine-netty 26 + codec-jackson-xml 15 + benchmarks 37). Javadoc чист под `-Werror`. JaCoCo ядра: BRANCH 90.64%, INSTRUCTION 98.19%, LINE 97.84%, COMPLEXITY 88.90%, METHOD/CLASS 100%.
+1. *Приём состояния:* HEAD на #325, чистое дерево. Субмодуль `engine-netty` и бенчмарки зафиксированы.
+2. *Архитектурный анализ и оформление ADR-0071 (`docs/0.12.0/ADR-0071-java-21-pattern-matching-and-sealed-architecture.md`, Accepted):*
+   - **Инвариант мокируемости и расширяемости:** Публичные интерфейсы SPI (`HttpEngine`, `PayloadCodec`, `RequestInterceptor`, `ResponseInterceptor`, `ClientMetricsListener`, `TokenManager`, `CircuitBreaker`, `RateLimiter`) и контексты (`RequestContext`, `ResponseContext`, `CallMetrics`, `HandledException`) должны оставаться **non-sealed**. Запечатывание сломало бы динамические моки (Mockito/ByteBuddy) в тестах потребителей библиотеки и заблокировало бы возможность объявления кастомных доменных исключений в `@OnError`.
+   - **Переход на Pattern Matching for switch (JEP 441):**
+     * `CircuitBreakerConfig.isFailureType`: классификация типов отказов (`IOException`, `TimeoutException`, `ServerErrorException`) и status-guarded `UnexpectedStatusException` (status >= 500) переведена на pattern matching switch;
+     * `ProblemDetail.appendJsonValue`: устранена 9-уровневая лесенка `if-else` в пользу типового switch (null, String, Number, Boolean, URI, Map, Iterable, array, fallback object);
+     * `ProblemDetail` case "status": pattern matching switch по типам Number vs String;
+     * `HttpTemplateBuilder.createFilePart`: декларативный switch по типам аргумента multipart файла (`FileContent`, `byte[]` fail-fast, `File`, `Path`, `String`, unsupported type);
+     * `HttpTemplateBuilder.multipartFileValues` & `textValue`: pattern matching switch по типам коллекций, массивов и скаляров;
+     * `HttpTemplateBuilder.onNext`: switch по `ByteBuffer`, `byte[]`, `String`;
+     * `HttpTemplate.exchangeAsync` & `exchange`: switch по `cause` с pattern guard `when !(re instanceof CompletionException)` и строгим сохранением прерывания потока (`Thread.currentThread().interrupt()`);
+     * `HttpTemplate.handleOnError`: pattern matching switch при проверке и пробросе `Throwable`.
+3. *Инженерная грабля и решение:*
+   - В Java 21 безымянные переменные шаблонов (`_`) являются preview-фичей (JEP 443 / JEP 456 стала финальной в Java 22). Компилятор javac без флага `--enable-preview` отклонил `case byte[] _`. В соответствии с zero-warning принципом jRestly использованы стандартные именованные переменные (`ignored`, `ioEx`).
+4. *Тесты (+2 теста, гейт 1,739/1,739):*
+   - `CircuitBreakerTest.defaultRecordExceptionClassificationParity`: проверка всех ветвей классификации отказов в `DEFAULT_RECORD_EXCEPTION`;
+   - `ProblemDetailTest.patternMatchingJsonSerializationCoversAllTypes`: проверка сериализации всех типов в JSON через `appendJsonValue`.
+5. *Гейты:* **1,739 / 1,739** green во всех 6 модулях (root 1611 + engine-okhttp 25 + engine-apache5 25 + engine-netty 26 + codec-jackson-xml 15 + benchmarks 37). Javadoc чист под `-Werror`. JaCoCo ядра: BRANCH 90.52% (3,993/4,411), INSTRUCTION 98.11%, LINE 97.76%, COMPLEXITY 88.81%, METHOD/CLASS 100%.
 
-## Контекст для следующей сессии (#326)
+## Контекст для следующей сессии (#327)
 
 1. **Ветка** `agent-loop`.
-2. **Highest ADR:** **0070** (`docs/0.12.0/ADR-0070-http-engine-netty-transport.md`), next free **0071**.
-3. **Статус эпика Netty Transport Engine (ADR-0070):**
-   - Фазы 1, 2 и 3 — ПОЛНОСТЬЮ ЗАВЕРШЕНЫ ✅ (ADR-0070 Accepted, таблицы в `BENCHMARKS.md`).
-4. **Кандидаты на сессию #326:**
-   - **Кандидат №10 — Java 21+ Pattern Matching & Sealed Architecture Audit:** аудит диспетчеризации, response handler'а и error resolver'а на предмет современных фич Java 21 (pattern matching for switch, record patterns).
-   - **Кандидат №11 — Экосистема кодеков:** исследование возможности добавления субмодуля Proto (`codec-protobuf`) или YAML (`codec-yaml`).
-5. **Замечание по окружению:**
+2. **Highest ADR:** **0071** (`docs/0.12.0/ADR-0071-java-21-pattern-matching-and-sealed-architecture.md`), next free **0072**.
+3. **Кандидаты на сессию #327:**
+   - **Кандидат №12 — Экосистема кодеков: исследование субмодуля Proto / YAML (`codec-protobuf` / `codec-yaml`):** легковесный адаптер для Protocol Buffers или YAML на базе `PayloadCodec` SPI.
+   - **Кандидат №13 — Аудит и оптимизация URI-композиции и RFC 3986/RFC 9110 Fast-Paths:** исследование прямого zero-allocation форматирования query параметров и path плейсхолдеров.
+4. **Замечание по окружению:**
    - Команды gradle запускать с `GRADLE_USER_HOME=/tmp/opencode/gradle-home ./gradlew ...`.
-6. Метрики — гейт **1,737/1,737**; BRANCH 90.64%, INSTRUCTION 98.19%, LINE 97.84%, COMPLEXITY 88.90%, METHOD/CLASS 100%.
+5. Метрики — гейт **1,739/1,739**; BRANCH 90.52%, INSTRUCTION 98.11%, LINE 97.76%, COMPLEXITY 88.81%, METHOD/CLASS 100%.
