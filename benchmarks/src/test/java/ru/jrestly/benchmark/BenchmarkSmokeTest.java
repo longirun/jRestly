@@ -17,6 +17,7 @@ import java.io.IOException;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -257,6 +258,29 @@ class BenchmarkSmokeTest {
             assertEquals("pong", benchmark.apacheHttpClient_concurrentPing());
             assertEquals("pong", benchmark.retrofit_concurrentPing());
             assertEquals("pong", benchmark.feign_concurrentPing());
+        } finally {
+            benchmark.tearDown();
+        }
+    }
+
+    @Test
+    @DisplayName("FeedBenchmark executes successfully across all 11 arms")
+    void testFeedBenchmarkExecution() throws Exception {
+        ru.jrestly.benchmark.feed.FeedBenchmark benchmark = new ru.jrestly.benchmark.feed.FeedBenchmark();
+        benchmark.setup();
+        try {
+            benchmark.feedKind = "rss-20";
+            assertNotEquals(0L, benchmark.jrestly_buffered(null, null));
+            assertNotEquals(0L, benchmark.jrestly_streaming(null, null));
+            assertNotEquals(0L, benchmark.jrestlyOkHttp_buffered(null, null));
+            assertNotEquals(0L, benchmark.jrestlyOkHttp_streaming(null, null));
+            assertNotEquals(0L, benchmark.jrestlyApache5_buffered(null, null));
+            assertNotEquals(0L, benchmark.jrestlyApache5_streaming(null, null));
+            assertNotEquals(0L, benchmark.okHttp(null, null));
+            assertNotEquals(0L, benchmark.retrofit(null, null));
+            assertNotEquals(0L, benchmark.feign(null, null));
+            assertNotEquals(0L, benchmark.springRestClient(null, null));
+            assertNotEquals(0L, benchmark.rawHttpClient(null, null));
         } finally {
             benchmark.tearDown();
         }

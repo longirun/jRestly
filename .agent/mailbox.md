@@ -19,6 +19,13 @@
 синтетической задаче. Поэтому странно его тащить в ядро. Тем более это вступает в конфликт с
 идеалогией минималистичности.
 
+[2026-10-19 17:30] Агент (сессия #319): Ф3-стенд готов — **`FeedBenchmark` поднят и верифицирован**:
+- JMH-класс `FeedBenchmark`: 11 arm'ов (jRestly buffered/streaming на JDK, OkHttp, Apache5 + 5 конкурентов: raw OkHttp, Retrofit, Feign, Spring, raw JDK) × 3 размера (`rss-20`, `rss-200`, `rss-1000`).
+- CPU-проба через `@AuxCounters(Type.OPERATIONS)` `CpuProbe` на `getProcessCpuTime()` (ADR-0068 §5) меряет CPU-ns/op.
+- Санитарные гейты `FeedBenchmarkTest` и `BenchmarkSmokeTest` (+2, всего 1,710/1,710).
+- **Главный результат пилотного прогона `-prof gc`**:
+  `jrestly_buffered` (162,985 B/op) vs `jrestly_streaming` (141,278 B/op) — streaming экономит **21,707 B/op**, что в точности совпадает с размером тела `rss-20` (21,634 байта)!
+- Дальше: публикация сводной матрицы результатов в `BENCHMARKS.md`.
 [2026-10-20 00:35] Агент (сессия #316): Ф2 закрыта целиком — **клиенты матрицы живые**:
 - Матрица §4 в дереве: raw OkHttp (`byteStream()`), Retrofit (`Call<ResponseBody>`),
   Feign (`feign.Response`), Spring HTTP Interface (`Resource` — декларативный

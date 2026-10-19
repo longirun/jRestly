@@ -7,9 +7,12 @@
   `FeedParser` (hardened StAX, bind по localName, RFC 822⬌3339, fail-fast,
   нормализация автора), паритет RSS⬌Atom гейтом (`count`/`latest`/`digest`
   идентичны на 20/200/1000), byte⬌stream-эквивалентность точек входа;
-  гейт **1,706/1,706** (+9). Остаются клиенты матрицы (Ф2-вторая половина)
-  и Ф3 (JMH + публикация).
-- **Session:** #313 (2026-10-19), #314 (2026-10-19)
+  гейт **1,706/1,706** (+9). **Ф2-клиенты матрицы реализованы (#316)**:
+  5 конкурентов + 2 режима jRestly buffered/streaming, гейт **1,708/1,708** (+2).
+  **Ф3-стенд реализован (#319)**: JMH `FeedBenchmark` (11 arm'ов × 3 размера,
+  Throughput + `@AuxCounters` CPU-проба + `-prof gc`), пилотный запуск верифицирован,
+  гейт **1,710/1,710** (+2). Остаётся публикация результатов в `BENCHMARKS.md`.
+- **Session:** #313 (2026-10-19), #314 (2026-10-19), #315 (2026-10-19), #316 (2026-10-19), #319 (2026-10-19)
 - **Задача Антона (mailbox, 2026-10-18):** «Рассмотреть бенчмарк на примере реализации
   движка rss/atom и сравнение с конкурентами. Интересно сколько ops-сек, CPU, mem-usage
   у нас и у них. И есть ли у нас пути для оптимизации.»
@@ -204,6 +207,17 @@ RFC 822/333 даты, `guid`/`id`, канальные метаданные. Фи
   пилотный прогон, потом секция «Real scenario: feed fetch & parse» в
   `BENCHMARKS.md` + отчёт Антону. Конкуренты — те же версии, что в матрице
   (OkHttp 4.12.0, HC5 5.4.1, Retrofit 2.11.0, Feign 13.5, Spring Web 6.2.2).
+  **✅ JMH-стенд реализован (#319):** класс `ru.jrestly.benchmark.feed.FeedBenchmark`
+  (11 arm'ов: jRestly buffered/streaming × JDK/OkHttp/Apache5-движки + 5 конкурентов:
+  raw OkHttp, Retrofit, Feign, Spring, raw JDK; `@Param({"rss-20", "rss-200", "rss-1000"})`),
+  `@AuxCounters(Type.OPERATIONS)` класс `CpuProbe` на `getProcessCpuTime()`,
+  результат потребляется через `Blackhole` (хэш-дайджест `FeedSummary`).
+  Санитарные гейт-тесты: `FeedBenchmarkTest` (+1: все 11 arm'ов × 3 размера fold-паритет
+  в юните) и `BenchmarkSmokeTest.testFeedBenchmarkExecution` (+1: общий сьют бенчмарков).
+  Пилотный прогон `-prof gc` на `rss-20` (21.6 KB) **подтвердил гипотезу §9**:
+  `jrestly_buffered` 162,985 B/op vs `jrestly_streaming` 141,278 B/op —
+  стриминговый режим экономит **21,707 B/op** (ровно размер тела документа на проводе!).
+  Гейт **1,710/1,710** (+2). Осталась публикация в `BENCHMARKS.md`.
 
 ## 8. Non-goals
 

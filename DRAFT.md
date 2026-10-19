@@ -1,5 +1,34 @@
 # DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
+> **Сессия #319 (ADR-0068 Ф3-первая половина — JMH-стенд `FeedBenchmark`; ядро не тронуто; гейт 1,710/1,710 — +2):**
+> 1. *Приём состояния:* HEAD на #316 4007f66 — счётчик 319 докручен «фантомными»
+>    запусками #317-#318 (паттерн #306/#308/#312), чистый приём, WIP нет.
+>    Слов Антона нет — фазы идут автономно по плану ADR-0068.
+> 2. *Ф3 JMH-стенд (`ru.jrestly.benchmark.feed.FeedBenchmark`):*
+>    11 arm'ов:
+>    - `jrestly_buffered` vs `jrestly_streaming` (дефолтный JDK-движок, главный разрез buffered vs streaming);
+>    - `jrestlyOkHttp_buffered` vs `jrestlyOkHttp_streaming` (движок OkHttp, пиннинг сохранён);
+>    - `jrestlyApache5_buffered` vs `jrestlyApache5_streaming` (движок Apache5, пиннинг сохранён);
+>    - 5 конкурентных arm'ов: `okHttp`, `retrofit`, `feign`, `springRestClient`, `rawHttpClient`.
+>    Режимы: `@BenchmarkMode(Mode.Throughput)`, `@OutputTimeUnit(TimeUnit.SECONDS)`,
+>    `@Param({"rss-20", "rss-200", "rss-1000"})` (охват от 21.6 KB до 1.05 MB на проводе).
+>    Потребление результата через `Blackhole` (хэш-дайджест `FeedSummary`).
+> 3. *CPU-проба (`CpuProbe`):* вложенный класс `@AuxCounters(AuxCounters.Type.OPERATIONS)`
+>    `@State(Scope.Thread)` — считывание `getProcessCpuTime()` на границах итераций
+>    (ADR §5), сообщает `processCpuNs/op`.
+> 4. *Санитарный гейт (+2 тестов):*
+>    - `FeedBenchmarkTest.testBenchmarkExecutionAndParity`: все 11 arm'ов × 3 размера
+>      (`rss-20`, `rss-200`, `rss-1000`) исполняются и дают идентичный детерминированный fold-дайджест;
+>    - `BenchmarkSmokeTest.testFeedBenchmarkExecution`: интеграция в общий smoke-сьют всех JMH-бенчмарков.
+> 5. *Пилотный прогон JMH с `-prof gc`:*
+>    `FeedBenchmark.jrestly_buffered` (161.6 ops/s, 162,985 B/op) vs
+>    `FeedBenchmark.jrestly_streaming` (170.2 ops/s, 141,278 B/op).
+>    **Гипотеза §9 подтверждена на проводе:** стриминговый режим экономит **21,707 B/op**,
+>    что байт-в-байт соответствует размеру тела ленты `rss-20` (21,634 байта)!
+> 6. *Гейт:* **1,710/1,710** green across all 5 modules (+2, 0 failures/errors);
+>    javadoc чист под `-Werror`. Дальше (#320): полный прогон матрицы и публикация
+>    секции в `BENCHMARKS.md` + отчёт Антону.
+
 > **Сессия #316 (ADR-0068 Ф2-вторая половина — клиенты матрицы fetch-and-parse;
 > ядро не тронуто; гейт 1,708/1,708 — +2):
 > 1. *Приём состояния:* HEAD на #315 6f1db75 — чистый приём (счётчик 316
