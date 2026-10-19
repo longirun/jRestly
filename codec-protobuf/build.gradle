@@ -1,0 +1,95 @@
+plugins {
+    // java-library: exposes the core SPI and the protobuf runtime in the api configuration
+    id 'java-library'
+    id 'maven-publish'
+}
+
+group = 'ru.jrestly'
+version = '0.11.0'
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    // api: the codec implements the core codec SPI in its public surface
+    api project(':')
+    // api: the public contract accepts com.google.protobuf.Message values (ADR-0074)
+    api 'com.google.protobuf:protobuf-java:3.25.5'
+
+    // test: the JSON default-path e2e tests need a JSON codec on the classpath
+    testImplementation 'com.fasterxml.jackson.core:jackson-databind:2.18.2'
+    testImplementation platform('org.junit:junit-bom:5.10.0')
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+    testImplementation 'org.wiremock:wiremock-standalone:3.12.1'
+}
+
+java {
+    withSourcesJar()
+    withJavadocJar()
+}
+
+compileJava {
+    options.release = 21
+    options.compilerArgs << '-parameters'
+    options.compilerArgs << '-Xlint:all'
+    options.compilerArgs << '-Werror'
+}
+
+compileTestJava {
+    options.release = 21
+    options.compilerArgs << '-parameters'
+    options.compilerArgs << '-Xlint:all'
+    options.compilerArgs << '-Werror'
+}
+
+javadoc {
+    options.addStringOption('Xdoclint:all')
+    options.addBooleanOption('Werror', true)
+}
+
+jar {
+    manifest {
+        attributes(
+                'Automatic-Module-Name': 'ru.jrestly.codec.protobuf'
+        )
+    }
+}
+
+test {
+    useJUnitPlatform()
+}
+
+publishing {
+    publications {
+        mavenJava(MavenPublication) {
+            from components.java
+            artifactId = 'jrestly-codec-protobuf'
+            pom {
+                name = 'jRestly Codec: Protocol Buffers'
+                description = 'Protocol Buffers payload codec for jRestly: binds application/x-protobuf / application/protobuf payloads via protobuf-java Message/Parser through the PayloadCodec SPI (ADR-0074).'
+                url = 'https://github.com/longirun/jRestly'
+                inceptionYear = '2026'
+                licenses {
+                    license {
+                        name = 'Apache License, Version 2.0'
+                        url = 'https://www.apache.org/licenses/LICENSE-2.0.txt'
+                    }
+                }
+                developers {
+                    developer {
+                        id = 'longirun'
+                        name = 'Anton Sinyagovsky'
+                        email = 'sinyagovsky@gmail.com'
+                    }
+                }
+                scm {
+                    connection = 'scm:git:git://github.com/longirun/jRestly.git'
+                    developerConnection = 'scm:git:ssh://git@github.com/longirun/jRestly.git'
+                    url = 'https://github.com/longirun/jRestly'
+                }
+            }
+        }
+    }
+}

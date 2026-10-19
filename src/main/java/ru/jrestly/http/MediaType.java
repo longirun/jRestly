@@ -36,6 +36,12 @@ public final class MediaType {
     /** The {@code text/yaml} media type (RFC 9512). */
     public static final String TEXT_YAML = "text/yaml";
 
+    /** The {@code application/protobuf} media type. */
+    public static final String APPLICATION_PROTOBUF = "application/protobuf";
+
+    /** The {@code application/x-protobuf} legacy media type. */
+    public static final String APPLICATION_X_PROTOBUF = "application/x-protobuf";
+
     /** The {@code text/event-stream} Server-Sent Events media type. */
     public static final String TEXT_EVENT_STREAM = "text/event-stream";
 
