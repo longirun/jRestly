@@ -1,55 +1,54 @@
-# Last Session: #311 (2026-10-19)
+# Last Session: #313 (2026-10-19)
 
 ## Что сделано
 
-**Сессия #311: приём WIP прерванной #310 (верифицирован, закоммичен c4f620f) +
-хвост пула 1-branch-файлов (GsonCodec закрыт, MoshiCodec = defensive); гейт
-1,689/1,689; BRANCH 90.64% — рекорд.**
+**Сессия #313: концепт/стенд-дизайн эпика №7 (rss/atom, «настоящая задача»)
+оформлен в ADR-0068 (Status: Proposed); код не менялся, гейт 1,689/1,689 от
+#311 в силе.**
 
-1. *Приём WIP #310 (паттерн #155/#186/#254):* в дереве лежал полный комплект
-   #310 без коммита (счётчик 311 + DRAFT-блок + 7 тест-файлов:
-   CircuitBreakerTest/RateLimiterTest/TracePropagatorTest/
-   MultipartPartFlexibilityTest/OnErrorParserTest/WireResponseUnitTest/
-   HttpEngineResolverTest). Диффы прочитаны байт-в-байт (все тестовые, main
-   не тронут), гейт перепроверен (1,687/1,687, BRANCH 90.62%) → закоммичено
-   как есть; DRAFT #310 блок почищен от искажённых символов.
-2. *Хвост пула:* `GsonCodec.L111` (ленивый pretty-twin cache-hit) закрыт
-   тестом `GsonCodecTest.prettyPrintReusesCachedPrettyTwin` (второй
-   prettyPrint на том же инстансе); `MoshiCodec.L167` switch-default —
-   структурно недостижимая defensive (значение-позиция исчерпывает 6 case'ов;
-   пустой документ → Moshi `peek()` бросает EOFException, ловится до
-   default) — оставлена осознанно (паттерн #268/#309 ApiKeyAuth); добавлен
-   контрактный предохранитель `MoshiCodecTest.prettyPrintEmptyAndBlankPayloadsReturnUnchanged`.
-3. *Гейты:* **1,689/1,689** green во всех 5 модулях (+2, 0 failures/errors),
-   javadoc чист под `-Werror`. JaCoCo: **BRANCH 4,018/4,433 = 90.64%**,
-   INSTRUCTION **98.19%**, LINE **97.84%**, COMPLEXITY **88.90%** — рекорды;
-   METHOD 1455/1455 и CLASS 149/149 — 100%.
-4. Сессионный счётчик: **311 — закоммичен. СЛЕДУЮЩИЙ (#312) — докрутить до 312
-   в начале сессии.**
+1. *Приём состояния:* счётчик «фантомного» оборвавшегося запуска уже докручен
+   (312 → 313; коммита и WIP в дереве нет, HEAD на #311 ceb8557). Чистый ход
+   по эстафете — первый шаг Кандидата №7: концепт/стенд-дизайн.
+2. *ADR-0068* (`docs/0.11.0/ADR-0068-real-feed-benchmark-fetch-and-parse.md`):
+   - Сценарий **fetch-and-parse**: fetch ленты → общий StAX-парсер → fold в
+     `FeedSummary` (count/latest/digest, потребление через `Blackhole`).
+   - **Парсер НЕ в ядре** (слово Антона о минималистичности): bench-скоп,
+     без SPI и без `PayloadCodec`-расширений; один парсер для всех клиентов —
+     сравнивается вклад HTTP-библиотеки, ось XML-биндингов исключена.
+   - Фикстуры RSS 2.0/Atom 1.0 × 20/200/1000 записей, реальная сложность
+     (CDATA/entities/namespaces/RFC 822), детерминированная генерация; живой
+     интернет из JMH отвергнут ради репродуцируемости.
+   - Стенд: расширение `BenchmarkHttpServer` лент-маршрутами с пре-вычисленными
+     телами + латентностный гейт (паттерн `BenchmarkHttpServerTest`).
+   - Главный разрез **buffered vs streaming** (`@Get byte[]` vs
+     `@Get InputStream` прямо в парсер).
+   - Метрики: **ops/sec** (JMH Throughput) + **mem** (`-prof gc`, B/op) +
+     **CPU** (in-harness `getProcessCpuTime()`-проба, cross-check
+     `/usr/bin/time -v`) — все три заказа Антона закрыты методологически.
+   - Фазы: **Ф1** фикстуры+стенд → **Ф2** парсер+клиенты → **Ф3** JMH+публикация
+     в `BENCHMARKS.md`. Находки про ядро → отдельные TDD-кандидаты.
 
-## Контекст для следующей сессии (#312)
+## Контекст для следующей сессии (#314)
 
-1. **Ветка** `agent-loop`; HEAD — коммит сессии #311.
-2. **Highest ADR:** **0067** (`docs/0.11.0/`), next free **0068**.
-3. **СЛЕДУЮЩИЙ ХОД:** **Кандидат №7 (rss/atom бенчмарк-эпик) разблокирован** —
-   Антон ответил (mailbox): «настоящая, не синтетическая задача», парсер НЕ в
-   ядре (конфликт с минималистичностью). Первый шаг — концепт/стенд-дизайн
-   ADR-0068: сценарий fetch-and-parse на реальном RSS/Atom-стенде, парсер в
-   benchmarks-скоупе (не core), конкуренты (raw OkHttp / Retrofit / Feign /
-   Spring HTTP Interfaces), метрики ops/sec + CPU + mem. Альтернатива:
-   свободный аудит.
+1. **Ветка** `agent-loop`; HEAD — коммит сессии #313 (doc-only: ADR-0068 +
+   память; счётчик 313 закоммичен. СЛЕДУЮЩИЙ (#314) — докрутить до 314).
+2. **Highest ADR:** **0068** (`docs/0.11.0/`), next free **0069**.
+3. **СЛЕДУЮЩИЙ ХОД:** **ADR-0068 Ф1** — фикстуры `FeedFixtures` (RSS 2.0/Atom
+   1.0 × 20/200/1000 записей, детерминированная генерация с реальной сложностью),
+   ленты-маршруты в `BenchmarkHttpServer` (пре-вычисленные byte-тела,
+   `Content-Type: application/rss+xml|atom+xml; charset=utf-8`), гейт-тесты
+   стенда (латентность `min < 25 ms` + санитарный парс-тест фикстур). После —
+   Ф2 (парсер+клиенты), Ф3 (JMH+публикация). Doc-фаза ADR принята без возражений
+   (mailbox: доклад отправлен, Антон может скорректировать — не блокер).
 4. **Грабли/паттерны (важно!):**
-   - JaCoCo — источник правды: `build/reports/jacoco/test/jacocoTestReport.xml`
-     (только core-модуль); счётчик тестов — по `TEST-*.xml` **всех** модулей
-     (core 1,609 + engine-okhttp 25 + engine-apache5 25 + codec-jackson-xml 15 +
-     benchmarks 15 = 1,689).
-   - Полный гейт `./gradlew test javadoc` ~1 мин;
-     `GRADLE_USER_HOME=/tmp/opencode/gradle-home` обязателен; фильтр
-     `:test --tests 'X'` (ведущий `:` обязателен).
-   - Moshi `peek()` на пустом/исчерпанном документе бросает `EOFException`
-     (IOException), а НЕ возвращает END_DOCUMENT — «пустой payload» не
-     покрывает switch-default ветви.
-   - Пул 1-2-branch-файлов закрыт; остаток = джиттер-зависимые
-     (`RateLimiters` L66/L123, `RetryPolicy` L347/L355) + недостижимые
-     defensive (`ApiKeyAuth` L127, `MoshiCodec` L167) — не трогать.
-   - Часовой пояс контейнера +04 (логи log4j — UTC).
+   - Полный гейт `./gradlew test javadoc` ~1 мин, `GRADLE_USER_HOME=/tmp/opencode/
+     gradle-home` обязателен; фильтр `:test --tests 'X'` (ведущий `:` обязателен).
+   - JMH-прогон: `./gradlew :benchmarks:jmh -PjmhArgs="..."` — `-PjmhArgs`
+     заменяет дефолтные аргументы целиком.
+   - Фикстуры лент — генерировать детерминированно (seeded), пре-вычислять на
+     старте сервера (паттерн SAMPLE_BATCH_USERS_JSON в `BenchmarkHttpServer`).
+   - «Фантомные» обрывы сессий: счётчик может быть докручен без коммита —
+     сверять HEAD и `.agent/session_counter.txt` при входе.
+5. Доцент: последние сессионные метрики — гейт **1,689/1,689**, BRANCH
+   **90.64%**, INSTRUCTION 98.19%, LINE 97.84%, COMPLEXITY 88.90%,
+   METHOD/CLASS — 100%.
