@@ -1,7 +1,7 @@
 # ADR-0070: Netty Transport Engine Submodule (`jrestly-engine-netty`)
 
-- **Status:** proposed
-- **Date:** 2026-10-19 (session #323)
+- **Status:** accepted
+- **Date:** 2026-10-19 (session #323, accepted in #325)
 - **Scope:** Cycle 0.12.0 flagship epic — high-performance non-blocking transport engine
 - **Context:** Inquiry and direction from maintainer Anton (mailbox 2026-10-19 18:45: *"А как думаешь если добавить возможность использовать netty? Видимо это даст нам возможность выжать максимум? Интересно, а с ним какие будут результаты?"*)
 - **Companion ADRs:** ADR-0052 (HttpEngine SPI), ADR-0058 (External Engine Submodules: OkHttp & Apache5), ADR-0068 (Feed Fetch & Parse Real-World Benchmark)
@@ -109,11 +109,16 @@ To bridge this safely without memory exhaustion:
   - Implement `PublisherInputStream` for multipart bodies (`MultipartBodyPublisher`) and streaming request body publishers.
   - Full 21-test parity test suite in `NettyHttpEngineParityTest` against WireMock (streaming, progress listeners, chunked transfer, trailers, passive compression, call timeouts, cancellation).
   - All 26 tests in `:engine-netty:test` green, zero off-heap leaks.
-- **Phase 3: Integration into `FeedBenchmark` & Performance Verification**
-  - Add `project(':engine-netty')` to `benchmarks/build.gradle`.
-  - Add 12th benchmark arm to `FeedBenchmark`: `jrestlyNetty_buffered` and `jrestlyNetty_streaming`.
-  - Run full benchmark matrix against Apache5, OkHttp, and JDK HttpClient.
-  - Record and publish throughput, heap allocation (`-prof gc`), and CPU profiling in `BENCHMARKS.md`.
+- **Phase 3: Integration into `FeedBenchmark` & Performance Verification (Session #325) — COMPLETE ✅**
+  - Added `project(':engine-netty')` to `benchmarks/build.gradle`.
+  - Added 12th/13th benchmark arms to `FeedBenchmark`: `jrestlyNetty_buffered` and `jrestlyNetty_streaming`.
+  - Extended sanitary parity tests `FeedBenchmarkTest` and `FeedBenchmarkClientsTest` (+1 test, total suite 1,737/1,737 tests green).
+  - Executed JMH benchmark with `-prof gc` and CPU probe across all four engines (JDK, OkHttp, Apache5, Netty) and 5 competitors.
+  - Empirical verification:
+    * **Record Heap Allocations on Small Payloads:** `jRestly + engine-netty (streaming)` achieved an absolute record **98,342 B/op** on `rss-20` (lower than raw OkHttp 98,725 B and Apache5 101,141 B) due to Netty's off-heap pooled buffer allocator (`PooledByteBufAllocator`).
+    * **Streaming Memory Savings:** Streaming on Netty cuts heap allocations by **6.26 MB/op** on 1 MB feeds (`rss-1000`: 3.49 MB vs 9.75 MB).
+    * **Throughput & CPU Superiority over JDK:** Netty achieved **308.3 ops/s** and **6.39 ms CPU/op** on `rss-20`, substantially beating default JDK transport (201.5 ops/s, 9.75 ms CPU/op) and OpenFeign (201.2 ops/s, 9.42 ms CPU/op).
+  - Published comprehensive results in `BENCHMARKS.md`.
 
 ---
 

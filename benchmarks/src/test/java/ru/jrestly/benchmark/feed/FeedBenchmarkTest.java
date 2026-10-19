@@ -8,15 +8,15 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 
 /**
- * Verifies that the {@link FeedBenchmark} JMH harness properly executes all 11
- * benchmark arms across small and medium sizes in a unit environment, and that
+ * Verifies that the {@link FeedBenchmark} JMH harness properly executes all 13
+ * benchmark arms across small, medium, and large sizes in a unit environment, and that
  * every arm yields the expected deterministic digest.
  */
 @DisplayName("FeedBenchmark execution and digest parity")
 class FeedBenchmarkTest {
 
     @Test
-    @DisplayName("FeedBenchmark executes all 11 arms and yields identical digest on rss-20 and rss-200")
+    @DisplayName("FeedBenchmark executes all 13 arms and yields identical digest on rss-20, rss-200, and rss-1000")
     void testBenchmarkExecutionAndParity() throws Exception {
         FeedBenchmark benchmark = new FeedBenchmark();
         benchmark.setup();
@@ -33,6 +33,8 @@ class FeedBenchmarkTest {
                 long jrestlyOkHttpStream = benchmark.jrestlyOkHttp_streaming(bh, cpu);
                 long jrestlyApacheBuf = benchmark.jrestlyApache5_buffered(bh, cpu);
                 long jrestlyApacheStream = benchmark.jrestlyApache5_streaming(bh, cpu);
+                long jrestlyNettyBuf = benchmark.jrestlyNetty_buffered(bh, cpu);
+                long jrestlyNettyStream = benchmark.jrestlyNetty_streaming(bh, cpu);
                 long okHttp = benchmark.okHttp(bh, cpu);
                 long retrofit = benchmark.retrofit(bh, cpu);
                 long feign = benchmark.feign(bh, cpu);
@@ -45,6 +47,8 @@ class FeedBenchmarkTest {
                 assertEquals(jrestlyBuf, jrestlyOkHttpStream, "jRestly OkHttp stream parity: " + kind);
                 assertEquals(jrestlyBuf, jrestlyApacheBuf, "jRestly Apache5 buffered parity: " + kind);
                 assertEquals(jrestlyBuf, jrestlyApacheStream, "jRestly Apache5 stream parity: " + kind);
+                assertEquals(jrestlyBuf, jrestlyNettyBuf, "jRestly Netty buffered parity: " + kind);
+                assertEquals(jrestlyBuf, jrestlyNettyStream, "jRestly Netty stream parity: " + kind);
                 assertEquals(jrestlyBuf, okHttp, "raw OkHttp parity: " + kind);
                 assertEquals(jrestlyBuf, retrofit, "Retrofit parity: " + kind);
                 assertEquals(jrestlyBuf, feign, "Feign parity: " + kind);

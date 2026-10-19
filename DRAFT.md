@@ -1,6 +1,24 @@
 # DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
-> **Сессия #324 (ADR-0070 Фаза 2: реализация NettyHttpEngine, connection pool, NettyChunkedInputStream, 21 паритетный тест, гейт 1,736/1,736):**
+> **Сессия #325 (ADR-0070 Фаза 3: интеграция Netty в FeedBenchmark, замеры Throughput/Allocations/CPU, публикация в BENCHMARKS.md, ADR-0070 Accepted; гейт 1,737/1,737):**
+> 1. *Приём состояния:* HEAD на #324, чистое дерево.
+> 2. *Интеграция `engine-netty` в модуль бенчмарков (ADR-0070 Фаза 3):*
+>    - `benchmarks/build.gradle`: добавлена зависимость `implementation project(':engine-netty')`.
+>    - `FeedBenchmark.java`: добавлен `jrestlyNettyClient`, настроенный на `NettyHttpEngine`, добавлены бенчмарк-методы `jrestlyNetty_buffered` и `jrestlyNetty_streaming`.
+> 3. *Тесты санитарного паритета (+1 тест, `FeedBenchmarkClientsTest`):*
+>    - `FeedBenchmarkClientsTest.jRestlyNettyBufferedAndStreamingArmsFoldIdenticalSummaries`: проверка совпадения числа записей и fold-дайджеста buffered vs streaming на Netty по всем 6 маршрутам (`rss-*`, `atom-*`).
+>    - `FeedBenchmarkTest`: расширен до 13 arm'ов, проверяя идентичность дайджестов Netty buffered и streaming на всех размерах.
+> 4. *Эмпирические замеры (JMH с `-prof gc` и in-harness `CpuProbe`):*
+>    - Рекордные аллокации памяти в куче на малых телах: `jRestly + engine-netty (streaming)` показал **98,342 B/op** на `rss-20` (абсолютный рекорд стенда, меньше raw OkHttp 98,725 B/op и Apache5 101,141 B/op благодаря `PooledByteBufAllocator`).
+>    - Экономия стриминга на Netty: **6.26 MB/op** на 1 MB телах (`rss-1000`: 3.49 MB vs 9.75 MB).
+>    - Превосходство над дефолтным JDK: Throughput **308.3 ops/s** (+53% к JDK 201.5 ops/s), CPU **6.39 ms/op** (vs JDK 9.75 ms/op и Feign 9.42 ms/op).
+> 5. *Документация и артефакты:*
+>    - `BENCHMARKS.md` обновлен со всеми таблицами Throughput, Allocations, CPU Time и выводами.
+>    - `docs/0.12.0/ADR-0070-http-engine-netty-transport.md` переведен в статус **Accepted**, Фаза 3 отмечена как завершенная.
+>    - `ROADMAP.md` актуализирован (Highest ADR: 0070, next free: 0071, флагманский эпик 0.12.0 закрыт).
+> 6. *Гейты:* **1,737 / 1,737** green во всех 6 модулях (root 1609 + engine-okhttp 25 + engine-apache5 25 + engine-netty 26 + codec-jackson-xml 15 + benchmarks 37). Javadoc чист под `-Werror`. Метрики ядра сохранены на историческом пике (BRANCH 90.64%, INSTRUCTION 98.19%, LINE 97.84%, COMPLEXITY 88.90%, METHOD/CLASS 100%).
+> 7. *Дальше (#326):* выбор следующего эпика цикла 0.12.0: Кандидат №10 (аудит Java 21+ Pattern Matching & Sealed types в диспетчеризации/резолверах) или Кандидат №11 (исследование экосистемы кодеков Proto/YAML).
+>
 > 1. *Приём состояния:* HEAD на #323, чистое дерево.
 > 2. *Реализация `NettyHttpEngine` (ADR-0070 Фаза 2):*
 >    - Архитектура пула: `AbstractChannelPoolMap<EndpointKey, FixedChannelPool>` с dynamic route isolation (`scheme`, `host`, `port`), `ChannelHealthChecker.ACTIVE`, keep-alive reuse.

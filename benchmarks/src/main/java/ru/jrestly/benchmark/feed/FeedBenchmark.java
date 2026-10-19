@@ -33,7 +33,7 @@ import java.util.concurrent.TimeUnit;
  *
  * <p>Key architectural cut: buffered ({@code @Get byte[]}) vs streaming
  * ({@code @Get InputStream}) across the default JDK transport and pluggable engines
- * (OkHttp, Apache HttpClient 5). The XML parsing phase is strictly identical across
+ * (OkHttp, Apache HttpClient 5, Netty). The XML parsing phase is strictly identical across
  * all competitors via {@link FeedParser}, isolating the transport and dispatch contribution.</p>
  */
 @State(Scope.Benchmark)
@@ -87,6 +87,7 @@ public class FeedBenchmark {
     private JRestlyBenchmarkClient jrestlyClient;
     private JRestlyBenchmarkClient jrestlyOkHttpClient;
     private JRestlyBenchmarkClient jrestlyApache5Client;
+    private JRestlyBenchmarkClient jrestlyNettyClient;
     private RawHttpClientBenchmarkClient rawHttpClient;
     private OkHttpBenchmarkClient okHttpClient;
     private RetrofitBenchmarkClient retrofitClient;
@@ -102,6 +103,7 @@ public class FeedBenchmark {
         jrestlyClient = new JRestlyBenchmarkClient(baseUrl);
         jrestlyOkHttpClient = new JRestlyBenchmarkClient(baseUrl, new ru.jrestly.engine.okhttp.OkHttpEngine());
         jrestlyApache5Client = new JRestlyBenchmarkClient(baseUrl, new ru.jrestly.engine.apache5.Apache5HttpEngine());
+        jrestlyNettyClient = new JRestlyBenchmarkClient(baseUrl, new ru.jrestly.engine.netty.NettyHttpEngine());
         rawHttpClient = new RawHttpClientBenchmarkClient(baseUrl);
         okHttpClient = new OkHttpBenchmarkClient(baseUrl);
         retrofitClient = new RetrofitBenchmarkClient(baseUrl);
@@ -119,6 +121,9 @@ public class FeedBenchmark {
         }
         if (jrestlyApache5Client != null) {
             jrestlyApache5Client.close();
+        }
+        if (jrestlyNettyClient != null) {
+            jrestlyNettyClient.close();
         }
         if (rawHttpClient != null) {
             rawHttpClient.close();
@@ -194,6 +199,26 @@ public class FeedBenchmark {
     @Benchmark
     public long jrestlyApache5_streaming(Blackhole bh, CpuProbe cpu) throws Exception {
         long digest = FeedSummary.of(jrestlyApache5Client.feedStreaming(feedKind)).digest();
+        if (bh != null) {
+            bh.consume(digest);
+        }
+        return digest;
+    }
+
+    // --- jRestly Pluggable Engine: Netty (ADR-0070) ---
+
+    @Benchmark
+    public long jrestlyNetty_buffered(Blackhole bh, CpuProbe cpu) throws Exception {
+        long digest = FeedSummary.of(jrestlyNettyClient.feedBuffered(feedKind)).digest();
+        if (bh != null) {
+            bh.consume(digest);
+        }
+        return digest;
+    }
+
+    @Benchmark
+    public long jrestlyNetty_streaming(Blackhole bh, CpuProbe cpu) throws Exception {
+        long digest = FeedSummary.of(jrestlyNettyClient.feedStreaming(feedKind)).digest();
         if (bh != null) {
             bh.consume(digest);
         }

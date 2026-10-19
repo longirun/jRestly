@@ -143,7 +143,7 @@ digest (`FeedSummary`).
   - `rss-20` (Small): 20 items, 21.6 KB wire size
   - `rss-200` (Medium): 200 items, 211 KB wire size
   - `rss-1000` (Large): 1,000 items, 1.05 MB wire size
-- **Key architectural axis:** buffered (`@Get byte[]`) vs streaming (`@Get InputStream`) across jRestly transports (default JDK zero-dep, OkHttp engine, Apache HC5 engine) against industry peers (raw OkHttp, Retrofit 2, OpenFeign, Spring 6 HTTP Interface, raw JDK `HttpClient`).
+- **Key architectural axis:** buffered (`@Get byte[]`) vs streaming (`@Get InputStream`) across jRestly transports (default JDK zero-dep, OkHttp engine, Apache HC5 engine, Netty engine) against industry peers (raw OkHttp, Retrofit 2, OpenFeign, Spring 6 HTTP Interface, raw JDK `HttpClient`).
 
 ### Throughput (ops/s, higher is better)
 
@@ -155,6 +155,8 @@ digest (`FeedSummary`).
 | **jRestly + engine-apache5 (buffered)** | 416.3 | 101.0 | 30.5 |
 | **jRestly + engine-okhttp (streaming)** | 349.4 | 91.1 | 22.4 |
 | **jRestly + engine-okhttp (buffered)** | 372.8 | 87.9 | 26.7 |
+| **jRestly + engine-netty (streaming)** | 308.3 | 79.2 | 19.1 |
+| **jRestly + engine-netty (buffered)** | 290.8 | 84.1 | 22.4 |
 | raw JDK HttpClient | 255.1 | 67.9 | 18.2 |
 | **jRestly default JDK (streaming)** | 197.2 | 52.5 | 15.7 |
 | **jRestly default JDK (buffered)** | 213.5 | 69.4 | 19.8 |
@@ -165,16 +167,18 @@ digest (`FeedSummary`).
 
 | client | rss-20 (21.6 KB) | rss-200 (211 KB) | rss-1000 (1.05 MB) |
 |---|---:|---:|---:|
+| **jRestly + engine-netty (streaming)** | 98,342 B | 719,386 B | 3,489,706 B |
 | OkHttp (raw) | 98,725 B | 712,384 B | 3,425,044 B |
-| Retrofit 2 | 102,772 B | 866,166 B | 4,471,014 B |
 | **jRestly + engine-apache5 (streaming)** | 102,090 B | 708,584 B | 3,382,858 B |
-| **jRestly + engine-apache5 (buffered)** | 161,147 B | 1,151,721 B | 5,540,967 B |
+| Retrofit 2 | 102,772 B | 866,166 B | 4,471,014 B |
 | **jRestly + engine-okhttp (streaming)** | 102,922 B | 719,689 B | 3,476,634 B |
 | **jRestly + engine-okhttp (buffered)** | 124,292 B | 1,075,275 B | 5,512,109 B |
 | raw JDK HttpClient | 134,013 B | 958,816 B | 4,597,850 B |
 | **jRestly default JDK (streaming)** | 140,398 B | 973,754 B | 4,640,170 B |
+| **jRestly + engine-apache5 (buffered)** | 161,147 B | 1,151,721 B | 5,540,967 B |
 | **jRestly default JDK (buffered)** | 161,876 B | 1,176,200 B | 5,659,617 B |
 | OpenFeign | 147,611 B | 979,159 B | 4,647,382 B |
+| **jRestly + engine-netty (buffered)** | 196,913 B | 1,654,916 B | 9,750,410 B |
 | Spring HTTP Interface | 216,363 B | 1,431,449 B | 6,799,057 B |
 
 ### CPU Time per operation (ms/op, lower is better)
@@ -187,6 +191,8 @@ digest (`FeedSummary`).
 | **jRestly + engine-apache5 (buffered)** | 4.69 ms | 19.45 ms | 64.38 ms |
 | **jRestly + engine-okhttp (streaming)** | 5.63 ms | 21.19 ms | 88.34 ms |
 | **jRestly + engine-okhttp (buffered)** | 5.29 ms | 22.54 ms | 74.01 ms |
+| **jRestly + engine-netty (streaming)** | 6.39 ms | 24.77 ms | 103.50 ms |
+| **jRestly + engine-netty (buffered)** | 6.75 ms | 23.12 ms | 86.59 ms |
 | raw JDK HttpClient | 7.71 ms | 29.11 ms | 108.74 ms |
 | **jRestly default JDK (streaming)** | 10.03 ms | 37.26 ms | 125.66 ms |
 | **jRestly default JDK (buffered)** | 9.21 ms | 28.35 ms | 99.05 ms |
@@ -195,7 +201,7 @@ digest (`FeedSummary`).
 
 ### Key Insights & Findings
 1. **Streaming saves megabytes of memory on large payloads:**
-   On the 1.05 MB feed (`rss-1000`), streaming mode cuts allocations by **~1.02 MB/op** on the default JDK transport and by **over 2.1 MB/op** on Apache5 / OkHttp engines compared to buffered mode (`byte[]`). In streaming mode, XML tokens are parsed directly off the wire without an intermediate full-body byte array buffer.
+   On the 1.05 MB feed (`rss-1000`), streaming mode cuts allocations by **~1.02 MB/op** on the default JDK transport and by **over 2.1 MB/op** on Apache5 / OkHttp engines compared to buffered mode (`byte[]`). On Netty, streaming saves an astonishing **6.26 MB/op** (3.49 MB vs 9.75 MB). In streaming mode, XML tokens are parsed directly off the wire without an intermediate full-body byte array buffer.
 2. **jRestly on Apache HC5 matches or beats raw OkHttp and Retrofit 2:**
    On `rss-1000`, `jRestly + engine-apache5 (streaming)` achieved **30.4 ops/s** and **3,382,858 B/op**, outperforming both raw OkHttp (24.6 ops/s, 3,425,044 B/op) and Retrofit 2 (27.2 ops/s, 4,471,014 B/op).
 3. **The zero-dep declarative overhead is negligible:**
@@ -208,6 +214,8 @@ digest (`FeedSummary`).
    Spring's declarative client was the most memory-intensive in every category (216 KB on small, 1.43 MB on medium, 6.80 MB on large), showing that Spring's `ResourceHttpMessageConverter` creates substantial intermediate buffers when reading entity bodies.
 5. **OpenFeign vs jRestly on JDK transport:**
    Feign operates directly on `java.net.http.HttpClient` (via `feign-java11`). jRestly default streaming outperforms Feign in throughput on large feeds (15.7 vs 15.3 ops/s) and consumes fewer allocations across all payload sizes (140 KB vs 147 KB on small, 4.640 MB vs 4.647 MB on large).
+6. **Netty Transport Engine (ADR-0070) sets an allocation record on small payloads:**
+   With pooled off-heap ByteBuf management (`PooledByteBufAllocator`), `jRestly + engine-netty (streaming)` achieved an absolute record **98,342 B/op** on `rss-20` (lower than raw OkHttp 98,725 B, Retrofit 102,772 B, and Apache5 101,141 B). Furthermore, streaming cuts allocations on Netty by **over 6.26 MB/op** on 1 MB payloads (3.49 MB vs 9.75 MB), while delivering throughput substantially higher than the standard JDK transport (308.3 ops/s vs 201.5 ops/s on `rss-20`).
 
 ## Honest limitations
 

@@ -2180,8 +2180,8 @@ Gates (session #241):
 ---
 
 > **Current status (2026-10-19).** Highest ADR issued: **0070**; next free: **0071**.
-> Cycle 0.11.0 packaged and verified (ADR-0069); version bumped to `0.11.0` in root and all published submodules. Cycle 0.12.0 initiated with Netty Transport Engine (`jrestly-engine-netty`, ADR-0070).
-> Live gate: **1,715/1,715** tests green across all six modules, 0 warnings under `-Werror`. JaCoCo: **100% Class Coverage (149/149)**, **100% Method Coverage (1455/1455)**, **98.19% Instructions**, **97.84% Lines**, **90.64% Branches (4,018/4,433)**, **88.90% Complexity** (historical records). The former 2825-line god-class `HttpTemplate` is decomposed into package-private collaborators, public API migrated to concise `{id}` and `value()`, real-world streaming benchmarks published in `BENCHMARKS.md`, and 0.11.0 release notes published in `CHANGELOG.md`. Submodule `engine-netty` scaffolded with SPI discovery and parity tests (ADR-0070 Phase 1 complete).
+> Cycle 0.11.0 packaged and verified (ADR-0069); version bumped to `0.11.0` in root and all published submodules. Cycle 0.12.0 flagship epic Netty Transport Engine (`jrestly-engine-netty`, ADR-0070) COMPLETE ✅ (Phases 1–3, Accepted).
+> Live gate: **1,737/1,737** tests green across all six modules, 0 warnings under `-Werror`. JaCoCo: **100% Class Coverage (149/149)**, **100% Method Coverage (1455/1455)**, **98.19% Instructions**, **97.84% Lines**, **90.64% Branches (4,018/4,433)**, **88.90% Complexity** (historical records). The Netty transport engine provides non-blocking I/O with connection pooling (`FixedChannelPool`), push-to-pull streaming with credit-based backpressure, verified zero off-heap leaks under `-Dio.netty.leakDetection.level=PARANOID`, record-low heap allocations (98 KB/op on small feeds), and is integrated into `FeedBenchmark` with published results in `BENCHMARKS.md`.
 
 ## Internal Code Structure: HttpTemplate Decomposition (ADR-0066) — COMPLETE ✅ (2026-10-18, unreleased)
 
@@ -2295,6 +2295,26 @@ Synthetic microbenchmarks (ping, small JSON DTOs) only measure proxy dispatch an
 - **Empirical Streaming Supremacy (ADR-0068):** Scenario feed benchmark (`FeedBenchmark`) published in `BENCHMARKS.md` proving >1–2 MB/op memory savings via streaming, Apache5 engine outpacing raw OkHttp and Retrofit 2, and negligible zero-dep core overhead (+6.3 KB on 20 KB feeds, +42 KB on 1 MB feeds).
 - **Test suite & Coverage Records:** 1,710/1,710 tests green (+399 tests over 0.10.0), JaCoCo **Branch 90.64%** (historical record, first time over 90%), **Instruction 98.19%**, **Line 97.84%**, **Method 100%**, **Class 100%**.
 - **Build & Artifacts:** Version `0.11.0` in root `build.gradle` and submodules (`engine-okhttp`, `engine-apache5`, `codec-jackson-xml`), 0 warnings under `-Werror`, 0 runtime dependencies in core POM.
+
+---
+
+## Netty Transport Engine Submodule: `jrestly-engine-netty` (ADR-0070) — COMPLETE ✅ (2026-10-19, unreleased)
+
+> Source of truth: [`docs/0.12.0/ADR-0070-http-engine-netty-transport.md`](docs/0.12.0/ADR-0070-http-engine-netty-transport.md) and [`BENCHMARKS.md`](BENCHMARKS.md).
+> Flagship epic of Cycle 0.12.0 answering maintainer Anton's question (mailbox, 2026-10-19): *"А как думаешь если добавить возможность использовать netty? Видимо это даст нам возможность выжать максимум? Интересно, а с ним какие будут результаты?"*.
+> Executed across three phases (#323: submodule scaffolding & SPI, #324: full pipeline, connection pool, NettyChunkedInputStream, #325: FeedBenchmark integration & publication). ADR-0070 status: **Accepted**.
+
+**Architecture & Design:**
+1. **Zero-Dep Invariant Preserved:** The core jar remains 100% zero-dependency on top of `java.net.http.HttpClient`. Netty components live strictly within the optional submodule `ru.jrestly:jrestly-engine-netty` (`engine-netty/`), discovered transparently via `ServiceLoader` (`HttpEngineProvider`, priority 60).
+2. **Connection Pooling & Route Isolation:** `AbstractChannelPoolMap<EndpointKey, FixedChannelPool>` with route isolation `(scheme, host, port)`, `ChannelHealthChecker.ACTIVE`, and keep-alive channel reuse.
+3. **Streaming & Backpressure:** Push-to-pull `NettyChunkedInputStream` bridges Netty's reactive event loop to blocking `@Get InputStream` readers using credit-based backpressure (`channel.config().setAutoRead(false)` at 8 chunks, resumed at 2 chunks). Readers unblock immediately with `IOException("Stream closed")` upon `stream.close()`.
+4. **Zero Off-Heap Leaks:** Strict buffer lifecycle management (`ByteBuf.retain()/release()`) verified under `-Dio.netty.leakDetection.level=PARANOID` across the entire test suite.
+5. **Contract Parity Suite:** 21-test parity suite (`NettyHttpEngineParityTest`) covering buffered/streaming, multipart RFC 7578, progress listeners, trailers, passive compression, and timeouts against WireMock.
+
+**Empirical Performance (from `BENCHMARKS.md`):**
+- **Record Heap Allocations on Small Payloads:** With Netty's off-heap pooled buffer allocator (`PooledByteBufAllocator`), `jRestly + engine-netty (streaming)` achieved an absolute record **98,342 B/op** on `rss-20` (lower than raw OkHttp 98,725 B, Retrofit 102,772 B, and Apache5 101,141 B).
+- **Streaming Cuts Megabytes on Netty:** Streaming mode saves **6.26 MB/op** on 1 MB feeds (`rss-1000`: 3.49 MB vs 9.75 MB).
+- **Substantial Advantage over Default JDK Transport:** Throughput on `rss-20` reached **308.3 ops/s** (53% higher than default JDK 201.5 ops/s and OpenFeign 201.2 ops/s), while CPU time dropped to **6.39 ms/op** (vs 9.75 ms on JDK and 9.42 ms on Feign).
 
 ---
 

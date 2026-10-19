@@ -69,6 +69,22 @@ class FeedBenchmarkClientsTest {
     }
 
     @Test
+    @DisplayName("jRestly Netty buffered and streaming arms fold identical summaries over all six routes")
+    void jRestlyNettyBufferedAndStreamingArmsFoldIdenticalSummaries() throws Exception {
+        try (JRestlyBenchmarkClient jrestly = new JRestlyBenchmarkClient(baseUrl, new ru.jrestly.engine.netty.NettyHttpEngine())) {
+            for (String kind : KINDS) {
+                FeedSummary buffered = FeedSummary.of(jrestly.feedBuffered(kind));
+                FeedSummary streaming = FeedSummary.of(jrestly.feedStreaming(kind));
+
+                assertEquals(EXPECTED_COUNTS.get(kind), buffered.count(), "Netty buffered count: " + kind);
+                assertEquals(EXPECTED_COUNTS.get(kind), streaming.count(), "Netty streaming count: " + kind);
+                assertEquals(buffered, streaming,
+                        "Netty buffered and streaming must fold into the same summary: " + kind);
+            }
+        }
+    }
+
+    @Test
     @DisplayName("Every competitor arm fetches and reaches the expected entry count on all six routes")
     void competitorArmsReachExpectedCounts() throws Exception {
         try (OkHttpBenchmarkClient okHttp = new OkHttpBenchmarkClient(baseUrl);
