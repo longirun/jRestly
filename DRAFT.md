@@ -1,5 +1,47 @@
 # DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
+> **Сессия #301 (свободный аудит HttpTemplateBuilder-кластера — найден и
+> закрыт двойной расчёт URL на ambient-пути TracePropagator;
+> гейт 1,659/1,659):**
+> 1. *Аудит (файл прочитан целиком, 1464 строки):* (a) **подтверждён
+>    найденный в эстафете #300 подозреваемый** — `createUrl()` вызывался
+>    ДВАЖДЫ за один `build()`: в `build()` (L239, `result.setUrl`) и в
+>    `applyTracePropagator` (L649) на ambient-пути §6.4 ADR-0042 (нет
+>    активной `@Trace` + настроенный клиентский `TracePropagator`) — каждый
+>    такой запрос прогонял подстановку path-переменных и query-join'ы в
+>    двойном экземпляре; входные поля между вызовами не мутируются → второй
+>    результат value-идентичен первому, чистое дублирование вычислений и
+>    аллокаций на горячем пути; (b) `byte[]`-скаляр в
+>    `appendHeaderValues`/`appendParamValues` падает в `value.toString()`
+>    (`[B@…`) — реальный край, но `byte[]` не задокументирован типом
+>    аргумента `@RequestHeader`/`@RequestParam` (в multipart-ветках — raw
+>    bytes по ADR-0031/0033) — **оставлен в беклог** (решение о wire-формате
+>    — отдельный шаг); (c) dead `default`-ветки в `appendFormattedItems`/
+>    `appendMultipartCollectionParts` (дублируют `EXPLODE` после
+>    `DEFAULT`→`EXPLODE`-нормализации) — косметика, в беклог; (d)
+>    defensive-null-проверки `methodMetadata` в `resolve*` — by design
+>    (nullable по контракту публичного javadoc); (e) Map-префикс
+>    `rawRequestParamName()` — осознанно (Amendment #296), не тронут.
+> 2. *TDD red-first:* `HttpTemplateBuilderTest.
+>    testTracePropagatorReceivesBuiltUrlComputedOnce` — сейт
+>    `CountingCharSequence` (`@TargetUrl` принимает `CharSequence` по
+>    `ControllerValidator`, `toString()` со счётчиком) упал ровно на счёт:
+>    expected 1, was 2; плюс инвариант «пропигатор наблюдает URL,
+>    идентичный `template.getUrl()`» (ADR-0042 §6.4).
+> 3. *Фикс:* URL вычисляется ровно один раз в `build()` и пробрасывается
+>    `createHeaders(url)` → `applyTracingHeaders(result, url)` →
+>    `applyTracePropagator(result, url)`; `TraceRequestContext` получает тот
+>    же `String`, что и `HttpTemplate`. Поведение и публичный API не тронуты,
+>    только `//`-комментарий в main (javadoc-гейт не нужен).
+> 4. *Документация:* ADR-0042 — `## Amendment #301`.
+> 5. *Гейт:* **1,659/1,659** green across all 5 modules (+1, 0
+>    failures/errors).
+> 6. *Дальше:* хвосты `HttpTemplateBuilder` (byte[]-скаляр в
+>    headers/params — решить wire-формат; dead `default`-ветки) или валидация
+>    `@ExpectStatus`/`@FollowRedirects` (#207, при тихом исходе) или новый
+>    свободный аудит. Кандидат №7 (rss/atom) всё ещё ждёт A/B-ответа Антона.
+>    Highest ADR **0067**, next free **0068**.
+
 > **Сессия #300 (свободный аудит HttpTemplate/Redirects — найден и закрыт
 > тихий баг: sync 401-refresh failure leg терял суммарный attempts();
 > гейт 1,658/1,658):**
@@ -3022,8 +3064,12 @@ wire-формат не менялся). **Кандидат №1 (test-javadoc) �
 метрик — закрыт (#299):** WIP прерванной #298 принят и верифицирован —
 engine-reported byte accounting (`WireRequest.knownBodySize`,
 `HttpTemplateBuilder.fileSizeBytes`, `MetricsNotifier.requestBytes`),
-ADR-0036 Amendment #298, гейт **1,656/1,656**. Следующий ход: свободный
-аудит или валидация `@ExpectStatus`/`@FollowRedirects` (хвост ниже).
+ADR-0036 Amendment #298, гейт **1,656/1,656**. **Свободный аудит
+`HttpTemplateBuilder`-кластера — выполнен (#301):** двойной расчёт URL на
+ambient-пути TracePropagator закрыт (ADR-0042 Amendment #301, гейт
+**1,659/1,659**); хвосты: byte[]-скаляр в headers/params (решить wire-формат),
+dead `default`-ветки. Следующий ход: эти хвосты, валидация
+`@ExpectStatus`/`@FollowRedirects` (хвост ниже) или новый свободный аудит.
 **Кандидат №8 проверен (#287): регрессии dispatch/аллокаций нет** (см.
 пометку выше). №7 (rss/atom) — разблокируется ответом Антона
 (вопрос A/B задан в mailbox #284/#285). Highest ADR **0067**, next free **0068**.

@@ -62,6 +62,7 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Flow;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
 
@@ -275,6 +276,9 @@ class HttpTemplateBuilderTest {
         @Get("/trace-custom")
         @Trace(enabled = true, w3c = false, header = "X-My-Trace", forceNew = true)
         String traceCustom();
+
+        @Get("")
+        String traceWithTargetUrl(@TargetUrl CharSequence targetUrl);
     }
 
     interface ContractInspectionApi {
@@ -482,6 +486,31 @@ class HttpTemplateBuilderTest {
         Method customMethod = TracingApi.class.getMethod("traceCustom");
         HttpTemplate t2 = new HttpTemplateBuilder(defaultModuleInfo, httpClient, customMethod, new Object[0], TracingApi.class).build();
         assertTrue(t2.getHeaders().stream().anyMatch(h -> "X-My-Trace".equalsIgnoreCase(h.name())));
+    }
+
+    @Test
+    @DisplayName("Client-level propagator observes the built URL, assembled exactly once per build (Amendment #301)")
+    void testTracePropagatorReceivesBuiltUrlComputedOnce() throws Exception {
+        AtomicReference<String> observedUrl = new AtomicReference<>();
+        SimpleModuleInfo moduleInfo = SimpleModuleInfo.builder()
+                .baseUrl("https://api.example.com")
+                .tracePropagator(context -> {
+                    observedUrl.set(context.url());
+                    return Map.of("X-Test-Trace", "abc-123");
+                })
+                .build();
+        Method method = TracingApi.class.getMethod("traceWithTargetUrl", CharSequence.class);
+        CountingCharSequence target = new CountingCharSequence("http://target.example.com/endpoint");
+
+        HttpTemplate template = new HttpTemplateBuilder(moduleInfo, httpClient, method,
+                new Object[]{target}, TracingApi.class).build();
+
+        assertEquals("http://target.example.com/endpoint", template.getUrl());
+        // The propagator must observe exactly the URL the request will use (ADR-0042 §6.4)
+        assertEquals(template.getUrl(), observedUrl.get());
+        // Amendment #301: URL assembly runs exactly once per build — the ambient
+        // propagation path must not recompute it (hot-path allocation control)
+        assertEquals(1, target.toStringCalls(), "URL must be assembled exactly once per build()");
     }
 
     // -------------------------------------------------------------------------
@@ -933,5 +962,44 @@ class HttpTemplateBuilderTest {
         assertEquals(3, template.getFollowRedirectsNumber());
         assertEquals(HttpClient.Version.HTTP_2, template.getHttpVersion());
         assertEquals(3, template.getRetryPolicy().maxAttempts());
+    }
+
+    /**
+     * A {@link CharSequence} counting {@code toString()} invocations — a seam for observing
+     * how many times the builder stringifies the {@code @TargetUrl} argument during a single
+     * {@code build()} (ADR-0042 Amendment #301: the URL must be assembled exactly once).
+     */
+    static final class CountingCharSequence implements CharSequence {
+        private final String url;
+        private final AtomicInteger toStringCalls = new AtomicInteger();
+
+        CountingCharSequence(String url) {
+            this.url = url;
+        }
+
+        @Override
+        public int length() {
+            return url.length();
+        }
+
+        @Override
+        public char charAt(int index) {
+            return url.charAt(index);
+        }
+
+        @Override
+        public CharSequence subSequence(int start, int end) {
+            return url.subSequence(start, end);
+        }
+
+        @Override
+        public String toString() {
+            toStringCalls.incrementAndGet();
+            return url;
+        }
+
+        int toStringCalls() {
+            return toStringCalls.get();
+        }
     }
 }

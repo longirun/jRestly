@@ -236,10 +236,11 @@ public class HttpTemplateBuilder {
         } else if (httpClient != null) {
             result.setHttpClient(httpClient);
         }
-        result.setUrl(createUrl());
+        String url = createUrl();
+        result.setUrl(url);
         result.setHttpMethod(requestMeta.httpMethod());
 
-        List<Header> headers = createHeaders();
+        List<Header> headers = createHeaders(url);
 
         String effectiveContentType;
         String declarativeContentType = methodMetadata.methodContentType() != null
@@ -528,7 +529,7 @@ public class HttpTemplateBuilder {
         }
     }
 
-    private List<Header> createHeaders() {
+    private List<Header> createHeaders(String url) {
         List<Header> authHeaders = moduleInfo.getAuthProvider().getAuthHeaders();
         List<Header> staticHeaders = methodMetadata.staticHeaders();
         List<Header> result;
@@ -603,18 +604,18 @@ public class HttpTemplateBuilder {
             }
         }
 
-        applyTracingHeaders(result);
+        applyTracingHeaders(result, url);
 
         return result;
     }
 
-    private void applyTracingHeaders(List<Header> result) {
+    private void applyTracingHeaders(List<Header> result, String url) {
         // An active @Trace annotation overrides the client level (ADR-0042 §6.3);
         // a missing or disabled one falls back to the client-level TracePropagator (§6.4)
         Trace effectiveTrace = methodMetadata.effectiveTrace();
         if (effectiveTrace == null || !effectiveTrace.enabled()) {
             if (moduleInfo != null && moduleInfo.getTracePropagator() != null) {
-                applyTracePropagator(result);
+                applyTracePropagator(result, url);
             }
             return;
         }
@@ -642,11 +643,14 @@ public class HttpTemplateBuilder {
         }
     }
 
-    private void applyTracePropagator(List<Header> result) {
+    // Amendment #301 (ADR-0042): the URL is reused from build() — re-running
+    // createUrl() here would repeat path-variable substitution and query
+    // joining on every ambient propagation, doubling URL assembly allocations.
+    private void applyTracePropagator(List<Header> result, String url) {
         TraceRequestContext traceContext = new TraceRequestContext(
                 controller,
                 method,
-                createUrl(),
+                url,
                 requestMeta.httpMethod(),
                 Collections.unmodifiableList(result)
         );

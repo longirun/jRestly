@@ -100,6 +100,27 @@ Accepted
 на `@Trace(enabled = false)`), 1 регрессионный предохранитель (активная
 аннотация побеждает пропигатор).
 
+## Amendment #301
+
+Свободный аудит `HttpTemplateBuilder`-кластера (сессия #301) выявил двойное
+вычисление URL на горячем пути: `build()` считал URL в `createUrl()` для
+`result.setUrl(…)`, а путь ambient-пропагации (§6.4: нет активной аннотации
+`@Trace` + настроенный клиентский `TracePropagator`) повторно вызывал
+`createUrl()` внутри `applyTracePropagator` при сборке `TraceRequestContext` —
+каждый такой запрос прогонял подстановку path-переменных и join'ы query
+двойной раз, создавая второй идентичный `String` и промежуточные
+`StringBuilder`/`ArrayList`-аллокации. Результат второй сборки value-идентичен
+первой (входные поля между вызовами не мутируются), то есть это чистое
+дублирование вычислений, а не расхождение. Фикс: URL вычисляется ровно один
+раз в `build()` и пробрасывается параметром
+`createHeaders(url)` → `applyTracingHeaders(result, url)` →
+`applyTracePropagator(result, url)`; `TraceRequestContext` получает тот же
+`String`, что и `HttpTemplate`. Поведение и публичный API не тронуты.
+TDD red-first: `HttpTemplateBuilderTest.
+testTracePropagatorReceivesBuiltUrlComputedOnce` — `@TargetUrl CharSequence`
+счётчиком `toString()` упал ровно на счёт: expected 1, was 2; плюс
+инвариант «пропигатор наблюдает URL, идентичный `template.getUrl()`».
+
 ## Consequences
 - **Плюсы:**
   - Полная поддержка распределенной трассировки и correlation ID из коробки без единой внешней зависимости.
