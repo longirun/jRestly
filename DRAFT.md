@@ -1,5 +1,15 @@
 # DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
+> **Сессия #331 (дистилляция Кандидатов №12 + №14 в `ROADMAP.md` как выполненные эпики, пакетом; баннер Current status; пул 0.12.0 обновлён; код не тронут, гейт 1,809/1,809 в силе от #330):**
+> 1. *Приём состояния:* HEAD `4d6c117` (#330, Кандидат №14), чистое дерево (только счётчик 331), слов Антона в mailbox'е нет (последнее — мой #329).
+> 2. *Дистилляция в `ROADMAP.md`* (стиль — секции ADR-0070…ADR-0072; факты сверены по ADR-0073/ADR-0074 и коммитам `2c46c34`/`1a505cc`/`4d6c117`):
+>    - **Кандидат №12 (обе фазы):** секция ADR-0073 `codec-yaml` (Jackson `YAMLMapper` 2.18.2, family `application/yaml`/`text/yaml`/`*+yaml` — RFC 9512 + RFC 6839, SPI priority 50, `MediaType.APPLICATION_YAML`/`TEXT_YAML`, гейт 1,785/1,785; реальная грабля: у WireMock 3.12.1 нет `equalToYaml`) + секция ADR-0074 `codec-protobuf` (protobuf-java 3.25.5, family `application/x-protobuf`/`application/protobuf`/`*+protobuf`, резолвинг парсера `PARSER` → статический `getDefaultInstance()`+`getParserForType()` → fail-fast + `ConcurrentHashMap`-кэш, private-`PARSER` well-known типов зафиксирован как implementation note, гейт 1,804/1,804).
+>    - **Кандидат №14:** секция без ADR (шаг определён как TDD; ADR-0075 — опциональное оформление): три зоны (header-мердж без `HashSet` + `removeHeaderByName`/`hasHeaderNamed`, single-wrap view в `applyTracePropagator`, `ResponseHeaders.buildValueMap`), 5 структурных тестов, гейт 1,809/1,809.
+>    - **Баннер Current status** обновлён: Highest ADR **0074**, next free **0075**, гейт **1,809/1,809** (root 1,647 + okhttp 25 + apache5 25 + netty 26 + jackson-xml 15 + yaml 15 + protobuf 19 + benchmarks 37), JaCoCo без изменений с ADR-0072 (90.65% Branch — рекорд), кодовая экосистема описана как закрытая (YAML + Protobuf на одной биндинг-модели, parity priority 50).
+> 3. *ДRAFT:* пул 0.12.0 — Кандидаты №12 и №14 перемечены в закрытые; активных эпиков цикла больше нет, остаются хвосты аудит-нити (`@ExpectStatus`/`@FollowRedirects` — #207 «фича, не дыра»; опциональный ADR-0075).
+> 4. *Гейты:* код не тронут (только ROADMAP/DRAFT/память) — гейт 1,809/1,809 держится от #330 без пере-прогона.
+> 5. *Дальше (#332):* выбор из хвостов: (a) ADR-0075 на оформление №14 (стиль ADR-0072); (b) `@ExpectStatus`/`@FollowRedirects` validation (#207, при тихом исходе); (c) свободный аудит следующего hot-path (dispatch `HttpTemplate`, cookie-разбор, `MethodMetadata`).
+>
 > **Сессия #330 (Кандидат №14: устранение промежуточных аллокаций в header-мердже, W3C tracing и парсинге `ResponseHeaders` — TDD-шаг, 5 новых структурных тестов, гейт 1,809/1,809):**
 > 1. *Приём состояния:* HEAD `1a505cc` (#329, ADR-0074), чистое дерево (только счётчик 330), слов Антона в mailbox'е нет. Просмотрены три целевые зоны: `HttpTemplateBuilder.createHeaders`/`applyTracingHeaders`/`applyTracePropagator`, `ResponseHeaders.doPopulate`/`populateTrailers`, `TraceRequestContext` (compact-конструктор делает единственный unmodifiable-wrap — контракт, на который опирается структурный тест).
 > 2. *TDD red:* 5 новых тестов с **структурными** ассертами (пиним форму аллокаций, а не только поведение):
@@ -3622,13 +3632,12 @@ INSTRUCTION 98.15%, LINE 97.82%, COMPLEXITY 88.69% — рекорды; гейт 
 
 **Кандидат №10 закрыт полностью (#325):** Netty Transport Engine (`jrestly-engine-netty`, ADR-0070) реализован, все фазы 1–3 завершены, замеры опубликованы в `BENCHMARKS.md`, ADR-0070 Accepted, дистиллирован в `ROADMAP.md`.
 **Кандидат №11 закрыт полностью (#326):** Java 21+ Pattern Matching & Sealed Architecture Audit (ADR-0071 Accepted). Рефакторинг на pattern matching switch в `CircuitBreakerConfig`, `ProblemDetail`, `HttpTemplateBuilder`, `HttpTemplate`. Доказан и закреплен non-sealed статус публичных SPI и контекстов. Гейт вырос до **1,739/1,739**.
+**Кандидат №12 закрыт полностью (#328/#329, дистиллирован в ROADMAP в #331):** Экосистема кодеков — субмодули `codec-yaml` (ADR-0073, #328) и `codec-protobuf` (ADR-0074, #329). Обе фазы реализованы и Accepted (SPI `PayloadCodec`, priority 50, автообнаружение, wire-паритеты), секции записаны в `ROADMAP.md`.
 **Кандидат №13 закрыт полностью (#327):** Zero-Allocation URI Composition & RFC 3986 Fast-Paths (ADR-0072 Accepted). Single-pass сборка в `createUri`/`appendQuery`, unreserved ASCII fast-path в `UriEncoder`, кэширование `placeholderToken` в `MethodMetadata.ParameterDescriptor`. Гейт вырос до **1,747/1,747**, ветви JaCoCo на рекорде **90.65%**. Highest ADR **0072**, next free **0073**.
+**Кандидат №14 закрыт полностью (#330, дистиллирован в ROADMAP в #331):** дальнейшая оптимизация аллокаций HTTP заголовков и W3C Tracing context — TDD-шаг, 5 структурных тестов, header-мердж без `HashSet`, single-wrap trace-view, `ResponseHeaders.buildValueMap`; гейт **1,809/1,809**.
 
-**Актуальный пул кандидатов цикла 0.12.0:**
-- **Кандидат №12 — Экосистема кодеков: субмодули `codec-yaml` (ADR-0073, #328) и `codec-protobuf` (ADR-0074, #329):**
-  Оба субмодуля реализованы и Accepted (SPI `PayloadCodec`, priority 50, автообнаружение, wire-паритеты). Осталось: дистилляция в `ROADMAP.md` как выполненный эпик (пакетом с №14, #331).
-- **Кандидат №14 — Дальнейшая оптимизация аллокаций HTTP заголовков и W3C Tracing context:**
-  **Реализован в #330 (TDD-шаг, 5 структурных тестов, гейт 1,809/1,809):** header-мердж без `HashSet` (прямой case-insensitive скан + `removeHeaderByName`/`hasHeaderNamed` вместо lambda/stream), single-wrap view в `applyTracePropagator`, `ResponseHeaders.buildValueMap` (emptyMap-singleton + компактные `List.of` для single-value). Осталось: дистилляция в `ROADMAP.md` (пакетом с №12, #331) и опциональный ADR-0075.
+**Актуальный пул цикла 0.12.0 (после #331):** активных эпиков нет — все заявленные кандидаты (№10, №11, №12, №13, №14) закрыты и дистиллированы. Остались хвосты:
+- **ADR-0075 — опциональное оформление Кандидата №14** (шаг был определён как TDD; стиль-эталон — `docs/0.12.0/ADR-0072-zero-allocation-uri-composition-and-fast-paths.md`).
 Хвосты-кандидаты
 из аудит-нити (не эпики): валидация `@ExpectStatus`/`@FollowRedirects`
 (инварианты нигде не объявлены — фича, не дыра; #207, трогать лишь при

@@ -2179,9 +2179,9 @@ Gates (session #241):
 
 ---
 
-> **Current status (2026-10-20).** Highest ADR issued: **0074**; next free: **0075**.
-> Cycle 0.11.0 packaged and verified (ADR-0069); version `0.11.0` in root and all published submodules. Cycle 0.12.0: Netty Transport Engine (`jrestly-engine-netty`, ADR-0070) COMPLETE ✅, Java 21+ Pattern Matching & Sealed Architecture Audit (ADR-0071) COMPLETE ✅, Zero-Allocation URI Composition & RFC 3986 Fast-Paths (ADR-0072) COMPLETE ✅, YAML Payload Codec Submodule (`jrestly-codec-yaml`, ADR-0073, Candidate №12 Phase 1) COMPLETE ✅.
-> Live gate: **1,785/1,785** tests green across all seven modules (root 1,642 + engine-okhttp 25 + engine-apache5 25 + engine-netty 26 + codec-jackson-xml 15 + codec-yaml 15 + benchmarks 37), 0 warnings under `-Werror`. Note: a fresh root re-run calibrated the core baseline to **1,642** tests (the 1,619 recorded at ADR-0072 was an aggregation under-count; core sources unchanged since then). Core JaCoCo unchanged since ADR-0072 (core diff: two `MediaType` constants only): **100% Class**, **100% Method**, **98.14% Instructions**, **97.78% Lines**, **90.65% Branches (4,051/4,469)**, **88.90% Complexity** (historical records). The YAML codec claims `application/yaml` / `text/yaml` / `*+yaml` (RFC 9512 + RFC 6839) through the `PayloadCodec` SPI, backed by Jackson `YAMLMapper` (2.18.2) — the JSON/XML/YAML triangle is complete on one binding engine; Protocol Buffers is Phase 2 (next ADR).
+> **Current status (2026-10-20).** Highest ADR issued: **0074**; next free: **0075** (ADR-0075 — optional formalization of Candidate №14).
+> Cycle 0.11.0 packaged and verified (ADR-0069); version `0.11.0` in root and all published submodules. Cycle 0.12.0: Netty Transport Engine (`jrestly-engine-netty`, ADR-0070) COMPLETE ✅, Java 21+ Pattern Matching & Sealed Architecture Audit (ADR-0071) COMPLETE ✅, Zero-Allocation URI Composition & RFC 3986 Fast-Paths (ADR-0072) COMPLETE ✅, Codec Ecosystem (Candidate №12) COMPLETE ✅ — `codec-yaml` (ADR-0073, Phase 1) + `codec-protobuf` (ADR-0074, Phase 2), Header Merge / W3C Tracing / `ResponseHeaders` Allocation Pruning (Candidate №14) COMPLETE ✅.
+> Live gate: **1,809/1,809** tests green across all eight modules (root 1,647 + engine-okhttp 25 + engine-apache5 25 + engine-netty 26 + codec-jackson-xml 15 + codec-yaml 15 + codec-protobuf 19 + benchmarks 37), 0 warnings under `-Werror`. Note: a fresh root re-run calibrated the core baseline to **1,642** tests (the 1,619 recorded at ADR-0072 was an aggregation under-count; core sources unchanged since then), and Candidate №14 added 5 structural tests (root **1,647**). Core JaCoCo unchanged since ADR-0072 (core diff since: YAML/Protobuf `MediaType` constants + allocation-shape refactors, no new behavioral branches): **100% Class**, **100% Method**, **98.14% Instructions**, **97.78% Lines**, **90.65% Branches (4,051/4,469)**, **88.90% Complexity** (historical records). The codec ecosystem is complete on one binding engine through the `PayloadCodec` SPI (all at parity priority 50): YAML (`application/yaml` / `text/yaml` / `*+yaml`, RFC 9512 + RFC 6839, Jackson `YAMLMapper` 2.18.2) closes the human-readable JSON/XML/YAML triangle; Protocol Buffers (`application/x-protobuf` / `application/protobuf` / `*+protobuf`, `protobuf-java` 3.25.5, parser resolution `PARSER` → static factory → fail-fast with a per-class cache) is the schema-bound binary axis; gRPC framing and `protobuf-javalite` remain documented non-goals.
 
 ## Internal Code Structure: HttpTemplate Decomposition (ADR-0066) — COMPLETE ✅ (2026-10-18, unreleased)
 
@@ -2363,6 +2363,69 @@ Synthetic microbenchmarks (ping, small JSON DTOs) only measure proxy dispatch an
 - Live gate expanded to **1,747 / 1,747** green tests across all 6 modules (+8 tests: `UriEncoderTest`).
 - `javadoc` completely clean under `-Werror`.
 - JaCoCo: Branch coverage reached a new all-time record of **90.65%** (4,051/4,469 covered), Instructions **98.14%**, Lines **97.78%**, Complexity **88.90%**, Methods **100%** (1458/1458), Classes **100%** (150/150).
+
+---
+
+## YAML Payload Codec Submodule: `codec-yaml` (ADR-0073) — COMPLETE ✅ (2026-10-19, unreleased)
+
+> Source of truth: [`docs/0.12.0/ADR-0073-codec-yaml-submodule.md`](docs/0.12.0/ADR-0073-codec-yaml-submodule.md).
+> Cycle 0.12.0 Candidate №12 (Codec Ecosystem: Proto/YAML Submodules) — Phase 1. Session #328 (agent-loop). ADR-0073 status: **Accepted**.
+
+**Architecture & Decisions:**
+1. **Binding engine — Jackson `YAMLMapper` (not raw SnakeYAML):** `com.fasterxml.jackson.dataformat:jackson-dataformat-yaml:2.18.2`, the same engine generation as the JSON and XML adapters: one exception family across JSON / XML / YAML (parser `IOException` wrapped in `UncheckedIOException` on the SPI boundary per the `PayloadCodec` contract), records and POJOs bind out of the box through `TypeFactory.constructType(Type)`, and `java.time` support rides the same guarded `jsr310` registration (nested holder + `Class.forName` probe — the module works without `jackson-datatype-jsr310` on the classpath).
+2. **Media-type family claim:** `YamlCodec.supports(...)` claims exactly `application/yaml` and `text/yaml` (the registered YAML media types, RFC 9512) plus every structured suffix ending in `+yaml` (RFC 6839 convention, mirroring the XML adapter's `*+xml` claim). Unclaimed variants (e.g. `application/x-yaml`) fail fast through the registry — ADR-0060's strict selection semantics.
+3. **SPI auto-discovery, priority 50:** `YamlCodecProvider` (registered in `META-INF/services/ru.jrestly.codec.PayloadCodecProvider`) probes `YAMLMapper` availability and contributes `YamlCodec.defaults()` — parity with the official XML adapter; the two families do not overlap, so no tie can change resolution. A client with the submodule on the classpath binds YAML without any `builder().codec(...)` call and can still opt out via an explicit JSON-only `CodecRegistry`.
+4. **Default mapper configuration:** `FAIL_ON_UNKNOWN_PROPERTIES` disabled (forward compatibility with evolving schemas — the dominant YAML-in-config use case) and `WRITE_DATES_AS_TIMESTAMPS` disabled (ISO-8601 dates on the wire); an explicit `YAMLMapper` constructor uses the mapper as is, never reconfigured. Instances are thread-safe.
+5. **Core constants (pure addition):** `MediaType.APPLICATION_YAML` / `TEXT_YAML` — declarative `@ContentType` / `@Accept` reference named constants, as with `APPLICATION_XML`; no existing member changed, the public API is not broken.
+
+**Verification & Quality Gate:**
+- Zero-dep core preserved: the only new dependency (jackson-dataformat-yaml 2.18.2, transitively SnakeYAML) lives in the submodule's `api` configuration; the core POM keeps exactly 0 runtime dependencies.
+- Live gate expanded to **1,785 / 1,785** green tests across all 7 modules (+15: 10 unit in `YamlCodecTest`, 5 end-to-end in `YamlWireMockTest`).
+- End-to-end proof (ADR-0060 pattern): a DTO with `@ContentType(APPLICATION_YAML)` goes on the wire byte-for-byte as the codec emits it (verified against the codec's own `serialize` output); an `@Accept`-declared `application/yaml` response binds into the declared record; the JSON default path stays byte-for-byte intact; SPI auto-discovery lights YAML up without registration; a JSON-only registry restores fail-fast for YAML.
+- Reality pin: WireMock 3.12.1 has no `equalToYaml` matcher (checked via javap on the standalone jar) — the expected body is computed by the codec itself and compared byte-for-byte with `equalTo` (stricter).
+- Non-goals: the Protocol Buffers adapter (Phase 2 → ADR-0074), YAML awareness in the core `JsonCodec`, unregistered `text/x-yaml`-style variants.
+
+---
+
+## Protocol Buffers Payload Codec Submodule: `codec-protobuf` (ADR-0074) — COMPLETE ✅ (2026-10-20, unreleased)
+
+> Source of truth: [`docs/0.12.0/ADR-0074-codec-protobuf-submodule.md`](docs/0.12.0/ADR-0074-codec-protobuf-submodule.md).
+> Cycle 0.12.0 Candidate №12 — Phase 2 (closes the candidate in full). Session #329 (agent-loop). ADR-0074 status: **Accepted**.
+
+**Architecture & Decisions:**
+1. **Binding engine — `com.google.protobuf:protobuf-java:3.25.5` (full runtime):** the codec's contract is expressed against the `com.google.protobuf.Message` interface, the dominant case in the Java ecosystem; `Parser.parseFrom(byte[])` / `Message.toByteArray()` are the canonical entry points — no hand-rolled varint handling, no reflection into wire internals. `InvalidProtocolBufferException` is an `IOException` subclass, so the SPI's "wrap in the adapter's own exception family" maps directly onto `UncheckedIOException`. A `protobuf-javalite`-only classpath is a documented Phase-1 non-goal.
+2. **Media-type family claim:** `application/x-protobuf` (de-facto legacy) + `application/protobuf` (IANA-registered) + every structured suffix ending in `+protobuf` (RFC 6839 convention). Deliberately **not** claimed: `application/grpc+proto` — gRPC payloads carry a 5-byte framing prefix, so a gRPC-aware codec is a different component (documented non-goal).
+3. **Parser resolution for an arbitrary target `Type` (the Phase-2 design cut):** the target must be a `Class` of a protobuf message; resolution order — (1) public static `PARSER` field (the protoc invariant), (2) static `getDefaultInstance()` + `getParserForType()` (hand-written and well-known types), (3) fail-fast `IllegalArgumentException` naming the offending class. Resolvers are cached in a `ConcurrentHashMap<Class<?>, Parser<?>>` — one lookup per message class for the lifetime of the codec; non-message target types fail fast the same way (an actionable error instead of a silent mis-bind). **Implementation note:** the protobuf-java well-known types (`Timestamp`, `Struct`, …) ship with a **private** `PARSER` (hand-maintained, not protoc output) — they resolve through the static-factory branch; both branches are pinned by tests.
+4. **Serialization — `toByteArray()` and nothing more:** a `Message` / `MessageLite` value serializes via `toByteArray()`; `null` yields an empty payload (SPI contract); any other value fails fast. There is intentionally **no** property-reflection path — protobuf is schema-bound, so a value that is not a generated message is a programming error the user should see immediately.
+5. **`prettyPrint` renders binary as hex:** 16 bytes per line, space-separated two-digit lowercase hex (best-effort log rendering for a non-text format; no schema-less `DynamicMessage` decoding, which would be misleading without the corresponding `.proto`).
+6. **SPI auto-discovery, priority 50 + core constants (pure addition):** `ProtobufCodecProvider` mirrors the JSON/XML/YAML adapters (parity priority; opt-out via an explicit JSON-only registry); `MediaType.APPLICATION_PROTOBUF` / `APPLICATION_X_PROTOBUF` join the core.
+
+**Verification & Quality Gate:**
+- Zero-dep core preserved: protobuf-java 3.25.5 lives in the submodule's `api` configuration; the core POM keeps exactly 0 runtime dependencies.
+- Live gate expanded to **1,804 / 1,804** green tests across all 8 modules (+19: 14 unit in `ProtobufCodecTest`, 5 end-to-end in `ProtobufWireMockTest`).
+- End-to-end proof (ADR-0060/0073 pattern): a generated `Message` DTO with `@ContentType(APPLICATION_X_PROTOBUF)` goes on the wire byte-for-byte (WireMock `binaryEqualTo`); an `@Accept`-declared protobuf response binds into the generated message type; the JSON default path stays byte-for-byte intact; SPI auto-discovery lights protobuf up without registration; a JSON-only registry restores fail-fast.
+- Non-goals: gRPC framing, `protobuf-javalite`-only classpaths, schema-less `DynamicMessage` binding, collection/generic targets (Phase-1 deserialization is per-message, matching how generated services are actually declared).
+
+---
+
+## Header Merge, W3C Tracing & `ResponseHeaders` Allocation Pruning (Candidate №14) — COMPLETE ✅ (2026-10-20, unreleased)
+
+> Session #330 (agent-loop) — a TDD step: five new **structural** tests pinning the *shape* of the allocations (not only behavior) went red first, then three hot-path zones were refactored green. No ADR was issued: the step was defined as TDD; ADR-0075 remains an optional formalization (style template — ADR-0072).
+
+**Problem:** three hot paths allocated intermediate objects on every request:
+1. `HttpTemplateBuilder.createHeaders` — the merge branch built a transient `HashSet` of lowercased names plus per-name lowercased strings; overrides used `removeIf(lambda)` and a `stream().anyMatch(...)` check — a lambda/Stream/stage allocation per dynamic header.
+2. `applyTracePropagator` — an external `Collections.unmodifiableList` wrap on top of the single wrap the `TraceRequestContext` compact constructor already performs — one pure wrapper object per ambient-trace request.
+3. `ResponseHeaders` — two inline copies of the header/trailer map assembly; empty trailers still allocated a `TreeMap` + wrapper, and single-value entries allocated a backing `ArrayList` + an unmodifiable wrapper.
+
+**Solution:**
+- `createHeaders`: the merge branch became a direct case-insensitive O(a·s) scan (header lists are small — the scan is cheaper than the hash set), preserving the merge order (surviving ambient in its own position → statics in declaration order → dynamics in parameter order); new static helpers `removeHeaderByName` (reverse in-place loop, skipping null names — the ambient provider is a public join point) and `hasHeaderNamed` (plain scan) replace the per-dynamic-header lambda/stream, including the `Accept-Encoding` pre-check.
+- `applyTracePropagator`: the live merged list is passed as is — the **only** wrap now is the `TraceRequestContext` compact constructor (the external unmodifiable wrapper removed); live-view semantics pinned structurally (a self-injected header is visible through the view).
+- `ResponseHeaders.buildValueMap(List<Header>)` — one shared helper for `doPopulate` (headers + trailers) and `populateTrailers`: an empty list (or only nameless headers) ⇒ the `Collections.emptyMap()` singleton, no `TreeMap` + wrapper; a single-value entry ⇒ a compact `List.of(value)` (no backing `ArrayList`, no wrapper layer); multi-value ⇒ `unmodifiableList`; the `TreeMap(CASE_INSENSITIVE_ORDER)` + unmodifiable-map contract is preserved.
+
+**TDD & Verification:**
+- Five red structural tests: empty trailers share the `emptyMap()` singleton (reflection on the private `trailerMap`); single-value entries are `ImmutableCollections$List12`; the trace-propagator view is exactly one `Collections$Unmodifiable*` layer whose backing `list` is the live merge `ArrayList` (the field is declared in the parent — resolved by walking the class hierarchy); the exact merge order (surviving ambient in its own position → statics → dynamics → `Accept-Encoding` last — decompression is ON by default); a case-insensitive dynamic override replaces a differently-cased static (new `DupHeaderApi` fixture).
+- Gotchas: (a) `SimpleModuleInfo` enables decompression by default ⇒ `Accept-Encoding: gzip, deflate` is appended last to every merged list (hit the parity expectations twice); (b) JPMS — `setAccessible` on the private `java.util.Collections$UnmodifiableList.list` requires `--add-opens java.base/java.util=ALL-UNNAMED` (added to the root test-JVM `build.gradle` with a rationale comment).
+- Target suites 56/56; full gate **1,809 / 1,809** green across all 8 modules (root 1,647 — the 1,642 baseline + 5 new structural tests — plus engine-okhttp 25 + engine-apache5 25 + engine-netty 26 + codec-jackson-xml 15 + codec-yaml 15 + codec-protobuf 19 + benchmarks 37). Main changes are `//` comments — the javadoc gate is untouched; core JaCoCo unchanged (no new behavioral branches).
 
 ---
 
