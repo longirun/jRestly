@@ -11,6 +11,10 @@ import java.lang.annotation.Target;
  * When placed on a controller interface, applies to all methods in that interface and sub-interfaces.
  * Static headers are overridable (case-insensitively) by method-level headers and runtime arguments.
  * Passing {@code null} as an argument omits the header.
+ * <p>
+ * Header values are text on the wire: a {@code byte[]} argument (scalar or as a list/array/map element)
+ * throws {@link IllegalArgumentException} instead of writing class-string garbage —
+ * encode bytes explicitly (e.g. Base64) or send them raw as a {@code @RequestBody}.
  */
 @Target({ElementType.PARAMETER, ElementType.METHOD, ElementType.TYPE})
 @Retention(RetentionPolicy.RUNTIME)

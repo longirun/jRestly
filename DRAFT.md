@@ -1,5 +1,13 @@
 # DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
+> **Сессия #305 (главный хвост аудита #301 закрыт: `byte[]`-скаляр в headers/params — fail-fast вместо тихого `[B@…` на проводе; гейт 1,668/1,668; BRANCH 90.21% — рекорд):**
+> 1. *Карта (5 позиций просачивания по коду):* `appendHeaderValues`/`appendParamValues` исключали `byte[]` из array-expansion (`!byte[].class.equals(...)`) и фолбэкили в `value.toString()` → под объявленным ключом уезжал `[B@1a2b3c4d` (тихая порча payload'а); плюс текстовая multipart-часть без `contentType()` и 4 join'а CSV/SSV/TSV/PIPES. Скаляр, элемент списка, элемент массива, Map-значение — все пути.
+> 2. *Решение wire-формата (ISO-8859-1 / Base64 / fail-fast):* **fail-fast** — «header and parameter values are text on the wire»; ISO-8859-1 навязывал бы HTTP-1 семантику заголовков query-ключам и молча пропускал бы искажённые байты, Base64 навязывает недокументированную трансформацию; выбор кодировки остаётся на call-site (сообщение подсказывает `@RequestBody` либо явное кодирование — Base64/ISO-8859-1). Прецеденты: «bare byte[] cannot be a multipart file» (тот же файл), fail-fast селекции кодека #178. **Сохранён нарочно:** raw-bytes канал `@RequestParam(contentType = "...") byte[]` в multipart (ADR-0031/0033); byte[]-часть без явного Content-Type тоже fail-fast.
+> 3. *Fix (5 точек `HttpTemplateBuilder`):* приватный `textValue(value, position)` — fail-fast на byte[]-скаляре И элементе (коллекция/массив/Map-value); обе ветки append*; `createPartFromValue`-гард + 4 join'а через хелпер. Static fast-path'ы ADR-0055 не тронуты (хелпер только на dynamic-пути).
+> 4. *TDD red-first:* +3 теста (`HttpTemplateBuilderTest`, интерфейс `ByteScalarApi`): header (скаляр/Map/List), query + form-urlencoded, multipart raw-guard + no-Content-Type fail-fast. Красные ровно по «Expected IllegalArgumentException ... nothing was thrown» → зелёные.
+> 5. *Документация:* ADR-0017 `## Amendment #305`; javadoc `@RequestHeader` (byte[] → IAE) и `@RequestParam` (текстовые позиции + multipart raw-канал).
+> 6. *Гейты:* **1,668/1,668** green во всех 5 модулях (+3, 0 failures/errors), javadoc чист под `-Werror`. JaCoCo: **BRANCH 3,999/4,433 (90.21%)**, INSTRUCTION **98.14%**, LINE **97.79%**, COMPLEXITY **88.39%** — рекорды; METHOD 1455/1455 и CLASS 149/149 — 100% сохранены.
+
 > **Сессия #304 (**пересечён рубеж 90% BRANCH coverage впервые в истории библиотеки**: 3,992/4,429 = **90.13%**; гейт 1,665/1,665; 4 новых теста — 4 целевых недостающих ветви закрыты байт-в-байт по XML-отчёту):**
 > 1. *Цели выбраны по XML-отчёту JaCoCo (12 файлов с ровно 1 missed branch):* (a) `MultipartPart.part(name, filename, contentType, null)` — документированный `@param content … or null for empty content`, 3-арг-перегрузка была покрыта, 4-арг — нет; (b) `ClientMetricsListener.composite(single)` — zero-indirection fast-path `return list.getFirst()` при единственном слушателе (дух ADR-0055); (c) `ShortCircuitInterceptor.intercept` — терпимый null-возврат `shortCircuit` (guard `synthetic != null` в default-методе, L34);
 >    (d) `Token.isExpired(null)` — null-buffer коллапсирует в `Duration.ZERO`, поведение идентично no-arg-перегрузке.
@@ -3117,7 +3125,13 @@ Path knownBodySize проверен, достигнуто 100% METHOD/CLASS cove
 (4-арг `MultipartPart.part(null)`, `composite(single)` fast-path, null-возврат `ShortCircuitInterceptor.shortCircuit`,
 `Token.isExpired(null)`), **BRANCH 3,992/4,429 = 90.13%** — впервые в истории библиотеки;
 INSTRUCTION 98.13%, LINE 97.78%, COMPLEXITY 88.28% — новые рекорды; гейт **1,665/1,665**.
-Следующий ход: хвост byte[]-скаляра в headers/params (решить wire-формат) или аудит engine/tracing/codec.
+**Хвост byte[]-скаляра в headers/params — закрыт (#305):** fail-fast вместо тихого
+`[B@…` (wire-формат: выбор кодировки остаётся на call-site), сохранён raw-bytes
+канал multipart `@RequestParam(contentType = ...) byte[]`; ADR-0017 Amendment #305;
+**BRANCH 3,999/4,433 = 90.21%**, INSTRUCTION 98.14%, LINE 97.79%, COMPLEXITY 88.39% —
+рекорды; гейт **1,668/1,668**.
+Следующий ход: аудит engine/tracing/codec (пул ~11 файлов с ровно 1 missed branch)
+или Кандидат №7 (rss/atom, ждёт A/B-ответа Антона).
 **Кандидат №8 проверен (#287): регрессии dispatch/аллокаций нет** (см.
 пометку выше). №7 (rss/atom) — разблокируется ответом Антона
 (вопрос A/B задан в mailbox #284/#285). Highest ADR **0067**, next free **0068**.
