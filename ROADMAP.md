@@ -2179,9 +2179,9 @@ Gates (session #241):
 
 ---
 
-> **Current status (2026-10-18).** Highest ADR issued: **0066**; next free: **0067**.
-> Cycle 0.10.0 packaged and verified; the 0.11.0 internal-structure epic (ADR-0066) is closed and distilled below.
-> Live gate: **1636/1636** tests green across all five modules, 0 warnings under `-Werror`. JaCoCo: 100% Class Coverage (149/149), 100% Method Coverage (1444/1444), **97.91% Instructions**, **97.62% Lines**, **89.63% Branches**, **87.74% Complexity** (historical records). The former 2825-line god-class `HttpTemplate` is decomposed into six package-private collaborators; `HttpTemplate` missed branches 132 → 82 over the epic.
+> **Current status (2026-10-19).** Highest ADR issued: **0068**; next free: **0069**.
+> Cycle 0.10.0 packaged and verified; the 0.11.0 cycle candidates (ADR-0066 decomposition, ADR-0067 public API conciseness, ADR-0068 real-world feed benchmark) are completed and distilled below.
+> Live gate: **1,710/1,710** tests green across all five modules, 0 warnings under `-Werror`. JaCoCo: **100% Class Coverage (149/149)**, **100% Method Coverage (1455/1455)**, **98.19% Instructions**, **97.84% Lines**, **90.64% Branches (4,018/4,433)**, **88.90% Complexity** (historical records). The former 2825-line god-class `HttpTemplate` is decomposed into six package-private collaborators (0 missed branches each), public API migrated to concise `{id}` and `value()`, and real-world streaming benchmarks published in `BENCHMARKS.md`.
 
 ## Internal Code Structure: HttpTemplate Decomposition (ADR-0066) — COMPLETE ✅ (2026-10-18, unreleased)
 
@@ -2218,7 +2218,69 @@ Gates (sessions #270–#283):
 
 ---
 
-After the epic: the maintainer's backlog №6–№8 (2026-10-18) is unlocked — №6 (public-API conciseness research vs Retrofit/OpenFeign/Spring HTTP Interfaces; no backward-compatibility obligations) goes first, №7 (rss/atom benchmark engine — scope to be agreed with the maintainer before start) and №8 (revision of the old synthetic "typical method" benchmark: did the zero-garbage/coverage pursuit drift from the main goal?) follow.
+## Public API Conciseness Review & Ergonomics (ADR-0067) — COMPLETE ✅ (2026-10-18, unreleased)
+
+> Source of truth (audit, proposals, maintainer agreement, amendments, status):
+> [`docs/0.11.0/ADR-0067-public-api-conciseness-review.md`](docs/0.11.0/ADR-0067-public-api-conciseness-review.md).
+> Candidate №6 — maintainer's direct mandate (mailbox, 2026-10-18): "examine public API conciseness; even Retrofit seems less verbose? Backward compatibility is not required".
+> Implemented across sessions #285 (audit & proposal), #292 (P1: `value()`), #293 (P2: unnamed bindings), #294 (P3: `{id}` placeholders), #295 (P4: static query in path + bug fix), #296 (Map-prefix by-design formalization).
+
+**Problem:**
+A line-by-line comparison with Retrofit 2.11, OpenFeign 13.5, and Spring 6 HTTP Interfaces revealed three major points of verbosity in jRestly:
+1. HTTP verbs forced `path = "..."` instead of default `value()`.
+2. Path variables used proprietary `${id}` syntax instead of industry-standard `{id}` (RFC 6570).
+3. Parameter annotations in examples/fixtures were over-decorated (`@PathVariable(name = "id") String id`) despite the compiler parameter-name fallback already being functional.
+4. Static query parameters in paths paired with `@TargetUrl` caused a silent duplicate `?` delimiter bug.
+
+**Solution:**
+- **P1 (#292): `value()` as default attribute:** All five HTTP verb annotations (`@Get`, `@Post`, `@Put`, `@Patch`, `@Delete`) migrated from `path()` to `value()`. Call-sites across 99 files updated to concise `@Get("/users/{id}")`.
+- **P2 (#293): Unnamed bindings in examples:** 32 files and 93 lines simplified to `@PathVariable Long id` and `@RequestParam Integer page` via `-parameters` reflection fallback.
+- **P3 (#294): `{id}` placeholder standard:** Migrated path placeholders from `${id}` to `{id}` across validator regex, maskers, URL builders, docs, and 22 test files.
+- **P4 (#295): Static query in path:** Verified static query params in paths (`@Get("/items?size=10")`) and fixed a subtle bug where `@TargetUrl` with a query merged with a static path query produced double `?` (`...?size=10?a=1` → fixed to `...?size=10&a=1`).
+- **Map-prefix formalization (#296):** Clarified the distinction between scalars (where `name` defaults to Java param name) and `Map<?, ?>` (where `name` serves as an optional namespace prefix `name[key]`; unnamed Map parameters serialize keys directly as flat parameters).
+
+**Automated Verification:**
+- Suite grew to **1,644/1,644** tests green; javadoc clean under `-Werror`.
+
+---
+
+## Real-World Scenario: Feed Fetch & Parse Benchmark (ADR-0068) — COMPLETE ✅ (2026-10-19, unreleased)
+
+> Source of truth (design, fixtures, parser, test harness, results, status):
+> [`docs/0.11.0/ADR-0068-real-feed-benchmark-fetch-and-parse.md`](docs/0.11.0/ADR-0068-real-feed-benchmark-fetch-and-parse.md) and [`BENCHMARKS.md`](BENCHMARKS.md).
+> Candidate №7 — maintainer's request (mailbox, 2026-10-18): "compare our library with competitors on a real, non-synthetic task (feed fetch & parse): ops/sec, CPU, mem-usage; identify optimization opportunities". Maintainer clarified: parser must NOT live in core jar (adhering to zero-dependency and minimalism principles).
+> Executed in phases: Phase 1 (#314: deterministic fixtures & server routes), Phase 2 (#315: shared StAX parser; #316: matrix clients), Phase 3 (#319: JMH harness & pilot; #320: full matrix run & publication in `BENCHMARKS.md`). ADR-0068 status: **Accepted**.
+
+**Problem:**
+Synthetic microbenchmarks (ping, small JSON DTOs) only measure proxy dispatch and connection setup on tiny payloads (<1 KB). Real-world cloud and enterprise workloads stream large multi-kilobyte or megabyte payloads (RSS/Atom feeds, XML/JSON documents, export streams) where memory allocations and streaming behavior dominate performance.
+
+**Solution:**
+1. **Benchmark design & fairness:**
+   - Real-world workload: Fetching RSS 2.0 and Atom 1.0 feeds (20, 200, 1000 items; 21.6 KB, 211 KB, 1.05 MB on wire) with full complexity (CDATA, escaped entities, namespaces, RFC 822 / RFC 3339 timestamps).
+   - Single shared StAX XML parser (`FeedParser`) and fold accumulator (`FeedSummary`) across all clients — strictly isolating the HTTP client transport and framing layer from XML binding differences.
+   - Comprehensive matrix: 11 arms (jRestly buffered `@Get byte[]` vs streaming `@Get InputStream` on JDK, OkHttp, and Apache5 engines) vs 5 major industry competitors (raw OkHttp `byteStream()`, Retrofit 2 `Call<ResponseBody>`, Feign `Response.asInputStream()`, Spring 6 HTTP Interface `Resource`, raw JDK `HttpClient.ofInputStream()`).
+2. **Key findings & hypotheses proven:**
+   - **Streaming triumphs on memory:** On 1 MB payloads (`rss-1000`), jRestly streaming (`@Get InputStream`) saves **1.02 MB/op** on the default JDK transport (4.64 MB vs 5.66 MB/op) and **over 2.15 MB/op** on external engines (Apache5: 3.38 MB vs 5.54 MB/op; OkHttp: 3.48 MB vs 5.51 MB/op).
+   - **jRestly + Apache5 outpaces raw OkHttp and Retrofit 2:** On 1 MB bodies, jRestly+Apache5 streaming delivers **30.4 ops/s** and allocates only **3.38 MB/op** (beating raw OkHttp: 24.6 ops/s, 3.42 MB/op; and Retrofit 2: 27.2 ops/s, 4.47 MB/op).
+   - **Zero-dep core declarative overhead is negligible:** Comparison of `jRestly default streaming` vs `raw JDK HttpClient` shows a delta of only **+6.3 KB** on a 20 KB payload, **+15 KB** on 211 KB, and **+42 KB** on a 1.05 MB payload. Dynamic proxy, interceptors, and dispatch logic contribute virtually zero garbage.
+   - **Spring 6 HTTP Interface (`Resource`) heavy buffering:** Spring's declarative `Resource` approach incurs the highest memory footprint across all payload sizes (216 KB small, 1.43 MB medium, 6.80 MB large) due to internal buffering.
+3. **Hardware-level CPU metrics:**
+   - In-harness `CpuProbe` (`getProcessCpuTime()`) confirmed fast-group transports (OkHttp, Retrofit, jRestly+Apache5, jRestly+OkHttp) spend ~4.5–5.6 ms CPU per op on small feeds and ~64–88 ms on large feeds, whereas JDK-based transports spend ~7.7–11 ms on small and ~99–129 ms on large feeds.
+
+**Automated Verification:**
+- Suite grew to **1,710/1,710** tests green across all 5 modules (+24 new tests across fixtures, parser, clients, parity, and smoke tests); javadoc clean under `-Werror`.
+- Full results published in `BENCHMARKS.md`.
+
+---
+
+## Revision Check of Synthetic Benchmarks (Candidate №8) — COMPLETE ✅ (2026-10-18)
+
+> Verified in session #287: revision of the original synthetic benchmark suite ("typical method", dispatch overhead, ping) to ensure that the massive ADR-0055 zero-garbage optimization and ADR-0066 `HttpTemplate` decomposition caused no latency or allocation regressions.
+
+**Findings:**
+- Dispatch overhead: **6.63 µs/op** (well within the baseline target of 5–9 µs).
+- Allocations on synthetic calls: **29,136 B/op** (getUser) and **26,609 B/op** (ping), significantly lower than the ADR-0055 baseline (49,378 B/op and 47,392 B/op).
+- No regressions observed across network transports. Documented in `BENCHMARKS.md`.
 
 ## Post-0.5.0 shortlist (not scheduled — see ADR-0003)
 
