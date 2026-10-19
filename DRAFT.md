@@ -1,5 +1,37 @@
 # DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
+> **Сессия #314 (ADR-0068 Ф1 исполнена: фикстуры `FeedFixtures` + ленты-маршруты
+> стенда + гейт-тесты; ядро не тронуто; гейт 1,697/1,697 — +8):
+> 1. *Приём состояния:* счётчик 314 докручен «фантомным» запуском без коммита
+>    (паттерн #306/#308/#312), HEAD на #313 d3da911 — чистый приём, WIP нет.
+> 2. *Ф1 (`ru.jrestly.benchmark.feed.FeedFixtures`):* детерминированная генерация
+>    RSS 2.0/Atom 1.0 × 20/200/1000 из фиксированного пула реалистичных шаблонов —
+>    CDATA-секции (description/content:encoded), escaped entities
+>    (`&amp;`/`&#39;`/`&#8212;` — с граблёй: `&mdash;` в XML не определена!),
+>    namespaces (`atom:link`, `content:encoded`, Atom `xmlns`), RFC 822 (RSS) ⬌
+>    RFC 3339 (Atom) даты, `guid isPermaLink="false"`/`id`, канальные метаданные,
+>    ротация тем/авторов/категорий/тел по индексу. Размеры на проводе ровно в
+>    целевом диапазоне ADR: rss 21.6/211/1057 KB, atom 16/159/794 KB.
+> 3. *Стенд:* 6 ленты-маршрутов `/feed/rss-{20,200,1000}` + `/feed/atom-{20,200,1000}`
+>    в `BenchmarkHttpServer` — пре-вычисленные byte-тела (record `FeedRoute`
+>    держит keep-alive + close-варианты; ноль аллокаций на запрос — та же практика,
+>    что у статических эндпоинтов), `Content-Type: application/rss+xml|atom+xml;
+>    charset=utf-8`; POST → 405, неизвестный лент-путь → 404.
+> 4. *Гейт-тесты (+8, код ядра не тронут — только bench-скоп):* санитарный сьют
+>    `FeedFixturesTest` (5) — well-formedness через StAX, счёт item/entry/channel/
+>    feed по localName, детерминизм byte-в-byte, маркеры сложности, fail-fast
+>    IAE на неположительном числе записей; `BenchmarkHttpServerTest` (+3) — все 6
+>    маршрутов (фрейминг, Content-Type/Length ровно = UTF-8-байты тела,
+>    `<?xml`-префикс), сквозной счёт записей через StAX, латентностный гейт
+>    `min < 25 ms` на rss-20 (паттерн ping-гейта).
+> 5. *Находка-грабля (записана в ADR §7/дневник):* HTML-entity `&mdash;` в
+>    генерируемом XML → невалидный XML для StAX; валидны только
+>    предопределённые entities + числовые (`&#8212;`). В CDATA — entities не
+>    парсятся, сырой `&`/`&copy;` легальны.
+> 6. *Дальше (#315):* Ф2 — `FeedParser` (StAX, fail-fast, один для всех клиентов)
+>    + `FeedEntry`/`FeedSummary` + клиенты матрицы (buffered `@Get byte[]` vs
+>    streaming `@Get InputStream`).
+
 > **Сессия #313 (концепт/стенд-дизайн эпика №7 — ADR-0068 оформлен; код не менялся,
 > гейт 1,689/1,689 в силе):
 > 1. *Приём состояния:* счётчик очередного «фантомного» оборвавшегося запуска

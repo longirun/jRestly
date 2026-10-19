@@ -12,10 +12,15 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.io.StringReader;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.TreeMap;
+
+import javax.xml.stream.XMLInputFactory;
+import javax.xml.stream.XMLStreamConstants;
+import javax.xml.stream.XMLStreamReader;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -133,6 +138,79 @@ class BenchmarkHttpServerTest {
     }
 
     @Test
+    @DisplayName("Serves the deterministic feed endpoints with correct framing and content types")
+    void servesFeedEndpointsOverKeepAliveConnection() throws IOException {
+        try (RawClient client = new RawClient(server.port())) {
+            Response rssSmall = client.send("GET /feed/rss-20 HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n", null);
+            assertEquals(200, rssSmall.status());
+            assertEquals("application/rss+xml; charset=utf-8", rssSmall.headers().get("Content-Type"));
+            assertEquals(String.valueOf(rssSmall.body().getBytes(StandardCharsets.UTF_8).length),
+                    rssSmall.headers().get("Content-Length"));
+            assertTrue(rssSmall.body().startsWith("<?xml version=\"1.0\" encoding=\"UTF-8\"?>"));
+            assertTrue(rssSmall.body().contains("<rss version=\"2.0\""));
+
+            Response rssLarge = client.send("GET /feed/rss-1000 HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n", null);
+            assertEquals(200, rssLarge.status());
+            assertEquals("application/rss+xml; charset=utf-8", rssLarge.headers().get("Content-Type"));
+            assertTrue(rssLarge.bodyBytes() > 0, "large feed must carry a non-empty body");
+
+            Response atomSmall = client.send("GET /feed/atom-20 HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n", null);
+            assertEquals(200, atomSmall.status());
+            assertEquals("application/atom+xml; charset=utf-8", atomSmall.headers().get("Content-Type"));
+            assertTrue(atomSmall.body().contains("<feed xmlns=\"http://www.w3.org/2005/Atom\""));
+
+            Response atomMedium = client.send("GET /feed/atom-200 HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n", null);
+            assertEquals(200, atomMedium.status());
+            assertTrue(atomMedium.body().contains("urn:example:article:199"));
+
+            Response methodNotAllowed = client.send("POST /feed/rss-20 HTTP/1.1\r\nHost: 127.0.0.1\r\n"
+                    + "Content-Length: 0\r\n\r\n", null);
+            assertEquals(405, methodNotAllowed.status());
+
+            Response notFound = client.send("GET /feed/rss-30 HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n", null);
+            assertEquals(404, notFound.status());
+        }
+    }
+
+    @Test
+    @DisplayName("Feed route bodies match the fixture entry counts end-to-end")
+    void feedRouteBodiesMatchFixtureEntryCounts() throws Exception {
+        try (RawClient client = new RawClient(server.port())) {
+            Response rss20 = client.send("GET /feed/rss-20 HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n", null);
+            assertEquals(20, countElements(rss20.body(), "item"));
+
+            Response rss200 = client.send("GET /feed/rss-200 HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n", null);
+            assertEquals(200, countElements(rss200.body(), "item"));
+
+            Response atom20 = client.send("GET /feed/atom-20 HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n", null);
+            assertEquals(20, countElements(atom20.body(), "entry"));
+
+            Response atom200 = client.send("GET /feed/atom-200 HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n", null);
+            assertEquals(200, countElements(atom200.body(), "entry"));
+        }
+    }
+
+    @Test
+    @DisplayName("Keep-alive feed round trips stay far below the Nagle + delayed-ACK artifact (~42 ms)")
+    void feedLatencyIsNotDelayedByNagle() throws IOException {
+        try (RawClient client = new RawClient(server.port())) {
+            long bestNanos = Long.MAX_VALUE;
+            for (int i = 0; i < 10; i++) {
+                long start = System.nanoTime();
+                Response response = client.send("GET /feed/rss-20 HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n", null);
+                long elapsed = System.nanoTime() - start;
+                assertEquals(200, response.status());
+                assertTrue(response.body().endsWith("</rss>\n"));
+                bestNanos = Math.min(bestNanos, elapsed);
+            }
+            double bestMillis = bestNanos / 1_000_000.0;
+            assertTrue(bestMillis < 25.0, () -> "feed round trip took " + bestMillis
+                    + " ms; expected well under 25 ms, otherwise the stand regressed to the "
+                    + "Nagle + delayed-ACK artifact (~42 ms) that masks real differences between clients");
+        }
+    }
+
+    @Test
     @DisplayName("Stops cleanly, closes active keep-alive connections and refuses new ones")
     void stopsCleanly() throws IOException {
         BenchmarkHttpServer ephemeral = BenchmarkHttpServer.start();
@@ -156,7 +234,26 @@ class BenchmarkHttpServerTest {
         }
     }
 
+    private static int countElements(String xml, String localName) throws Exception {
+        XMLStreamReader reader = XMLInputFactory.newFactory().createXMLStreamReader(new StringReader(xml));
+        try {
+            int count = 0;
+            while (reader.hasNext()) {
+                if (reader.next() == XMLStreamConstants.START_ELEMENT && localName.equals(reader.getLocalName())) {
+                    count++;
+                }
+            }
+            return count;
+        } finally {
+            reader.close();
+        }
+    }
+
     private record Response(int status, Map<String, String> headers, String body) {
+
+        int bodyBytes() {
+            return body.getBytes(StandardCharsets.UTF_8).length;
+        }
     }
 
     private static final class RawClient implements AutoCloseable {

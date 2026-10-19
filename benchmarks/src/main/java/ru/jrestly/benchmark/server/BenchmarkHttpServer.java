@@ -10,13 +10,18 @@ import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+
+import ru.jrestly.benchmark.feed.FeedFixtures;
 
 /**
  * High-performance, zero-dependency embedded HTTP/1.1 server for comparative benchmarks.
@@ -61,6 +66,8 @@ public final class BenchmarkHttpServer implements AutoCloseable {
 
     private static final String JSON_CONTENT_TYPE = "application/json; charset=utf-8";
     private static final String TEXT_CONTENT_TYPE = "text/plain; charset=utf-8";
+    private static final String RSS_CONTENT_TYPE = "application/rss+xml; charset=utf-8";
+    private static final String ATOM_CONTENT_TYPE = "application/atom+xml; charset=utf-8";
 
     private static final byte[] PING_RESPONSE = response(200, "OK", TEXT_CONTENT_TYPE, "pong".getBytes(StandardCharsets.UTF_8), false);
     private static final byte[] PING_RESPONSE_CLOSE = response(200, "OK", TEXT_CONTENT_TYPE, "pong".getBytes(StandardCharsets.UTF_8), true);
@@ -73,6 +80,35 @@ public final class BenchmarkHttpServer implements AutoCloseable {
     private static final byte[] METHOD_NOT_ALLOWED_RESPONSE = response(405, "Method Not Allowed", TEXT_CONTENT_TYPE, new byte[0], false);
     private static final byte[] METHOD_NOT_ALLOWED_RESPONSE_CLOSE = response(405, "Method Not Allowed", TEXT_CONTENT_TYPE, new byte[0], true);
     private static final byte[] CONTINUE_RESPONSE = "HTTP/1.1 100 Continue\r\n\r\n".getBytes(StandardCharsets.US_ASCII);
+
+    /**
+     * Precomputed feed responses for the real-scenario benchmark (ADR-0068): each route
+     * holds both the keep-alive and the {@code Connection: close} variant, so a request
+     * performs zero allocations on the server side — the same practice as the static
+     * endpoints above.
+     */
+    private static final Map<String, FeedRoute> FEED_ROUTES = buildFeedRoutes();
+
+    private static Map<String, FeedRoute> buildFeedRoutes() {
+        Map<String, FeedRoute> routes = new LinkedHashMap<>();
+        addFeedRoute(routes, "/feed/rss-20", RSS_CONTENT_TYPE, FeedFixtures.rss(FeedFixtures.SMALL));
+        addFeedRoute(routes, "/feed/rss-200", RSS_CONTENT_TYPE, FeedFixtures.rss(FeedFixtures.MEDIUM));
+        addFeedRoute(routes, "/feed/rss-1000", RSS_CONTENT_TYPE, FeedFixtures.rss(FeedFixtures.LARGE));
+        addFeedRoute(routes, "/feed/atom-20", ATOM_CONTENT_TYPE, FeedFixtures.atom(FeedFixtures.SMALL));
+        addFeedRoute(routes, "/feed/atom-200", ATOM_CONTENT_TYPE, FeedFixtures.atom(FeedFixtures.MEDIUM));
+        addFeedRoute(routes, "/feed/atom-1000", ATOM_CONTENT_TYPE, FeedFixtures.atom(FeedFixtures.LARGE));
+        return Collections.unmodifiableMap(routes);
+    }
+
+    private static void addFeedRoute(Map<String, FeedRoute> routes, String path, String contentType, String document) {
+        byte[] body = document.getBytes(StandardCharsets.UTF_8);
+        routes.put(path, new FeedRoute(
+                response(200, "OK", contentType, body, false),
+                response(200, "OK", contentType, body, true)));
+    }
+
+    private record FeedRoute(byte[] keepAliveResponse, byte[] closeResponse) {
+    }
 
     private static final int MAX_LINE_LENGTH = 8192;
 
@@ -217,6 +253,13 @@ public final class BenchmarkHttpServer implements AutoCloseable {
                     return close ? USER_RESPONSE_CLOSE : USER_RESPONSE;
                 }
                 return response(200, "OK", JSON_CONTENT_TYPE, body, close);
+            }
+            return close ? METHOD_NOT_ALLOWED_RESPONSE_CLOSE : METHOD_NOT_ALLOWED_RESPONSE;
+        }
+        FeedRoute feed = FEED_ROUTES.get(path);
+        if (feed != null) {
+            if ("GET".equals(method)) {
+                return close ? feed.closeResponse() : feed.keepAliveResponse();
             }
             return close ? METHOD_NOT_ALLOWED_RESPONSE_CLOSE : METHOD_NOT_ALLOWED_RESPONSE;
         }
