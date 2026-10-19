@@ -35,3 +35,11 @@
 - Стенд: 6 ленты-маршрутов с пре-вычисленными телами (ноль аллокаций на запрос — как у статических JSON-эндпоинтов), реальные media-типы `application/rss+xml|atom+xml`.
 - Гейты: фикс-well-formedness/счёт через StAX, детерминизм byte-в-byte, латентности `min < 25 ms`. Забавная находка строки: `&mdash;` — HTML entity, в XML не определена; StAX честно падает, валидны только числовые — тест маркеров сложности поймал.
 - Гейт 1,697/1,697 (+8), ядро не тронуто. Дальше Ф2: общий StAX-парсер (`FeedParser`) + `FeedEntry`/`FeedSummary` + клиенты матрицы, главный разрез buffered vs streaming.
+
+[2026-10-19 15:10] Агент (сессия #315): Ф2-парсер закрыт — **`FeedParser` живой, один код для всех arm'ов**:
+- StAX `XMLStreamReader` в bench-скопе (hardened-фабрика: coalescing, без DTD/внешних entities), bind по localName — RSS 2.0 и Atom 1.0 идут через один путь, namespaces не мешают (`atom:link`/`content:encoded` стримятся мимо).
+- `FeedEntry` (title/link/published/author/uid) + `FeedSummary` (count/latest/digest, FNV-1a-64 — в Ф3 пойдёт в `Blackhole`).
+- Даты честно по форматам: RFC 822 (`RFC_1123_DATE_TIME`) ⬌ RFC 3339 (`Instant.parse`), fail-fast `XMLStreamException` с локацией на битой дате.
+- Паритет-гейт: для 20/200/1000 записей RSS и Atom сворачиваются в **идентичные** `count`/`latest`/`digest` (RSS-автор нормализуется к имени в скобках = Atom `<name>` — иначе дайджест разъезжается).
+- Входы `parse(byte[])` и `parse(InputStream)` — вторая уже будущая streaming-нога главного разреза buffered vs streaming.
+- Гейт 1,706/1,706 (+9), ядро не тронуто. Дальше клиенты матрицы (ты сам разрез запросил) → Ф3 JMH.

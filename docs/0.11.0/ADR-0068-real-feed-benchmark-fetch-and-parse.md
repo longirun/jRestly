@@ -3,7 +3,12 @@
 - **Status:** Proposed — **Ф1 реализована (#314)**: фикстуры `FeedFixtures`
   + ленты-маршруты `BenchmarkHttpServer` + гейт-тесты (санитарный StAX-сьют
   + латентностный `min < 25 ms`), гейт **1,697/1,697**; код ядра не тронут.
-  Дальше — Ф2 (парсер + клиенты) и Ф3 (JMH + публикация).
+  **Ф2-парсер реализована (#315)**: `FeedEntry`/`FeedSummary` + общий
+  `FeedParser` (hardened StAX, bind по localName, RFC 822⬌3339, fail-fast,
+  нормализация автора), паритет RSS⬌Atom гейтом (`count`/`latest`/`digest`
+  идентичны на 20/200/1000), byte⬌stream-эквивалентность точек входа;
+  гейт **1,706/1,706** (+9). Остаются клиенты матрицы (Ф2-вторая половина)
+  и Ф3 (JMH + публикация).
 - **Session:** #313 (2026-10-19), #314 (2026-10-19)
 - **Задача Антона (mailbox, 2026-10-18):** «Рассмотреть бенчмарк на примере реализации
   движка rss/atom и сравнение с конкурентами. Интересно сколько ops-сек, CPU, mem-usage
@@ -159,6 +164,23 @@ RFC 822/333 даты, `guid`/`id`, канальные метаданные. Фи
 - **Ф2 — парсер + клиенты:** `FeedParser` (StAX, zero-dep, fail-fast на искажённый
   документ — одинаковая наблюдаемая семантика для всех режимов), `FeedEntry`/
   `FeedSummary`, клиенты матрицы (в т.ч. два jRestly-режима: buffered/streaming).
+  **✅ Парсерная половина реализована (#315):** `FeedEntry` — record `(title, link,
+  published:Instant, author, uid)`, отсутствующий элемент → `null`; `FeedSummary`
+  — fold `(count, latest, digest)`, детерминированный FNV-1a-64 над всеми полями
+  (защита от dead-code elimination в JMH); `FeedParser` — hardened StAX-фабрика
+  (`IS_COALESCING`, без DTD и внешних entities), bind по **localName** (RSS 2.0 и
+  Atom 1.0 через один путь: `item`/`entry`, `link` = `href`-атрибут или текст,
+  `guid`/`id`, RFC 822 через `RFC_1123_DATE_TIME` ⬌ RFC 3339 через `Instant.parse`,
+  fail-fast `XMLStreamException` с локацией на битой дате, unknown-элементы
+  стримятся мимо по глубине); RSS-автор нормализуется к имени в скобках
+  (`email (Name)` → `Name` = Atom `<name>`) — иначе паритет форматов ломает
+  дайджест (поймано паритет-гейтом). Точки входа `parse(byte[])` (обёртка без
+  копии массива — грабля: overload'а на `byte[]` у StAX нет) и `parse(InputStream)`
+  (будущая streaming-нога). Гейт-сьют `FeedParserTest` (9 тестов): счёт по всем
+  шести фикстурам, **паритет RSS⬌Atom** — `count`/`latest`/`digest` идентичны на
+  20/200/1000 (хит-лист Ф1 закрыт), полная привязка полей + отсутствие остатков
+  entities, byte⬌stream-эквивалентность, fail-fast (не-XML/обрыв, битый timestamp),
+  детерминизм fold'а. Гейт **1,706/1,706** (+9). Осталось: клиенты матрицы.
 - **Ф3 — JMH + публикация:** класс `FeedBenchmark` (thrpt + `-prof gc` + CPU-проба),
   пилотный прогон, потом секция «Real scenario: feed fetch & parse» в
   `BENCHMARKS.md` + отчёт Антону. Конкуренты — те же версии, что в матрице

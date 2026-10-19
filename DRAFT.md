@@ -1,5 +1,49 @@
 # DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
+> **Сессия #315 (ADR-0068 Ф2 — общий StAX-парсер `FeedParser` + `FeedEntry`/
+> `FeedSummary`; паритет RSS⬌Atom гейтом; ядро не тронуто; гейт 1,706/1,706 — +9):
+> 1. *Приём состояния:* HEAD на #314 a2d0ce0 — чистый приём (счётчик докручен
+>    «фантомным» запуском, паттерн #306/#308/#312), WIP нет. Слов Антона нет —
+>    фазы идут автономно (заявлено в mailbox #313).
+> 2. *Ф2-парсер (первая половина фазы; клиенты матрицы — на #316):*
+>    `FeedEntry` — record `(title, link, published:Instant, author, uid)`,
+>    общий образ RSS `<item>` / Atom `<entry>`, отсутствующий элемент → `null`;
+>    `FeedSummary` — fold `(count, latest, digest)`: count, max `published`,
+>    детерминированный FNV-1a-64 хэш над всеми полями каждой записи (в Ф3
+>    потребляется `Blackhole`'ом — защита от dead-code elimination).
+>    `FeedParser` — StAX `XMLStreamReader`, **один код для всех arm'ов**
+>    (честность №1 ADR §2): hardened-фабрика (`IS_COALESCING=true`,
+>    `SUPPORT_DTD=false`, внешние entities запрещены); bind по **localName** —
+>    namespaces/prefix'ы (`atom:link`, `content:encoded`) не мешают, RSS 2.0 и
+>    Atom 1.0 идут через один путь; `link` = `href`-атрибут (Atom) или текст
+>    (RSS); RFC 822 (`RFC_1123_DATE_TIME`, дискриминатор «`,`» в сырье) ⬌
+>    RFC 3339 (`Instant.parse`); fail-fast `XMLStreamException` с локацией на
+>    битой дате; unknown-элементы стримятся мимо (`skipElement` по глубине).
+>    Точки входа: `parse(byte[])` (обёртка в `ByteArrayInputStream` без копии —
+>    overload'а на `byte[]` у StAX нет) и `parse(InputStream)` (будущая
+>    streaming-нога). *Нормализация автора:* RSS `email (Name)` → имя в
+>    скобках (= Atom `<name>`) — иначе паритет форматов ломает digest
+>    (поймано паритет-гейтом).
+> 3. *Тесты (+9, `FeedParserTest`):* счёт записей по всем шести фикстурам;
+>    **паритет RSS⬌Atom** — `count`/`latest`/`digest` идентичны на 20/200/1000
+>    (хит-лист Ф1 закрыт); полная привязка полей (entry 0/1) + отсутствие
+>    остатков `&amp;`/`&#` в титулах; byte⬌stream-эквивалентность обеих точек
+>    входа; fail-fast (не-XML/обрыв, битый timestamp с
+>    «Malformed feed timestamp»); детерминизм fold'а на medium.
+> 4. *Грабли:* (a) ассерт `contains(" & ")` был неверен — тема #1 не содержит
+>    `" and "`, так что `&amp;` в титуле не встречается вовсе (парсер прав —
+>    em-dash/apostrophe декодированы); переформулирован на
+>    `endsWith("— reader's Q&A")` + сквозную проверку остатков; (b) replace
+>    битой даты по хардкоду дня недели («Sun, 18 Oct…») — хрупко, заменил на
+>    срез первого `<pubDate>…</pubDate>` (не завязываться на календарь).
+> 5. *Дальше (#316):* **Ф2-вторая половина — клиенты матрицы**: jRestly
+>    buffered (`@Get byte[]` → `parse`) vs streaming (`@Get InputStream` →
+>    `parse`) в `JRestlyBenchmarkClient` (паттерн существующего адаптера) +
+>    конкурентные arm'ы (raw OkHttp `byteStream()`, Retrofit `ResponseBody`,
+>    Feign `Response`, Spring `RestClient`, raw JDK `ofInputStream`); потом
+>    Ф3 — `FeedBenchmark` (thrpt + `-prof gc` + CPU-проба) и публикация в
+>    `BENCHMARKS.md`.
+
 > **Сессия #314 (ADR-0068 Ф1 исполнена: фикстуры `FeedFixtures` + ленты-маршруты
 > стенда + гейт-тесты; ядро не тронуто; гейт 1,697/1,697 — +8):
 > 1. *Приём состояния:* счётчик 314 докручен «фантомным» запуском без коммита
@@ -3316,7 +3360,9 @@ fetch-and-parse сценарный стенд (fetch → общий StAX-пар�
 benchmarks-скопе НЕ в ядре, конкуренты текущей матрицы
 (raw OkHttp/Retrofit/Feign/Spring), метрики ops/sec + CPU + mem,
 главный разрез buffered vs streaming; фазы Ф1 (фикстуры+стенд) → Ф2
-(парсер+клиенты) → Ф3 (JMH+публикация). Highest ADR **0068**, next free **0069**.
+(парсер+клиенты) → Ф3 (JMH+публикация). **Ф1 закрыта (#314)**, **Ф2-парсер
+закрыта (#315)** — `FeedEntry`/`FeedSummary`/`FeedParser` + паритет RSS⬌Atom
+гейтом; остались клиенты матрицы и Ф3. Highest ADR **0068**, next free **0069**.
 Хвосты-кандидаты
 из аудит-нити (не эпики): валидация `@ExpectStatus`/`@FollowRedirects`
 (инварианты нигде не объявлены — фича, не дыра; #207, трогать лишь при
