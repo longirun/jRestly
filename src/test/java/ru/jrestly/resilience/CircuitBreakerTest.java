@@ -205,6 +205,31 @@ class CircuitBreakerTest {
     }
 
     @Test
+    @DisplayName("Default recordException ignores self-cyclic cause chains")
+    void defaultRecordExceptionIgnoresSelfCyclicCause() {
+        // Throwable whose cause chain points back at itself: the defensive
+        // "cause != throwable" guard routes the cycle to the plain false branch.
+        // (JDK initCause rejects self-assignment, hence the getter override.)
+        Throwable selfCycled = new SelfCycledCauseThrowable();
+        assertTrue(selfCycled.getCause() == selfCycled);
+        assertFalse(CircuitBreakerConfig.DEFAULT_RECORD_EXCEPTION.test(selfCycled));
+    }
+
+    /**
+     * Throwable with a self-referential cause chain: {@code initCause(this)} is
+     * rejected by the JDK, so the cycle is modeled via a getter override.
+     */
+    private static final class SelfCycledCauseThrowable extends RuntimeException {
+        @java.io.Serial
+        private static final long serialVersionUID = 1L;
+
+        @Override
+        public synchronized Throwable getCause() {
+            return this;
+        }
+    }
+
+    @Test
     @DisplayName("Manual state transitions work as expected")
     void manualStateTransitions() {
         CircuitBreaker cb = CircuitBreaker.of("manual");

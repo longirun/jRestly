@@ -41,6 +41,10 @@ class TracePropagatorTest {
         TraceIdGenerator tlGen = TraceIdGenerators.threadLocal(holder, () -> "fallback-id");
         assertEquals("fallback-id", tlGen.generate());
 
+        // blank holder value falls through to the fallback generator
+        holder.set("   ");
+        assertEquals("fallback-id", tlGen.generate());
+
         holder.set("active-id");
         try {
             assertEquals("active-id", tlGen.generate());

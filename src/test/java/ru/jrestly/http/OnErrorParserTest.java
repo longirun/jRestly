@@ -84,6 +84,28 @@ class OnErrorParserTest {
     }
 
     @Test
+    @DisplayName("OnErrorParser legacy-class reset falls back to status mappings, then to the default class")
+    void onErrorParserLegacyResetFallsBack() {
+        // Resetting the legacy class exposes the status mappings: the first
+        // registered status payload type becomes the primary error class.
+        OnErrorParser withMappings = new OnErrorParser();
+        withMappings.setErrorClass(ErrorB.class);
+        withMappings.setStatuses(List.of(403, 404));
+        withMappings.setErrorClass(null);
+        assertEquals(ErrorB.class, withMappings.getErrorClass());
+        assertEquals(List.of(403, 404), withMappings.getStatuses());
+        assertTrue(withMappings.canParse(403));
+
+        // With no mappings the resolution falls through to the registered default.
+        OnErrorParser withDefault = new OnErrorParser();
+        withDefault.registerDefault(ErrorDefault.class);
+        withDefault.registerDefault(ErrorB.class); // re-register is a no-op: default already set
+        withDefault.setErrorClass(null);
+        assertEquals(ErrorDefault.class, withDefault.getErrorClass());
+        assertTrue(withDefault.canParse(500));
+    }
+
+    @Test
     @DisplayName("OnErrorParser supports setting error class before statuses")
     void onErrorParserReversedLegacySetters() {
         OnErrorParser parser = new OnErrorParser();

@@ -44,6 +44,33 @@ class RateLimiterTest {
     }
 
     @Test
+    @DisplayName("tryAcquire(null) treats a null timeout as an immediate grant/decline")
+    void nullTimeoutBehavesAsZeroWait() {
+        RateLimiter limiter = RateLimiter.of("null-timeout-test", 1, Duration.ofSeconds(60));
+
+        // Token available: the null timeout grants immediately without waiting.
+        assertTrue(limiter.tryAcquire(null));
+        // Token exhausted: the zero wait budget must decline immediately too
+        // (60s refill period makes the residual budget nil at this timestamp).
+        assertFalse(limiter.tryAcquire((Duration) null));
+    }
+
+    @Test
+    @DisplayName("Pre-interrupted thread abandons the wait and restores the interrupt flag")
+    void preInterruptedTryAcquireFailsFastAndRestoresFlag() {
+        RateLimiter limiter = RateLimiter.of("interrupted-test", 1, Duration.ofSeconds(60));
+        assertTrue(limiter.tryAcquire()); // drains the bucket: acquisition must wait
+
+        Thread.currentThread().interrupt(); // pre-set the interrupt flag
+        try {
+            assertFalse(limiter.tryAcquire(Duration.ofMillis(500)));
+            assertTrue(Thread.currentThread().isInterrupted(), "interrupt flag must be restored");
+        } finally {
+            Thread.interrupted(); // clear flag so the flag stays clean for other tests
+        }
+    }
+
+    @Test
     @DisplayName("TokenBucket refills tokens over time")
     void refillsTokensOverTime() throws InterruptedException {
         RateLimiter limiter = RateLimiter.of("refill-test", 2, Duration.ofMillis(100));

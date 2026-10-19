@@ -281,6 +281,30 @@ class WireResponseUnitTest {
     }
 
     @Test
+    @DisplayName("TrailerCompletingInputStream skips empty trailer payloads and swallows supplier failures")
+    void testTrailerCompletingInputStreamEmptyAndFailingSupplier() throws java.io.IOException {
+        java.util.concurrent.atomic.AtomicBoolean called = new java.util.concurrent.atomic.AtomicBoolean(false);
+
+        // Empty (non-null) trailer payload: consumer stays untouched (ADR-0059 contract)
+        try (TrailerCompletingInputStream in = new TrailerCompletingInputStream(
+                new ByteArrayInputStream(new byte[0]),
+                List::of,
+                list -> called.set(true))) {
+            assertEquals(-1, in.read());
+        }
+        assertFalse(called.get());
+
+        // Supplier failure is swallowed best-effort and does not break the stream
+        try (TrailerCompletingInputStream in = new TrailerCompletingInputStream(
+                new ByteArrayInputStream(new byte[0]),
+                () -> { throw new IllegalStateException("boom"); },
+                list -> called.set(true))) {
+            assertEquals(-1, in.read());
+        }
+        assertFalse(called.get());
+    }
+
+    @Test
     @DisplayName("WireResponse compact constructor generates default trailersSupplier when null and trailers non-empty")
     void testWireResponseTrailersSupplierDefault() {
         WireResponse resp = new WireResponse(

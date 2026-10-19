@@ -3,13 +3,17 @@ package ru.jrestly.http;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -188,5 +192,69 @@ class MultipartPartFlexibilityTest {
             @Override public void onComplete() {}
         });
         assertTrue(closed.get());
+    }
+
+    @Test
+    @DisplayName("FileContent contentLength() contract: null when not known up front")
+    void fileContentContentLengthIsNullWhenUnknown() {
+        // FileContent.of(Path) rejects paths without a file name eagerly, so the
+        // record fallback branch for getFileName() == null is structurally
+        // defensive (same policy as the InMemoryHttpCache guards) — the
+        // public contract under test here is the nullable contentLength().
+        FileContent fromPath = FileContent.of(Path.of("/etc/hostname"));
+        assertEquals("hostname", fromPath.fileName());
+        assertEquals(Path.of("/etc/hostname"), fromPath.content());
+        assertNull(fromPath.contentLength());
+
+        FileContent fromBytes = FileContent.of("bytes.bin", new byte[0]);
+        assertEquals("bytes.bin", fromBytes.fileName());
+        assertNull(fromBytes.contentLength());
+    }
+
+    @Test
+    @DisplayName("FileContent.of(Path) fail-fast: paths without a file name are rejected eagerly")
+    void fileContentOfPathRejectsPathsWithoutFileName() {
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> FileContent.of(Path.of("/")));
+        assertTrue(ex.getMessage().contains("/"));
+    }
+
+    @Test
+    @DisplayName("FileContent stream factory fail-fast: negative contentLength is rejected, zero is valid")
+    void fileContentStreamFactoryValidatesContentLength() throws java.io.IOException {
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> FileContent.of("llama.bin", () -> new java.io.ByteArrayInputStream(new byte[0]), -1));
+        assertTrue(ex.getMessage().contains("-1"));
+
+        // Zero length is a valid explicit length (empty file upload)
+        FileContent zeroLength = FileContent.of("empty.bin",
+                () -> new java.io.ByteArrayInputStream(new byte[0]), 0L);
+        assertEquals("empty.bin", zeroLength.fileName());
+        assertEquals(0L, zeroLength.contentLength());
+    }
+
+    @Test
+    @DisplayName("TrailerCompletingInputStream triggers trailers on bulk reads and tolerates null supplier payloads")
+    void testTrailerCompletingInputStreamBulkReadAndNullPayload() throws java.io.IOException {
+        java.util.concurrent.atomic.AtomicInteger calls = new java.util.concurrent.atomic.AtomicInteger();
+
+        // Bulk read reaching EOF triggers the trailer hook on the multi-byte path
+        try (TrailerCompletingInputStream in = new TrailerCompletingInputStream(
+                new ByteArrayInputStream(new byte[0]),
+                () -> List.of(new Header("X-Bulk", "trailer")),
+                list -> calls.incrementAndGet())) {
+            byte[] sink = new byte[8];
+            assertEquals(-1, in.read(sink, 0, sink.length));
+        }
+        assertEquals(1, calls.get());
+
+        // Supplier returning null is treated as "no trailers" (no consumer call)
+        try (TrailerCompletingInputStream in = new TrailerCompletingInputStream(
+                new ByteArrayInputStream(new byte[0]),
+                () -> null,
+                list -> calls.incrementAndGet())) {
+            assertEquals(-1, in.read());
+        }
+        assertEquals(1, calls.get());
     }
 }

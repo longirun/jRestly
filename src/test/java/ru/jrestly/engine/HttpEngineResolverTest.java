@@ -215,6 +215,49 @@ class HttpEngineResolverTest {
         assertSame(explicitEngine, resolved);
     }
 
+    @Test
+    @DisplayName("resolve() without an explicit engine walks SPI then falls back to JDK")
+    void spiResolutionWithoutExplicitEngineFallsBackToJdk() {
+        SimpleModuleInfo moduleInfo = SimpleModuleInfo.builder()
+                .baseUrl("https://example.com")
+                .build();
+
+        HttpEngine resolved = HttpEngineResolver.resolve(moduleInfo);
+        assertNotNull(resolved);
+        assertTrue(resolved instanceof JdkHttpEngine);
+    }
+
+    @Test
+    @DisplayName("Null provider iterable falls back to JdkHttpEngine (seam contract)")
+    void nullProvidersIterableFallsBackToJdk() {
+        SimpleModuleInfo moduleInfo = SimpleModuleInfo.builder()
+                .baseUrl("https://example.com")
+                .build();
+
+        HttpEngine resolved = HttpEngineResolver.resolveFromSpi(moduleInfo, null);
+        assertNotNull(resolved);
+        assertTrue(resolved instanceof JdkHttpEngine);
+    }
+
+    @Test
+    @DisplayName("SPI iterable with null elements skips them and resolves the next available provider")
+    void nullProviderElementsAreSkipped() {
+        HttpEngine customEngine = new DummyHttpEngine();
+        HttpEngineProvider availableProvider = new TestProvider(true, 10, customEngine);
+
+        SimpleModuleInfo moduleInfo = SimpleModuleInfo.builder()
+                .baseUrl("https://example.com")
+                .build();
+
+        // ArrayList accepts null elements (List.of does not)
+        java.util.List<HttpEngineProvider> iterable = new java.util.ArrayList<>();
+        iterable.add(null);
+        iterable.add(availableProvider);
+
+        HttpEngine resolved = HttpEngineResolver.resolveFromSpi(moduleInfo, iterable);
+        assertSame(customEngine, resolved);
+    }
+
     /**
      * Fixed SPI provider for priority scenarios. {@code priority()} is declared
      * without {@code @Override} so the test compiles both before and after the

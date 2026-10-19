@@ -1,5 +1,42 @@
 # DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
+> **Сессия #310 (гигиены git: обрыв `pull --rebase` закрыт — разрешён конфликт
+> mailbox с ответом Антона по №7; пул мелких ветвей JaCoCo закрыт — +12 тестов
+> против 6 недостающих ветвей; A/B по rss/atom получено: сравнение на
+> реальном сценарном стенде, парсер НЕ в ядре; гейт 1,687/1,687):
+> 1. *Восстановление git-состояния:* HEAD был detached в прерванной
+>    `pull --rebase origin agent-loop` (конфликт в `.agent/mailbox.md`,
+>    счётчик 310/ 306?), сессии #309-#310 локальный diff ещё не доведён.
+>    Выручено: закоммичен mailbox с обеих сторон (инертия merge resolved
+>    вручную — ответ Антона добавлен вместе с #309), rebase доехал до конца
+>    (`agent-loop` = локальный #309 + origin), счётчик оставлен 310 (uncommitted),
+>    важная находка: origin-ответ Антон «реальных сценарных степандах»).
+> 2. *Пул недостающих ветвей закрыт (+12 тестов, 7 файлов, код main не тронут):*
+>    - `CircuitBreakerConfig.L54`: заранее недостижимая через JDK-методику
+>      `initCause(this)` — выдуманный `SelfCycledCauseThrowable` наследник
+>      `RuntimeException` с переопределением `getCause()`; покрывает guard
+>      ветвь «cause == throwable» в fault-классификации (`DEFAULT_RECORD_EXCEPTION`).
+>    - `RateLimiters.L66/L92-94`: `tryAcquire(null)` (기본 empty-budget тест) +
+>      `preInterruptedTryAcquireFailsFastAndRestoresFlag` (без сети, чисто юнит).
+>    - `TraceIdGenerators.L76`: threadLocal генератор — бланк-CTR (`"   "`)
+>      корректно фолбэчится на fallback (قبل был null/blank null-val case).
+>    - `TrailerCompletingInputStream.L36/L57`: bulk-read `read(sink,0,n)` на
+>      exhausted-потоке триггерит trailers-хук once-only (после single-byte
+>      read ранее закрытого);supplier-возврат `null` treated как «нет трейлеров»
+>      (tolerant контракты); supplier-throw поглощается (best-effort ADR-0059).
+>    - `FileContent.L93/48`: fail-fast валидация: `of(str, supplier, -1L)` → IAE
+>      (negative contentLength), `of(Path.of("/"))` → IAE (()  path без имени).
+>    - `HttpEngineResolver.L45/L48`: сым-контракты resolve(settle) — null
+>      provider-iterable → JDK fallback; iterable с null-элементом ArrayList
+>      терпится (skip).
+>    - `OnErrorParser.L102/105`: legacy setErrorClass(null) → primary
+>      errorClass теперь приходит из mappings (первая зарегистрированная ошибка-
+>      mapping) или из default класса fallback-пл.; только не через mapping
+>      сопоставлением значений (порядок вместо источников) — два отдельных
+>      теста confirm.
+>    - `RateLimiters`.L32: добавлен тест `metrics().availablePermissions()` при
+>      нуле поглощённых токенов (микро-check Content-Transfer).
+
 > **Сессия #309 (аудит codec/auth-кластера: закрыты 7 недостающих ветвей — все
 > документированные контракты, код main не тронут; гейт 1,675/1,675;
 > BRANCH 4,010/4,443 = 90.46% — рекорд, маржа над 90% рубежом +20 ветвей):**
