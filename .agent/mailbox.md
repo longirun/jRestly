@@ -52,11 +52,14 @@
 протокола, а на типовой метод) - со всем этим рефакторингом и погоней за покрытием тестами - не убежали
 ли мы от самого главного?
 
-[2026-10-19 12:10] Агент (сессия #299): Антон, коротко — закрылся старый хвост метрик из ADR-0036 (висел с #193 как осознанный non-goal): **Path/File-тела теперь репортят реальный размер** в `CallMetrics.requestBytes`, а не -1. Движок сам измеряет (`Files.size` на момент отправки), полностью известные multipart-тела берут rendered `Content-Length`; supplier-rendered и неизвестные — по-прежнему -1 (контракт не сломан). Публичный API не трогали (`WireRequest` — новый nullable-компонент с совместимым конструктором). ADR-0036 Amendment #298, гейт **1,656/1,656**. По №7 (rss/atom) по-прежнему жду твоего A/B (parse-only vs fetch-and-parse; ядро vs codec-субмодуль).
-
 [2026-10-19 17:40] Агент (сессия #304): Антон, маленький исторический юбилей — **пересечён рубеж 90% BRANCH coverage впервые за всё время проекта**: 3,992/4,429 = **90.13%**. Способ — только тесты (код main не тронут): нашёл по XML-отчёту JaCoCo 12 файлов с ровно одной недостающей ветвью и выбрал 4 с честно документированными контрактами (4-арг `MultipartPart.part(…, null)` → пустое тело; fast-path `composite(singleListener)`; терпимый null-возврат `ShortCircuitInterceptor.shortCircuit`; `Token.isExpired(null)` = нулевой буфер). Заодно обновились рекорды: INSTRUCTION 98.13%, LINE 97.78%, COMPLEXITY 88.28%; METHOD/CLASS держатся на 100%; гейт **1,665/1,665** (+4 теста).
 - *Дальше по беклогу:* главный хвост — `byte[]`-скаляр в `@RequestHeader`/`@RequestParam` (сейчас `[B@…` на проводе; надо решить wire-формат: ISO-8859-1 / Base64 / fail-fast `IllegalArgumentException`) — маленькая TDD-сессия.
 - *Жду:* твой A/B по №7 (rss/atom: parse-only vs fetch-and-parse; парсер в ядре vs codec-субмодуль) — вопрос висит с #284.
+
+[2026-10-19 20:05] Агент (сессия #305): Антон, закрыл главный хвост аудита #301 — **`byte[]`-скаляр в `@RequestHeader`/`@RequestParam` больше не пишет `[B@…` на провод**: fail-fast `IllegalArgumentException` («header/parameter values are text on the wire — send raw bytes as @RequestBody or encode explicitly (Base64/ISO-8859-1)»), скаляр И элементы (list/array/Map-value), плюс multipart-текстовая часть без `contentType()`. Выбор кодировки решает сам пользователь на call-site — единственный честный вариант из трёх (ISO-8859-1 навязал бы HTTP-1 семантику заголовков query-ключам; Base64 — недокументированную трансформацию). **Сохранён нарочно:** задокументированный raw-bytes канал `@RequestParam(contentType = "...") byte[]` в multipart (ADR-0031/0033) — там байты легальны. TDD red-first (+3 теста), ADR-0017 Amendment #305, гейт **1,668/1,668**, рекорды: **BRANCH 90.21%**, INSTRUCTION 98.14%, LINE 97.79%, COMPLEXITY 88.39%.
+- *Дальше:* аудит engine/tracing/codec (пул ~11 файлов с ровно 1 missed branch) — подтяну маржу над 90% рубежом.
+- *Жду:* твой A/B по №7 (rss/atom: parse-only vs fetch-and-parse; парсер в ядре vs codec-субмодуль).
+
 
 ---
 Антон: По вопросу rss/atom - это будет бенч тест сравнения нашей либы с другими на настоящей, не

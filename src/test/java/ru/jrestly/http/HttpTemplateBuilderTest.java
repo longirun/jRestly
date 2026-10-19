@@ -999,6 +999,89 @@ class HttpTemplateBuilderTest {
      * how many times the builder stringifies the {@code @TargetUrl} argument during a single
      * {@code build()} (ADR-0042 Amendment #301: the URL must be assembled exactly once).
      */
+    // -------------------------------------------------------------------------
+    // Tests: byte[] scalars in header/parameter positions (fail-fast wire format)
+    // -------------------------------------------------------------------------
+
+    interface ByteScalarApi {
+        @Get("/header-bytes")
+        String headerBytes(@RequestHeader byte[] header);
+
+        @Get("/header-bytes")
+        String headerBytesFromMap(@RequestHeader Map<String, Object> headerMap);
+
+        @Get("/header-bytes")
+        String headerBytesFromList(@RequestHeader(name = "X-Bin") List<byte[]> headerList);
+
+        @Get("/query-bytes")
+        String queryBytes(@RequestParam byte[] query);
+
+        @Post(value = "/form-bytes", requestType = RequestType.APPLICATION_FORM_URLENCODED)
+        String formBytes(@RequestParam byte[] formField);
+
+        @Post(value = "/multipart-bytes", requestType = RequestType.MULTIPART_FORM_DATA)
+        String multipartBytes(
+                @RequestParam(name = "bin", contentType = "application/octet-stream") byte[] bin,
+                @RequestParam(name = "plain") byte[] plain);
+    }
+
+    @Test
+    @DisplayName("byte[] header scalar fails fast instead of '[B@...' garbage on the wire")
+    void byteScalarHeaderFailsFastInsteadOfGarbageOnWire() throws Exception {
+        Method top = ByteScalarApi.class.getMethod("headerBytes", byte[].class);
+        IllegalArgumentException topEx = assertThrows(IllegalArgumentException.class, () ->
+                new HttpTemplateBuilder(defaultModuleInfo, httpClient, top, new Object[]{new byte[]{1, 2}}, ByteScalarApi.class).build());
+        assertTrue(topEx.getMessage().contains("byte[]"));
+        assertTrue(topEx.getMessage().contains("text on the wire"));
+
+        Method fromMap = ByteScalarApi.class.getMethod("headerBytesFromMap", Map.class);
+        assertThrows(IllegalArgumentException.class, () ->
+                new HttpTemplateBuilder(defaultModuleInfo, httpClient, fromMap, new Object[]{Map.of("X-Bin", new byte[]{1, 2})}, ByteScalarApi.class).build());
+
+        Method fromList = ByteScalarApi.class.getMethod("headerBytesFromList", List.class);
+        assertThrows(IllegalArgumentException.class, () ->
+                new HttpTemplateBuilder(defaultModuleInfo, httpClient, fromList, new Object[]{List.of(new byte[]{1, 2})}, ByteScalarApi.class).build());
+    }
+
+    @Test
+    @DisplayName("byte[] query/form parameter fails fast instead of '[B@...' garbage on the wire")
+    void byteScalarQueryParamFailsFastInsteadOfGarbageOnWire() throws Exception {
+        Method query = ByteScalarApi.class.getMethod("queryBytes", byte[].class);
+        IllegalArgumentException queryEx = assertThrows(IllegalArgumentException.class, () ->
+                new HttpTemplateBuilder(defaultModuleInfo, httpClient, query, new Object[]{new byte[]{1, 2}}, ByteScalarApi.class).build());
+        assertTrue(queryEx.getMessage().contains("byte[]"));
+        assertTrue(queryEx.getMessage().contains("text on the wire"));
+
+        Method form = ByteScalarApi.class.getMethod("formBytes", byte[].class);
+        assertThrows(IllegalArgumentException.class, () ->
+                new HttpTemplateBuilder(defaultModuleInfo, httpClient, form, new Object[]{new byte[]{1, 2}}, ByteScalarApi.class).build());
+    }
+
+    @Test
+    @DisplayName("byte[] multipart part sends raw bytes with explicit Content-Type, fails fast without one")
+    void byteMultipartPartContractIsExplicit() throws Exception {
+        Method m = ByteScalarApi.class.getMethod("multipartBytes", byte[].class, byte[].class);
+
+        // No explicit Content-Type: there is no default rendering for a byte[] part — fail fast.
+        assertThrows(IllegalArgumentException.class, () ->
+                new HttpTemplateBuilder(defaultModuleInfo, httpClient, m, new Object[]{new byte[]{1, 2, 3}, new byte[]{9, 9}}, ByteScalarApi.class).build());
+
+        // Explicit Content-Type keeps the documented raw-bytes semantic (null sibling parameter is skipped).
+        HttpTemplate raw = new HttpTemplateBuilder(defaultModuleInfo, httpClient, m,
+                new Object[]{new byte[]{1, 2, 3}, null}, ByteScalarApi.class).build();
+        MultipartPart bin = raw.getMultipartFormParts().stream()
+                .filter(p -> "bin".equals(p.name()))
+                .findFirst()
+                .orElseThrow();
+        assertEquals("application/octet-stream", bin.contentType());
+        assertArrayEquals(new byte[]{1, 2, 3}, (byte[]) bin.content());
+    }
+
+    /**
+     * A {@link CharSequence} counting {@code toString()} invocations — a seam for observing
+     * how many times the builder stringifies the {@code @TargetUrl} argument during a single
+     * {@code build()} (ADR-0042 Amendment #301: the URL must be assembled exactly once).
+     */
     static final class CountingCharSequence implements CharSequence {
         private final String url;
         private final AtomicInteger toStringCalls = new AtomicInteger();

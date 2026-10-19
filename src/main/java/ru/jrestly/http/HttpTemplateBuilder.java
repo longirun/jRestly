@@ -1044,19 +1044,19 @@ public class HttpTemplateBuilder {
 
         switch (effectiveFormat) {
             case CSV -> {
-                List<String> strItems = items.stream().map(Object::toString).toList();
+                List<String> strItems = items.stream().map(v -> textValue(v, "parameter")).toList();
                 parts.add(createPartFromValue(name, String.join(",", strItems), explicitContentType));
             }
             case SSV -> {
-                List<String> strItems = items.stream().map(Object::toString).toList();
+                List<String> strItems = items.stream().map(v -> textValue(v, "parameter")).toList();
                 parts.add(createPartFromValue(name, String.join(" ", strItems), explicitContentType));
             }
             case TSV -> {
-                List<String> strItems = items.stream().map(Object::toString).toList();
+                List<String> strItems = items.stream().map(v -> textValue(v, "parameter")).toList();
                 parts.add(createPartFromValue(name, String.join("\t", strItems), explicitContentType));
             }
             case PIPES -> {
-                List<String> strItems = items.stream().map(Object::toString).toList();
+                List<String> strItems = items.stream().map(v -> textValue(v, "parameter")).toList();
                 parts.add(createPartFromValue(name, String.join("|", strItems), explicitContentType));
             }
             case BRACKETS -> {
@@ -1075,6 +1075,12 @@ public class HttpTemplateBuilder {
 
     private MultipartPart createPartFromValue(String partName, Object value, String explicitContentType) {
         if (explicitContentType == null || explicitContentType.isEmpty()) {
+            if (value instanceof byte[]) {
+                throw new IllegalArgumentException(
+                        "A byte[] multipart part requires an explicit Content-Type: declare "
+                                + "@RequestParam(contentType = \"application/octet-stream\") to send raw bytes, "
+                                + "or encode the bytes to text explicitly (e.g. Base64) before passing.");
+            }
             return MultipartPart.text(partName, value != null ? value.toString() : "");
         }
         Charset charset = parseCharset(explicitContentType, StandardCharsets.UTF_8);
@@ -1224,7 +1230,7 @@ public class HttpTemplateBuilder {
         if (value instanceof Collection<?> collection) {
             for (Object o : collection) {
                 if (o != null) {
-                    result.add(new Header(name, o.toString()));
+                    result.add(new Header(name, textValue(o, "header")));
                 }
             }
         } else if (value.getClass().isArray() && !byte[].class.equals(value.getClass())) {
@@ -1232,12 +1238,24 @@ public class HttpTemplateBuilder {
             for (int i = 0; i < length; i++) {
                 Object o = java.lang.reflect.Array.get(value, i);
                 if (o != null) {
-                    result.add(new Header(name, o.toString()));
+                    result.add(new Header(name, textValue(o, "header")));
                 }
             }
         } else {
-            result.add(new Header(name, value.toString()));
+            result.add(new Header(name, textValue(value, "header")));
         }
+    }
+
+    // Header and parameter positions are text on the wire; a byte[] has no defined
+    // text rendering, so it fails fast instead of silently sending "[B@...'" garbage.
+    private static String textValue(Object value, String position) {
+        if (value instanceof byte[]) {
+            throw new IllegalArgumentException(
+                    "A byte[] cannot be a " + position + " value: header and parameter values are text on the wire. "
+                            + "Send raw bytes as @RequestBody, or encode the bytes to text explicitly "
+                            + "(e.g. Base64 or new String(bytes, StandardCharsets.ISO_8859_1)) before passing.");
+        }
+        return value.toString();
     }
 
     private static void appendParamValues(List<Param> result, String name, Object value, CollectionFormat format) {
@@ -1248,7 +1266,7 @@ public class HttpTemplateBuilder {
         if (value instanceof Collection<?> collection) {
             List<String> items = collection.stream()
                     .filter(Objects::nonNull)
-                    .map(Object::toString)
+                    .map(o -> textValue(o, "parameter"))
                     .toList();
             if (items.isEmpty()) {
                 return;
@@ -1263,7 +1281,7 @@ public class HttpTemplateBuilder {
             for (int i = 0; i < length; i++) {
                 Object o = java.lang.reflect.Array.get(value, i);
                 if (o != null) {
-                    items.add(o.toString());
+                    items.add(textValue(o, "parameter"));
                 }
             }
             if (items.isEmpty()) {
@@ -1273,7 +1291,7 @@ public class HttpTemplateBuilder {
             return;
         }
 
-        result.add(new Param(name, value.toString()));
+        result.add(new Param(name, textValue(value, "parameter")));
     }
 
     private static void appendFormattedItems(List<Param> result, String name, List<String> items, CollectionFormat format) {

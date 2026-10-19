@@ -11,6 +11,12 @@ import java.lang.annotation.Target;
  * Supports scalar values, {@link java.util.Collection} (repeated parameters),
  * and {@link java.util.Map} (dynamic parameters, prefixed with {@code name[key]} when name is non-empty).
  * Null argument values, null collection elements, and null map entries are omitted.
+ * <p>
+ * Query and form values are text on the wire: a {@code byte[]} argument (scalar or as a
+ * list/array/map element) throws {@link IllegalArgumentException} instead of writing
+ * class-string garbage — encode bytes explicitly (e.g. Base64) or send them raw as a
+ * {@code @RequestBody}. In {@code multipart/form-data} parts a {@code byte[]} sends raw
+ * bytes through the explicit {@code contentType()} channel (see {@link #contentType()}).
  */
 @Target(ElementType.PARAMETER)
 @Retention(RetentionPolicy.RUNTIME)
