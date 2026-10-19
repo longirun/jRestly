@@ -1,5 +1,13 @@
 # DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
+> **Сессия #333 (хвост #207 закрыт: инварианты `@ExpectStatus`/`@FollowRedirects` объявлены в публичном контракте — javadoc аннотаций + ADR-0004 Amendment #333; логика кода не тронута, гейт 1,809/1,809):**
+> 1. *Приём состояния:* HEAD `26f4baf` (#332, ADR-0075), чистое дерево (только счётчик 333), слов Антона в mailbox'е нет (последние записи — мои, #331/#332).
+> 2. *Сверка по коду (факты, не память):* eager-валидация #235 уже полностью на месте — `ControllerValidator.validateExpectStatus`/`validateFollowRedirects` вшиты в `validateMethod` (пустой `statuses`, диапазон `[100, 599]`, отрицательный `count`), red-first тесты в `ControllerValidationTest` (`rejectsInvalid*Eagerly`), инварианты объявлены в javadoc валидатора и в ADR-0004 Amendment #235. Обе аннотации — `@Target(ElementType.METHOD)` только, class-level-проверка не нужна. Чего не хватало — javadoc самих аннотаций: поверхность, которую читает пользователь в месте декларации, молчала обо всех инвариантах.
+> 3. *Семантика, закреплённая в javadoc (сверена с кодом):* `isExpectedStatus` — при `@ExpectStatus` whitelist строгий (2xx- и 304/404-allowances conditional/optional не действуют); без аннотации — 2xx + 304 (conditional) / 304+404 (optional). `count = 0` — политика существует, но `hopsLeft > 0` ложно сразу: 3xx возвращается как финальный ответ (подтверждено в `HttpTemplate.executeWithRedirects`/`executeAsyncHop` и `Redirects`).
+> 4. *Изменения (javadoc + ADR, без логики):* `ExpectStatus`/`FollowRedirects` — class-javadoc теперь объявляет инварианты (non-empty + `[100, 599]`; `count >= 0` и смысл 0), строгую семантику whitelist и fail-fast на создание прокси; `statuses()`/`count()` — инварианты на атрибутах; `docs/0.5.0/ADR-0004-transparent-calls.md` — `## Amendment #333` (инварианты — часть публичного контракта, тесты #235 остаются pinning-гейтом).
+> 5. *Гейт:* полный пере-прогон (javadoc в src/main — прецедент #297): **1,809/1,809** green во всех 8 модулях + javadoc чист под `-Werror`.
+> 6. *Дальше (#334):* свободный аудит следующего hot-path (dispatch `HttpTemplate` после ADR-0072, cookie-разбор, `MethodMetadata`-кэши) — хвост #207 в пуле закрыт.
+>
 > **Сессия #332 (ADR-0075 — оформление Кандидата №14: header-merge инварианты, live trace-view, response-map fast-paths; код не тронут, гейт 1,809/1,809 в силе от #330):**
 > 1. *Приём состояния:* HEAD `acf0ec3` (#331), чистое дерево (только счётчик 332), слов Антона в mailbox'е нет (последние записи — мои, #331).
 > 2. *ADR-0075* (`docs/0.12.0/ADR-0075-header-merge-invariants-and-allocation-pruning.md`, Accepted; стиль-эталон — ADR-0072): формализация трёх зон Кандидата №14 как архитектурных решений с инвариантами и амплитудой:
@@ -3648,8 +3656,10 @@ INSTRUCTION 98.15%, LINE 97.82%, COMPLEXITY 88.69% — рекорды; гейт 
 **Кандидат №13 закрыт полностью (#327):** Zero-Allocation URI Composition & RFC 3986 Fast-Paths (ADR-0072 Accepted). Single-pass сборка в `createUri`/`appendQuery`, unreserved ASCII fast-path в `UriEncoder`, кэширование `placeholderToken` в `MethodMetadata.ParameterDescriptor`. Гейт вырос до **1,747/1,747**, ветви JaCoCo на рекорде **90.65%**. Highest ADR **0072**, next free **0073**.
 **Кандидат №14 закрыт полностью (#330, дистиллирован в ROADMAP в #331):** дальнейшая оптимизация аллокаций HTTP заголовков и W3C Tracing context — TDD-шаг, 5 структурных тестов, header-мердж без `HashSet`, single-wrap trace-view, `ResponseHeaders.buildValueMap`; гейт **1,809/1,809**.
 
-**Актуальный пул цикла 0.12.0 (после #332):** активных эпиков нет — все заявленные кандидаты (№10, №11, №12, №13, №14) закрыты и дистиллированы. Остались хвосты:
+**Актуальный пул цикла 0.12.0 (после #333):** активных эпиков нет — все заявленные кандидаты (№10, №11, №12, №13, №14) закрыты и дистиллированы. Остались хвосты:
 - ~~**ADR-0075 — оформление Кандидата №14**~~ — **закрыт в #332** (`docs/0.12.0/ADR-0075-header-merge-invariants-and-allocation-pruning.md`, Accepted; баннер ROADMAP: Highest ADR **0075**, next free **0076**).
+- ~~**Валидация `@ExpectStatus`/`@FollowRedirects` (#207 «фича, не дыра»)**~~ — **закрыт в #333**: сверка по коду показала, что eager-валидация #235 полностью на месте (коды + red-first тесты + javadoc валидатора); недостающим оказалось объявление инвариантов в публичном контракте — javadoc аннотаций `@ExpectStatus`/`@FollowRedirects` + ADR-0004 Amendment #333 (javadoc-шаг, без логики; гейт 1,809/1,809 + javadoc `-Werror`).
+- **Осталось:** свободный аудит следующего hot-path (dispatch `HttpTemplate` после ADR-0072, cookie-разбор `resolveCookies`/`HttpCookie.parse`, `MethodMetadata`-кэши).
 Хвосты-кандидаты
 из аудит-нити (не эпики): валидация `@ExpectStatus`/`@FollowRedirects`
 (инварианты нигде не объявлены — фича, не дыра; #207, трогать лишь при
