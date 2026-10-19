@@ -9,10 +9,12 @@ import ru.jrestly.annotation.RequestParam;
 
 import java.net.URI;
 import java.net.http.HttpClient;
+import java.lang.reflect.Field;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -23,6 +25,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -607,6 +610,45 @@ class ResponseHeadersTest {
         assertThrows(NullPointerException.class, () -> resp.firstValue(null));
         assertThrows(NullPointerException.class, () -> resp.allValues(null));
         assertThrows(NullPointerException.class, () -> resp.firstLongValue(null));
+    }
+
+    @Test
+    @DisplayName("Empty trailer set shares the empty-map singleton instead of a built TreeMap (Candidate #14)")
+    void emptyTrailersShareTheEmptyMapSingleton() throws Exception {
+        ResponseHeaders headers = new ResponseHeaders(
+                200, List.of(new Header("X-A", "1")), null, HttpClient.Version.HTTP_1_1, List.of());
+
+        // Public contract unchanged: trailer access is empty
+        assertTrue(headers.firstTrailer("anything").isEmpty());
+        assertEquals(List.of(), headers.trailerValues("anything"));
+        assertTrue(headers.trailers().isEmpty());
+
+        // Structural guard: when no trailers arrived, the per-response
+        // TreeMap + unmodifiable-map wrapper must not be built at all —
+        // the shared Collections.emptyMap() singleton suffices.
+        Field trailerMap = ResponseHeaders.class.getDeclaredField("trailerMap");
+        trailerMap.setAccessible(true);
+        assertSame(Collections.emptyMap(), trailerMap.get(headers),
+                "empty trailer map must be the shared emptyMap() singleton");
+    }
+
+    @Test
+    @DisplayName("Single-value header names are served by immutable List.of() entries (Candidate #14)")
+    void singleValueHeaderListsAreImmutableSingletons() {
+        ResponseHeaders headers = new ResponseHeaders(200,
+                List.of(new Header("X-A", "1"), new Header("X-B", "2"), new Header("X-B", "3")), null);
+
+        // Contract: content, case-insensitivity, and immutability are unchanged
+        assertEquals(List.of("1"), headers.allValues("X-A"));
+        assertThrows(UnsupportedOperationException.class, () -> headers.allValues("X-A").add("another"));
+        assertEquals(List.of("2", "3"), headers.allValues("x-b"));
+        assertThrows(UnsupportedOperationException.class, () -> headers.allValues("x-b").add("4"));
+
+        // Structural guard: a single-value name must not carry an intermediate
+        // ArrayList plus unmodifiable wrapper — the compact immutable list does.
+        assertEquals("java.util.ImmutableCollections$List12",
+                headers.allValues("X-A").getClass().getName(),
+                "single-value header lists must be the compact immutable List.of entry");
     }
 }
 

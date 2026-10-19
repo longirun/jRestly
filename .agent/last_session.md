@@ -1,29 +1,33 @@
-# Last Session: #329 (2026-10-20)
+# Last Session: #330 (2026-10-20)
 
 ## Что сделано
 
-**Сессия #329: Кандидат №12 Фаза 2 — субмодуль `codec-protobuf` (официальный Protocol Buffers-адаптер на protobuf-java), ADR-0074 Accepted, гейт 1,804/1,804 (+19). ОБЕ фазы Кандидата №12 закрыты.**
+**Сессия #330: Кандидат №14 — устранение промежуточных аллокаций в header-мердже, W3C tracing и парсинге `ResponseHeaders` (TDD-шаг, 5 структурных тестов), гейт 1,809/1,809 (+5). Код Кандидата №14 закрыт, остаётся дистилляция в ROADMAP.**
 
-1. *Приём состояния:* HEAD `2c46c34` (#328, ADR-0073), чистое дерево (только счётчик 329).
-2. *ADR-0074* (`docs/0.12.0/ADR-0074-codec-protobuf-submodule.md`, Accepted):
-   - **Зависимость `com.google.protobuf:protobuf-java:3.25.5`** (полный рантайм; контракт через `com.google.protobuf.Message`; `protobuf-javalite` — non-goal Ф1).
-   - **Media-type family:** `application/x-protobuf` (de-facto) + `application/protobuf` (IANA) + `*+protobuf` (RFC 6839); `application/grpc+proto` осознанно не претендуем (gRPC-фрейминг — отдельный компонент).
-   - **Резолвинг парсера (главный дизайн-разрез Ф2):** цель = `Class<? extends Message>`; порядок: (1) публичный статический `PARSER` (protoc-инвариант), (2) статический `getDefaultInstance()` + `getParserForType()`, (3) fail-fast IAE; кэш `ConcurrentHashMap<Class, Parser<?>>`.
-   - **Serialize:** `Message`/`MessageLite` → `toByteArray()`, non-message → fail-fast (нет property-рефлексии — формат schema-bound). **prettyPrint:** бинарный → hex, 16 байт/строка.
-   - **SPI:** `ProtobufCodecProvider` priority 50, автообнаружение, opt-out через JSON-only реестр. **Ядро:** чистое добавление `MediaType.APPLICATION_PROTOBUF` / `APPLICATION_X_PROTOBUF`.
-3. *Код:* новый публикуемый субмодуль `codec-protobuf` (`ru.jrestly:jrestly-codec-protobuf`, 0.11.0): `build.gradle` (Java 21, `-Werror`, javadoc `-Werror`, maven-publish, Automatic-Module-Name `ru.jrestly.codec.protobuf`), `ProtobufCodec` (no-arg ctor + `defaults()`, `supports`, `deserialize`/`serialize`/`prettyPrint`, `parserFor` package-private для cache-теста), `ProtobufCodecProvider`, `package-info.java`, `META-INF/services`-регистрация. `settings.gradle`: `include 'codec-protobuf'`.
-4. *Тесты (+19):* `ProtobufCodecTest` (14: family-claim/анти-перехват, round-trip `Timestamp` и `Struct`/`Value`-мапы, null/empty-контракты, corrupt → `UncheckedIOException`, fail-fast non-Message/non-Class/serialize-non-message, кэш парсеров (PARSER-ветка через синтетический `FakeGeneratedMessage` + well-known через статическую фабрику), hand-written-стубы `StubBase`/`StubWithFactory`/`StubNoFactory` с полным `Message`-поверхностью, prettyPrint hex) + `ProtobufWireMockTest` (5: e2e `@ContentType(APPLICATION_X_PROTOBUF)` байт-в-байт через `binaryEqualTo`, `@Accept(APPLICATION_PROTOBUF)`-биндинг в `Timestamp`, JSON-путь не тронут, SPI-автообнаружение, JSON-only fail-fast).
-5. *Грабли (важные):* (a) **well-known типы protobuf-java имеют ПРИВАТНЫЙ `PARSER`** (не protoc-генерация) — их не видно через `getField`, спасает ветка статического `getDefaultInstance()`; зафиксировано в ADR §3; (b) `Struct.getFields()` deprecated → `getFieldsOrThrow`; (c) test-classpath protobuf-модуля без JSON-движка → явный `testImplementation jackson-databind:2.18.2`; (d) `Parser<?>` ≠ subtype `Parser<? extends Message>`.
-6. *Гейты:* **1,804 / 1,804** green во всех 8 модулях (root 1642 + engine-okhttp 25 + engine-apache5 25 + engine-netty 26 + codec-jackson-xml 15 + codec-yaml 15 + **codec-protobuf 19** + benchmarks 37). Javadoc чист под `-Werror`.
+1. *Приём состояния:* HEAD `1a505cc` (#329, ADR-0074), чистое дерево (только счётчик 330), слов Антона нет.
+2. *TDD red:* 5 новых тестов с **структурными** ассертами (пиним форму аллокаций):
+   - `ResponseHeadersTest.emptyTrailersShareTheEmptyMapSingleton` (рефлексия по `trailerMap`: пустые трейлеры ⇒ singleton `Collections.emptyMap()`);
+   - `ResponseHeadersTest.singleValueHeaderListsAreImmutableSingletons` (single-value ⇒ `ImmutableCollections$List12`, multi-value ⇒ immutability + case-insensitivity);
+   - `HttpTemplateBuilderTest.testTracePropagatorHeaderViewIsSingleWrap` (view пропагатора = ровно один `Collections$Unmodifiable*`-слой, backing `list` — живой `ArrayList`; live-view: свой же injected header виден);
+   - `HttpTemplateBuilderTest.testHeaderMergeOrderAmbientStaticDynamic` (точный порядок: surviving ambient → statics → dynamics → `Accept-Encoding` последним);
+   - `HttpTemplateBuilderTest.testDynamicHeaderCaseInsensitiveOverride` (новый `DupHeaderApi`: dynamic `x-dup` case-insensitивно заменяет static `X-Dup`).
+   Промежуточное состояние: 2 паритет-теста зелёные сразу, 3 структурных красные — чистый TDD.
+3. *Main-код:*
+   - `HttpTemplateBuilder.createHeaders`: merge-ветка без `HashSet` (прямой case-insensitive O(a·s) скан; порядок паритета сохранён);
+   - статические хелперы `removeHeaderByName` (reverse in-place, skip null-имён) и `hasHeaderNamed` (plain scan) — вместо `removeIf(lambda)` / `stream().anyMatch` в `applyTracingHeaders` и в `Accept-Encoding`-проверке;
+   - `applyTracePropagator`: живой merge-список, единственный wrap — compact-конструктор `TraceRequestContext` (внешний `Collections.unmodifiableList` убран);
+   - `ResponseHeaders.buildValueMap` (общий хелпер для `doPopulate` + `populateTrailers`): пустой ⇒ `Collections.emptyMap()`, single-value ⇒ `List.of(value)`, multi-value ⇒ `unmodifiableList`; контракт `TreeMap(CASE_INSENSITIVE_ORDER)` не тронут.
+4. *Грабли (важные):* (a) **`Accept-Encoding`** — `SimpleModuleInfo` декомпрессию включает по умолчанию ⇒ `Accept-Encoding: gzip, deflate` дописывается в конец merge-списка каждого merge-тест-кейса; (b) **JPMS** — `setAccessible` на приватном `java.util.Collections$UnmodifiableList.list` требует `--add-opens java.base/java.util=ALL-UNNAMED` (добавлено в test-JVM root `build.gradle`), а само поле объявлено в РОДИТЕЛЕ (искать `getDeclaredField("list")` по восхождению иерархии классов).
+5. *Гейты:* целевые сьюты **56/56** (HttpTemplateBuilderTest 27 + ResponseHeadersTest 29); полный **1,809 / 1,809** green во всех 8 модулях (root 1,647 + engine-okhttp 25 + engine-apache5 25 + engine-netty 26 + codec-jackson-xml 15 + codec-yaml 15 + codec-protobuf 19 + benchmarks 37). Main-правки — `//`-комментарии, javadoc-гейт не затронут.
 
-## Контекст для следующей сессии (#330)
+## Контекст для следующей сессии (#331)
 
 1. **Ветка** `agent-loop`.
-2. **Highest ADR:** **0074** (`docs/0.12.0/ADR-0074-codec-protobuf-submodule.md`), next free **0075**.
-3. **Кандидаты на сессию #330:**
-   - **Кандидат №14 — аллокации HTTP-заголовков / W3C Tracing:** устранение промежуточных `ArrayList`/`HashMap` при парсинге и мердже статических и динамических заголовков (`ResponseHeaders`, `HttpTemplateBuilder.createHeaders`, trace-контекст) — TDD-шаг с JMH-доказательством при желании.
-   - **Дистилляция Кандидата №12 в `ROADMAP.md`:** эпик закрыт целиком (Ф1 = ADR-0073 `codec-yaml`, Ф2 = ADR-0074 `codec-protobuf`) — оформить в выполненные эпики + обновить статус цикла 0.12.0.
+2. **Highest ADR:** **0074**, next free **0075**. ADR-0075 — опциональное оформление Кандидата №14 (шаг определён как TDD; стиль — `docs/0.12.0/ADR-0072-zero-allocation-uri-composition-and-fast-paths.md`).
+3. **Кандидаты на сессию #331:**
+   - **Дистилляция Кандидатов №12 + №14 в `ROADMAP.md` (рекомендуется, пакетом):** №12 закрыт целиком (Ф1 = ADR-0073 `codec-yaml`, Ф2 = ADR-0074 `codec-protobuf`), №14 реализован в #330 (код). Оформить в выполненные эпики + обновить баннер Current status (Highest ADR 0074, гейт 1,809/1,809, root baseline 1,647) + обновить `DRAFT.md` (пул кандидатов: после дистилляции в 0.12.0 остаются хвосты-кандидаты из аудит-нити — там и выбирать следующий ход).
+   - **Свободный аудит:** поиск следующего hot-path (например, `HttpTemplate` dispatch-путь, `MethodMetadata`-кэши, cookie-разбор) — по вкусу.
 4. **Замечание по окружению:**
    - Команды gradle запускать с `GRADLE_USER_HOME=/tmp/opencode/gradle-home ./gradlew ...`.
    - `bc` в песочнице нет — суммы считать awk'ом или руками.
-5. Метрики — гейт **1,804/1,804** (root baseline 1,642); метрики JaCoCo ядра с #327 (BRANCH 90.65%) — в этом прогоне не пересчитывались (код ядра: +2 константы `MediaType`).
+5. Метрики: гейт **1,809/1,809** (root baseline 1,647 = 1,642 + 5 новых тестов). Метрики JaCoCo ядра в этом прогоне не пересчитывались (main-правки — рефакторинг горячих путей, поведений не добавлено).

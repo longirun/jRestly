@@ -1,5 +1,24 @@
 # DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
+> **Сессия #330 (Кандидат №14: устранение промежуточных аллокаций в header-мердже, W3C tracing и парсинге `ResponseHeaders` — TDD-шаг, 5 новых структурных тестов, гейт 1,809/1,809):**
+> 1. *Приём состояния:* HEAD `1a505cc` (#329, ADR-0074), чистое дерево (только счётчик 330), слов Антона в mailbox'е нет. Просмотрены три целевые зоны: `HttpTemplateBuilder.createHeaders`/`applyTracingHeaders`/`applyTracePropagator`, `ResponseHeaders.doPopulate`/`populateTrailers`, `TraceRequestContext` (compact-конструктор делает единственный unmodifiable-wrap — контракт, на который опирается структурный тест).
+> 2. *TDD red:* 5 новых тестов с **структурными** ассертами (пиним форму аллокаций, а не только поведение):
+>    - `ResponseHeadersTest.emptyTrailersShareTheEmptyMapSingleton` — пустые трейлеры ⇒ `trailerMap` делит singleton `Collections.emptyMap()` (рефлексия по приватному полю);
+>    - `ResponseHeadersTest.singleValueHeaderListsAreImmutableSingletons` — single-value-запись ⇒ компактный `ImmutableCollections$List12` (`List.of`), multi-value сохраняет immutability + case-insensitivity;
+>    - `HttpTemplateBuilderTest.testTracePropagatorHeaderViewIsSingleWrap` — view пропагатора = ровно ОДИН слой `Collections$Unmodifiable*`, чьё backing-поле `list` (поиск по иерархии классов) — живой merge-список `ArrayList`; live-view семантика: саминжектированный header виден через view;
+>    - `HttpTemplateBuilderTest.testHeaderMergeOrderAmbientStaticDynamic` — точный паритет порядка: выживший ambient на своём месте → statics в порядке деклараций → dynamics в порядке параметров → `Accept-Encoding` последним (декомпрессия ON по умолчанию);
+>    - `HttpTemplateBuilderTest.testDynamicHeaderCaseInsensitiveOverride` (новый `DupHeaderApi`) — dynamic `x-dup` case-insensitивно заменяет static `X-Dup`.
+>    Первый прогон: все 5 красные → 2 паритет-теста зеленеют сразу (контракт уже держался), 3 структурных остаются красными — чистое TDD-состояние.
+> 3. *Main-код:*
+>    - `HttpTemplateBuilder.createHeaders`: merge-ветка без промежуточного `HashSet` и per-name lowercased-строк — прямой case-insensitive O(a·s) скан (списки заголовков малы, хэш-набор дороже скана); порядок паритета сохранён (выживший ambient → statics → dynamics).
+>    - Новые статические хелперы `removeHeaderByName` (reverse in-place loop, skip null-имён — ambient provider публичное стыко-место) и `hasHeaderNamed` (plain scan) — заменяют `removeIf(lambda)` (lambda-аллокация на каждый dynamic header) и `stream().anyMatch(...)` (Stream + stage + predicate на каждый чек) в `applyTracingHeaders`; тот же plain scan — в проверке `Accept-Encoding` перед `result.add`.
+>    - `applyTracePropagator`: передаётся живой merge-список `result` — внешний `Collections.unmodifiableList` убран, единственный wrap делает compact-конструктор `TraceRequestContext` (экономия чистого wrapper-объекта на каждый ambient-trace запрос).
+>    - `ResponseHeaders`: общий `buildValueMap(List<Header>)` вместо двух копий inline-сборки (`doPopulate` для header/trailer + `populateTrailers`): пустой список (или только nameless-заголовки) ⇒ `Collections.emptyMap()` singleton без `TreeMap`+обёртки; single-value запись ⇒ компактный `List.of(value)` (нет backing `ArrayList` и wrapper-слоя); multi-value ⇒ `Collections.unmodifiableList`; контракт `TreeMap(CASE_INSENSITIVE_ORDER)` + unmodifiable-map сохранён.
+> 4. *Грабли:* (a) **`Accept-Encoding` в паритет-тестах** — `SimpleModuleInfo` по умолчанию декомпрессию включает ⇒ `Accept-Encoding: gzip, deflate` дописывается последним в merge-списке каждого тест-кейса (дважды упёрся, ожидание без него краснело); (b) **JPMS в структурном тесте** — `setAccessible` на приватном поле `java.util.Collections$UnmodifiableList.list` падает `InaccessibleObjectException`: поле объявлено в РОДИТЕЛЕ (ищем `getDeclaredField("list")` по восхождению иерархии) и нужен `--add-opens java.base/java.util=ALL-UNNAMED` — добавлен в test-JVM `build.gradle` (корневой модуль, comment-обоснование).
+> 5. *Гейты:* два целевых сьюта **56/56** (51 baseline + 5 новых); полный гейт **1,809 / 1,809** green во всех 8 модулях (root 1,647 + engine-okhttp 25 + engine-apache5 25 + engine-netty 26 + codec-jackson-xml 15 + codec-yaml 15 + codec-protobuf 19 + benchmarks 37). Main-правки — `//`-комментарии, javadoc-гейт не затронут.
+> 6. *Статус Кандидата №14:* реализован по коду (три зоны закрыты: header-мердж, W3C tracing, `ResponseHeaders`-парсинг). ADR-0075 — опционально (шаг определён как TDD; стиль ADR-0072 есть для оформления, если решим). Дистилляция в ROADMAP — пакетом с Кандидатом №12 (обе фазы закрыты: ADR-0073 + ADR-0074) в ближайшей сессии.
+> 7. *Дальше (#331):* (a) дистилляция Кандидатов №12 + №14 в `ROADMAP.md` как выполненные эпики (баннер Current status: Highest ADR 0074, гейт 1,809/1,809); (b) по желанию — ADR-0075 на оформление №14 или свободный аудит.
+>
 > **Сессия #329 (Кандидат №12 Фаза 2: субмодуль `codec-protobuf` — официальный Protocol Buffers-адаптер на protobuf-java, ADR-0074 Accepted, гейт 1,804/1,804):**
 > 1. *Приём состояния:* HEAD `2c46c34` (#328, ADR-0073), чистое дерево (только счётчик 329). Просмотрены ADR-0073 как шаблон, `codec-yaml` (код/тесты/build) как эталон, SPI `PayloadCodec`.
 > 2. *ADR-0074* (`docs/0.12.0/ADR-0074-codec-protobuf-submodule.md`, Accepted):
@@ -3606,10 +3625,10 @@ INSTRUCTION 98.15%, LINE 97.82%, COMPLEXITY 88.69% — рекорды; гейт 
 **Кандидат №13 закрыт полностью (#327):** Zero-Allocation URI Composition & RFC 3986 Fast-Paths (ADR-0072 Accepted). Single-pass сборка в `createUri`/`appendQuery`, unreserved ASCII fast-path в `UriEncoder`, кэширование `placeholderToken` в `MethodMetadata.ParameterDescriptor`. Гейт вырос до **1,747/1,747**, ветви JaCoCo на рекорде **90.65%**. Highest ADR **0072**, next free **0073**.
 
 **Актуальный пул кандидатов цикла 0.12.0:**
-- **Кандидат №12 — Экосистема кодеков: исследование субмодуля Proto / YAML (`codec-protobuf` / `codec-yaml`):**
-  Исследование необходимости создания легковесного адаптера для Protocol Buffers или YAML на базе существующего `PayloadCodec` SPI (по образу `jrestly-codec-jackson-xml`).
+- **Кандидат №12 — Экосистема кодеков: субмодули `codec-yaml` (ADR-0073, #328) и `codec-protobuf` (ADR-0074, #329):**
+  Оба субмодуля реализованы и Accepted (SPI `PayloadCodec`, priority 50, автообнаружение, wire-паритеты). Осталось: дистилляция в `ROADMAP.md` как выполненный эпик (пакетом с №14, #331).
 - **Кандидат №14 — Дальнейшая оптимизация аллокаций HTTP заголовков и W3C Tracing context:**
-  Исследование устранения промежуточных `ArrayList`/`HashMap` при парсинге и мердже статических и динамических заголовков.
+  **Реализован в #330 (TDD-шаг, 5 структурных тестов, гейт 1,809/1,809):** header-мердж без `HashSet` (прямой case-insensitive скан + `removeHeaderByName`/`hasHeaderNamed` вместо lambda/stream), single-wrap view в `applyTracePropagator`, `ResponseHeaders.buildValueMap` (emptyMap-singleton + компактные `List.of` для single-value). Осталось: дистилляция в `ROADMAP.md` (пакетом с №12, #331) и опциональный ADR-0075.
 Хвосты-кандидаты
 из аудит-нити (не эпики): валидация `@ExpectStatus`/`@FollowRedirects`
 (инварианты нигде не объявлены — фича, не дыра; #207, трогать лишь при

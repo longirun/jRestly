@@ -76,6 +76,9 @@ jacoco {
 test {
     useJUnitPlatform()
     systemProperty 'java.util.logging.manager', 'org.apache.logging.log4j.jul.LogManager'
+    // Structural allocation tests reflect into JDK collection internals
+    // (e.g. the backing-list field of Collections unmodifiable wrappers).
+    jvmArgs '--add-opens', 'java.base/java.util=ALL-UNNAMED'
     finalizedBy jacocoTestReport
 }
 

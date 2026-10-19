@@ -287,6 +287,12 @@ class HttpTemplateBuilderTest {
         String traceWithTargetUrl(@TargetUrl CharSequence targetUrl);
     }
 
+    interface DupHeaderApi {
+        @Get("/dup")
+        @RequestHeader(name = "X-Dup", value = "static-val")
+        String getDup(@RequestHeader(name = "x-dup") String dynamic);
+    }
+
     interface ContractInspectionApi {
         @Get("/inspect")
         @ExpectStatus(statuses = {200, 204})
@@ -531,6 +537,116 @@ class HttpTemplateBuilderTest {
         // Amendment #301: URL assembly runs exactly once per build — the ambient
         // propagation path must not recompute it (hot-path allocation control)
         assertEquals(1, target.toStringCalls(), "URL must be assembled exactly once per build()");
+    }
+
+    @Test
+    @DisplayName("Ambient propagator sees exactly one unmodifiable header view backed by the live merge list (Candidate #14)")
+    void testTracePropagatorHeaderViewIsSingleWrap() throws Exception {
+        AtomicReference<List<Header>> observed = new AtomicReference<>();
+        SimpleModuleInfo moduleInfo = SimpleModuleInfo.builder()
+                .baseUrl("https://api.example.com")
+                .tracePropagator(context -> {
+                    observed.set(context.existingHeaders());
+                    return Map.of("X-Test-Trace", "abc-123");
+                })
+                .build();
+        Method method = TracingApi.class.getMethod("traceWithTargetUrl", CharSequence.class);
+        new HttpTemplateBuilder(moduleInfo, httpClient, method,
+                new Object[]{"http://target.example.com/endpoint"}, TracingApi.class).build();
+
+        List<Header> view = observed.get();
+        assertNotNull(view, "the propagator must receive the existing-headers view");
+        // Live-view semantics unchanged: the header the propagator injected itself
+        // is visible through the view the context captured (ADR-0042 §6.4)
+        assertTrue(view.stream().anyMatch(h -> "X-Test-Trace".equalsIgnoreCase(h.name())));
+
+        // Candidate #14: exactly one unmodifiable layer — a second
+        // Collections.unmodifiableList wrapper around the merge list is a pure
+        // per-request allocation on the ambient tracing path.
+        assertTrue(view.getClass().getName().startsWith("java.util.Collections$Unmodifiable"),
+                "the existing-headers view must be a Collections unmodifiable wrapper");
+        java.lang.reflect.Field backingField = null;
+        for (Class<?> c = view.getClass(); c != null; c = c.getSuperclass()) {
+            try {
+                backingField = c.getDeclaredField("list");
+                break;
+            } catch (NoSuchFieldException ignored) {
+                // field is declared in Collections$UnmodifiableList itself
+            }
+        }
+        assertNotNull(backingField, "the unmodifiable wrapper must expose its backing list field");
+        backingField.setAccessible(true);
+        Object backing = backingField.get(view);
+        assertInstanceOf(ArrayList.class, backing,
+                "the header view must wrap the live merge list exactly once");
+    }
+
+    @Test
+    @DisplayName("Header merge order: surviving ambient auth first, then statics, then dynamics (Candidate #14 parity)")
+    void testHeaderMergeOrderAmbientStaticDynamic() throws Exception {
+        AuthProvider authProvider = new AuthProvider() {
+            @Override
+            public boolean isAuthorized() {
+                return true;
+            }
+
+            @Override
+            public List<Header> getAuthHeaders() {
+                return List.of(new Header("Authorization", "Bearer ambient-token"), new Header("X-Ambient", "ambient-val"));
+            }
+
+            @Override
+            public void updateAuthHeader(String name, String value) {}
+        };
+        SimpleModuleInfo baseInfo = SimpleModuleInfo.builder()
+                .baseUrl("https://api.example.com")
+                .build();
+        ru.jrestly.ModuleInfo moduleWithAuth = new ru.jrestly.ModuleInfo() {
+            @Override public String getName() { return baseInfo.getName(); }
+            @Override public <T> ru.jrestly.Environment<T> getEnvironment() { return baseInfo.getEnvironment(); }
+            @Override public AuthProvider getAuthProvider() { return authProvider; }
+            @Override public boolean isDecompressionEnabled() { return baseInfo.isDecompressionEnabled(); }
+        };
+
+        Method method = HeaderApi.class.getMethod("getWithHeaders", String.class, Map.class, List.class, String[].class);
+        Map<String, Object> map = new LinkedHashMap<>();
+        map.put("X-Map-1", "val1");
+        map.put("X-Map-Null", null);
+        map.put(null, "ignored");
+
+        HttpTemplate template = new HttpTemplateBuilder(moduleWithAuth, httpClient, method,
+                new Object[]{"dyn-val", map, Arrays.asList("m1", null, "m2"), new String[]{"a1", null, "a2"}},
+                HeaderApi.class).build();
+
+        // Exact merge order: the ambient header not overridden by a static one keeps
+        // its position, the overridden ambient one disappears, statics follow in
+        // declaration order, then dynamics in parameter order, and the default
+        // Accept-Encoding (decompression is on by default) is appended last.
+        assertEquals(List.of(
+                new Header("X-Ambient", "ambient-val"),
+                new Header("X-Static-1", "static-val-1"),
+                new Header("Authorization", "Static-Token"),
+                new Header("X-Dynamic", "dyn-val"),
+                new Header("X-Map-1", "val1"),
+                new Header("X-Multi", "m1"),
+                new Header("X-Multi", "m2"),
+                new Header("X-Array", "a1"),
+                new Header("X-Array", "a2"),
+                new Header("Accept-Encoding", "gzip, deflate")
+        ), template.getHeaders());
+    }
+
+    @Test
+    @DisplayName("Dynamic header replaces a static one case-insensitively (Candidate #14 parity)")
+    void testDynamicHeaderCaseInsensitiveOverride() throws Exception {
+        Method method = DupHeaderApi.class.getMethod("getDup", String.class);
+        HttpTemplate template = new HttpTemplateBuilder(defaultModuleInfo, httpClient, method,
+                new Object[]{"dyn-val"}, DupHeaderApi.class).build();
+
+        // The static X-Dup is replaced by the dynamic value case-insensitively;
+        // the default Accept-Encoding (decompression on by default) is appended.
+        assertEquals(List.of(new Header("x-dup", "dyn-val"),
+                new Header("Accept-Encoding", "gzip, deflate")), template.getHeaders());
     }
 
     // -------------------------------------------------------------------------

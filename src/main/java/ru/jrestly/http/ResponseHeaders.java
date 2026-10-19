@@ -158,33 +158,47 @@ public class ResponseHeaders {
         this.version = version != null ? version : HttpClient.Version.HTTP_1_1;
         this.trailers = trailers != null ? List.copyOf(trailers) : List.of();
 
+        this.headerMap = buildValueMap(this.rawHeaders);
+        this.trailerMap = buildValueMap(this.trailers);
+
+        this.linkMap = null; // parsed lazily
+        this.parsedCookies = null; // parsed lazily
+        this.populated = true;
+    }
+
+    /**
+     * Builds a case-insensitive name-to-values index for the given headers
+     * (Candidate #14 fast paths):
+     * <ul>
+     *   <li>no headers (or only nameless ones) share the {@link Collections#emptyMap()}
+     *       singleton instead of an empty {@link TreeMap} plus unmodifiable wrapper;</li>
+     *   <li>single-value entries are compact immutable {@code List.of(value)} singletons
+     *       (no backing {@link ArrayList} allocation or wrapper layer);</li>
+     *   <li>multi-value entries keep the unmodifiable-list contract, and the map itself
+     *       remains unmodifiable with case-insensitive lookups.</li>
+     * </ul>
+     *
+     * @param headers the header list (already non-null), may be empty
+     * @return unmodifiable case-insensitive map, never {@code null}
+     */
+    private static Map<String, List<String>> buildValueMap(List<Header> headers) {
+        if (headers.isEmpty()) {
+            return Collections.emptyMap();
+        }
         Map<String, List<String>> map = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
-        for (Header h : rawHeaders) {
+        for (Header h : headers) {
             if (h != null && h.name() != null) {
                 map.computeIfAbsent(h.name(), k -> new ArrayList<>())
                         .add(h.value() != null ? h.value() : "");
             }
         }
-        // Wrap every value list: Collections.unmodifiableMap alone would still
-        // expose the backing ArrayLists, so a caller could mutate the holder's
-        // state through allValues()/map().get(...). Case-insensitive lookups are
-        // kept by wrapping the TreeMap in place.
-        map.replaceAll((name, values) -> Collections.unmodifiableList(values));
-        this.headerMap = Collections.unmodifiableMap(map);
-
-        Map<String, List<String>> tMap = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
-        for (Header h : this.trailers) {
-            if (h != null && h.name() != null) {
-                tMap.computeIfAbsent(h.name(), k -> new ArrayList<>())
-                        .add(h.value() != null ? h.value() : "");
-            }
+        if (map.isEmpty()) {
+            return Collections.emptyMap();
         }
-        tMap.replaceAll((name, values) -> Collections.unmodifiableList(values));
-        this.trailerMap = Collections.unmodifiableMap(tMap);
-
-        this.linkMap = null; // parsed lazily
-        this.parsedCookies = null; // parsed lazily
-        this.populated = true;
+        map.replaceAll((name, values) -> values.size() == 1
+                ? List.of(values.get(0))
+                : Collections.unmodifiableList(values));
+        return Collections.unmodifiableMap(map);
     }
 
     /**
@@ -199,15 +213,7 @@ public class ResponseHeaders {
             return;
         }
         this.trailers = List.copyOf(trailers);
-        Map<String, List<String>> tMap = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
-        for (Header h : this.trailers) {
-            if (h != null && h.name() != null) {
-                tMap.computeIfAbsent(h.name(), k -> new ArrayList<>())
-                        .add(h.value() != null ? h.value() : "");
-            }
-        }
-        tMap.replaceAll((name, values) -> Collections.unmodifiableList(values));
-        this.trailerMap = Collections.unmodifiableMap(tMap);
+        this.trailerMap = buildValueMap(this.trailers);
         Consumer<List<Header>> forwarder = this.trailerForwarder;
         if (forwarder != null) {
             forwarder.accept(this.trailers);

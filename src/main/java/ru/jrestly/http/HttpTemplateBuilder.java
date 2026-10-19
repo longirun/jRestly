@@ -338,8 +338,7 @@ public class HttpTemplateBuilder {
         if (body != null && body.length > 0) {
             EffectiveCompression compression = resolveCompression();
             if (compression.enabled() && body.length >= compression.minSizeBytes()) {
-                boolean hasContentEncoding = headers.stream()
-                        .anyMatch(h -> h.name() != null && h.name().equalsIgnoreCase("Content-Encoding"));
+                boolean hasContentEncoding = hasHeaderNamed(headers, "Content-Encoding");
                 if (!hasContentEncoding) {
                     ContentCompressor compressor = resolveCompressor(compression.algorithm());
                     if (compressor != null) {
@@ -538,12 +537,26 @@ public class HttpTemplateBuilder {
         } else if (staticHeaders.isEmpty()) {
             result = new ArrayList<>(authHeaders);
         } else {
-            result = new ArrayList<>(authHeaders);
-            Set<String> staticNames = new HashSet<>();
-            for (Header h : staticHeaders) {
-                staticNames.add(h.name().toLowerCase(Locale.ROOT));
+            // Candidate #14: merge without an intermediate HashSet and per-name
+            // lowercased strings — both header lists are small, so a direct
+            // case-insensitive scan is cheaper than building and hashing a name
+            // set. Parity: ambient headers not overridden by a static one keep
+            // their order, then all static headers (a static declaration wins
+            // over the ambient header with the same name).
+            result = new ArrayList<>(authHeaders.size() + staticHeaders.size());
+            for (int i = 0, authSize = authHeaders.size(); i < authSize; i++) {
+                Header ambient = authHeaders.get(i);
+                boolean overridden = false;
+                for (Header s : staticHeaders) {
+                    if (s.name().equalsIgnoreCase(ambient.name())) {
+                        overridden = true;
+                        break;
+                    }
+                }
+                if (!overridden) {
+                    result.add(ambient);
+                }
             }
-            result.removeIf(h -> staticNames.contains(h.name().toLowerCase(Locale.ROOT)));
             result.addAll(staticHeaders);
         }
 
@@ -561,14 +574,14 @@ public class HttpTemplateBuilder {
                                 continue;
                             }
                             String headerName = String.valueOf(entry.getKey());
-                            result.removeIf(h -> h.name().equalsIgnoreCase(headerName));
+                            removeHeaderByName(result, headerName);
                             appendHeaderValues(result, headerName, entry.getValue());
                         }
                         continue;
                     }
 
                     String name = p.requestHeaderName();
-                    result.removeIf(h -> h.name().equalsIgnoreCase(name));
+                    removeHeaderByName(result, name);
                     appendHeaderValues(result, name, arg);
                 }
             }
@@ -609,6 +622,32 @@ public class HttpTemplateBuilder {
         return result;
     }
 
+    // Candidate #14: in-place removal without a per-invocation Predicate instance —
+    // removeIf(h -> h.name().equalsIgnoreCase(name)) allocated a lambda per dynamic
+    // header on every request. Null names are skipped (ambient providers are a
+    // public seam) instead of failing inside the predicate.
+    private static void removeHeaderByName(List<Header> result, String name) {
+        for (int i = result.size() - 1; i >= 0; i--) {
+            Header h = result.get(i);
+            if (h.name() != null && h.name().equalsIgnoreCase(name)) {
+                result.remove(i);
+            }
+        }
+    }
+
+    // Candidate #14: plain scan instead of stream().anyMatch(...) — a stream
+    // pipeline allocates a Stream, a pipeline stage, and a predicate per check,
+    // and the checks run on the per-request hot path.
+    private static boolean hasHeaderNamed(List<Header> headers, String name) {
+        for (int i = 0, size = headers.size(); i < size; i++) {
+            Header h = headers.get(i);
+            if (h.name() != null && h.name().equalsIgnoreCase(name)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private void applyTracingHeaders(List<Header> result, String url) {
         // An active @Trace annotation overrides the client level (ADR-0042 §6.3);
         // a missing or disabled one falls back to the client-level TracePropagator (§6.4)
@@ -620,22 +659,20 @@ public class HttpTemplateBuilder {
             return;
         }
         if (effectiveTrace.w3c()) {
-            boolean hasTraceparent = result.stream()
-                    .anyMatch(h -> h.name() != null && h.name().equalsIgnoreCase("traceparent"));
+            boolean hasTraceparent = hasHeaderNamed(result, "traceparent");
             if (!hasTraceparent || effectiveTrace.forceNew()) {
                 if (effectiveTrace.forceNew()) {
-                    result.removeIf(h -> h.name() != null && h.name().equalsIgnoreCase("traceparent"));
+                    removeHeaderByName(result, "traceparent");
                 }
                 TraceContext tc = TraceContext.random();
                 result.add(new Header("traceparent", tc.toTraceparent()));
             }
         } else {
             String headerName = effectiveTrace.header().trim();
-            boolean hasHeader = result.stream()
-                    .anyMatch(h -> h.name() != null && h.name().equalsIgnoreCase(headerName));
+            boolean hasHeader = hasHeaderNamed(result, headerName);
             if (!hasHeader || effectiveTrace.forceNew()) {
                 if (effectiveTrace.forceNew()) {
-                    result.removeIf(h -> h.name() != null && h.name().equalsIgnoreCase(headerName));
+                    removeHeaderByName(result, headerName);
                 }
                 String id = UUID.randomUUID().toString();
                 result.add(new Header(headerName, id));
@@ -647,12 +684,15 @@ public class HttpTemplateBuilder {
     // createUrl() here would repeat path-variable substitution and query
     // joining on every ambient propagation, doubling URL assembly allocations.
     private void applyTracePropagator(List<Header> result, String url) {
+        // Candidate #14: pass the live merge list — the TraceRequestContext compact
+        // constructor applies the single unmodifiable view. Wrapping it here as well
+        // allocated a second pure wrapper object per ambient-trace request.
         TraceRequestContext traceContext = new TraceRequestContext(
                 controller,
                 method,
                 url,
                 requestMeta.httpMethod(),
-                Collections.unmodifiableList(result)
+                result
         );
         Map<String, String> injected = moduleInfo.getTracePropagator().inject(traceContext);
         if (injected != null) {
