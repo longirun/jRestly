@@ -228,6 +228,15 @@ class MoshiCodecTest {
     }
 
     @Test
+    @DisplayName("prettyPrint returns empty and blank payloads unchanged (nothing to re-print)")
+    void prettyPrintEmptyAndBlankPayloadsReturnUnchanged() {
+        // Best-effort contract: a payload with no JSON value (empty or
+        // whitespace-only) cannot be re-printed and comes back as is.
+        assertEquals("", codec.prettyPrint(""));
+        assertEquals("   ", codec.prettyPrint("   "));
+    }
+
+    @Test
     @DisplayName("prettyPrint formats arrays, booleans, and nulls properly")
     void prettyPrintTokensHandling() {
         String input = "[1,true,false,null,\"string\",{\"k\":2}]";

@@ -1,5 +1,37 @@
 # DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
+> **Сессия #311 (приём WIP прерванной #310 — верифицирован и закоммичен; хвост
+> пула 1-branch-файлов закрыт: GsonCodec L111 +1 тест, MoshiCodec L167 =
+> структурно недостижимая defensive не закрывается; гейт 1,689/1,689):
+> 1. *Приём WIP #310 (паттерн #155/#186/#254):* в дереве лежал полный комплект
+>    #310 без коммита (счётчик 311 + DRAFT-блок + 7 тест-файлов: CircuitBreaker/
+>    RateLimiter/TracePropagator/MultipartPartFlexibility/OnErrorParser/
+>    WireResponseUnit/HttpEngineResolver). Диффы прочитаны (все тестовые, main
+>    не тронут), гейт перепроверен: 1,687/1,687 green, BRANCH 4,017/4,433 =
+>    90.62% → закоммичено как есть (c4f620f) + починены искажённые символы
+>    в #310 блоке (гигиена памяти).
+> 2. *Хвост пула:* `GsonCodec.L111` — ленивый pretty-twin **cache-hit** ветвь
+>    закрыта тестом `GsonCodecTest.prettyPrintReusesCachedPrettyTwin` (второй
+>    `prettyPrint` на том же инстансе; контракт «created lazily on first use
+>    and cached» из javadoc L103-107). `MoshiCodec.L167` — switch `default`
+>    (JsonDataException «Unexpected token»): значение-позиция через публичный
+>    API исчерпывает ровно 6 case'ов (BEGIN_ARRAY/OBJECT/STRING/NUMBER/BOOLEAN/
+>    NULL), а пустой документ → Moshi `peek()` бросает `EOFException`
+>    (IOException), ловится до default — **структурно недостижимая defensive**,
+>    оставлена осознанно (паттерн #268 InMemoryHttpCache / #309 ApiKeyAuth).
+>    Тест `MoshiCodecTest.prettyPrintEmptyAndBlankPayloadsReturnUnchanged`
+>    добавлен как контрактный предохранитель best-effort (не для ветви).
+> 3. *Гейты:* **1,689/1,689** green во всех 5 модулях (+2, 0 failures/errors),
+>    javadoc чист под `-Werror`. JaCoCo: **BRANCH 4,018/4,433 = 90.64%**,
+>    INSTRUCTION **98.19%**, LINE **97.84%**, COMPLEXITY **88.90%** — рекорды;
+>    METHOD 1455/1455 и CLASS 149/149 — 100%.
+> 4. *Пул 1-2-branch-файлов — нить закрыта:* достижимая часть закрыта в
+>    #309/#310/#311; остаток = джиттер-зависимые (`RateLimiters` L66/L123,
+>    `RetryPolicy` L347/L355) + недостижимые defensive (`ApiKeyAuth` L127,
+>    `MoshiCodec` L167) — не трогать. Дальше: **№7 (rss/atom) разблокирован**
+>    (вводные Антона получены: настоящий сценарий, парсер НЕ в ядре) —
+>    следующий эпик, первый шаг = концепт/стенд-дизайн ADR-0068.
+
 > **Сессия #310 (гигиены git: обрыв `pull --rebase` закрыт — разрешён конфликт
 > mailbox с ответом Антона по №7; пул мелких ветвей JaCoCo закрыт — +12 тестов
 > против 6 недостающих ветвей; A/B по rss/atom получено: сравнение на
@@ -7,25 +39,27 @@
 > 1. *Восстановление git-состояния:* HEAD был detached в прерванной
 >    `pull --rebase origin agent-loop` (конфликт в `.agent/mailbox.md`,
 >    счётчик 310/ 306?), сессии #309-#310 локальный diff ещё не доведён.
->    Выручено: закоммичен mailbox с обеих сторон (инертия merge resolved
+>    Выручено: закоммичен mailbox с обеих сторон (конфликт merge resolved
 >    вручную — ответ Антона добавлен вместе с #309), rebase доехал до конца
->    (`agent-loop` = локальный #309 + origin), счётчик оставлен 310 (uncommitted),
->    важная находка: origin-ответ Антон «реальных сценарных степандах»).
+>    (`agent-loop` = локальный #309 + origin), счётчик оставлен 310 (uncommitted);
+>    важная находка: origin-ответ Антона — №7 = «настоящая, не синтетическая
+>    задача», парсер НЕ в ядре (конфликт с минималистичностью).
 > 2. *Пул недостающих ветвей закрыт (+12 тестов, 7 файлов, код main не тронут):*
 >    - `CircuitBreakerConfig.L54`: заранее недостижимая через JDK-методику
 >      `initCause(this)` — выдуманный `SelfCycledCauseThrowable` наследник
 >      `RuntimeException` с переопределением `getCause()`; покрывает guard
 >      ветвь «cause == throwable» в fault-классификации (`DEFAULT_RECORD_EXCEPTION`).
->    - `RateLimiters.L66/L92-94`: `tryAcquire(null)` (기본 empty-budget тест) +
+>    - `RateLimiters.L66/L92-94`: `tryAcquire(null)` (базовый empty-budget тест) +
 >      `preInterruptedTryAcquireFailsFastAndRestoresFlag` (без сети, чисто юнит).
 >    - `TraceIdGenerators.L76`: threadLocal генератор — бланк-CTR (`"   "`)
->      корректно фолбэчится на fallback (قبل был null/blank null-val case).
+>      корректно фолбэчится на fallback (раньше был только null case).
 >    - `TrailerCompletingInputStream.L36/L57`: bulk-read `read(sink,0,n)` на
 >      exhausted-потоке триггерит trailers-хук once-only (после single-byte
->      read ранее закрытого);supplier-возврат `null` treated как «нет трейлеров»
->      (tolerant контракты); supplier-throw поглощается (best-effort ADR-0059).
+>      read ранее закрытого); supplier-возврат `null` трактуется как «нет
+>      трейлеров» (tolerant контракты); supplier-throw поглощается
+>      (best-effort ADR-0059).
 >    - `FileContent.L93/48`: fail-fast валидация: `of(str, supplier, -1L)` → IAE
->      (negative contentLength), `of(Path.of("/"))` → IAE (()  path без имени).
+>      (negative contentLength), `of(Path.of("/"))` → IAE (path без имени).
 >    - `HttpEngineResolver.L45/L48`: сым-контракты resolve(settle) — null
 >      provider-iterable → JDK fallback; iterable с null-элементом ArrayList
 >      терпится (skip).
@@ -3214,13 +3248,15 @@ prettyPrint-контракты `JsonCodecAdapter`, null-элементы SPI-и�
 null-context/null-method Bearer/Basic, Basic bypass при `@Authorization`) — все
 документированные контракты, код main не тронут; **BRANCH 4,010/4,443 = 90.46%**,
 INSTRUCTION 98.15%, LINE 97.82%, COMPLEXITY 88.69% — рекорды; гейт **1,675/1,675**.
-Следующий ход: остатки пула 1-2-branch-файлов (`RateLimiters`, `RetryPolicy`,
-`OnErrorParser`, `HttpEngineResolver`, `TraceIdGenerators`, `GsonCodec`,
-`MoshiCodec`, `CircuitBreakerConfig`, `FileContent`, `TrailerCompletingInputStream`)
-или Кандидат №7 (rss/atom, ждёт A/B-ответа Антона).
+Следующий ход: остатки пула 1-2-branch-файлов — **закрыт в #310/#311**
+(достижимая часть; остаток = джиттер-зависимые + недостижимые defensive).
 **Кандидат №8 проверен (#287): регрессии dispatch/аллокаций нет** (см.
-пометку выше). №7 (rss/atom) — разблокируется ответом Антона
-(вопрос A/B задан в mailbox #284/#285). Highest ADR **0067**, next free **0068**.
+пометку выше). **№7 (rss/atom) — разблокирован (#310/#311)**: Антон ответил —
+«настоящая, не синтетическая задача», парсер НЕ в ядре (конфликт с
+минималистичностью); следующий эпик, первый шаг = концепт/стенд-дизайн
+ADR-0068 (fetch-and-parse сценарный стенд, парсер в benchmarks-скоупе,
+конкуренты raw OkHttp/Retrofit/Feign/Spring, метрики ops/sec/CPU/mem).
+Highest ADR **0067**, next free **0068**.
 Хвосты-кандидаты
 из аудит-нити (не эпики): валидация `@ExpectStatus`/`@FollowRedirects`
 (инварианты нигде не объявлены — фича, не дыра; #207, трогать лишь при

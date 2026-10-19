@@ -194,6 +194,20 @@ class GsonCodecTest {
     }
 
     @Test
+    @DisplayName("prettyPrint reuses the cached pretty twin across calls on the same codec instance")
+    void prettyPrintReusesCachedPrettyTwin() {
+        // The first call builds and caches the pretty-printing twin; the second
+        // must take the cache-hit branch and print identically.
+        String payload = "{\"name\":\"value\",\"nested\":{\"a\":1}}";
+
+        String first = codec.prettyPrint(payload);
+        String second = codec.prettyPrint(payload);
+
+        assertEquals(first, second, "both calls must pretty-print identically");
+        assertTrue(second.contains("\n"), "the cached twin must still pretty-print");
+    }
+
+    @Test
     @DisplayName("serialize wrapping JsonParseException into JsonSyntaxException")
     void serializeWrappingJsonParseException() {
         com.google.gson.Gson customGson = new com.google.gson.GsonBuilder()
