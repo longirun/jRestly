@@ -3,6 +3,27 @@
 User-facing changes per version. History prior to 0.7.0 (cycles 0.5.0 →
 0.6.1) lives in [ROADMAP.md](ROADMAP.md).
 
+## 0.11.0 — 2026-10-19 (unpublished)
+
+> *Unpublished — no git tag. Per the maintainer's versioning rule the
+> version lives in `build.gradle` and the release commit message; the
+> tag-based coordinates (JitPack) remain at `v0.6.1` until the maintainer
+> tags.*
+
+### Added
+
+- **Modern path template syntax (`{id}`)** — RFC 6570 standard brace placeholders `{id}` replace the legacy `${id}` syntax across all HTTP verb annotations, aligning jRestly with industry-standard conventions (Retrofit, JAX-RS, Spring, Feign). Details: [ADR-0067](docs/0.11.0/ADR-0067-public-api-conciseness-review.md).
+- **Concise HTTP verb declarations (`value()` attribute)** — `@Get("/path")`, `@Post("/path")`, `@Put("/path")`, `@Delete("/path")`, and `@Patch("/path")` can now be declared concisely without the verbose `path = ...` argument. Details: [ADR-0067](docs/0.11.0/ADR-0067-public-api-conciseness-review.md).
+- **Unnamed parameter bindings** — parameter annotations `@PathVariable`, `@RequestParam`, `@RequestHeader`, and `@Cookie` now seamlessly fall back to Java parameter names when compiled with `-parameters`, allowing clean declarations like `@PathVariable Long id` instead of `@PathVariable(name = "id") Long id`. Details: [ADR-0067](docs/0.11.0/ADR-0067-public-api-conciseness-review.md).
+- **Static query parameters in paths & `@TargetUrl` query merging** — verb paths can now include static query parameters (`@Get("/items?filter=active")`), properly merged with runtime dynamic `@RequestParam` arguments, and safely combined when paired with `@TargetUrl` without duplicate `?` delimiters. Details: [ADR-0067](docs/0.11.0/ADR-0067-public-api-conciseness-review.md).
+- **Real-world streaming benchmark suite & proven memory efficiency** — multi-client scenario benchmark (`FeedBenchmark`) published in `BENCHMARKS.md`, demonstrating that zero-copy streaming (`@Get InputStream`) saves **1.02 MB/op** on the default JDK engine and **>2.15 MB/op** on external engines (Apache HC5, OkHttp) on 1 MB payloads. `jRestly + engine-apache5` streaming achieves **30.4 ops/s** and **3.38 MB/op**, outperforming raw OkHttp and Retrofit 2. Details: [ADR-0068](docs/0.11.0/ADR-0068-real-feed-benchmark-fetch-and-parse.md) and [BENCHMARKS.md](BENCHMARKS.md).
+- **Pipeline decomposition & modular architecture** — monolithic `HttpTemplate` decomposed into `HttpTemplateBuilder`, `RequestBuilder`, `RequestExecutor`, and `ResponseHandler` with zero dispatch overhead or allocation penalty. Details: [ADR-0066](docs/0.11.0/ADR-0066-internal-code-structure-and-pipeline-decomposition.md).
+- **Record test coverage & JaCoCo quality gate** — test suite expanded to **1,710 tests** (0 failures, 0 errors). JaCoCo branch coverage reached an all-time record of **90.64%** (surpassing the 90% milestone), instruction coverage **98.19%**, line coverage **97.84%**, and 100% method/class coverage.
+
+### Changed
+
+- Core remains strictly zero-dependency on Java 21 `java.net.http.HttpClient` with zero third-party runtime dependencies in published POMs.
+
 ## 0.10.0 — 2026-10-17 (unpublished)
 
 > *Unpublished — no git tag. Per the maintainer's versioning rule the

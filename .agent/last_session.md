@@ -1,32 +1,31 @@
-# Last Session: #321 (2026-10-19)
+# Last Session: #322 (2026-10-19)
 
 ## Что сделано
 
-**Сессия #321: Дистилляция эпиков ADR-0067/ADR-0068 в `ROADMAP.md`, актуализация `DRAFT.md`, гигиена mailbox; гейт 1,710/1,710.**
+**Сессия #322: Упаковка релиза 0.11.0 (ADR-0069), переход на версию 0.11.0, обновление CHANGELOG.md, валидация POM-файлов, детальный ответ Антону по Netty; гейт 1,710/1,710.**
 
-1. *Приём состояния:* HEAD на #320, чистое дерево.
-2. *Осмысление и дистилляция в `ROADMAP.md`:*
-   - Добавлен раздел **`ADR-0067: Public API Conciseness Review & Ergonomics`**: миграция на `value()` в глаголах `@Get`/`@Post`/... (99 файлов), переход на плейсхолдеры `{id}`, безымянные биндинги параметров, поддержка статических query в пути с исправлением бага сшивки `@TargetUrl` (двойной `?`), документация Map-префикса `name[key]`.
-   - Добавлен раздел **`ADR-0068: Real-World Scenario: Feed Fetch & Parse Benchmark`**: честный сценарий fetch-and-parse на 11 arm'ах (jRestly vs 5 конкурентов), доказательство экономии памяти стримингом (>2 MB на 1 MB теле), jRestly+Apache5 быстрее raw OkHttp и Retrofit 2, оверхед zero-dep ядра ничтожен (+6.3 KB на 20 KB теле, +42 KB на 1 MB теле).
-   - Добавлен раздел **`Revision Check of Synthetic Benchmarks (Item №8)`**: подтверждено отсутствие регрессии dispatch-оверхеда (~6.6 µs/op) и аллокаций после масштабных рефакторингов zero-garbage и декомпозиции `HttpTemplate`.
-   - Обновлен баннер Current status (Highest ADR: 0068, next free: 0069, гейт 1,710/1,710).
-3. *Актуализация `DRAFT.md` и формирование нового пула кандидатов:*
-   - Кандидаты №6, №7, №8 закрыты.
-   - Сформирован актуальный пул на следующие сессии:
-     * **Кандидат №9 — Упаковка релиза 0.11.0 (ADR-0069):** версия `0.11.0` в `build.gradle`, release notes в `CHANGELOG.md`, проверка POM-метаданных;
-     * **Кандидат №10 — Java 21+ Pattern Matching & Sealed Architecture Audit:** аудит switch по типам и record patterns в диспетчеризации и резолверах ошибок;
-     * **Кандидат №11 — Экосистема кодеков: исследование субмодуля Proto / YAML.**
-4. *Гигиена mailbox:*
-   - Удалены промежуточные сообщения по фазам бенчмарка (#316, #319), сохранён итоговый аналитический ответ #320 и отправлен статус #321 Антону.
+1. *Приём состояния:* HEAD на #321, чистое дерево. Получен свежий вопрос/идея от Антона по Netty в `.agent/mailbox.md`.
+2. *Упаковка релиза 0.11.0 (ADR-0069):*
+   - Оформлен и принят `docs/0.11.0/ADR-0069-release-0.11.0-cycle.md`.
+   - Версия `0.10.0` обновлена до `0.11.0` в корневом `build.gradle` и трёх публикуемых субмодулях (`engine-okhttp/build.gradle`, `engine-apache5/build.gradle`, `codec-jackson-xml/build.gradle`).
+   - `CHANGELOG.md` дополнен секцией `## 0.11.0 — 2026-10-19 (unpublished)`.
+   - В `ROADMAP.md` зафиксирован статус `Cycle 0.11.0 — COMPLETE ✅`, Highest ADR обновлен до **0069**, next free: **0070**.
+3. *Верификация POM и гейтов:*
+   - `build/publications/mavenJava/pom-default.xml` подтвержден: версия `0.11.0`, ровно 0 runtime dependencies в core POM.
+   - `check` и `javadoc` под `-Werror` полностью зелёные.
+4. *Диалог с Антоном (Netty):*
+   - В `.agent/mailbox.md` дан детальный ответ с анализом преимуществ Netty (pooled off-heap ByteBuf, параллельный non-blocking I/O) и вызовов реализации (client keep-alive connection pool, push-to-pull streaming мост для `InputStream`).
+   - Предложено взять разработку субмодуля `jrestly-engine-netty` флагманским эпиком цикла 0.12.0 (ADR-0070) с интеграцией 12-м arm'ом в `FeedBenchmark`.
 5. *Гейт:* **1,710 / 1,710** green across all 5 modules; javadoc чист под `-Werror`.
 
-## Контекст для следующей сессии (#322)
+## Контекст для следующей сессии (#323)
 
 1. **Ветка** `agent-loop`.
-2. **Highest ADR:** **0068** (`docs/0.11.0/`), next free **0069**.
-3. **Эпики 0.11.0 (ADR-0066, ADR-0067, ADR-0068) завершены и дистиллированы.**
-4. **СЛЕДУЮЩИЙ ХОД:**
-   - Кандидат №9: оформление `ADR-0069-release-0.11.0-cycle.md`, переход на версию 0.11.0 в `build.gradle`, обновление `CHANGELOG.md`.
+2. **Highest ADR:** **0069** (`docs/0.11.0/`), next free **0070** (открывает цикл 0.12.0).
+3. **Релиз 0.11.0 упакован и проверен.**
+4. **СЛЕДУЮЩИЙ ХОД (цикл 0.12.0):**
+   - **Кандидат №10:** Старт эпика Netty Transport Engine — концепт/дизайн `docs/0.12.0/ADR-0070-http-engine-netty-transport.md` или прототип субмодуля `jrestly-engine-netty`.
+   - Либо **Кандидат №11:** аудит Java 21 Pattern Matching & Sealed Architecture.
 5. **Замечание по окружению:**
    - Команды gradle запускать с `GRADLE_USER_HOME=/tmp/opencode/gradle-home ./gradlew ...`.
 6. Метрики — гейт **1,710/1,710**; BRANCH 90.64%, INSTRUCTION 98.19%, LINE 97.84%, COMPLEXITY 88.90%, METHOD/CLASS 100%.

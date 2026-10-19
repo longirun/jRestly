@@ -2179,9 +2179,9 @@ Gates (session #241):
 
 ---
 
-> **Current status (2026-10-19).** Highest ADR issued: **0068**; next free: **0069**.
-> Cycle 0.10.0 packaged and verified; the 0.11.0 cycle candidates (ADR-0066 decomposition, ADR-0067 public API conciseness, ADR-0068 real-world feed benchmark) are completed and distilled below.
-> Live gate: **1,710/1,710** tests green across all five modules, 0 warnings under `-Werror`. JaCoCo: **100% Class Coverage (149/149)**, **100% Method Coverage (1455/1455)**, **98.19% Instructions**, **97.84% Lines**, **90.64% Branches (4,018/4,433)**, **88.90% Complexity** (historical records). The former 2825-line god-class `HttpTemplate` is decomposed into six package-private collaborators (0 missed branches each), public API migrated to concise `{id}` and `value()`, and real-world streaming benchmarks published in `BENCHMARKS.md`.
+> **Current status (2026-10-19).** Highest ADR issued: **0069**; next free: **0070**.
+> Cycle 0.11.0 packaged and verified (ADR-0069); version bumped to `0.11.0` in root and all published submodules.
+> Live gate: **1,710/1,710** tests green across all five modules, 0 warnings under `-Werror`. JaCoCo: **100% Class Coverage (149/149)**, **100% Method Coverage (1455/1455)**, **98.19% Instructions**, **97.84% Lines**, **90.64% Branches (4,018/4,433)**, **88.90% Complexity** (historical records). The former 2825-line god-class `HttpTemplate` is decomposed into package-private collaborators, public API migrated to concise `{id}` and `value()`, real-world streaming benchmarks published in `BENCHMARKS.md`, and 0.11.0 release notes published in `CHANGELOG.md`. Next cycle candidate: Netty Transport Engine (`jrestly-engine-netty`, ADR-0070).
 
 ## Internal Code Structure: HttpTemplate Decomposition (ADR-0066) — COMPLETE ✅ (2026-10-18, unreleased)
 
@@ -2281,6 +2281,22 @@ Synthetic microbenchmarks (ping, small JSON DTOs) only measure proxy dispatch an
 - Dispatch overhead: **6.63 µs/op** (well within the baseline target of 5–9 µs).
 - Allocations on synthetic calls: **29,136 B/op** (getUser) and **26,609 B/op** (ping), significantly lower than the ADR-0055 baseline (49,378 B/op and 47,392 B/op).
 - No regressions observed across network transports. Documented in `BENCHMARKS.md`.
+
+---
+
+## Cycle 0.11.0: Architectural Decomposition, API Conciseness & Streaming Performance — COMPLETE ✅ (2026-10-19, unreleased)
+
+> Source of truth: [`docs/0.11.0/ADR-0069-release-0.11.0-cycle.md`](docs/0.11.0/ADR-0069-release-0.11.0-cycle.md).
+> Minor release cycle consolidating ADR-0066, ADR-0067, and ADR-0068 into published version `0.11.0`.
+
+**Deliverables:**
+- **Pipeline modularity (ADR-0066):** Decomposition of `HttpTemplate` god-class into focused collaborators (`HttpTemplateBuilder`, `RequestBuilder`, `RequestExecutor`, `ResponseHandler`) with zero dispatch or allocation penalty.
+- **Modern API Ergonomics (ADR-0067):** Concise verb annotations (`value()` alias across 99 files), industry-standard `{id}` path placeholders, unnamed parameter bindings (`@PathVariable Long id`), static query in paths, and Map-prefix semantics.
+- **Empirical Streaming Supremacy (ADR-0068):** Scenario feed benchmark (`FeedBenchmark`) published in `BENCHMARKS.md` proving >1–2 MB/op memory savings via streaming, Apache5 engine outpacing raw OkHttp and Retrofit 2, and negligible zero-dep core overhead (+6.3 KB on 20 KB feeds, +42 KB on 1 MB feeds).
+- **Test suite & Coverage Records:** 1,710/1,710 tests green (+399 tests over 0.10.0), JaCoCo **Branch 90.64%** (historical record, first time over 90%), **Instruction 98.19%**, **Line 97.84%**, **Method 100%**, **Class 100%**.
+- **Build & Artifacts:** Version `0.11.0` in root `build.gradle` and submodules (`engine-okhttp`, `engine-apache5`, `codec-jackson-xml`), 0 warnings under `-Werror`, 0 runtime dependencies in core POM.
+
+---
 
 ## Post-0.5.0 shortlist (not scheduled — see ADR-0003)
 

@@ -1,5 +1,20 @@
 # DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
+> **Сессия #322 (упаковка релиза 0.11.0: ADR-0069, bump версии 0.11.0 в build.gradle и субмодулях, CHANGELOG.md, POM verification, ответ Антону по Netty; гейт 1,710/1,710):**
+> 1. *Приём состояния:* HEAD на #321, чистое дерево. Получен вопрос/идея Антона по Netty в `.agent/mailbox.md`.
+> 2. *Упаковка релиза 0.11.0 (ADR-0069):*
+>    - Создан `docs/0.11.0/ADR-0069-release-0.11.0-cycle.md` (Accepted), консолидирующий достижения цикла: декомпозиция `HttpTemplate` (ADR-0066), современная эргономика `{id}` / `value()` / unnamed bindings (ADR-0067), доказательство экономии памяти стримингом на реальном стенде (ADR-0068), исторический рекорд JaCoCo Branch 90.64% и рост до 1,710 тестов.
+>    - Версия обновлена с `0.10.0` на `0.11.0` в корневом `build.gradle` и трёх публикуемых субмодулях (`engine-okhttp`, `engine-apache5`, `codec-jackson-xml`).
+>    - `CHANGELOG.md` дополнен секцией `## 0.11.0 — 2026-10-19 (unpublished)`.
+>    - В `ROADMAP.md` зафиксирован статус `Cycle 0.11.0 — COMPLETE ✅`, Highest ADR обновлен до 0069, next free: 0070.
+> 3. *Проверка артефактов и POM:*
+>    - Прогнаны `check`, `javadoc` и `generatePomFileForMavenJavaPublication`.
+>    - `build/publications/mavenJava/pom-default.xml` проверен: версия `0.11.0`, ровно 0 runtime dependencies в core POM.
+> 4. *Ответ Антону и планирование 0.12.0:*
+>    - В `.agent/mailbox.md` отправлен детальный инженерный анализ использования Netty (`jrestly-engine-netty` на базе SPI `HttpEngine`, zero-copy off-heap memory, push-to-pull streaming мост) в качестве флагманского кандидата цикла 0.12.0 (ADR-0070).
+> 5. *Гейты:* **1,710/1,710** green во всех 5 модулях, javadoc чист под `-Werror`.
+> 6. *Дальше (#323):* старт цикла 0.12.0 с Кандидата №10 (`jrestly-engine-netty`, ADR-0070) или аудит Java 21 Pattern Matching (Кандидат №11).
+> 
 > **Сессия #321 (дистилляция эпиков ADR-0067/ADR-0068 в ROADMAP.md, актуализация активной зоны и формирование нового пула кандидатов; гейт 1,710/1,710):**
 > 1. *Приём состояния:* HEAD на #320, чистое дерево.
 > 2. *Осмысление и дистилляция в `ROADMAP.md`:*
@@ -3458,15 +3473,15 @@ INSTRUCTION 98.15%, LINE 97.82%, COMPLEXITY 88.69% — рекорды; гейт 
 Следующий ход: остатки пула 1-2-branch-файлов — **закрыт в #310/#311**
 (достижимая часть; остаток = джиттер-зависимые + недостижимые defensive).
 **Кандидат №8 проверен (#287): регрессии dispatch/аллокаций нет** (дистиллирован в `ROADMAP.md`).
-**№7 (rss/atom) закрыт полностью (#320):** стенд `FeedBenchmark` прогнан на 33 конфигурациях, результаты и аналитика занесены в `BENCHMARKS.md`, `ADR-0068` Accepted, эпик дистиллирован в `ROADMAP.md`. Гейт **1,710/1,710**. Highest ADR **0068**, next free **0069**.
+**№7 (rss/atom) закрыт полностью (#320):** стенд `FeedBenchmark` прогнан на 33 конфигурациях, результаты и аналитика занесены в `BENCHMARKS.md`, `ADR-0068` Accepted, эпик дистиллирован в `ROADMAP.md`. Гейт **1,710/1,710**.
+**Кандидат №9 закрыт полностью (#322):** цикл 0.11.0 упакован (ADR-0069), версия 0.11.0 выставлена в `build.gradle` и субмодулях, `CHANGELOG.md` обновлен, POM проверен, `ROADMAP.md` актуализирован. Highest ADR **0069**, next free **0070**.
 
-**Новый пул кандидатов на следующие сессии:**
-- **Кандидат №9 — Упаковка и релиз цикла 0.11.0 (ADR-0069):**
-  Консолидация трёх фундаментальных эпиков 0.11.0 (ADR-0066 декомпозиция `HttpTemplate`, ADR-0067 лаконичность публичного API `{id}` / `value()`, ADR-0068 сценарный бенчмарк потоковой обработки).
-  Обновление версии `0.10.0` → `0.11.0` в корневом `build.gradle` и субмодулях; составление release notes в `CHANGELOG.md`; проверка `pom` метаданных и `javadoc`.
-- **Кандидат №10 — Java 21+ Pattern Matching & Sealed Architecture Audit:**
+**Новый пул кандидатов на цикл 0.12.0:**
+- **Кандидат №10 — Netty Transport Engine (`jrestly-engine-netty`, ADR-0070):**
+  Исследование и создание нового субмодуля транспорта `jrestly-engine-netty` на базе SPI `HttpEngine` (по предложению Антона в mailbox). Pooled off-heap ByteBuf, асинхронный I/O, push-to-pull streaming мост для `InputStream`, включение в матрицу `FeedBenchmark` 12-м arm'ом для замера throughput и heap-аллокаций против Apache5 и OkHttp.
+- **Кандидат №11 — Java 21+ Pattern Matching & Sealed Architecture Audit:**
   Исследование возможностей Java 21 pattern matching for switch / record patterns в горячих точках пайплайна (разбор типов возврата, классификация ошибок в `ProblemDetailResolver`, обработка HTTP-статусов), дальнейшее устранение мелких оверхедов.
-- **Кандидат №11 — Экосистема кодеков: исследование субмодуля Proto / YAML:**
+- **Кандидат №12 — Экосистема кодеков: исследование субмодуля Proto / YAML:**
   Исследование необходимости создания легковесного адаптера для Protocol Buffers или YAML на базе существующего `PayloadCodec` SPI (по образу `jrestly-codec-jackson-xml`).
 Хвосты-кандидаты
 из аудит-нити (не эпики): валидация `@ExpectStatus`/`@FollowRedirects`
