@@ -1,80 +1,70 @@
-# Last Session: #302 (2026-10-19)
+# Last Session: #303 (2026-10-19)
 
 ## Что сделано
 
-**Сессия #302: хвосты `HttpTemplateBuilder`-аудита #301 закрыты — удалены dead
-`default`-ветки switch `CollectionFormat`; покрыто объединение заголовка
-`Cookie` с `@Cookie`; покрыт `HttpTemplate.getKnownBodySize()`; достигнуто
+**Сессия #303: свободный аудит `ResponseHeaders` & `CircuitBreakers` — устранены
+dead-checks в `ResponseHeaders` и `CircuitBreakers`, покрыт `CircuitBreakerOpenException(null)`;
 100% METHOD/CLASS покрытие (1449/1449, 149/149); новые рекорды JaCoCo
-(INSTRUCTION 98.09%, BRANCH 89.80%); гейт 1,660/1,660.**
+(BRANCH 89.98%, COMPLEXITY 88.10%); гейт 1,661/1,661.**
 
-1. *Dead `default`-ветки устранены:* в `appendFormattedItems` и
-   `appendMultipartCollectionParts` нормализация `DEFAULT`→`EXPLODE`
-   оставляла ветку `default ->` мёртвым кодом, дублирующим `EXPLODE` (по 2
-   missed branches на метод в JaCoCo). Заменено на исчерпывающий switch
-   `case EXPLODE, DEFAULT ->`, покрывающий все 7 констант `CollectionFormat`
-   без `default`.
-2. *Cookie merging:* покрыта ветка `createHeaders` в `HttpTemplateBuilder` —
-   объединение существующего заголовка `Cookie` (статического или переданного
-   через `@RequestHeader(name = "Cookie")`) с вычисленными куками из `@Cookie`
-   аннотаций (`result.set(i, new Header("Cookie", h.value() + "; " + cookieHeader))`).
-   *Грабля сессии:* `@RequestHeader("Cookie")` в Java синтаксически выставляет
-   `value = "Cookie"` (который на параметрах игнорируется), а `name` оставался
-   пустым и брался из Java-параметра — закреплена каноническая форма
-   `@RequestHeader(name = "Cookie")`.
-3. *METHOD coverage 100%:* добавлен тест вызова `HttpTemplate.getKnownBodySize()`
-   для Path тела (проверка совпадения с `Files.size(tempFile)`, ADR-0036
-   Amendment #298), закрывший последний незадействованный метод проекта:
-   METHOD **1449/1449 (100.00%)**.
-4. *Гейты:* **1,660/1,660** green во всех 5 модулях (+1 новый тест, 0 failures/errors),
+1. *ResponseHeaders dead-checks:*
+   - `version()`: поле `this.version` гарантированно non-null (инициализировано `HTTP_1_1`
+     и нормализуется в `doPopulate`), тернарный оператор `version != null ? version : HTTP_1_1`
+     заменён на прямой `return version;` (-1 missed branch, -1 missed instruction).
+   - `firstTrailer(name)` и `firstValue(name)`: списки в `trailerMap` и `headerMap` не бывают пустыми
+     (создаются через `computeIfAbsent().add()`), убраны избыточные проверки `values.isEmpty()` (-2 missed branches).
+   - `declaredTrailers()`: значения из `allValues("Trailer")` всегда non-null строки, убран избыточный `val != null` (-1 missed branch).
+   - `parseCookies()`: элементы из `allValues("Set-Cookie")` и `allValues("Set-Cookie2")` всегда non-null,
+     убраны избыточные `header != null` (-2 missed branches).
+   - `cookieMap()`: `HttpCookie.parse()` гарантирует non-null имя и значение (пустое значение даёт `""`),
+     убраны избыточные `c.getName() != null` и `c.getValue() != null ? ... : ""` (-2 missed branches, -1 missed instruction).
+   - *Итог по `ResponseHeaders`:* INSTRUCTION **1222/1222 (100.00%)**, LINE **281/281 (100.00%)**, missed branches упали с 15 до **7**.
+2. *CircuitBreakers:* в `evaluateHalfOpenTransition()` устранена недостижимая ветка `else -> tripToOpen()`:
+   неудачи в `HALF_OPEN` мгновенно триггерят `tripToOpen()` в `recordFailure`, поэтому метод
+   `evaluateHalfOpenTransition()` вызывается исключительно из `recordSuccess()`, где `halfOpenFailureCount`
+   гарантированно равен 0. Метод упрощён до чистой логики:
+   `if (halfOpenSuccessCount >= config.permittedNumberOfCallsInHalfOpenState()) { resetClosedState(); }`.
+3. *CircuitBreakerOpenException:* покрыт случай `remainingWaitDuration == null` (дефолт `Duration.ZERO` и `0 ms` в сообщении).
+   `CircuitBreakerOpenException` достиг **100% покрытия** по всем метрикам (INSTRUCTION, BRANCH, LINE, COMPLEXITY, METHOD, CLASS).
+4. *Гейты:* **1,661/1,661** green во всех 5 модулях (+1 новый тест, 0 failures/errors),
    javadoc чист под `-Werror`.
 5. *JaCoCo (новые исторические рекорды):*
    - CLASS: **149/149 (100.00%)**
    - METHOD: **1449/1449 (100.00%)**
-   - INSTRUCTION: 30,974/31,576 (**98.09%**, было 97.91%)
-   - BRANCH: 3,995/4,449 (**89.80%**, было 89.63%)
-   - LINE: 6,729/6,884 (**97.75%**, было 97.62%)
-   - COMPLEXITY: 3,256/3,706 (**87.86%**, было 87.74%)
-   - `HttpTemplateBuilder`: missed branches 121 → **114**, missed instructions 157 → **95**.
+   - INSTRUCTION: 30,923/31,525 (**98.09%**)
+   - BRANCH: 3,985/4,429 (**89.98%**, было 89.80% — всего 2 ветки до 90%!)
+   - LINE: 6,723/6,878 (**97.75%**)
+   - COMPLEXITY: 3,256/3,696 (**88.10%**, было 87.86%)
 
-## Контекст для следующей сессии (#303)
+## Контекст для следующей сессии (#304)
 
-1. **Ветка** `agent-loop`; HEAD — коммит сессии #302 (см. `git log -1`).
+1. **Ветка** `agent-loop`; HEAD — коммит сессии #303 (см. `git log -1`).
 2. **Highest ADR:** **0067** (`docs/0.11.0/`), next free **0068**.
 3. **СЛЕДУЮЩИЙ ХОД (автономный, бэклог):**
-   - (a) `byte[]`-скаляр в `appendHeaderValues`/`appendParamValues` (решить wire-формат:
+   - (a) **Рубеж 90% BRANCH coverage** (осталось всего 2 ветки!):
+     - `ru/jrestly/resilience/RateLimiters$TokenBucketRateLimiter`: прерывание ожидания в `tryAcquire` (InterruptedException) или `elapsed <= 0` в `refill`;
+     - `ru/jrestly/resilience/CircuitBreakers$InMemoryCircuitBreaker`: ветки в `checkAutoHalfOpenTransition` или `recordOutcomeInRingBuffer`;
+     - `ru/jrestly/engine/JdkHttpEngine` или `ru/jrestly/tracing/TraceContext`;
+   - (b) `byte[]`-скаляр в `appendHeaderValues`/`appendParamValues` (решить wire-формат:
      ISO-8859-1 vs Base64 vs `IllegalArgumentException: Unsupported parameter type byte[]`;
      задокументировать тип аргумента в javadoc аннотаций + TDD);
-   - ИЛИ (b) свободный аудит оставшихся кластеров: `ru.jrestly.compression`
-     (321 строка), `ru.jrestly.resilience`, `ru.jrestly.codec`, `ru.jrestly.engine`;
    - Кандидат №7 (rss/atom) всё ещё заблокирован на A/B-слове Антона
      (parse-only vs fetch-and-parse; ядро vs codec-субмодуль — с #284).
 4. **Грабли/паттерны (важно!):**
+   - В `ResponseHeaders`: списки в `headerMap` и `trailerMap` создаются через `computeIfAbsent().add()`,
+     поэтому они никогда не бывают пустыми; значения в них всегда non-null строки.
+   - `HttpCookie.parse()` никогда не возвращает null для имени или значения (пустое значение — это `""`).
+   - В `CircuitBreakers`: ошибки в `HALF_OPEN` сразу триггерят `tripToOpen()` в `recordFailure`,
+     поэтому `evaluateHalfOpenTransition()` вызывается только на успехе и проверяет `halfOpenSuccessCount`.
    - `@RequestHeader`: атрибут `value()` задаёт статический заголовок на методе/типе
      и ИГНОРИРУЕТСЯ на параметрах метода! На параметрах для явного имени всегда
      использовать `@RequestHeader(name = "X")`, иначе имя берется из имени Java-параметра (грабля #302).
    - Switch по enum `CollectionFormat`: константы `EXPLODE, DEFAULT` объединяются
      в один case, делая switch exhaustive без dead `default`-веток.
-   - Двойной расчёт URL закрыт: URL — один раз в `build()`, проброс через
-     `createHeaders(url)` (Amendment #301).
    - Сейт для «счётчиков вызовов» без изменения продакшена: `@TargetUrl`
      принимает `CharSequence` — аргумент со счётчиком `toString()`.
-   - 401-refresh: sync-аккумуляция в `try/finally` вокруг второй
-     `executeWithRetries`; async — в `whenComplete` на `secondPhase`.
-   - `knownBodySize` в `WireRequest` — 9-й компонент; 8-аргументный
-     конструктор — совместимый, держит. Withers payload-aware.
-   - Supplier-rendered тела осознанно -1 (Amendment #193).
-   - Map-префикс читает `rawRequestParamName()` — **осознанно** (ADR-0017
-     Amendment #296). Не «чинить» без явного wire-решения.
-   - Плейсхолдеры `{id}`: маска `\{([^}]*)}`; незакрытая `{id` ловится
-     гейтом `URI.create` (#211).
-   - Статическая query в пути: merge-порядок `путь ?…` → `&` → query target
-     → `&` → динамика (фикс #295, `createUrl`).
-   - Implicit `value` — только один абстрактный метод (грабля #292).
-   - `@MultipartFormFile.partName()` — required, грабля #209.
-   - Исторические ADR со OLD-снапшотами не переписывать (Amendment — ок).
    - Счётчики тестов — питоном по `TEST-*.xml` всех модулей (`bc` нет).
      Фильтр тестов `:test --tests 'X'` (ведущий `:` обязателен).
    - `GRADLE_USER_HOME=/tmp/opencode/gradle-home` обязателен.
-   - Часовой пояс контейнера +04 (логи log4j — UTC); счётчик сессий: **302**
-     (закоммичен в этом коммите — не докручивать повторно, следующий — 303).
+   - Часовой пояс контейнера +04 (логи log4j — UTC); счётчик сессий: **303**
+     (закоммичен в этом коммите — не докручивать повторно, следующий — 304).

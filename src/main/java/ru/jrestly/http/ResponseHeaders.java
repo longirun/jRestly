@@ -292,7 +292,7 @@ public class ResponseHeaders {
      * @return the negotiated HTTP version, never {@code null} (defaults to {@link HttpClient.Version#HTTP_1_1})
      */
     public HttpClient.Version version() {
-        return version != null ? version : HttpClient.Version.HTTP_1_1;
+        return version;
     }
 
     /**
@@ -333,7 +333,7 @@ public class ResponseHeaders {
             return Optional.empty();
         }
         List<String> values = trailerMap.get(name);
-        if (values == null || values.isEmpty()) {
+        if (values == null) {
             return Optional.empty();
         }
         return Optional.ofNullable(values.get(0));
@@ -366,12 +366,10 @@ public class ResponseHeaders {
         }
         List<String> result = new ArrayList<>();
         for (String val : values) {
-            if (val != null) {
-                for (String part : val.split(",")) {
-                    String trimmed = part.trim();
-                    if (!trimmed.isEmpty()) {
-                        result.add(trimmed);
-                    }
+            for (String part : val.split(",")) {
+                String trimmed = part.trim();
+                if (!trimmed.isEmpty()) {
+                    result.add(trimmed);
                 }
             }
         }
@@ -387,7 +385,7 @@ public class ResponseHeaders {
     public Optional<String> firstValue(String name) {
         Objects.requireNonNull(name, "header name must not be null");
         List<String> values = headerMap.get(name);
-        if (values != null && !values.isEmpty()) {
+        if (values != null) {
             return Optional.of(values.get(0));
         }
         return Optional.empty();
@@ -615,7 +613,7 @@ public class ResponseHeaders {
         }
         List<HttpCookie> result = new ArrayList<>();
         for (String header : setCookieHeaders) {
-            if (header != null && !header.isBlank()) {
+            if (!header.isBlank()) {
                 try {
                     result.addAll(HttpCookie.parse(header));
                 } catch (IllegalArgumentException ignored) {
@@ -623,7 +621,7 @@ public class ResponseHeaders {
             }
         }
         for (String header : setCookie2Headers) {
-            if (header != null && !header.isBlank()) {
+            if (!header.isBlank()) {
                 try {
                     result.addAll(HttpCookie.parse(header));
                 } catch (IllegalArgumentException ignored) {
@@ -664,9 +662,7 @@ public class ResponseHeaders {
     public Map<String, String> cookieMap() {
         Map<String, String> map = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
         for (HttpCookie c : cookies()) {
-            if (c.getName() != null) {
-                map.put(c.getName(), c.getValue() != null ? c.getValue() : "");
-            }
+            map.put(c.getName(), c.getValue());
         }
         return Collections.unmodifiableMap(map);
     }

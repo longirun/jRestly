@@ -243,14 +243,8 @@ public final class CircuitBreakers {
         }
 
         private void evaluateHalfOpenTransition() {
-            int totalHalfOpen = halfOpenSuccessCount + halfOpenFailureCount;
-            if (totalHalfOpen >= config.permittedNumberOfCallsInHalfOpenState()) {
-                float rate = (halfOpenFailureCount * 100.0f) / totalHalfOpen;
-                if (rate < config.failureRateThreshold() && halfOpenFailureCount == 0) {
-                    resetClosedState();
-                } else {
-                    tripToOpen();
-                }
+            if (halfOpenSuccessCount >= config.permittedNumberOfCallsInHalfOpenState()) {
+                resetClosedState();
             }
         }
     }

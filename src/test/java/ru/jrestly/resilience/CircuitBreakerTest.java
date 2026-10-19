@@ -352,6 +352,15 @@ class CircuitBreakerTest {
         // Subsequent call is rejected because circuit is OPEN
         assertFalse(cb.tryAcquirePermission());
     }
+
+    @Test
+    @DisplayName("CircuitBreakerOpenException handles null remainingWaitDuration gracefully")
+    void openExceptionWithNullRemainingDuration() {
+        CircuitBreakerOpenException ex = new CircuitBreakerOpenException("null-duration-cb", null);
+        assertEquals("null-duration-cb", ex.circuitBreakerName());
+        assertEquals(Duration.ZERO, ex.remainingWaitDuration());
+        assertTrue(ex.getMessage().contains("CircuitBreaker 'null-duration-cb' is OPEN (remaining wait: 0 ms)"));
+    }
 }
 
 

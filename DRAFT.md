@@ -1,5 +1,14 @@
 # DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
+> **Сессия #303 (свободный аудит ResponseHeaders & CircuitBreakers: устранены dead checks в ResponseHeaders и CircuitBreakers, покрыт CircuitBreakerOpenException(null); 100% METHOD/CLASS coverage — 1449/1449, 149/149; BRANCH 89.98%, COMPLEXITY 88.10%; гейт 1,661/1,661):**
+> 1. *ResponseHeaders dead-checks:* (a) `version()` — `this.version` гарантированно non-null (инициализирован и нормализуется в `doPopulate`), тернарный оператор заменен на прямой возврат; (b) `firstTrailer` и `firstValue` — списки в `trailerMap` и `headerMap` не бывают пустыми, убраны избыточные `values.isEmpty()` проверки; (c) `declaredTrailers` — убран избыточный `val != null`; (d) `parseCookies` — убраны избыточные `header != null`; (e) `cookieMap` — убраны мертвые `c.getName() != null` и `c.getValue() != null ? ... : ""` (парсер `HttpCookie` гарантирует не-null). `ResponseHeaders` достиг 100% инструкций (1222/1222) и строк (281/281), missed branches упали с 15 до 7.
+> 2. *CircuitBreakers:* в `evaluateHalfOpenTransition()` устранена недостижимая ветка `else -> tripToOpen()`: неудачи в `HALF_OPEN` мгновенно триггерят `tripToOpen()` в `recordFailure`, поэтому в `evaluateHalfOpenTransition()` приходят только успешные вызовы (схема возвращается в `CLOSED` при достижении порога пробных вызовов).
+> 3. *CircuitBreakerOpenException:* покрыт случай `remainingWaitDuration == null` (дефолт `Duration.ZERO`). `CircuitBreakerOpenException` достиг 100% покрытия инструкций и ветвей.
+> 4. *Гейты:* **1,661/1,661** green во всех 5 модулях (+1 новый тест, 0 failures/errors), javadoc чист под `-Werror`.
+>    JaCoCo: CLASS **149/149 (100%)**, METHOD **1449/1449 (100%)**, INSTRUCTION **98.09%**,
+>    BRANCH 3985/4429 (**89.98%**, было 89.80%), LINE **97.75%**, COMPLEXITY **88.10%** (было 87.86%) — новый исторический рекорд.
+> 5. *Дальше:* хвост `byte[]`-скаляра в headers/params (решить wire-формат) или аудит engine/tracing/codec. Кандидат №7 (rss/atom) ждёт A/B-ответа Антона. Highest ADR **0067**, next free **0068**.
+
 > **Сессия #302 (хвосты HttpTemplateBuilder-аудита: удалены dead default-ветки
 > switch CollectionFormat; покрыто объединение заголовка Cookie с @Cookie;
 > проверен Path knownBodySize; 100% METHOD/CLASS coverage — 1449/1449,
@@ -3086,12 +3095,15 @@ wire-формат не менялся). **Кандидат №1 (test-javadoc) �
 метрик — закрыт (#299):** WIP прерванной #298 принят и верифицирован —
 engine-reported byte accounting (`WireRequest.knownBodySize`,
 `HttpTemplateBuilder.fileSizeBytes`, `MetricsNotifier.requestBytes`),
-ADR-0036 Amendment #298, гейт **1,656/1,656**. **Свободный аудит
-`HttpTemplateBuilder`-кластера — выполнен (#301):** двойной расчёт URL на
-ambient-пути TracePropagator закрыт (ADR-0042 Amendment #301, гейт
-**1,659/1,659**); хвосты: byte[]-скаляр в headers/params (решить wire-формат),
-dead `default`-ветки. Следующий ход: эти хвосты, валидация
-`@ExpectStatus`/`@FollowRedirects` (хвост ниже) или новый свободный аудит.
+ADR-0036 Amendment #298, гейт **1,656/1,656**. **Свободный аудит `HttpTemplateBuilder`-кластера — выполнен (#301, #302):** двойной расчёт URL на
+ambient-пути TracePropagator закрыт (ADR-0042 Amendment #301, гейт **1,659/1,659**);
+dead `default`-ветки в switch `CollectionFormat` устранены, Cookie merging покрыт,
+Path knownBodySize проверен, достигнуто 100% METHOD/CLASS coverage (сессия #302, гейт **1,660/1,660**).
+**Свободный аудит ResponseHeaders & CircuitBreakers — выполнен (#303):** устранены dead-checks
+в `ResponseHeaders` (version, firstTrailer, declaredTrailers, firstValue, parseCookies, cookieMap),
+устранена dead else-ветка в `CircuitBreakers.evaluateHalfOpenTransition()`, покрыт
+`CircuitBreakerOpenException(null)`, гейт **1,661/1,661**, BRANCH достигла **89.98%**.
+Следующий ход: хвост byte[]-скаляра в headers/params (решить wire-формат) или аудит engine/tracing/codec.
 **Кандидат №8 проверен (#287): регрессии dispatch/аллокаций нет** (см.
 пометку выше). №7 (rss/atom) — разблокируется ответом Антона
 (вопрос A/B задан в mailbox #284/#285). Highest ADR **0067**, next free **0068**.
