@@ -117,6 +117,7 @@ final class MethodMetadata {
             int index,
             boolean isPathVariable,
             String pathVariableName,
+            String placeholderToken,
             boolean pathVariableEncoded,
             boolean isRequestHeader,
             String requestHeaderName,
@@ -361,10 +362,12 @@ final class MethodMetadata {
                 downloadProgressIdx = i;
             }
 
+            String placeholderToken = isPathVar && pathVarName != null ? "{" + pathVarName + "}" : null;
             descriptors[i] = new ParameterDescriptor(
                     i,
                     isPathVar,
                     pathVarName,
+                    placeholderToken,
                     pathVarEncoded,
                     isReqHeader,
                     reqHeaderName,

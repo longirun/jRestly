@@ -1,5 +1,21 @@
 # DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
+> **Сессия #327 (Zero-Allocation URI Composition & RFC 3986 Fast-Paths: ADR-0072 Accepted, single-pass createUri/appendQuery, UriEncoder, cached placeholderToken, 100% паритет, гейт 1,747/1,747):**
+> 1. *Приём состояния:* HEAD на #326, чистое дерево. Аудит Pattern Matching и Sealed Architecture зафиксирован.
+> 2. *ADR-0072 оформлен (`docs/0.12.0/ADR-0072-zero-allocation-uri-composition-and-fast-paths.md`, Accepted):*
+>    - **Проблема:** при сборке URI с query-параметрами на горячем пути диспетчеризации аллоцировалось до 10–15 временных объектов: промежуточный `StringBuilder query`, строки из `URLEncoder.encode(...).replace("+", "%20")` даже для чистых ASCII-чисел/идентификаторов (`"42"`, `"page"`), `query.toString()`, подстроки `base` и `fragment` в `appendQuery`, конкатенация `base + separator + query + fragment`. Кроме того, подстановка переменных пути каждый раз конкатенировала `"{" + p.pathVariableName() + "}"`.
+>    - **Решение и архитектура:**
+>      * `HttpTemplate.createUri`: single-pass сборка в один предварительно выделенный `StringBuilder` с использованием `CharSequence.append(url, start, end)` без создания подстрок `base` и `fragment`. Параметры и значения пишутся напрямую в результирующий буфер.
+>      * `HttpTemplate.appendQuery`: устранена аллокация промежуточных подстрок `substring`, сборка через `CharSequence`-слайсинг.
+>      * `UriEncoder`: введен легковесный package-private хелпер с инвариантом `isUnreserved(s)` (`[a-zA-Z0-9_.*-]`). Для строк из unreserved ASCII символов `encode(s)` возвращает исходный `String` instance (0 аллокаций!), а `encodeTo(s, sb)` пишет напрямую в целевой буфер без создания промежуточных строк.
+>      * `MethodMetadata.ParameterDescriptor`: добавлено поле `placeholderToken` (e.g. `"{id}"`), предвычисляемое один раз при парсинге метода, исключая конкатенацию токена плейсхолдера при каждом вызове.
+>      * Устранен неиспользуемый приватный метод `encode` в `HttpTemplate`.
+> 3. *Тесты (+8 тестов, гейт 1,747/1,747):*
+>    - `UriEncoderTest`: 8 исчерпывающих тестов (unreserved matching, reserved rejection, encode null/empty, unreserved identity instance, URLEncoder parity на спецсимволах/пробелах/юникоде, encodeTo, appendQuery инварианты, single-pass createUri со сложными путями, существующими query, fragments и fragment-'?').
+>    - `MethodMetadataTest`: проверка кэширования `placeholderToken`.
+> 4. *Гейты:* **1,747 / 1,747** green во всех 6 модулях (root 1619 + engine-okhttp 25 + engine-apache5 25 + engine-netty 26 + codec-jackson-xml 15 + benchmarks 37). Javadoc чист под `-Werror`. JaCoCo: BRANCH **90.65%** (4,051/4,469 — новый исторический рекорд!), INSTRUCTION **98.14%**, LINE **97.78%**, COMPLEXITY **88.90%**, METHOD **100% (1458/1458)**, CLASS **100% (150/150)**.
+> 5. *Дальше (#328):* выбор следующего эпика цикла 0.12.0: Кандидат №12 (исследование экосистемы кодеков Proto/YAML) или другие задачи бэклога.
+>
 > **Сессия #326 (Java 21+ Pattern Matching & Sealed Architecture Audit: ADR-0071, рефакторинг dispatch/failure/serialization switch, 100% паритет, гейт 1,739/1,739):**
 > 1. *Приём состояния:* HEAD на #325, чистое дерево. Субмодуль `engine-netty` и бенчмарк-матрица зафиксированы.
 > 2. *ADR-0071 оформлен (`docs/0.12.0/ADR-0071-java-21-pattern-matching-and-sealed-architecture.md`, Accepted):*
@@ -3553,12 +3569,13 @@ INSTRUCTION 98.15%, LINE 97.82%, COMPLEXITY 88.69% — рекорды; гейт 
 
 **Кандидат №10 закрыт полностью (#325):** Netty Transport Engine (`jrestly-engine-netty`, ADR-0070) реализован, все фазы 1–3 завершены, замеры опубликованы в `BENCHMARKS.md`, ADR-0070 Accepted, дистиллирован в `ROADMAP.md`.
 **Кандидат №11 закрыт полностью (#326):** Java 21+ Pattern Matching & Sealed Architecture Audit (ADR-0071 Accepted). Рефакторинг на pattern matching switch в `CircuitBreakerConfig`, `ProblemDetail`, `HttpTemplateBuilder`, `HttpTemplate`. Доказан и закреплен non-sealed статус публичных SPI и контекстов. Гейт вырос до **1,739/1,739**.
+**Кандидат №13 закрыт полностью (#327):** Zero-Allocation URI Composition & RFC 3986 Fast-Paths (ADR-0072 Accepted). Single-pass сборка в `createUri`/`appendQuery`, unreserved ASCII fast-path в `UriEncoder`, кэширование `placeholderToken` в `MethodMetadata.ParameterDescriptor`. Гейт вырос до **1,747/1,747**, ветви JaCoCo на рекорде **90.65%**. Highest ADR **0072**, next free **0073**.
 
 **Актуальный пул кандидатов цикла 0.12.0:**
 - **Кандидат №12 — Экосистема кодеков: исследование субмодуля Proto / YAML (`codec-protobuf` / `codec-yaml`):**
   Исследование необходимости создания легковесного адаптера для Protocol Buffers или YAML на базе существующего `PayloadCodec` SPI (по образу `jrestly-codec-jackson-xml`).
-- **Кандидат №13 — Аудит и оптимизация URI-композиции и RFC 3986/RFC 9110 Fast-Paths:**
-  Исследование возможностей прямого zero-allocation форматирования query параметров и path плейсхолдеров для дальнейшего снижения наносекундных оверхедов.
+- **Кандидат №14 — Дальнейшая оптимизация аллокаций HTTP заголовков и W3C Tracing context:**
+  Исследование устранения промежуточных `ArrayList`/`HashMap` при парсинге и мердже статических и динамических заголовков.
 Хвосты-кандидаты
 из аудит-нити (не эпики): валидация `@ExpectStatus`/`@FollowRedirects`
 (инварианты нигде не объявлены — фича, не дыра; #207, трогать лишь при

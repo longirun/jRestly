@@ -2179,9 +2179,9 @@ Gates (session #241):
 
 ---
 
-> **Current status (2026-10-19).** Highest ADR issued: **0071**; next free: **0072**.
-> Cycle 0.11.0 packaged and verified (ADR-0069); version bumped to `0.11.0` in root and all published submodules. Cycle 0.12.0 flagship epic Netty Transport Engine (`jrestly-engine-netty`, ADR-0070) COMPLETE ✅, Java 21+ Pattern Matching & Sealed Architecture Audit (ADR-0071) COMPLETE ✅.
-> Live gate: **1,739/1,739** tests green across all six modules, 0 warnings under `-Werror`. JaCoCo: **100% Class Coverage (149/149)**, **100% Method Coverage (1456/1456)**, **98.11% Instructions**, **97.76% Lines**, **90.52% Branches (3,993/4,411)**, **88.81% Complexity** (historical records). Modern Java 21 type patterns, pattern guards (`when`), and declarative switch dispatches adopted across core pipeline with 0 allocations penalty. Public SPI and telemetry contexts verified non-sealed for mockability and user extensibility.
+> **Current status (2026-10-19).** Highest ADR issued: **0072**; next free: **0073**.
+> Cycle 0.11.0 packaged and verified (ADR-0069); version bumped to `0.11.0` in root and all published submodules. Cycle 0.12.0 flagship epic Netty Transport Engine (`jrestly-engine-netty`, ADR-0070) COMPLETE ✅, Java 21+ Pattern Matching & Sealed Architecture Audit (ADR-0071) COMPLETE ✅, Zero-Allocation URI Composition & RFC 3986 Fast-Paths (ADR-0072) COMPLETE ✅.
+> Live gate: **1,747/1,747** tests green across all six modules, 0 warnings under `-Werror`. JaCoCo: **100% Class Coverage (150/150)**, **100% Method Coverage (1458/1458)**, **98.14% Instructions**, **97.78% Lines**, **90.65% Branches (4,051/4,469)**, **88.90% Complexity** (historical records). Single-pass zero-intermediate URI and query composition with unreserved ASCII fast-paths and cached path placeholder tokens eliminate Young Gen garbage on request dispatch hot paths. Modern Java 21 type patterns and sealed invariants preserved.
 
 ## Internal Code Structure: HttpTemplate Decomposition (ADR-0066) — COMPLETE ✅ (2026-10-18, unreleased)
 
@@ -2338,6 +2338,31 @@ Synthetic microbenchmarks (ping, small JSON DTOs) only measure proxy dispatch an
    - Gate grew to **1,739 / 1,739** tests green across all 6 modules (+2 tests: `CircuitBreakerTest.defaultRecordExceptionClassificationParity`, `ProblemDetailTest.patternMatchingJsonSerializationCoversAllTypes`).
    - Javadoc 100% clean under `-Werror`.
    - JaCoCo: Branch coverage solidly at **90.52%** (3,993/4,411), Instruction **98.11%**, Line **97.76%**, Method **100%**, Class **100%**.
+
+---
+
+## Zero-Allocation URI Composition & RFC 3986 Fast-Paths (ADR-0072) — COMPLETE ✅ (2026-10-19, unreleased)
+
+> Source of truth: [`docs/0.12.0/ADR-0072-zero-allocation-uri-composition-and-fast-paths.md`](docs/0.12.0/ADR-0072-zero-allocation-uri-composition-and-fast-paths.md).
+> Candidate №13 of Cycle 0.12.0: Deep hot-path optimization eliminating intermediate allocations during URI assembly, query parameter percent-encoding, and path variable substitution. ADR-0072 status: **Accepted**.
+
+**Architecture & Decisions:**
+1. **Single-Pass URI Assembly (`HttpTemplate.createUri` & `appendQuery`):**
+   - Replaced multi-pass string assembly (temporary `StringBuilder query`, `query.toString()`, substring slices `base` and `fragment`, and concatenation `base + separator + query + fragment`) with a single-pass `StringBuilder` using `CharSequence` slicing (`sb.append(url, 0, baseEnd)`).
+   - Dynamic query parameters and values are encoded and written directly into the destination builder.
+   - `appendQuery` refactored to eliminate substring allocations for base and fragment anchors.
+2. **Pure ASCII Unreserved Fast-Path (`UriEncoder`):**
+   - Introduced `ru.jrestly.http.UriEncoder` detecting RFC 3986 / RFC 1738 unreserved characters (`[a-zA-Z0-9_.*-]`).
+   - For all unreserved inputs (numeric IDs, booleans, ISO dates, UUIDs, alphanumeric slugs and parameter names), percent-encoding is mathematically invariant: `UriEncoder.encode(s)` returns the exact same string instance with 0 allocations, and `UriEncoder.encodeTo(s, sb)` appends directly to the builder without allocating temporary strings.
+   - Reserved and non-ASCII inputs safely fall back to standard `URLEncoder` with `%20` spaces, maintaining 100% wire-level parity.
+3. **Precomputed Path Placeholder Tokens:**
+   - `MethodMetadata.ParameterDescriptor` now precomputes and caches `placeholderToken` (e.g. `"{id}"`) at controller startup, eliminating per-request string concatenations in `HttpTemplateBuilder.createUrl()`.
+   - Cleaned up unused private `encode` method in `HttpTemplate`.
+
+**Verification & Quality Gate:**
+- Live gate expanded to **1,747 / 1,747** green tests across all 6 modules (+8 tests: `UriEncoderTest`).
+- `javadoc` completely clean under `-Werror`.
+- JaCoCo: Branch coverage reached a new all-time record of **90.65%** (4,051/4,469 covered), Instructions **98.14%**, Lines **97.78%**, Complexity **88.90%**, Methods **100%** (1458/1458), Classes **100%** (150/150).
 
 ---
 

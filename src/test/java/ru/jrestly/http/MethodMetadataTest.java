@@ -788,6 +788,7 @@ class MethodMetadataTest {
 
         assertTrue(desc[1].isPathVariable());
         assertEquals("slug", desc[1].pathVariableName());
+        assertEquals("{slug}", desc[1].placeholderToken());
         assertTrue(desc[1].pathVariableEncoded());
 
         assertTrue(desc[2].isRequestHeader());

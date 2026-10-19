@@ -1289,19 +1289,32 @@ class HttpTemplate {
             return URI.create(url);
         }
 
-        StringBuilder query = new StringBuilder();
+        int hashIndex = url.indexOf('#');
+        int qIdx = url.indexOf('?');
+        boolean hasQuestion = qIdx >= 0 && (hashIndex < 0 || qIdx < hashIndex);
+        int baseEnd = hashIndex >= 0 ? hashIndex : url.length();
+
+        // Single-pass buffer avoiding intermediate query strings and substrings (ADR-0072)
+        StringBuilder sb = new StringBuilder(url.length() + requestParams.size() * 16 + 8);
+        sb.append(url, 0, baseEnd);
+        char sep = hasQuestion ? '&' : '?';
+
         for (int i = 0, size = requestParams.size(); i < size; i++) {
             Param param = requestParams.get(i);
-            if (i > 0) {
-                query.append('&');
-            }
-            query.append(encode(param.name()));
+            sb.append(sep);
+            sep = '&';
+            UriEncoder.encodeTo(param.name(), sb);
             if (param.value() != null) {
-                query.append('=').append(encode(param.value()));
+                sb.append('=');
+                UriEncoder.encodeTo(param.value(), sb);
             }
         }
 
-        return appendQuery(url, query.toString());
+        if (hashIndex >= 0) {
+            sb.append(url, hashIndex, url.length());
+        }
+
+        return URI.create(sb.toString());
     }
 
     /**
@@ -1317,15 +1330,18 @@ class HttpTemplate {
             return URI.create(url);
         }
         int hashIndex = url.indexOf('#');
-        String base = hashIndex >= 0 ? url.substring(0, hashIndex) : url;
-        String fragment = hashIndex >= 0 ? url.substring(hashIndex) : "";
+        int qIdx = url.indexOf('?');
+        boolean hasQuestion = qIdx >= 0 && (hashIndex < 0 || qIdx < hashIndex);
+        int baseEnd = hashIndex >= 0 ? hashIndex : url.length();
 
-        String separator = base.contains("?") ? "&" : "?";
-        return URI.create(base + separator + query + fragment);
-    }
-
-    private static String encode(String value) {
-        return URLEncoder.encode(value, StandardCharsets.UTF_8).replace("+", "%20");
+        StringBuilder sb = new StringBuilder(url.length() + query.length() + 1);
+        sb.append(url, 0, baseEnd)
+                .append(hasQuestion ? '&' : '?')
+                .append(query);
+        if (hashIndex >= 0) {
+            sb.append(url, hashIndex, url.length());
+        }
+        return URI.create(sb.toString());
     }
 
     /**
