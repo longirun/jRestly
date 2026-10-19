@@ -1,5 +1,22 @@
 # DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
+> **Сессия #328 (Кандидат №12 Фаза 1: субмодуль `codec-yaml` — официальный YAML-адаптер на Jackson YAMLMapper, ADR-0073 Accepted, гейт 1,785/1,785):**
+> 1. *Приём состояния:* HEAD `e1c46e4` (#327, ADR-0072), чистое дерево. Просмотрены SPI `PayloadCodec`/`PayloadCodecProvider`/`CodecRegistry` и эталонный модуль `codec-jackson-xml` (код, тесты, build.gradle, service-регистрация).
+> 2. *Дизайн-решение и ADR-0073 (`docs/0.12.0/ADR-0073-codec-yaml-submodule.md`, Accepted):*
+>    - **Фаза 1 = YAML, Фаза 2 = Protocol Buffers (отложен, отдельный ADR):** YAML — генерический текстовый формат с зарегистрированными media types (RFC 9512), входит в модель «семейство media type», ради которой создан SPI; ProtoBuf — schema-bound бинарный формат (сгенерированные `Message`/`Parser`), ему нужен собственный дизайн-проход по резолвингу парсера.
+>    - **Движок — Jackson `YAMLMapper` (не голый SnakeYAML):** единый биндинг-движок JSON/XML/YAML — одна семья исключений, records/POJO из коробки, тот же паттерн ленивой jsr310-регистрации (nested holder + `Class.forName`-проба); пин `jackson-dataformat-yaml:2.18.2` = тот же, что у XML-адаптера.
+>    - **Media-type family:** `application/yaml`, `text/yaml` + `*+yaml` (RFC 6839, зеркало `*+xml`).
+>    - **SPI:** `YamlCodecProvider` (priority 50, паритет с XML-адаптером — семейства не пересекаются), автообнаружение через `META-INF/services` без `builder().codec(...)`, opt-out через JSON-only `CodecRegistry` (fail-fast).
+>    - **Ядро:** чистое добавление `MediaType.APPLICATION_YAML` / `TEXT_YAML` (RFC 9512) — публичный API не сломан; Zero-Dep инвариант сохранен (зависимость только в `api`-конфигурации субмодуля).
+> 3. *Субмодуль `codec-yaml` (новый, `ru.jrestly:jrestly-codec-yaml`):* `settings.gradle` (`include 'codec-yaml'`), `build.gradle` по стандарту (Java 21, `-parameters`, `-Werror`, javadoc `-Werror`, maven-publish, Automatic-Module-Name), `YamlCodec` (explicit-mapper ctor + `defaults()`, `supports`, `deserialize`/`serialize`/`prettyPrint`), `YamlCodecProvider`, `package-info.java`, service-регистрация.
+> 4. *Тесты (+15, гейт 1,785/1,785):*
+>    - `YamlCodecTest` (10): family-claim + анти-перехват (`application/yam`, `application/yamls`), реальный YAML на проводе (не JSON), bind в record, null/empty-контракты SPI, unknown-свойства игнорируются, prettyPrint (нормализация + text-fallback + null/empty), explicit mapper as-is, NPE на null, jsr310 в defaults.
+>    - `YamlWireMockTest` (5): e2e `@ContentType(APPLICATION_YAML)` — байт-в-байт паритет с выходом `serialize` самого кодека, `@Accept`-биндинг DTO-ответа, JSON-путь не тронут, SPI-автообнаружение без регистрации, JSON-only реестр возвращает fail-fast.
+> 5. *Грабли:* (a) у WireMock 3.12.1 нет `equalToYaml` (проверено javap по standalone-jar'у) — ожидаемое тело считается кодеком и сверяется `equalTo` байт-в-байт (строже); (b) Jackson YAML по умолчанию котирует строковые скаляры (`name: "Anton"`) — ассерт «реальный YAML, не JSON» переписан на форматные маркеры.
+> 6. *Калибровка гейта (важная находка):* fresh-прогон root (`:test --rerun-tasks`) показал **1,642** теста в ядре (0F/0E, 167 классов) при записанной в #327 цифре 1,619 — источники ядра с #327 не менялись, значит прошлый пересчет недоучел 23 теста (true baseline ядра = 1,642). Итоговый честный гейт: **1,785 / 1,785** (root 1642 + engine-okhttp 25 + engine-apache5 25 + engine-netty 26 + codec-jackson-xml 15 + **codec-yaml 15** + benchmarks 37).
+> 7. *Гейты:* **1,785 / 1,785** green во всех 7 модулях. Javadoc чист под `-Werror` (включая новый модуль).
+> 8. *Дальше (#329):* Кандидат №12 Фаза 2 — Protocol Buffers (ADR-0074: резолвинг `Message`/`Parser`, media type `application/x-protobuf` vs `*+protobuf`) или Кандидат №14 (аллокации HTTP-заголовков / W3C tracing-контекста).
+>
 > **Сессия #327 (Zero-Allocation URI Composition & RFC 3986 Fast-Paths: ADR-0072 Accepted, single-pass createUri/appendQuery, UriEncoder, cached placeholderToken, 100% паритет, гейт 1,747/1,747):**
 > 1. *Приём состояния:* HEAD на #326, чистое дерево. Аудит Pattern Matching и Sealed Architecture зафиксирован.
 > 2. *ADR-0072 оформлен (`docs/0.12.0/ADR-0072-zero-allocation-uri-composition-and-fast-paths.md`, Accepted):*

@@ -2179,9 +2179,9 @@ Gates (session #241):
 
 ---
 
-> **Current status (2026-10-19).** Highest ADR issued: **0072**; next free: **0073**.
-> Cycle 0.11.0 packaged and verified (ADR-0069); version bumped to `0.11.0` in root and all published submodules. Cycle 0.12.0 flagship epic Netty Transport Engine (`jrestly-engine-netty`, ADR-0070) COMPLETE ✅, Java 21+ Pattern Matching & Sealed Architecture Audit (ADR-0071) COMPLETE ✅, Zero-Allocation URI Composition & RFC 3986 Fast-Paths (ADR-0072) COMPLETE ✅.
-> Live gate: **1,747/1,747** tests green across all six modules, 0 warnings under `-Werror`. JaCoCo: **100% Class Coverage (150/150)**, **100% Method Coverage (1458/1458)**, **98.14% Instructions**, **97.78% Lines**, **90.65% Branches (4,051/4,469)**, **88.90% Complexity** (historical records). Single-pass zero-intermediate URI and query composition with unreserved ASCII fast-paths and cached path placeholder tokens eliminate Young Gen garbage on request dispatch hot paths. Modern Java 21 type patterns and sealed invariants preserved.
+> **Current status (2026-10-19).** Highest ADR issued: **0073**; next free: **0074**.
+> Cycle 0.11.0 packaged and verified (ADR-0069); version `0.11.0` in root and all published submodules. Cycle 0.12.0: Netty Transport Engine (`jrestly-engine-netty`, ADR-0070) COMPLETE ✅, Java 21+ Pattern Matching & Sealed Architecture Audit (ADR-0071) COMPLETE ✅, Zero-Allocation URI Composition & RFC 3986 Fast-Paths (ADR-0072) COMPLETE ✅, YAML Payload Codec Submodule (`jrestly-codec-yaml`, ADR-0073, Candidate №12 Phase 1) COMPLETE ✅.
+> Live gate: **1,785/1,785** tests green across all seven modules (root 1,642 + engine-okhttp 25 + engine-apache5 25 + engine-netty 26 + codec-jackson-xml 15 + codec-yaml 15 + benchmarks 37), 0 warnings under `-Werror`. Note: a fresh root re-run calibrated the core baseline to **1,642** tests (the 1,619 recorded at ADR-0072 was an aggregation under-count; core sources unchanged since then). Core JaCoCo unchanged since ADR-0072 (core diff: two `MediaType` constants only): **100% Class**, **100% Method**, **98.14% Instructions**, **97.78% Lines**, **90.65% Branches (4,051/4,469)**, **88.90% Complexity** (historical records). The YAML codec claims `application/yaml` / `text/yaml` / `*+yaml` (RFC 9512 + RFC 6839) through the `PayloadCodec` SPI, backed by Jackson `YAMLMapper` (2.18.2) — the JSON/XML/YAML triangle is complete on one binding engine; Protocol Buffers is Phase 2 (next ADR).
 
 ## Internal Code Structure: HttpTemplate Decomposition (ADR-0066) — COMPLETE ✅ (2026-10-18, unreleased)
 

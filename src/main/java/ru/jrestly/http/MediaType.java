@@ -30,6 +30,12 @@ public final class MediaType {
     /** The {@code text/xml} media type. */
     public static final String TEXT_XML = "text/xml";
 
+    /** The {@code application/yaml} media type (RFC 9512). */
+    public static final String APPLICATION_YAML = "application/yaml";
+
+    /** The {@code text/yaml} media type (RFC 9512). */
+    public static final String TEXT_YAML = "text/yaml";
+
     /** The {@code text/event-stream} Server-Sent Events media type. */
     public static final String TEXT_EVENT_STREAM = "text/event-stream";
 

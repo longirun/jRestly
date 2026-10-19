@@ -1,36 +1,31 @@
-# Last Session: #327 (2026-10-19)
+# Last Session: #328 (2026-10-19)
 
 ## Что сделано
 
-**Сессия #327: Zero-Allocation URI Composition & RFC 3986 Fast-Paths (ADR-0072, Accepted), single-pass createUri/appendQuery, UriEncoder, cached placeholderToken, гейт 1,747/1,747 (+8), рекорд JaCoCo 90.65%.**
+**Сессия #328: Кандидат №12 Фаза 1 — субмодуль `codec-yaml` (официальный YAML-адаптер на Jackson `YAMLMapper`), ADR-0073 Accepted, гейт 1,785/1,785 (+15).**
 
-1. *Приём состояния:* HEAD на #326, чистое дерево. Аудит Pattern Matching и Sealed Architecture зафиксирован.
-2. *Архитектурный анализ и оформление ADR-0072 (`docs/0.12.0/ADR-0072-zero-allocation-uri-composition-and-fast-paths.md`, Accepted):*
-   - **Ликвидация промежуточных аллокаций при композиции URI:**
-     * Ранее при сборке запросов с query-параметрами создавались до 10–15 временных строковых объектов (`StringBuilder query`, `query.toString()`, `url.substring(0, hashIndex)`, `url.substring(hashIndex)`, конкатенация `base + separator + query + fragment`), а также выполнялся `URLEncoder.encode(...).replace("+", "%20")` даже для чистых чисел и безопасных ASCII-идентификаторов.
-     * `HttpTemplate.createUri` переведен на **single-pass** сборку: один `StringBuilder` нужной емкости, базовый путь и фрагменты вставляются через `CharSequence.append(url, start, end)` без создания подстрок, параметры пишутся напрямую в целевой буфер.
-     * `HttpTemplate.appendQuery` оптимизирован: слайсинг без промежуточных `substring`.
-   - **Fast-Path для RFC 3986 Unreserved Characters (`UriEncoder`):**
-     * Введен package-private класс `ru.jrestly.http.UriEncoder` с быстрым сканированием unreserved символов `[a-zA-Z0-9_.*-]`.
-     * Доказан инвариант: для любой unreserved строки `URLEncoder.encode(s, UTF_8).replace("+", "%20") == s`.
-     * `UriEncoder.encode(s)` для unreserved строк возвращает саму исходную строку (0 аллокаций!).
-     * `UriEncoder.encodeTo(s, sb)` пишет строку напрямую в `StringBuilder` без создания промежуточных строк.
-     * Для зарезервированных символов (пробелы, non-ASCII, `/`, `?`, `#`, `&`, `=`, `+`) сохранен безопасный fallback на `URLEncoder.encode` с заменой `+` на `%20`, гарантируя 100% паритет контракта.
-   - **Предвычисление `placeholderToken` в метаданных:**
-     * `MethodMetadata.ParameterDescriptor` теперь precomputes и кэширует `placeholderToken` (e.g. `"{id}"`) при парсинге метода, устраняя конкатенацию `"{" + name + "}"` на каждом HTTP-вызове в `HttpTemplateBuilder.createUrl`.
-     * Удален неиспользуемый приватный метод `encode` в `HttpTemplate`.
-3. *Тесты (+8 тестов, гейт 1,747/1,747):*
-   - `UriEncoderTest`: 8 исчерпывающих тестов (unreserved matching, reserved rejection, encode null/empty, unreserved identity instance, URLEncoder parity на спецсимволах/пробелах/юникоде, encodeTo, appendQuery инварианты, single-pass createUri со сложными путями, существующими query, fragments и fragment-'?').
-   - `MethodMetadataTest`: проверка кэширования `placeholderToken`.
-4. *Гейты:* **1,747 / 1,747** green во всех 6 модулях (root 1619 + engine-okhttp 25 + engine-apache5 25 + engine-netty 26 + codec-jackson-xml 15 + benchmarks 37). Javadoc чист под `-Werror`. JaCoCo ядра: BRANCH **90.65%** (4,051/4,469 — новый исторический рекорд!), INSTRUCTION **98.14%**, LINE **97.78%**, COMPLEXITY **88.90%**, METHOD **100% (1458/1458)**, CLASS **100% (150/150)**.
+1. *Приём состояния:* HEAD `e1c46e4` (#327, ADR-0072), чистое дерево.
+2. *ADR-0073* (`docs/0.12.0/ADR-0073-codec-yaml-submodule.md`, Accepted):
+   - **Фаза 1 = YAML, Фаза 2 = Protocol Buffers (отложен в отдельный ADR):** YAML — генерический формат с зарегистрированными media types (RFC 9512), входит в модель «семейство media type»; ProtoBuf — schema-bound (сгенерированные `Message`/`Parser`), ему нужен свой дизайн-проход.
+   - **Движок — Jackson `YAMLMapper` (не голый SnakeYAML):** единый биндинг-движок JSON/XML/YAML (одна семья исключений, records из коробки, тот же ленивый jsr310-паттерн). Пин `jackson-dataformat-yaml:2.18.2`.
+   - **Media types:** `application/yaml`, `text/yaml`, `*+yaml` (RFC 6839).
+   - **SPI:** `YamlCodecProvider` priority 50 (паритет с XML-адаптером), автообнаружение, opt-out через JSON-only `CodecRegistry`.
+3. *Код:*
+   - Новый публикуемый субмодуль `codec-yaml` (`ru.jrestly:jrestly-codec-yaml`, версия 0.11.0): `build.gradle` (Java 21, `-parameters`, `-Werror`, javadoc `-Werror`, maven-publish, Automatic-Module-Name `ru.jrestly.codec.yaml`), `YamlCodec` (explicit-mapper ctor + `defaults()`: FAIL_ON_UNKNOWN_PROPERTIES off, WRITE_DATES_AS_TIMESTAMPS off, guarded jsr310), `YamlCodecProvider`, `package-info.java`, `META-INF/services/ru.jrestly.codec.PayloadCodecProvider`.
+   - `settings.gradle`: `include 'codec-yaml'`.
+   - Ядро: чистое добавление констант `MediaType.APPLICATION_YAML` / `TEXT_YAML` (RFC 9512) — API не сломан, Zero-Dep сохранен.
+4. *Тесты (+15):* `YamlCodecTest` (10) + `YamlWireMockTest` (5, включая SPI-автообнаружение и fail-fast opt-out).
+5. *Грабли:* WireMock 3.12.1 не имеет `equalToYaml` (javap по standalone-jar) — тело сверяется `equalTo` с выходом `serialize` самого кодека; Jackson YAML котирует строковые скаляры (`name: "Anton"`) — ассерты на форматные маркеры.
+6. *Калибровка гейта (важная находка):* fresh-прогон root (`:test --rerun-tasks`) показал **1,642** теста в ядре (0F/0E, 167 классов) при записанной в #327 цифре 1,619 — источники ядра с #327 не менялись, значит прошлый пересчет недоучел 23 теста (true baseline ядра = 1,642). Итоговый честный гейт: **1,785 / 1,785** (root 1642 + engine-okhttp 25 + engine-apache5 25 + engine-netty 26 + codec-jackson-xml 15 + codec-yaml 15 + benchmarks 37).
+7. *Гейты:* **1,785 / 1,785** green во всех 7 модулях. Javadoc чист под `-Werror`.
 
-## Контекст для следующей сессии (#328)
+## Контекст для следующей сессии (#329)
 
 1. **Ветка** `agent-loop`.
-2. **Highest ADR:** **0072** (`docs/0.12.0/ADR-0072-zero-allocation-uri-composition-and-fast-paths.md`), next free **0073**.
-3. **Кандидаты на сессию #328:**
-   - **Кандидат №12 — Экосистема кодеков: исследование субмодуля Proto / YAML (`codec-protobuf` / `codec-yaml`):** легковесный адаптер для Protocol Buffers или YAML на базе `PayloadCodec` SPI.
-   - **Кандидат №14 — Дальнейшая оптимизация аллокаций HTTP заголовков и W3C Tracing context:** исследование устранения промежуточных `ArrayList`/`HashMap` при парсинге и мердже статических и динамических заголовков.
+2. **Highest ADR:** **0073** (`docs/0.12.0/ADR-0073-codec-yaml-submodule.md`), next free **0074**.
+3. **Кандидаты на сессию #329:**
+   - **Кандидат №12 Фаза 2 — Protocol Buffers-адаптер (`codec-protobuf`, ADR-0074):** дизайн-проход по резолвингу `Message`/`Parser` для произвольного `Type` (прототип-инстанс → `getParserForType()`, кэш парсеров; serialize — только `Message`/known-фабрики, иначе fail-fast), вопрос media type: `application/x-protobuf` (legacy) vs `application/protobuf` vs `*+protobuf`; зависимость `com.google.protobuf:protobuf-java`.
+   - **Кандидат №14 — аллокации HTTP-заголовков / W3C Tracing:** устранение промежуточных `ArrayList`/`HashMap` при парсинге и мердже статических и динамических заголовков (`ResponseHeaders`, `HttpTemplateBuilder.createHeaders`, trace-контекст).
 4. **Замечание по окружению:**
    - Команды gradle запускать с `GRADLE_USER_HOME=/tmp/opencode/gradle-home ./gradlew ...`.
-5. Метрики — гейт **1,747/1,747**; BRANCH **90.65%**, INSTRUCTION **98.14%**, LINE **97.78%**, COMPLEXITY **88.90%**, METHOD **100%**, CLASS **100%**.
+5. Метрики — гейт **1,785/1,785** (root baseline 1,642 — откалиброван в #328); метрики JaCoCo ядра с #327 (BRANCH 90.65%) — в новом прогоне не пересчитывались (код ядра: +2 константы `MediaType`).

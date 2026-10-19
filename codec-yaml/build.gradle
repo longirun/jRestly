@@ -1,0 +1,95 @@
+plugins {
+    // java-library: exposes the core SPI and the Jackson YAML mapper in the api configuration
+    id 'java-library'
+    id 'maven-publish'
+}
+
+group = 'ru.jrestly'
+version = '0.11.0'
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    // api: the codec implements the core codec SPI in its public surface
+    api project(':')
+    // api: the public constructor/factory accept a Jackson YAMLMapper (ADR-0073)
+    api 'com.fasterxml.jackson.dataformat:jackson-dataformat-yaml:2.18.2'
+    compileOnly 'com.fasterxml.jackson.datatype:jackson-datatype-jsr310:2.18.2'
+
+    testImplementation 'com.fasterxml.jackson.datatype:jackson-datatype-jsr310:2.18.2'
+    testImplementation platform('org.junit:junit-bom:5.10.0')
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+    testImplementation 'org.wiremock:wiremock-standalone:3.12.1'
+}
+
+java {
+    withSourcesJar()
+    withJavadocJar()
+}
+
+compileJava {
+    options.release = 21
+    options.compilerArgs << '-parameters'
+    options.compilerArgs << '-Xlint:all'
+    options.compilerArgs << '-Werror'
+}
+
+compileTestJava {
+    options.release = 21
+    options.compilerArgs << '-parameters'
+    options.compilerArgs << '-Xlint:all'
+    options.compilerArgs << '-Werror'
+}
+
+javadoc {
+    options.addStringOption('Xdoclint:all')
+    options.addBooleanOption('Werror', true)
+}
+
+jar {
+    manifest {
+        attributes(
+                'Automatic-Module-Name': 'ru.jrestly.codec.yaml'
+        )
+    }
+}
+
+test {
+    useJUnitPlatform()
+}
+
+publishing {
+    publications {
+        mavenJava(MavenPublication) {
+            from components.java
+            artifactId = 'jrestly-codec-yaml'
+            pom {
+                name = 'jRestly Codec: Jackson YAML'
+                description = 'YAML payload codec for jRestly: binds application/yaml payloads via Jackson YAMLMapper through the PayloadCodec SPI (ADR-0073).'
+                url = 'https://github.com/longirun/jRestly'
+                inceptionYear = '2026'
+                licenses {
+                    license {
+                        name = 'Apache License, Version 2.0'
+                        url = 'https://www.apache.org/licenses/LICENSE-2.0.txt'
+                    }
+                }
+                developers {
+                    developer {
+                        id = 'longirun'
+                        name = 'Anton Sinyagovsky'
+                        email = 'sinyagovsky@gmail.com'
+                    }
+                }
+                scm {
+                    connection = 'scm:git:git://github.com/longirun/jRestly.git'
+                    developerConnection = 'scm:git:ssh://github.com/longirun/jRestly.git'
+                    url = 'https://github.com/longirun/jRestly'
+                }
+            }
+        }
+    }
+}
