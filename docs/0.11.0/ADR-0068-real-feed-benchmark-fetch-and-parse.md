@@ -181,6 +181,25 @@ RFC 822/333 даты, `guid`/`id`, канальные метаданные. Фи
   20/200/1000 (хит-лист Ф1 закрыт), полная привязка полей + отсутствие остатков
   entities, byte⬌stream-эквивалентность, fail-fast (не-XML/обрыв, битый timestamp),
   детерминизм fold'а. Гейт **1,706/1,706** (+9). Осталось: клиенты матрицы.
+  **✅ Клиенты матрицы реализованы (#316):** arm'ы — по одному fetch-идиому на
+  конкурента (raw OkHttp `ResponseBody.byteStream()`, Retrofit `Call<ResponseBody>`
+  на интерфейсе, Feign `feign.Response` (`body().asInputStream()`), Spring HTTP
+  Interface `Resource` (через RestClientAdapter-прокси — заработал без обёрток),
+  raw JDK `BodyHandlers.ofInputStream()`) + **два jRestly-режима** в том же
+  `JRestlyBenchmarkClient`: вложенный `FeedApi` с `@Get("/feed/{kind}") byte[]`
+  (buffered; парсер читает ByteArrayInputStream без копии тела) и
+  `@Get("/feed/{kind}") InputStream` (streaming; в ядре это живой
+  `ofInputStream()`-поток без промежуточной полной копии, ADR-0015) — главный
+  разрез эпика. Arm'ы-движки (OkHttp/Apache5) достаются бесплатно через уже
+  существующий конструктор `JRestlyBenchmarkClient(baseUrl, HttpEngine)`.
+  Парсер один для всех arm'ов (каждый клиент держит свой инстанс).
+  Санитарный гейт `FeedBenchmarkClientsTest` (2 теста): jRestly
+  buffered/streaming fold-паритет (count/latest/digest идентичны на всех шести
+  маршрутах) и 5 конкурентных arm'ов × 6 маршрутов → ожидаемый count.
+  Грабля: implicit `close()` ресурса в try-with-resources (`InputStream`,
+  `feign.Response` с `throws IOException`) требует `catch (IOException)` рядом
+  с передачей checked `XMLStreamException` сквозь тот же блок (типы разные —
+  перехват не мешает пробросу). Гейт **1,708/1,708** (+2).
 - **Ф3 — JMH + публикация:** класс `FeedBenchmark` (thrpt + `-prof gc` + CPU-проба),
   пилотный прогон, потом секция «Real scenario: feed fetch & parse» в
   `BENCHMARKS.md` + отчёт Антону. Конкуренты — те же версии, что в матрице

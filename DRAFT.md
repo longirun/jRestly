@@ -1,5 +1,49 @@
 # DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
+> **Сессия #316 (ADR-0068 Ф2-вторая половина — клиенты матрицы fetch-and-parse;
+> ядро не тронуто; гейт 1,708/1,708 — +2):
+> 1. *Приём состояния:* HEAD на #315 6f1db75 — чистый приём (счётчик 316
+>    докручен «фантомным» запуском, паттерн #306/#308/#312), WIP нет. Слов
+>    Антона нет — фазы идут автономно (mailbox #313).
+> 2. *Arm'ы матрицы (ADR §4; один fetch-идиом на конкурента, парсер ОДИН для
+>    всех):* raw OkHttp (`ResponseBody.byteStream()` — тело напрямую в парсер),
+>    Retrofit (`Call<ResponseBody>` на интерфейсе), Feign (`feign.Response` →
+>    `body().asInputStream()`), Spring HTTP Interface (`Resource` через
+>    RestClientAdapter-прокси — заработал сразу, без обёрток/фолбэков), raw JDK
+>    (`BodyHandlers.ofInputStream()`). Все arm-методы `feed(String kind)` на шести
+>    маршрутах `/feed/{rss,atom}-{20,200,1000}`, возврат — предпарсенный
+>    `List<FeedEntry>`.
+> 3. *Главный разрез — jRestly buffered vs streaming в том же
+>    `JRestlyBenchmarkClient`:* вложенный `FeedApi` — `feedBuffered(@Get byte[])`
+>    (парсер читает ByteArrayInputStream без копии тела) ⬌ `feedStreaming
+>    (@Get InputStream)` (ядро отдаёт живой `ofInputStream()`-поток — ADR-0015,
+>    буферизации нет). Arm'ы-движки OkHttp/Apache5 достаются бесплатно через
+>    существующий конструктор `(baseUrl, HttpEngine)` (пиннинг движков
+>    сохранён — ServiceLoader-угроза закрыта).
+> 4. *Санитарный гейт (+2, `FeedBenchmarkClientsTest`):* (a) jRestly
+>    buffered⬌streaming — fold-паритет: `count`/`latest`/`digest` идентичны на
+>    всех шести маршрутах (главный разрез живой и честный, парсер общий);
+>    (b) 5 конкурентных arm'ов × 6 маршрутов → ожидаемый count (16/159/…
+>    KB-объёмы реально прогнаны сквозь каждый клиент).
+> 5. *Грабли кванта:* (a) try-with-resources: implicit `close()` ресурса
+>    (`InputStream` raw JDK; `feign.Response`) бросает checked `IOException` —
+>    нужен `catch (IOException)` в том же блоке; рядом стоящий checked
+>    `XMLStreamException` пробрасывается сквозь него без потерь (разные типы);
+>    (b) у Retrofit-интерфейса `@GET("/feed/{kind}") Call<ResponseBody>` —
+>    конвертер не нужен (ResponseBody встроенный); (c) Spring `Resource`-возврат
+>    сработал через прокси (ResourceHttpMessageConverter) — осторожная гипотеза,
+>    что он НЕ буферизует (живой stream), верифицируется `-prof gc` в Ф3:
+>    если прыгнет до буферных уровней — задокументировать как находку
+>    («spring-идиом на самом деле буферизует»), это законный результат
+>    реального бенчмарка, а не баг стенда.
+> 6. *Дальше (#317):* **Ф3 — JMH `FeedBenchmark`**: throughput (primary) ×
+>    `@AuxCounters`/in-harness CPU-проба (`getProcessCpuTime()`) + `-prof gc`
+>    B/op (hypothesis: streaming режет alloc на large), матрица arm'ов —
+>    jRestly buffered/streaming × JDK/OkHttp/Apache5-движки + 5 конкурентов ×
+>    {small,medium,large}; пилотный прогон; публикация секции в `BENCHMARKS.md`
+>    (возможно в два шага: #317 стенд+прогон, #318 публикация).
+
+
 > **Сессия #315 (ADR-0068 Ф2 — общий StAX-парсер `FeedParser` + `FeedEntry`/
 > `FeedSummary`; паритет RSS⬌Atom гейтом; ядро не тронуто; гейт 1,706/1,706 — +9):
 > 1. *Приём состояния:* HEAD на #314 a2d0ce0 — чистый приём (счётчик докручен
@@ -3362,7 +3406,10 @@ benchmarks-скопе НЕ в ядре, конкуренты текущей ма
 главный разрез buffered vs streaming; фазы Ф1 (фикстуры+стенд) → Ф2
 (парсер+клиенты) → Ф3 (JMH+публикация). **Ф1 закрыта (#314)**, **Ф2-парсер
 закрыта (#315)** — `FeedEntry`/`FeedSummary`/`FeedParser` + паритет RSS⬌Atom
-гейтом; остались клиенты матрицы и Ф3. Highest ADR **0068**, next free **0069**.
+гейтом; **фаза клиентов матрицы закрыта (#316)** — jRestly buffered
+(`@Get byte[]`) vs streaming (`@Get InputStream`) + 5 конкурентных arm'ов,
+парсер один для всех; осталась **Ф3 (JMH `FeedBenchmark` +
+публикация в `BENCHMARKS.md`)**. Гейт **1,708/1,708**. Highest ADR **0068**, next free **0069**.
 Хвосты-кандидаты
 из аудит-нити (не эпики): валидация `@ExpectStatus`/`@FollowRedirects`
 (инварианты нигде не объявлены — фича, не дыра; #207, трогать лишь при

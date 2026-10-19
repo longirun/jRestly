@@ -9,10 +9,14 @@ import okhttp3.RequestBody;
 import okhttp3.Response;
 import okhttp3.ResponseBody;
 import ru.jrestly.benchmark.dto.UserDto;
+import ru.jrestly.benchmark.feed.FeedEntry;
+import ru.jrestly.benchmark.feed.FeedParser;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.util.List;
+
+import javax.xml.stream.XMLStreamException;
 
 /**
  * Raw OkHttp benchmark adapter (plain HTTP client usage, no declarative layer)
@@ -25,6 +29,7 @@ public final class OkHttpBenchmarkClient implements AutoCloseable {
     private final String baseUrl;
     private final OkHttpClient httpClient;
     private final ObjectMapper objectMapper;
+    private final FeedParser feedParser = new FeedParser();
 
     public OkHttpBenchmarkClient(String baseUrl) {
         this.baseUrl = baseUrl;
@@ -74,6 +79,26 @@ public final class OkHttpBenchmarkClient implements AutoCloseable {
 
     private static Request get(String url) {
         return new Request.Builder().url(url).build();
+    }
+
+    /**
+     * Real-scenario fetch-and-parse arm (ADR-0068 &sect;4): the response body goes straight
+     * into the shared parser as a live byte stream, without an intermediate full copy.
+     *
+     * @param kind feed route suffix, one of {@code rss-20|200|1000} or {@code atom-*}
+     * @return parsed entries in document order
+     * @throws XMLStreamException when the fetched document cannot be parsed
+     */
+    public List<FeedEntry> feed(String kind) throws XMLStreamException {
+        try (Response response = httpClient.newCall(get(baseUrl + "/feed/" + kind)).execute()) {
+            ResponseBody body = response.body();
+            if (body == null) {
+                throw new IllegalStateException("OkHttp returned no response body for /feed/" + kind);
+            }
+            return feedParser.parse(body.byteStream());
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
     }
 
     private byte[] executeBytes(Request request) {

@@ -10,8 +10,13 @@ import retrofit2.http.GET;
 import retrofit2.http.POST;
 import retrofit2.http.Path;
 import ru.jrestly.benchmark.dto.UserDto;
+import ru.jrestly.benchmark.feed.FeedEntry;
+import ru.jrestly.benchmark.feed.FeedParser;
 
 import java.io.IOException;
+import java.util.List;
+
+import javax.xml.stream.XMLStreamException;
 
 /**
  * Square Retrofit 2 adapter for comparative benchmarks.
@@ -33,10 +38,14 @@ public final class RetrofitBenchmarkClient implements AutoCloseable {
 
         @POST("/api/users")
         Call<UserDto> createUser(@Body UserDto user);
+
+        @GET("/feed/{kind}")
+        Call<ResponseBody> feed(@Path("kind") String kind);
     }
 
     private final OkHttpClient okHttpClient;
     private final UserApi api;
+    private final FeedParser feedParser = new FeedParser();
 
     public RetrofitBenchmarkClient(String baseUrl) {
         String normalizedUrl = baseUrl.endsWith("/") ? baseUrl : baseUrl + "/";
@@ -76,6 +85,25 @@ public final class RetrofitBenchmarkClient implements AutoCloseable {
     public UserDto createUser(UserDto user) {
         try {
             return api.createUser(user).execute().body();
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    /**
+     * Real-scenario fetch-and-parse arm (ADR-0068 &sect;4): the {@code ResponseBody} is
+     * streamed into the shared parser through its byte stream while held open.
+     *
+     * @param kind feed route suffix, one of {@code rss-20|200|1000} or {@code atom-*}
+     * @return parsed entries in document order
+     * @throws XMLStreamException when the fetched document cannot be parsed
+     */
+    public List<FeedEntry> feed(String kind) throws XMLStreamException {
+        try (ResponseBody body = api.feed(kind).execute().body()) {
+            if (body == null) {
+                throw new IllegalStateException("Retrofit returned no response body for /feed/" + kind);
+            }
+            return feedParser.parse(body.byteStream());
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
