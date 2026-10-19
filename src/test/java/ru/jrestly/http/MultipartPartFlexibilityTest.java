@@ -91,6 +91,16 @@ class MultipartPartFlexibilityTest {
     }
 
     @Test
+    @DisplayName("part(name, filename, contentType, null) produces 0-length content with explicit filename")
+    void partWithFilenameNullContent() {
+        MultipartPart part = MultipartPart.part("blob", "empty.bin", "application/octet-stream", null);
+        assertEquals("blob", part.name());
+        assertEquals("empty.bin", part.filename());
+        assertEquals("application/octet-stream", part.contentType());
+        assertArrayEquals(new byte[0], (byte[]) part.content());
+    }
+
+    @Test
     @DisplayName("part(name, filename, contentType, bytes) creates part with explicit filename and MIME")
     void partWithFilename() {
         byte[] payload = "col1,col2\nval1,val2".getBytes(StandardCharsets.UTF_8);
