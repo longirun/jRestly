@@ -2179,9 +2179,9 @@ Gates (session #241):
 
 ---
 
-> **Current status (2026-10-19).** Highest ADR issued: **0069**; next free: **0070**.
-> Cycle 0.11.0 packaged and verified (ADR-0069); version bumped to `0.11.0` in root and all published submodules.
-> Live gate: **1,710/1,710** tests green across all five modules, 0 warnings under `-Werror`. JaCoCo: **100% Class Coverage (149/149)**, **100% Method Coverage (1455/1455)**, **98.19% Instructions**, **97.84% Lines**, **90.64% Branches (4,018/4,433)**, **88.90% Complexity** (historical records). The former 2825-line god-class `HttpTemplate` is decomposed into package-private collaborators, public API migrated to concise `{id}` and `value()`, real-world streaming benchmarks published in `BENCHMARKS.md`, and 0.11.0 release notes published in `CHANGELOG.md`. Next cycle candidate: Netty Transport Engine (`jrestly-engine-netty`, ADR-0070).
+> **Current status (2026-10-19).** Highest ADR issued: **0070**; next free: **0071**.
+> Cycle 0.11.0 packaged and verified (ADR-0069); version bumped to `0.11.0` in root and all published submodules. Cycle 0.12.0 initiated with Netty Transport Engine (`jrestly-engine-netty`, ADR-0070).
+> Live gate: **1,715/1,715** tests green across all six modules, 0 warnings under `-Werror`. JaCoCo: **100% Class Coverage (149/149)**, **100% Method Coverage (1455/1455)**, **98.19% Instructions**, **97.84% Lines**, **90.64% Branches (4,018/4,433)**, **88.90% Complexity** (historical records). The former 2825-line god-class `HttpTemplate` is decomposed into package-private collaborators, public API migrated to concise `{id}` and `value()`, real-world streaming benchmarks published in `BENCHMARKS.md`, and 0.11.0 release notes published in `CHANGELOG.md`. Submodule `engine-netty` scaffolded with SPI discovery and parity tests (ADR-0070 Phase 1 complete).
 
 ## Internal Code Structure: HttpTemplate Decomposition (ADR-0066) — COMPLETE ✅ (2026-10-18, unreleased)
 

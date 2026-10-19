@@ -1,5 +1,25 @@
 # DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
+> **Сессия #323 (старт цикла 0.12.0: Netty Transport Engine ADR-0070 Фаза 1, субмодуль engine-netty, SPI регистрация, гейт 1,715/1,715):**
+> 1. *Приём состояния:* HEAD на #322, чистое дерево. Релиз 0.11.0 упакован.
+> 2. *ADR-0070 оформлен (`docs/0.12.0/ADR-0070-http-engine-netty-transport.md`, Proposed):*
+>    - Концептуальный ответ на вводные Антона по Netty: анализ преимуществ Pooled off-heap ByteBuf, EventLoop и non-blocking I/O против классических блокирующих сокетов OkHttp и Apache5.
+>    - Инварианты: 100% zero-dependency ядро, субмодуль `ru.jrestly:jrestly-engine-netty` (`engine-netty/`), реализация SPI `HttpEngine` и `HttpEngineProvider` (приоритет 60).
+>    - Архитектурный дизайн: `AbstractChannelPoolMap` (пул соединений с keep-alive), push-to-pull streaming мост `NettyChunkedInputStream` с контролем backpressure через `ChannelConfig.setAutoRead` и строгим контролем освобождения `ByteBuf.release()` (`-Dio.netty.leakDetection.level=PARANOID`), нативный `sendAsync`.
+> 3. *Субмодуль `engine-netty` (Фаза 1):*
+>    - `settings.gradle`: добавлен `include 'engine-netty'`.
+>    - `engine-netty/build.gradle`: настроен по стандартам проекта (Java 21, `-parameters`, `-Werror`, `javadoc -Werror`, `maven-publish`, Netty 4.1.118.Final, WireMock).
+>    - `package-info.java`, каркас `NettyHttpEngine` и `NettyHttpEngineProvider` (priority = 60).
+>    - Регистрация в `META-INF/services/ru.jrestly.engine.HttpEngineProvider`.
+> 4. *Тесты (+5, `NettyHttpEngineProviderTest`):*
+>    - `providerReportsAvailableAndPriority` (isAvailable true, priority 60);
+>    - `serviceLoaderDiscoversProvider` (ServiceLoader находит NettyHttpEngineProvider);
+>    - `resolverPicksNettyEngine` (HttpEngineResolver выбирает Netty по приоритету);
+>    - `createEngineMapsModuleInfo` (создание из ModuleInfo);
+>    - `engineLifecycleAndClose` (graceful shutdown EventLoopGroup).
+> 5. *Гейты:* **1,715/1,715** green во всех 6 модулях (root 1609 + engine-okhttp 25 + engine-apache5 25 + engine-netty 5 + codec-jackson-xml 15 + benchmarks 36). Javadoc чист под `-Werror`. JaCoCo ядра: BRANCH 90.64%, INSTRUCTION 98.19%, LINE 97.84%, COMPLEXITY 88.90%, METHOD/CLASS 100%.
+> 6. *Дальше (#324):* Фаза 2 ADR-0070 — реализация полноценного сетевого пайплайна `NettyHttpEngine`, connection pooling через `AbstractChannelPoolMap`, и streaming push-to-pull моста для `InputStream`.
+> 
 > **Сессия #322 (упаковка релиза 0.11.0: ADR-0069, bump версии 0.11.0 в build.gradle и субмодулях, CHANGELOG.md, POM verification, ответ Антону по Netty; гейт 1,710/1,710):**
 > 1. *Приём состояния:* HEAD на #321, чистое дерево. Получен вопрос/идея Антона по Netty в `.agent/mailbox.md`.
 > 2. *Упаковка релиза 0.11.0 (ADR-0069):*
@@ -3479,6 +3499,10 @@ INSTRUCTION 98.15%, LINE 97.82%, COMPLEXITY 88.69% — рекорды; гейт 
 **Новый пул кандидатов на цикл 0.12.0:**
 - **Кандидат №10 — Netty Transport Engine (`jrestly-engine-netty`, ADR-0070):**
   Исследование и создание нового субмодуля транспорта `jrestly-engine-netty` на базе SPI `HttpEngine` (по предложению Антона в mailbox). Pooled off-heap ByteBuf, асинхронный I/O, push-to-pull streaming мост для `InputStream`, включение в матрицу `FeedBenchmark` 12-м arm'ом для замера throughput и heap-аллокаций против Apache5 и OkHttp.
+  * **Фаза 1 — выполнена (#323):** оформлен `docs/0.12.0/ADR-0070-http-engine-netty-transport.md` (Proposed), зарегистрирован субмодуль `engine-netty` в `settings.gradle`, создан `engine-netty/build.gradle` (Netty 4.1.118.Final), каркас `NettyHttpEngine` и `NettyHttpEngineProvider` (priority = 60), регистрация SPI, гейт-тесты `NettyHttpEngineProviderTest` (+5 тестов, гейт 1,715/1,715).
+  * **Фаза 2 (в плане #324):** реализация пайплайна (HttpClientCodec, HttpObjectAggregator, decompressor), connection pool через `AbstractChannelPoolMap`, streaming мост `NettyChunkedInputStream` с backpressure и защитой от утечек ByteBuf.
+  * **Фаза 3:** паритет-тесты с WireMock (`NettyHttpEngineParityTest`).
+  * **Фаза 4:** подключение в `FeedBenchmark` 12-м arm'ом и снятие замеров против Apache5 и OkHttp.
 - **Кандидат №11 — Java 21+ Pattern Matching & Sealed Architecture Audit:**
   Исследование возможностей Java 21 pattern matching for switch / record patterns в горячих точках пайплайна (разбор типов возврата, классификация ошибок в `ProblemDetailResolver`, обработка HTTP-статусов), дальнейшее устранение мелких оверхедов.
 - **Кандидат №12 — Экосистема кодеков: исследование субмодуля Proto / YAML:**
