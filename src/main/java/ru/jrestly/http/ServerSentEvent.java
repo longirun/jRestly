@@ -1,8 +1,12 @@
 package ru.jrestly.http;
 
+import java.lang.reflect.Type;
+import java.nio.charset.StandardCharsets;
 import java.util.Objects;
 import java.util.function.Function;
 import java.util.stream.Stream;
+
+import ru.jrestly.codec.PayloadCodec;
 
 /**
  * Immutable model of a Server-Sent Event (SSE) conforming to the WHATWG SSE specification.
@@ -21,7 +25,7 @@ import java.util.stream.Stream;
  * @param retry the currently effective reconnection time in milliseconds (from the
  *              {@code retry:} field), persisted across events until overwritten, or {@code null}
  */
-public record ServerSentEvent(String id, String event, String data, Long retry) {
+public record ServerSentEvent(String id, String event, String data, Long retry) implements SseEventContract {
 
     /**
      * Creates a data-only {@link ServerSentEvent} without id, event type, or retry value.
@@ -49,8 +53,72 @@ public record ServerSentEvent(String id, String event, String data, Long retry) 
      *
      * @return {@code true} if {@link #data()} equals {@code "[DONE]"}, {@code false} otherwise
      */
+    @Override
     public boolean isDone() {
         return "[DONE]".equals(data);
+    }
+
+    /**
+     * Converts this untyped event into a {@link TypedServerSentEvent} using the provided
+     * codec to deserialize the payload into the given target class.
+     *
+     * @param <T> the target payload type
+     * @param type the target payload class
+     * @param codec the codec for deserialization
+     * @return the typed event
+     */
+    public <T> TypedServerSentEvent<T> toTyped(Class<T> type, PayloadCodec codec) {
+        return toTyped((Type) type, codec);
+    }
+
+    /**
+     * Converts this untyped event into a {@link TypedServerSentEvent} using the provided
+     * codec to deserialize the payload into the given target generic type.
+     *
+     * @param <T> the target payload type
+     * @param type the target generic payload type
+     * @param codec the codec for deserialization
+     * @return the typed event
+     */
+    public <T> TypedServerSentEvent<T> toTyped(Type type, PayloadCodec codec) {
+        Objects.requireNonNull(type, "type must not be null");
+        Objects.requireNonNull(codec, "codec must not be null");
+        if (isDone()) {
+            return new TypedServerSentEvent<>(id, event, null, retry, data);
+        }
+        byte[] bytes = (data != null && !data.isEmpty()) ? data.getBytes(StandardCharsets.UTF_8) : null;
+        T parsed = (bytes != null && bytes.length > 0) ? codec.deserialize(bytes, type, "application/json") : null;
+        return new TypedServerSentEvent<>(id, event, parsed, retry, data);
+    }
+
+    /**
+     * Deserializes the data payload into the specified class using the given codec.
+     *
+     * @param <T> the target payload type
+     * @param type the target payload class
+     * @param codec the codec for deserialization
+     * @return the deserialized object, or {@code null} if data is empty or represents {@code [DONE]}
+     */
+    public <T> T dataAs(Class<T> type, PayloadCodec codec) {
+        return dataAs((Type) type, codec);
+    }
+
+    /**
+     * Deserializes the data payload into the specified generic type using the given codec.
+     *
+     * @param <T> the target payload type
+     * @param type the target generic payload type
+     * @param codec the codec for deserialization
+     * @return the deserialized object, or {@code null} if data is empty or represents {@code [DONE]}
+     */
+    public <T> T dataAs(Type type, PayloadCodec codec) {
+        Objects.requireNonNull(type, "type must not be null");
+        Objects.requireNonNull(codec, "codec must not be null");
+        if (data == null || data.isEmpty() || isDone()) {
+            return null;
+        }
+        byte[] bytes = data.getBytes(StandardCharsets.UTF_8);
+        return (bytes.length > 0) ? codec.deserialize(bytes, type, "application/json") : null;
     }
 
     /**

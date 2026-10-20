@@ -86,6 +86,18 @@ final class ResponseBody {
         return ServerSentEvent.parse(lineStream(stream, charset, logger));
     }
 
+    // ADR-0097: Stream<TypedServerSentEvent<T>> returns a typed event stream
+    // chained over the event stream with payload deserialized via PayloadCodec.
+    static <T> Stream<TypedServerSentEvent<T>> typedEventStream(
+            InputStream stream,
+            Charset charset,
+            PayloadCodec codec,
+            Type targetType,
+            System.Logger logger) {
+        return eventStream(stream, charset, logger)
+                .map(raw -> raw.toTyped(targetType, codec));
+    }
+
     // ADR-0059: terminal streaming hook — late-arriving trailers are
     // populated into the per-call holder and the capture-thread-local holder
     // when the stream ends. The hook is only attached when someone actually
@@ -155,6 +167,36 @@ final class ResponseBody {
             return args.length == 1 && elementClass.equals(args[0]);
         }
         return false;
+    }
+
+    static boolean isTypedEventStream(Type type) {
+        if (type instanceof ParameterizedType pt && Stream.class.equals(pt.getRawType())) {
+            Type[] args = pt.getActualTypeArguments();
+            if (args.length == 1) {
+                Type element = args[0];
+                if (element instanceof ParameterizedType elemPt) {
+                    return TypedServerSentEvent.class.equals(elemPt.getRawType());
+                }
+                return TypedServerSentEvent.class.equals(element);
+            }
+        }
+        return false;
+    }
+
+    static Type extractTypedEventType(Type type) {
+        if (type instanceof ParameterizedType pt && Stream.class.equals(pt.getRawType())) {
+            Type[] args = pt.getActualTypeArguments();
+            if (args.length == 1) {
+                Type element = args[0];
+                if (element instanceof ParameterizedType elemPt && TypedServerSentEvent.class.equals(elemPt.getRawType())) {
+                    Type[] subArgs = elemPt.getActualTypeArguments();
+                    if (subArgs.length == 1) {
+                        return subArgs[0];
+                    }
+                }
+            }
+        }
+        return Object.class;
     }
 
     // RFC 9110 §8.3.2: the declared Content-Type charset is authoritative for

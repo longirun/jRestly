@@ -10,6 +10,7 @@ import ru.jrestly.annotation.RequestBody;
 import ru.jrestly.fixtures.TestErrorDto;
 import ru.jrestly.http.HandledException;
 import ru.jrestly.http.ServerSentEvent;
+import ru.jrestly.http.TypedServerSentEvent;
 import ru.jrestly.http.UnexpectedStatusException;
 
 import java.io.IOException;
@@ -17,6 +18,7 @@ import java.io.UncheckedIOException;
 import java.nio.charset.Charset;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.stream.Stream;
@@ -41,12 +43,27 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class ServerSentEventsAndLineStreamingTest extends BaseWireMockTest {
 
+    record ChatChunk(String content) {}
+
     interface LlmChatApi {
         @Post("/v1/chat/completions")
         Stream<ServerSentEvent> streamChat(@RequestBody Map<String, Object> request);
 
         @Post("/v1/chat/completions")
         CompletableFuture<Stream<ServerSentEvent>> streamChatAsync(@RequestBody Map<String, Object> request);
+
+        @Post("/v1/chat/typed")
+        Stream<TypedServerSentEvent<ChatChunk>> streamTypedChat(@RequestBody Map<String, Object> request);
+
+        @Post("/v1/chat/typed")
+        CompletableFuture<Stream<TypedServerSentEvent<ChatChunk>>> streamTypedChatAsync(@RequestBody Map<String, Object> request);
+
+        @Get("/v1/chat/typed/error")
+        @OnError(statuses = {429}, errorObject = TestErrorDto.class)
+        Stream<TypedServerSentEvent<ChatChunk>> rateLimitedTypedStream();
+
+        @Get("/v1/chat/typed/optional")
+        Optional<Stream<TypedServerSentEvent<ChatChunk>>> optionalTypedStream();
 
         @Get("/v1/chat/error")
         @OnError(statuses = {429}, errorObject = TestErrorDto.class)
@@ -272,5 +289,110 @@ class ServerSentEventsAndLineStreamingTest extends BaseWireMockTest {
             assertTrue(e.getCause() instanceof IOException,
                     "Expected IOException in cause, got: " + e.getCause());
         }
+    }
+
+    @Test
+    @DisplayName("sync: Typed LLM chat streaming via Stream<TypedServerSentEvent<ChatChunk>>")
+    void syncTypedLlmChatStreaming() {
+        String ssePayload = """
+                event: delta
+                id: 101
+                data: {"content": "Hello"}
+
+                event: delta
+                id: 102
+                data: {"content": " world!"}
+
+                data: [DONE]
+
+                """;
+
+        stubFor(post(urlEqualTo("/v1/chat/typed"))
+                .willReturn(aResponse()
+                        .withStatus(200)
+                        .withHeader("Content-Type", "text/event-stream; charset=utf-8")
+                        .withBody(ssePayload)));
+
+        LlmChatApi api = client.get(LlmChatApi.class);
+        try (Stream<TypedServerSentEvent<ChatChunk>> eventStream = api.streamTypedChat(Map.of("model", "gpt-4"))) {
+            List<TypedServerSentEvent<ChatChunk>> events = eventStream.toList();
+            assertEquals(3, events.size());
+
+            TypedServerSentEvent<ChatChunk> e1 = events.get(0);
+            assertEquals("101", e1.id());
+            assertEquals("delta", e1.event());
+            assertNotNull(e1.data());
+            assertEquals("Hello", e1.data().content());
+            assertFalse(e1.isDone());
+
+            TypedServerSentEvent<ChatChunk> e2 = events.get(1);
+            assertEquals("102", e2.id());
+            assertEquals("delta", e2.event());
+            assertNotNull(e2.data());
+            assertEquals(" world!", e2.data().content());
+            assertFalse(e2.isDone());
+
+            TypedServerSentEvent<ChatChunk> e3 = events.get(2);
+            assertEquals("102", e3.id());
+            assertNull(e3.data());
+            assertEquals("[DONE]", e3.rawData());
+            assertTrue(e3.isDone());
+        }
+    }
+
+    @Test
+    @DisplayName("async: Typed LLM chat streaming via CompletableFuture<Stream<TypedServerSentEvent<ChatChunk>>>")
+    void asyncTypedLlmChatStreaming() {
+        String ssePayload = """
+                data: {"content": "Async token"}
+
+                data: [DONE]
+
+                """;
+
+        stubFor(post(urlEqualTo("/v1/chat/typed"))
+                .willReturn(aResponse()
+                        .withStatus(200)
+                        .withHeader("Content-Type", "text/event-stream")
+                        .withBody(ssePayload)));
+
+        LlmChatApi api = client.get(LlmChatApi.class);
+        CompletableFuture<Stream<TypedServerSentEvent<ChatChunk>>> future = api.streamTypedChatAsync(Map.of("stream", true));
+        try (Stream<TypedServerSentEvent<ChatChunk>> stream = future.join()) {
+            List<TypedServerSentEvent<ChatChunk>> events = stream.toList();
+            assertEquals(2, events.size());
+            assertEquals("Async token", events.get(0).data().content());
+            assertTrue(events.get(1).isDone());
+        }
+    }
+
+    @Test
+    @DisplayName("typed SSE @OnError consumes stream and throws HandledException with decoded DTO")
+    void typedStreamOnErrorHandledException() {
+        stubFor(get(urlEqualTo("/v1/chat/typed/error"))
+                .willReturn(aResponse()
+                        .withStatus(429)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody("{\"code\": \"RATE_LIMIT\", \"message\": \"Too Many Requests\"}")));
+
+        LlmChatApi api = client.get(LlmChatApi.class);
+        HandledException ex = assertThrows(HandledException.class, api::rateLimitedTypedStream);
+        assertEquals(429, ex.getStatusCode());
+        TestErrorDto dto = ex.getDetails();
+        assertNotNull(dto);
+        assertEquals("RATE_LIMIT", dto.code());
+    }
+
+    @Test
+    @DisplayName("typed SSE Optional returns empty on 404 missing resource")
+    void typedStreamOptionalMissingReturnsEmpty() {
+        stubFor(get(urlEqualTo("/v1/chat/typed/optional"))
+                .willReturn(aResponse()
+                        .withStatus(404)
+                        .withBody("Not Found")));
+
+        LlmChatApi api = client.get(LlmChatApi.class);
+        Optional<Stream<TypedServerSentEvent<ChatChunk>>> optional = api.optionalTypedStream();
+        assertTrue(optional.isEmpty());
     }
 }

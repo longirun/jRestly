@@ -1,5 +1,22 @@
 # DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
+> **Сессия #365 (SSE Typed Event Deserialization & LLM Token Streaming — ADR-0097; внедрены `TypedServerSentEvent<T>`, `SseEventContract`, `Stream<TypedServerSentEvent<T>>`, авто-обработка `[DONE]`, `toTyped`/`dataAs`; принят ADR-0097; полный гейт 2,114/2,114 green, JaCoCo Branch 93.32%, Classes 100%, 0 missed branches в `TypedServerSentEvent`):**
+> 1. *Вход:* ветка `agent-loop`, счётчик 365. Пожелание Антона из mailbox: реализовать SSE typed decode и глубоко проработать SSE под AI/LLM streaming.
+> 2. *Реализация (ADR-0097):*
+>    - Создан `TypedServerSentEvent<T>` (immutable record `id, event, data, retry, rawData`): 100% WHATWG EventSource совместимость с типизированным `T data` через `PayloadCodec`.
+>    - Защита от терминатора `[DONE]`: встроенная обработка терминатора открытых LLM-протоколов (OpenAI, Anthropic, Ollama, DeepSeek) — кодек не вызывается при `[DONE]`, исключая `JsonParseException`, выставляется `isDone() = true`, `data = null`, `rawData = "[DONE]"`.
+>    - `ServerSentEvent`: сохранена 100% обратная совместимость (без ломающих изменений generic raw-типов), добавлены методы `.toTyped(Class/Type, codec)` и `.dataAs(Class/Type, codec)`.
+>    - Декларативный стриминг в интерфейсах: `Stream<TypedServerSentEvent<T>>`, `CompletableFuture<Stream<TypedServerSentEvent<T>>>`, `Optional<Stream<...>>`.
+>    - `SseEventContract` и `ServerSentEventReconnector<E extends SseEventContract>`: единый пайплайн реконнекта с replay `Last-Event-ID`, экспоненциальным backoff и watchdog `jrestly-sse-stall-guard` для обоих типов событий (0 дублирования кода!).
+>    - `ResponseBody.isTypedEventStream`, `ResponseBody.extractTypedEventType`, `ResponseBody.typedEventStream`: чистый потоковый конвейер с автоматическим закрытием сетевого сокета при выходе из `try-with-resources`.
+> 3. *TDD и метрики:*
+>    - Новый сьют `TypedServerSentEventTest` (7 тестов) + новые тесты в `HttpTemplateLineAndEventStreamTest`, `ResponseProcessorTest`, `ServerSentEventsAndLineStreamingTest`.
+>    - Полный гейт: **2,114 / 2,114** тестов green во всех 8 модулях (root 1,950 + submodules 164), 0 failures, 0 errors.
+>    - `TypedServerSentEvent`: **100% instructions (148/148), 100% branches (6/6), 100% lines (18/18), 100% complexity, 0 missed branches**.
+>    - JaCoCo: Branch **93.32%**, Classes: **100%** (168 / 168). Javadoc `-Werror` абсолютно чист во всех 8 модулях.
+>    - Документация: принят **ADR-0097** (`docs/0.14.0/ADR-0097-typed-server-sent-events-deserialization.md`), обновлен `README.md`.
+> 
+
 > **Сессия #364 (Enterprise Log Correlation Tracing, Raw Debugging Mode, SSE Typed Decode Backlog & Rich Documentation — ADR-0096; внедрены `TraceIdExtractor`, префикс `[traceId]` во всех логах, `.sanitizeSensitiveData(boolean)` / `.sanitizeLogs(boolean)`, `traceIdSupplier`; принят ADR-0096; полный гейт 2,098/2,098 green, JaCoCo Branch 93.47%, 0 missed branches в новых классах):**
 > 1. *Вход:* ветка `agent-loop`, счётчик 364. Запросы Антона из mailbox: возможность отключать санитизацию для отладки, сквозной `traceId` в логах для устранения мешанины в Kibana/ELK, бэклог по SSE typed decode и расширение документации.
 > 2. *Реализация (ADR-0096):*

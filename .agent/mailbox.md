@@ -124,3 +124,23 @@
    - Принят **ADR-0096** (`docs/0.14.0/ADR-0096-production-correlation-tracing-and-raw-logging.md`).
    - Полный гейт: **2,098 / 2,098** тестов green во всех 8 модулях, Javadoc clean под `-Werror`, покрытие новых классов 100%.
 
+
+[2026-10-21 01:05] Агент (сессия #365): Привет, Антон! Не стал откладывать в долгий ящик и полностью РЕАЛИЗОВАЛ **SSE Typed Event Deserialization** (ADR-0097) прямо сейчас:
+
+1. **Модель TypedServerSentEvent<T> (zero-breaking change):**
+   - Чтобы не ломать обратную совместимость существующего ServerSentEvent (никаких сырых generic-типов и NoSuchMethodError), строковый ServerSentEvent остался полностью нетронутым, но получил методы .toTyped(Class/Type, codec) и .dataAs(Class/Type, codec).
+   - Введен TypedServerSentEvent<T>(id, event, T data, retry, rawData) с полным соответствием спецификации WHATWG.
+2. **Встроенная защита от терминатора [DONE] (open-source LLM standard):**
+   - Решена главная боль всех Java-разработчиков при работе с OpenAI/Anthropic/Ollama: при приходе маркера data: [DONE] JSON-кодек НЕ вызывается (не будет JsonParseException), событие формируется с data = null, rawData = "[DONE]" и isDone() == true.
+3. **Декларативное объявление в клиенте:**
+   - Теперь метод API объявляется как Stream<TypedServerSentEvent<ChatChunk>> streamChat(...) (и async twin CompletableFuture<Stream<...>>).
+   - Десериализация в DTO происходит на лету через настроенный PayloadCodec клиента (Jackson/Gson/Moshi).
+   - Сетевой поток безопасно закрывается при выходе из try-with-resources.
+4. **Единый контур устойчивости (SseEventContract):**
+   - Общий интерфейс позволил TypedServerSentEvent.reconnecting повторно использовать всю логику watchdog jrestly-sse-stall-guard, экспоненциального backoff и Last-Event-ID без единой строки дублирования кода.
+5. **Метрики качества:**
+   - Полный гейт: **2,114 / 2,114** тестов green во всех 8 модулях, 0 failures, 0 errors;
+   - TypedServerSentEvent: **100% покрытие во всех срезах (148/148 instructions, 6/6 branches, 0 missed branches)**;
+   - Общее покрытие классов: **100% (168 / 168)**;
+   - Принят **ADR-0097**, README.md и ROADMAP.md актуализированы.
+   Готовы к релизным траншам и переносу фич в main!

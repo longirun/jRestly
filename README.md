@@ -16,7 +16,7 @@ A declarative HTTP client for Java. Define an interface, get a working client â€
 - Transparent RFC 9111 HTTP cache: zero-dependency `HttpCache` SPI with bounded LRU `InMemoryHttpCache`, conditional `304 Not Modified` revalidation (`ETag`, `If-Modified-Since`), `Cache-Control` directives, and zero network attempts on fresh cache hits
 - Problem Details for HTTP APIs (RFC 7807 / RFC 9457): zero-dep `ProblemDetail` model and parser, auto-recognition on unexpected 4xx/5xx responses, and declarative `@OnError(errorObject = ProblemDetail.class)`
 - Response streaming via `InputStream` (and `CompletableFuture<InputStream>`): direct streaming via `BodyHandlers.ofInputStream()` without whole-body buffering; bypasses the JSON codec on success; error responses consume the stream and preserve typed error mapping
-- Server-Sent Events & line streaming via `Stream<ServerSentEvent>` and `Stream<String>` (and `CompletableFuture<Stream<...>>`): parse real-time event streams and LLM tokens on the fly with auto-reconnection (`Last-Event-ID` replay) and idle `stallTimeout` guards
+- Server-Sent Events & line streaming via typed `Stream<TypedServerSentEvent<T>>`, `Stream<ServerSentEvent>`, and `Stream<String>` (and `CompletableFuture<Stream<...>>`): parse real-time event streams and LLM tokens on the fly with auto-reconnection (`Last-Event-ID` replay) and idle `stallTimeout` guards
 - Request pipeline: interceptors & hooks: `RequestInterceptor` (transform outgoing requests, inject auth tokens, correlation IDs) and `ResponseInterceptor` (metrics, latency, audit logging, failure observation), uniform sync/async twins execution with failure isolation
 - Resilience & observability: client-side `CircuitBreaker`, `RateLimiter`, W3C TraceContext correlation IDs, and rich `ClientMetricsListener`
 - Multipart uploads via `@MultipartFormFile(partName = â€¦)`: any number of files from disk, memory, or arbitrary streams (`FileContent`), streamed with bounded buffering; per-part `Content-Type` derived from the file extension, overridable per parameter
@@ -235,46 +235,51 @@ public interface DownloadApi {
 
 ## Server-Sent Events & line streaming
 
-Declare `Stream<ServerSentEvent>` or `Stream<String>` (and their `CompletableFuture<Stream<...>>` twins) to consume real-time event streams (such as LLM token completions) or newline-delimited payloads (NDJSON / JSON lines) lazily as chunks arrive over the wire:
+Declare `Stream<TypedServerSentEvent<T>>`, `Stream<ServerSentEvent>`, or `Stream<String>` (and their `CompletableFuture<Stream<...>>` twins) to consume real-time event streams (such as LLM token completions) or newline-delimited payloads (NDJSON / JSON lines) lazily as chunks arrive over the wire:
 
 ```java
 public interface OpenAiChatApi {
 
+    // Typed SSE: automatically deserializes JSON chunks via the configured PayloadCodec
     @Post("/v1/chat/completions")
-    Stream<ServerSentEvent> streamChat(@RequestBody ChatCompletionRequest request);
+    Stream<TypedServerSentEvent<ChatChunk>> streamChat(@RequestBody ChatCompletionRequest request);
 
     @Post("/v1/chat/completions")
-    CompletableFuture<Stream<ServerSentEvent>> streamChatAsync(@RequestBody ChatCompletionRequest request);
+    CompletableFuture<Stream<TypedServerSentEvent<ChatChunk>>> streamChatAsync(@RequestBody ChatCompletionRequest request);
 
+    // Untyped WHATWG SSE: raw string payload
+    @Post("/v1/chat/raw")
+    Stream<ServerSentEvent> streamRawChat(@RequestBody ChatCompletionRequest request);
+
+    // NDJSON line streaming
     @Get("/events/ndjson")
     Stream<String> streamLines();
 }
 ```
 
-### LLM Token Streaming Example
+### LLM Token Streaming Example (Typed)
 
-Consume real-time LLM inference streams lazily in a `try-with-resources` block:
+Consume real-time LLM inference streams lazily in a standard `try-with-resources` block without manual JSON parsing or crashes on `[DONE]`:
 
 ```java
 ChatCompletionRequest req = new ChatCompletionRequest("gpt-4o", List.of(new Message("user", "Hello!")));
 
-try (Stream<ServerSentEvent> events = api.streamChat(req)) {
+try (Stream<TypedServerSentEvent<ChatChunk>> events = api.streamChat(req)) {
     events.takeWhile(e -> !e.isDone()).forEach(event -> {
-        // Parse raw JSON chunk or extract text token directly
-        ChatChunk chunk = jsonCodec.deserialize(event.data(), ChatChunk.class);
-        if (chunk.contentDelta() != null) {
+        ChatChunk chunk = event.data();
+        if (chunk != null && chunk.contentDelta() != null) {
             System.out.print(chunk.contentDelta());
         }
     });
 }
 ```
 
-- **WHATWG SSE conformance:** `ServerSentEvent` exposes `id()`, `event()`, `data()` (multi-line data concatenated with `\n`), `retry()`, and `isDone()` (detects the `[DONE]` marker common in OpenAI, Anthropic, Ollama, and DeepSeek streaming APIs). SSE comment lines (`: ping`) are ignored automatically.
-- **Auto-reconnection & Resilience:** Use `ServerSentEvent.reconnecting(supplier, config)` to wrap streams with automatic reconnects, exponential backoff, and transparent `Last-Event-ID` re-transmission.
+- **Typed Event Deserialization (`TypedServerSentEvent<T>`, ADR-0097):** Binds event data directly to your DTO using Jackson, Gson, or Moshi. Terminal markers like `[DONE]` are handled safely without JSON parsing exceptions (`event.isDone() == true`, `data == null`, `rawData == "[DONE]"`).
+- **WHATWG SSE conformance:** `ServerSentEvent` and `TypedServerSentEvent` expose `id()`, `event()`, `data()`, `retry()`, and `isDone()`. SSE comment lines (`: ping`) are ignored automatically.
+- **Auto-reconnection & Resilience:** Use `TypedServerSentEvent.reconnecting(supplier, policy)` or `ServerSentEvent.reconnecting(supplier, policy)` to wrap streams with automatic reconnects, exponential backoff, and transparent `Last-Event-ID` re-transmission.
 - **Stall Guard Watchdog:** Built-in virtual-thread stall guard (`jrestly-sse-stall-guard`) detects silent network hangs and stalls when an upstream server stops sending chunks without closing the connection.
 - **Encoding & Trailers:** Charset is parsed from the `Content-Type` header (e.g. `text/event-stream; charset=utf-8`), defaulting to UTF-8. Late HTTP/2 streaming trailers are captured gracefully.
 - **Unified error contract:** On `@OnError` or unexpected HTTP statuses, the stream is consumed eagerly and produces `HandledException` or `UnexpectedStatusException`, preserving the uniform error contract across all return types.
-- **Roadmap:** Native typed event streaming (`Stream<ServerSentEvent<T>>`) is coming in 0.14.0+ (ADR-0096).
 
 ## Request parameter & header flexibility
 

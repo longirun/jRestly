@@ -779,7 +779,8 @@ final class MethodMetadataParser {
 
         boolean streamBody = InputStream.class.equals(effective)
                 || ResponseBody.isStreamType(effective, String.class)
-                || ResponseBody.isStreamType(effective, ServerSentEvent.class);
+                || ResponseBody.isStreamType(effective, ServerSentEvent.class)
+                || ResponseBody.isTypedEventStream(effective);
 
         return new MethodMetadata.ReturnTypeInfo(effective, async, optional, streamBody);
     }

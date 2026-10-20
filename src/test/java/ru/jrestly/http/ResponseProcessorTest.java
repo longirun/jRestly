@@ -19,6 +19,7 @@ import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -26,10 +27,13 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ResponseProcessorTest {
 
+    record SimpleDto(String message) {}
+
     interface SampleApi {
         String string();
         Stream<String> streamString();
         Stream<ServerSentEvent> streamSse();
+        Stream<TypedServerSentEvent<SimpleDto>> streamTypedSse();
     }
 
     private static Type typeOf(String methodName) {
@@ -243,6 +247,128 @@ class ResponseProcessorTest {
         assertTrue(result.isPresent());
         try (Stream<ServerSentEvent> stream = result.get()) {
             assertEquals("ping", stream.findFirst().orElseThrow().data());
+        }
+    }
+
+    @Test
+    void processStreamTypedEvents() throws IOException {
+        String sse = "event: chat\nid: 7\ndata: {\"message\":\"hello\"}\n\ndata: [DONE]\n\n";
+        ByteArrayInputStream bais = new ByteArrayInputStream(sse.getBytes(StandardCharsets.UTF_8));
+        Type typedSseType = typeOf("streamTypedSse");
+
+        ru.jrestly.codec.PayloadCodec fakeCodec = new ru.jrestly.codec.PayloadCodec() {
+            @Override
+            public boolean supports(String mediaType) {
+                return true;
+            }
+
+            @Override
+            public byte[] serialize(Object object, String mediaType) {
+                return new byte[0];
+            }
+
+            @SuppressWarnings("unchecked")
+            @Override
+            public <T> T deserialize(byte[] payload, Type targetType, String mediaType) {
+                return (T) new SimpleDto("decoded: " + new String(payload, StandardCharsets.UTF_8));
+            }
+        };
+
+        ResponseProcessor.ResponseConfig config = new ResponseProcessor.ResponseConfig(
+                typedSseType, false, null, null, null, null, false, headers -> fakeCodec, System.getLogger("test")
+        );
+        ResponseProcessor processor = new ResponseProcessor(config);
+
+        try (Stream<TypedServerSentEvent<SimpleDto>> stream = processor.process(wireStream(200, bais, List.of()), System.nanoTime())) {
+            List<TypedServerSentEvent<SimpleDto>> events = stream.toList();
+            assertEquals(2, events.size());
+
+            TypedServerSentEvent<SimpleDto> e1 = events.get(0);
+            assertEquals("7", e1.id());
+            assertEquals("chat", e1.event());
+            assertNotNull(e1.data());
+            assertTrue(e1.data().message().contains("hello"));
+            assertFalse(e1.isDone());
+
+            TypedServerSentEvent<SimpleDto> e2 = events.get(1);
+            assertEquals("7", e2.id());
+            assertNull(e2.data());
+            assertEquals("[DONE]", e2.rawData());
+            assertTrue(e2.isDone());
+        }
+    }
+
+    @Test
+    void processStreamTypedEventsMissingCodecThrows() {
+        String sse = "data: {\"message\":\"hi\"}\n\n";
+        ByteArrayInputStream bais = new ByteArrayInputStream(sse.getBytes(StandardCharsets.UTF_8));
+        Type typedSseType = typeOf("streamTypedSse");
+
+        ResponseProcessor.ResponseConfig config = new ResponseProcessor.ResponseConfig(
+                typedSseType, false, null, null, null, null, false, headers -> null, System.getLogger("test")
+        );
+        ResponseProcessor processor = new ResponseProcessor(config);
+
+        IllegalStateException ex = assertThrows(IllegalStateException.class, () ->
+                processor.process(wireStream(200, bais, List.of()), System.nanoTime()));
+        assertTrue(ex.getMessage().contains("PayloadCodec is required"));
+    }
+
+    @Test
+    void processStreamTypedEventsOptionalMissingClosesStream() throws IOException {
+        AtomicBoolean closed = new AtomicBoolean(false);
+        ByteArrayInputStream bais = new ByteArrayInputStream("".getBytes(StandardCharsets.UTF_8)) {
+            @Override
+            public void close() throws IOException {
+                closed.set(true);
+                super.close();
+            }
+        };
+        Type typedSseType = typeOf("streamTypedSse");
+
+        ResponseProcessor.ResponseConfig config = new ResponseProcessor.ResponseConfig(
+                typedSseType, true, null, null, null, null, false, headers -> null, null
+        );
+        ResponseProcessor processor = new ResponseProcessor(config);
+
+        Optional<Stream<TypedServerSentEvent<SimpleDto>>> result = processor.process(wireStream(404, bais, List.of()), System.nanoTime());
+        assertTrue(result.isEmpty());
+        assertTrue(closed.get());
+    }
+
+    @Test
+    void processStreamTypedEventsOptionalPresent() throws IOException {
+        String sse = "data: {\"message\":\"ping\"}\n\n";
+        ByteArrayInputStream bais = new ByteArrayInputStream(sse.getBytes(StandardCharsets.UTF_8));
+        Type typedSseType = typeOf("streamTypedSse");
+
+        ru.jrestly.codec.PayloadCodec fakeCodec = new ru.jrestly.codec.PayloadCodec() {
+            @Override
+            public boolean supports(String mediaType) {
+                return true;
+            }
+
+            @Override
+            public byte[] serialize(Object object, String mediaType) {
+                return new byte[0];
+            }
+
+            @SuppressWarnings("unchecked")
+            @Override
+            public <T> T deserialize(byte[] payload, Type targetType, String mediaType) {
+                return (T) new SimpleDto("ok");
+            }
+        };
+
+        ResponseProcessor.ResponseConfig config = new ResponseProcessor.ResponseConfig(
+                typedSseType, true, null, null, null, null, false, headers -> fakeCodec, null
+        );
+        ResponseProcessor processor = new ResponseProcessor(config);
+
+        Optional<Stream<TypedServerSentEvent<SimpleDto>>> result = processor.process(wireStream(200, bais, List.of()), System.nanoTime());
+        assertTrue(result.isPresent());
+        try (Stream<TypedServerSentEvent<SimpleDto>> stream = result.get()) {
+            assertEquals("ok", stream.findFirst().orElseThrow().data().message());
         }
     }
 

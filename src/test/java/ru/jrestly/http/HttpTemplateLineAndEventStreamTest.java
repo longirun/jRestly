@@ -67,6 +67,13 @@ class HttpTemplateLineAndEventStreamTest {
     }
 
     @Test
+    @DisplayName("builder: Stream<TypedServerSentEvent<T>> and CompletableFuture<Stream<TypedServerSentEvent<T>>> turn streamBody on")
+    void builderDetectsTypedEventStreamAndAsyncTwin() throws Exception {
+        assertTrue(detectsStream(StreamingTestController.class.getMethod("streamTypedEvents")));
+        assertTrue(detectsStream(StreamingTestController.class.getMethod("streamTypedEventsAsync")));
+    }
+
+    @Test
     @DisplayName("builder: unsupported stream types or non-stream types leave streamBody off")
     void builderLeavesStreamBodyOffForOtherTypes() throws Exception {
         assertFalse(detectsStream(StreamingTestController.class.getMethod("streamIntegers")));
@@ -227,6 +234,12 @@ class HttpTemplateLineAndEventStreamTest {
 
         @Get("/events-async")
         CompletableFuture<Stream<ServerSentEvent>> streamEventsAsync();
+
+        @Get("/typed-events")
+        Stream<TypedServerSentEvent<String>> streamTypedEvents();
+
+        @Get("/typed-events-async")
+        CompletableFuture<Stream<TypedServerSentEvent<String>>> streamTypedEventsAsync();
 
         @Get("/integers")
         Stream<Integer> streamIntegers();

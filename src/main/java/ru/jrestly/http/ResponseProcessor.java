@@ -178,6 +178,27 @@ final class ResponseProcessor {
             return eventStream;
         }
 
+        // ADR-0097: Typed Server-Sent Events decoding
+        if (ResponseBody.isTypedEventStream(config.returnType())) {
+            if (config.logger().isLoggable(System.Logger.Level.INFO)) {
+                config.logger().log(System.Logger.Level.INFO, ResponseBody.streamingPayloadLine("streaming typed events", responseHeaders));
+            }
+            if (config.optional() && ResponseBody.isMissingResource(statusCode)) {
+                ResponseBody.closeQuietly(stream, config.logger());
+                return Optional.empty();
+            }
+            Type payloadType = ResponseBody.extractTypedEventType(config.returnType());
+            PayloadCodec codec = resolveCodec(responseHeaders);
+            if (codec == null) {
+                throw new IllegalStateException("PayloadCodec is required to decode TypedServerSentEvent stream, but none was configured");
+            }
+            Stream<?> eventStream = ResponseBody.typedEventStream(stream, payloadCharset, codec, payloadType, config.logger());
+            if (config.optional()) {
+                return Optional.of(eventStream);
+            }
+            return eventStream;
+        }
+
         // ADR-0015 Aspect 5: raw stream
         if (config.logger().isLoggable(System.Logger.Level.INFO)) {
             config.logger().log(System.Logger.Level.INFO, ResponseBody.streamingPayloadLine("streaming", responseHeaders));

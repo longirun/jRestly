@@ -2554,13 +2554,17 @@ Synthetic microbenchmarks (ping, small JSON DTOs) only measure proxy dispatch an
   - Auto-extraction of trace/correlation ID prioritizing W3C `traceparent` (RFC 8414) with fallback to `X-Request-ID`, `X-Correlation-ID`, `X-Trace-ID`, and `traceIdSupplier`;
   - Configurable raw debugging mode: `.sanitizeSensitiveData(false)` / `.sanitizeLogs(false)` / `-Djrestly.logging.sanitize=false` for local/staging developer troubleshooting without data masking overhead;
   - Client-level `traceIdSupplier(Supplier<String>)` for integration with SLF4J MDC, OpenTelemetry, and Micrometer tracing contexts.
-- **Backlog: SSE Typed Event Deserialization (`Stream<ServerSentEvent<T>>`, ADR-0096):**
-  - Scheduled typed event stream decoding for AI/LLM token streaming (OpenAI, Anthropic, Ollama, DeepSeek) and event-driven microservices.
+- **SSE Typed Event Deserialization (`TypedServerSentEvent<T>`, ADR-0097) — COMPLETE ✅ (2026-10-21):**
+  - First-class typed Server-Sent Events decoding (`Stream<TypedServerSentEvent<T>>`, `CompletableFuture<Stream<TypedServerSentEvent<T>>>`, `Optional<Stream<...>>`);
+  - Zero-breaking changes: `ServerSentEvent` retains 100% binary and source compatibility and gains `.toTyped(Class/Type, codec)` and `.dataAs(Class/Type, codec)`;
+  - Built-in recognition and safe handling of open-source AI/LLM terminal markers (`[DONE]`) preventing JSON codec parsing errors;
+  - Unified `SseEventContract` allowing `TypedServerSentEvent.reconnecting` to leverage full WHATWG `Last-Event-ID` replay, exponential backoff, and the virtual-thread stall guard watchdog (`jrestly-sse-stall-guard`);
+  - `TypedServerSentEvent`: 100% instruction, branch, line, and complexity coverage (0 missed branches).
 - **Quality Gates & Metrics:**
-  - Total test suite: **2,096 / 2,096** tests green across all 8 modules (root 1,932 + 164 submodules);
-  - JaCoCo Branch Coverage: **93.63%**;
-  - Class Coverage: **100%** (167 / 167 classes);
-  - Highest ADR: **0096**, next free **0097**.
+  - Total test suite: **2,114 / 2,114** tests green across all 8 modules (root 1,950 + 164 submodules);
+  - JaCoCo Branch Coverage: **93.32%**;
+  - Class Coverage: **100%** (168 / 168 classes);
+  - Highest ADR: **0097**, next free **0098**.
 
 ---
 

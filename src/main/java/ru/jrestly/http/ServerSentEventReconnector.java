@@ -15,7 +15,7 @@ import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
 
 /**
- * Lazy EventSource-style reconnection over {@link ServerSentEvent} streams
+ * Lazy EventSource-style reconnection over {@link ServerSentEvent} or {@link TypedServerSentEvent} streams
  * (ADR-0059, phase 1).
  *
  * <p>Concatenates the events of successive connections opened by the
@@ -25,9 +25,9 @@ import java.util.stream.StreamSupport;
  * termination follow the {@link ReconnectPolicy}. Reconnection runs on the
  * consumer's thread — no hidden executors.
  */
-final class ServerSentEventReconnector implements Iterator<ServerSentEvent> {
+final class ServerSentEventReconnector<E extends SseEventContract> implements Iterator<E> {
 
-    private final Function<String, Stream<ServerSentEvent>> opener;
+    private final Function<String, Stream<E>> opener;
     private final ReconnectPolicy policy;
     private final Random random = new Random();
 
@@ -37,11 +37,11 @@ final class ServerSentEventReconnector implements Iterator<ServerSentEvent> {
     private volatile boolean waitingForData;
     private volatile long waitStartNanos;
     private volatile boolean stalled;
-    private volatile Stream<ServerSentEvent> currentStreamRef;
+    private volatile Stream<E> currentStreamRef;
 
-    private Stream<ServerSentEvent> current;
-    private Iterator<ServerSentEvent> currentIterator;
-    private ServerSentEvent nextEvent;
+    private Stream<E> current;
+    private Iterator<E> currentIterator;
+    private E nextEvent;
     private String lastEventId;
     private Long serverRetryMillis;
     private long previousDelayMillis;
@@ -50,7 +50,7 @@ final class ServerSentEventReconnector implements Iterator<ServerSentEvent> {
     private volatile boolean finished;
     private volatile boolean closed;
 
-    private ServerSentEventReconnector(Function<String, Stream<ServerSentEvent>> opener, ReconnectPolicy policy) {
+    private ServerSentEventReconnector(Function<String, Stream<E>> opener, ReconnectPolicy policy) {
         this.opener = Objects.requireNonNull(opener, "opener");
         this.policy = Objects.requireNonNull(policy, "policy");
         if (policy.hasStallTimeout()) {
@@ -73,10 +73,10 @@ final class ServerSentEventReconnector implements Iterator<ServerSentEvent> {
      * @param policy the reconnection policy
      * @return a lazy concatenation of the events of successive connections
      */
-    static Stream<ServerSentEvent> reconnecting(
-            Function<String, Stream<ServerSentEvent>> opener, ReconnectPolicy policy) {
-        ServerSentEventReconnector reconnector = new ServerSentEventReconnector(opener, policy);
-        Spliterator<ServerSentEvent> spliterator = Spliterators.spliteratorUnknownSize(
+    static <E extends SseEventContract> Stream<E> reconnecting(
+            Function<String, Stream<E>> opener, ReconnectPolicy policy) {
+        ServerSentEventReconnector<E> reconnector = new ServerSentEventReconnector<>(opener, policy);
+        Spliterator<E> spliterator = Spliterators.spliteratorUnknownSize(
                 reconnector, Spliterator.ORDERED | Spliterator.NONNULL);
         return StreamSupport.stream(spliterator, false).onClose(reconnector::close);
     }
@@ -99,16 +99,16 @@ final class ServerSentEventReconnector implements Iterator<ServerSentEvent> {
     }
 
     @Override
-    public ServerSentEvent next() {
+    public E next() {
         if (!hasNext()) {
             throw new NoSuchElementException();
         }
-        ServerSentEvent event = nextEvent;
+        E event = nextEvent;
         nextEvent = null;
         return event;
     }
 
-    private ServerSentEvent advance() {
+    private E advance() {
         while (!finished && !closed) {
             if (doneSeen && policy.isStopOnDone()) {
                 return null;
@@ -129,7 +129,7 @@ final class ServerSentEventReconnector implements Iterator<ServerSentEvent> {
                     markWaitEnd();
                 }
                 if (hasNext) {
-                    ServerSentEvent event = currentIterator.next();
+                    E event = currentIterator.next();
                     observe(event);
                     return event;
                 }
@@ -155,7 +155,7 @@ final class ServerSentEventReconnector implements Iterator<ServerSentEvent> {
         return null;
     }
 
-    private void observe(ServerSentEvent event) {
+    private void observe(E event) {
         if (event.id() != null) {
             lastEventId = event.id();
         }
@@ -223,7 +223,7 @@ final class ServerSentEventReconnector implements Iterator<ServerSentEvent> {
 
     private void watchdogLoop() {
         while (!closed && !finished) {
-            Stream<ServerSentEvent> toAbort = null;
+            Stream<E> toAbort = null;
             synchronized (monitor) {
                 while (!waitingForData && !closed && !finished) {
                     try {
@@ -269,7 +269,7 @@ final class ServerSentEventReconnector implements Iterator<ServerSentEvent> {
         }
     }
 
-    private static void abortStalled(Stream<ServerSentEvent> stream) {
+    private static void abortStalled(Stream<?> stream) {
         if (stream == null) {
             return;
         }
@@ -310,7 +310,7 @@ final class ServerSentEventReconnector implements Iterator<ServerSentEvent> {
     }
 
     private void closeCurrent(boolean propagate) {
-        Stream<ServerSentEvent> stream = current;
+        Stream<E> stream = current;
         current = null;
         currentStreamRef = null;
         currentIterator = null;
