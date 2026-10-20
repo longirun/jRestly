@@ -1,38 +1,35 @@
-# Last Session: #350 (2026-10-20)
+# Last Session: #351 (2026-10-20)
 
 ## Что сделано
 
-**Сессия #350: декомпозиция `MethodMetadata`: вынесен `MethodMetadataParser` (ADR-0090). `MethodMetadata` навсегда вышел из RED god-классов в GREEN (379 строк, WMC 49, 0 missed branches)! Исторические абсолютные рекорды библиотеки: Branch 92.93%, Complexity 91.69%, missed branches 308.**
+**Сессия #351: декомпозиция `HttpTemplate`: вынесен `RetryExecutor` (ADR-0091). Исторический рубеж >2,000 тестов взят (2,016/2,016)! Missed branches впервые в истории библиотеки < 300 (296)! Новые исторические рекорды: Branch 93.23%, Complexity 92.03%! `HttpTemplate` сокращен на 262 строки и 60 complexity!**
 
-1. *Вход:* HEAD `50e1814` (#349), чистое дерево (счётчик 350), mailbox пуст с #341.
-2. *Декомпозиция `MethodMetadata`:* вынесен весь срез рефлексии, парсинга аннотаций и дескрипторов:
-   - `parse(Method, Class<?>)`: общая оркестрация извлечения метаданных;
-   - HTTP-глаголы: `@Get`, `@Post`, `@Put`, `@Patch`, `@Delete` и fail-fast при отсутствии глагола;
-   - Дескрипторы параметров: 14 типов параметров (`@PathVariable`, `@RequestHeader`, `@Cookie`, `@RequestParam`, `@RequestBody`, `@MultipartFormFile`, `ResponseHeaders`, `UploadProgressListener`, `DownloadProgressListener`, `@TargetUrl`);
-   - Иерархия интерфейсов: `collectInterfaceHierarchy` с ромбовидным наследованием;
-   - Статические заголовки, куки и дефолтные query-параметры со слиянием и сохранением порядка;
-   - Политики: `@Timeout`, `@Retry`, `@HttpVersion`, `@ExpectStatus`, `@FollowRedirects`, `@Compress`, `@CircuitBreaker`, `@RateLimiter`, `@WithInterceptor`, `@WithMetrics`, `@OnError`;
-   - Анализ типов: `CompletableFuture`, `Optional`, reactive/streaming types.
-3. *Форма:* package-private `final MethodMetadataParser` (stateless, private constructor).
-4. *Шов:* `MethodMetadata` сохранил все final-поля, внутренние рекорды (`MethodKey`, `ReturnTypeInfo`, `EffectiveCompression`, `ParameterDescriptor`), кэш `CACHE` и метод `of(Method, Class<?>)`, делегирующий в `MethodMetadataParser.parse(...)`. Метод `MethodMetadata.parse(...)` сохранён как однострочный package-private делегат для 100% обратной совместимости.
-5. *Удаление мертвого кода (JLS §9.7):* удалены недостижимые проверки `ann.unit() == null`, `rp.format() != null &&`, `format != null &&`, `clazz != null &&` — сэкономлено 8 мертвых веток.
-6. *TDD red-first:* `MethodMetadataParserTest` написан до реализации (66 compile-red ошибок «cannot find symbol MethodMetadataParser»), 20 тестов.
-7. *Сьют коллаборатора:* **334/334 branches (100%), 200/200 complexity (100%), 406/406 lines (100%), 2,149/2,149 instructions (100%), 0 missed branches (планка C11 ADR-0081)**.
-8. *Замеры ADR-0081:*
-   - `MethodMetadata` **1,140 → 379** строк (−761 строка, **C1 Green ≤ 400!**) / WMC **257 → 49** (−208 complexity, **C2 Green ≤ 100!**) / missed branches **28 → 0** (−28 missed, 100% covered!).
-   - `MethodMetadata` **ПОЛНОСТЬЮ ПОКИНУЛ RED GOD-КЛАССЫ**! В RED зоне библиотеки остался только `HttpTemplate` (1,976 строк, WMC 364), который методично уменьшается.
-   - `MethodMetadataParser` — 786 строк / 200 WMC / **0 missed branches**;
-   - Missed branches библиотеки: 336 → **308** (−28 missed branches за сессию — **новый абсолютный минимум**);
-   - Branch coverage: 92.33% → **92.93%** (4,051/4,359 covered — **новый исторический абсолютный рекорд**);
-   - Complexity coverage: 90.95% → **91.69%** (3,388/3,695 covered — **новый рекорд**);
-   - Инструкции: **98.43%**, Линии: **98.13%**, Классы: **100%** (159/159); Методы: 99.93% (1,469/1,470).
-9. *ADR-0090* (`docs/0.13.0/ADR-0090-method-metadata-parser-extraction.md`, Accepted) + навигационная карта ADR-0081 обновлена + `ru.jrestly.http/package-info` и `ROADMAP.md` актуализированы. Highest ADR **0090**, next free **0091**.
-10. *Гейт:* полный **1,989/1,989** (root **1,825** = 1,805 + 20; субмодули 164), 0 failures/errors; `:javadoc` чисто во всех 8 модулях под `-Werror`.
+1. *Вход:* HEAD `b0bba26` (#350), чистое дерево (счётчик 351), mailbox пуст с #341.
+2. *Декомпозиция `HttpTemplate`:* вынесен весь срез retry execution:
+   - `executeWithRetries`: синхронный цикл повторов с классификацией статусов, IOException retryTransport-гейтами, fail-fast InterruptedException, закрытием промежуточных стримов, вычислением backoff и задержкой;
+   - `executeAsyncWithRetries`, `attemptAsync`, `scheduleAsyncRetry`: асинхронный пайплайн повторов с неблокирующим планированием через `CompletableFuture.delayedExecutor`, unwrap стадий, zero-delay fast path;
+   - `probePayloadDecode`: side-effect-free payload decode probe (ADR-0011) для повторов при ошибках декодирования;
+   - `isRetryableStatus`, `isNonIdempotent`: статусная классификация, соблюдение терминального контракта `@OnError` и флага `retryOnErrorStatuses`, список `retryableStatuses`, правила идемпотентности (POST/PATCH);
+   - Экспоненциальный backoff с jitter и `Retry-After` заголовком;
+   - Per-attempt метрики (`MetricsNotifier.attemptComplete`, `MetricsNotifier.retry`).
+3. *Форма:* package-private `final class RetryExecutor` с record `RetryConfig` (соответствие правилу C8 ≤ 7 параметров). Независим от редиректов — принимает чистые функциональные интерфейсы `SyncSender` и `AsyncSender` (C9 green: zero package cycles, loose coupling).
+4. *Шов:* в `HttpTemplate` экземпляр строится лениво в `retryExecutor()`. Методы `executeWithRetries`, `executeAsyncWithRetries`, `probePayloadDecode` и `isRetryableStatus` делегируют в `retryExecutor()`, сохраняя 100% обратную совместимость.
+5. *TDD red-first:* `RetryExecutorTest` написан до реализации (compile-red), 27 исчерпывающих тестов.
+6. *Сьют коллаборатора:* **124/124 branches (100%), 81/81 complexity (100%), 152/152 lines (100%), 885/885 instructions (100%), 0 missed branches (планка C11 ADR-0081)**.
+7. *Замеры ADR-0081:*
+   - `HttpTemplate` **1,976 → 1,714** строк (−262 строки!) / WMC **364 → 304** (−60 complexity!) / missed branches **63 → 54** (−9 missed);
+   - `RetryExecutor` — 339 строк / 78 WMC / **0 missed branches**;
+   - Missed branches библиотеки: 308 → **296** (−12 missed branches за сессию — **впервые в истории библиотеки < 300!**);
+   - Branch coverage: 92.93% → **93.23%** (4,079/4,375 covered — **новый исторический абсолютный рекорд**);
+   - Complexity coverage: 91.69% → **92.03%** (3,420/3,716 covered — **новый исторический рекорд > 92%**);
+   - Инструкции: **98.53%** (31,004/31,465); Линии: **98.25%** (6,813/6,934); Классы: **100%** (161/161); Методы: 99.87% (1,481/1,483).
+8. *ADR-0091* (`docs/0.13.0/ADR-0091-retry-executor-extraction.md`, Accepted) + навигационная карта ADR-0081 обновлена + `ru.jrestly.http/package-info` и `ROADMAP.md` актуализированы. Highest ADR **0091**, next free **0092**.
+9. *Гейт:* полный **2,016/2,016** (root **1,852** = 1,825 + 27; субмодули 164), 0 failures/errors; `:javadoc` чисто во всех 8 модулях под `-Werror`. Рубеж в 2,000 тестов взят!
 
-## Контекст для следующей сессии (#351)
+## Контекст для следующей сессии (#352)
 
-1. **Ветка** `agent-loop`, HEAD — коммит #350.
+1. **Ветка** `agent-loop`, HEAD — коммит #351.
 2. **Приоритет:**
-   - Дальнейшая декомпозиция оставшегося красного god-класса `HttpTemplate` (1,976 строк, WMC 364): вынос `RedirectHandler` / `RetryExecutor` / `CacheDispatchPipeline`.
+   - Дальнейшая декомпозиция оставшегося красного god-класса `HttpTemplate` (1,714 строк, WMC 304): вынос `RedirectHandler` / `RedirectExecutor` (циклы редиректов), либо `CacheDispatchPipeline` (интеграция кэша в exchange/exchangeAsync).
 3. *Окружение:* `GRADLE_USER_HOME=/tmp/opencode/gradle-home`; полный гейт `./gradlew test javadoc` ~1–2 мин. JaCoCo — `build/reports/jacoco/test/jacocoTestReport.xml`; тесты — `**/build/test-results/**/TEST-*.xml`.
-4. *Метрики:* гейт **1,989/1,989**; JaCoCo Branch **92.93%** (308 missed — абсолютный рекорд) / Complexity **91.69%** (рекорд); `MethodMetadata` **379** строк (Green); next free ADR **0091**.
+4. *Метрики:* гейт **2,016/2,016**; JaCoCo Branch **93.23%** (296 missed — абсолютный минимум < 300) / Complexity **92.03%** (рекорд > 92%); `HttpTemplate` **1,714** строк; next free ADR **0092**.

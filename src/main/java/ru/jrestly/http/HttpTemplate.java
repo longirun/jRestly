@@ -119,6 +119,8 @@ class HttpTemplate {
     private ru.jrestly.cache.HttpCache httpCache;
     // ADR-0066: redirect policy collaborator, built lazily on the first hop
     private Redirects redirects;
+    // ADR-0091: retry execution collaborator, built lazily from the fields populated before exchange() runs
+    private RetryExecutor retryExecutor;
 
     void setHttpCache(ru.jrestly.cache.HttpCache httpCache) {
         this.httpCache = httpCache;
@@ -136,6 +138,25 @@ class HttpTemplate {
             redirects = new Redirects(followRedirectsNumber, authHeaderNames, logger);
         }
         return redirects;
+    }
+
+    private RetryExecutor retryExecutor() {
+        if (retryExecutor == null) {
+            retryExecutor = new RetryExecutor(new RetryExecutor.RetryConfig(
+                    retryPolicy,
+                    httpMethod,
+                    logger,
+                    metricsListener,
+                    onErrorParser,
+                    expectStatuses,
+                    conditional,
+                    optional,
+                    returnType,
+                    this::responseCodecOrNull,
+                    executor
+            ));
+        }
+        return retryExecutor;
     }
 
     /**
@@ -757,199 +778,22 @@ class HttpTemplate {
         return response;
     }
 
-    // ADR-0008 Aspect 3+6: the retry loop operates on the RAW response, before
-    // processResponse runs, so auth-capture, logging, @OnError decoding, and
-    // the status check fire exactly once, on the final response. A disabled
-    // policy is a straight pass-through — off-by-default users see no change.
-    // Re-sending the same WireRequest is safe: toHttpRequest builds a fresh
-    // HttpRequest per send with a per-send body publisher.
-    // ADR-0011 Aspect 2: when the distinct decode opt-in is on, a
-    // status-acceptable response is additionally checked by the side-effect-
-    // free decode probe — the third failure-kind (transport / status /
-    // decode) — without breaking the "classified exactly once" property.
+    // ADR-0008, ADR-0011, ADR-0091: delegates to RetryExecutor
     private WireResponse executeWithRetries(
             WireRequest request,
             RequestContext requestContext,
             int[] attemptsHolder,
             int attemptOffset
     ) throws IOException, InterruptedException {
-        if (!retryPolicy.isEnabled()) {
-            long attemptStart = System.nanoTime();
-            WireResponse response = null;
-            Throwable failure = null;
-            try {
-                response = executeWithRedirects(request);
-                return response;
-            } catch (Throwable t) {
-                failure = t;
-                throw t;
-            } finally {
-                MetricsNotifier.attemptComplete(metricsListener, logger, requestContext, request, 1 + attemptOffset, response, failure, attemptStart);
-            }
-        }
-
-        int maxAttempts = retryPolicy.maxAttempts();
-        long lastDelayMillis = 0L;
-
-        for (int attempt = 1; ; attempt++) {
-            if (attemptsHolder != null) {
-                attemptsHolder[0] = attempt;
-            }
-            boolean last = attempt == maxAttempts;
-
-            long attemptStart = System.nanoTime();
-            WireResponse response;
-            String failure;
-            Throwable failureThrowable = null;
-            try {
-                response = executeWithRedirects(request);
-                failure = "HTTP " + response.statusCode();
-                if (!isExpectedStatus(response.statusCode())) {
-                    failureThrowable = createUnexpectedStatusException(response.statusCode(), ResponseBody.extractText(response), response.headers());
-                }
-            } catch (InterruptedException e) {
-                // the caller's thread was interrupted — fail fast, never retried
-                failureThrowable = e;
-                MetricsNotifier.attemptComplete(metricsListener, logger, requestContext, request, attempt + attemptOffset, null, failureThrowable, attemptStart);
-                throw e;
-            } catch (IOException e) {
-                failureThrowable = e;
-                MetricsNotifier.attemptComplete(metricsListener, logger, requestContext, request, attempt + attemptOffset, null, failureThrowable, attemptStart);
-                if (last || !retryPolicy.isRetryTransport()) {
-                    throw e;
-                }
-                response = null;
-                failure = e.getClass().getSimpleName();
-            }
-
-            if (response != null) {
-                MetricsNotifier.attemptComplete(metricsListener, logger, requestContext, request, attempt + attemptOffset, response, failureThrowable, attemptStart);
-            }
-
-            if (response != null && (last || !isRetryableStatus(response))) {
-                // ADR-0011 Aspect 2: the status logic accepted the response, but
-                // a complete body the codec cannot bind is still not final when
-                // the distinct decode opt-in is on. The probe is the payload-
-                // decode branch of processResponse reproduced side-effect-free,
-                // so the side-effectful tail still runs exactly once, on the
-                // truly final response. On the last attempt it is not called at
-                // all — the final processResponse throws the codec's own
-                // unchecked exception (ADR-0011 Aspect 3: no new type).
-                if (!last && retryPolicy.isRetryDecodeFailures()) {
-                    try {
-                        probePayloadDecode(response);
-                    } catch (RuntimeException e) {
-                        lastDelayMillis = scheduleRetry(attempt, maxAttempts, "decode (" + e.getClass().getSimpleName() + ")", response, requestContext, request, e, lastDelayMillis, attemptOffset);
-                        continue;
-                    }
-                }
-                return response;
-            }
-
-            lastDelayMillis = scheduleRetry(attempt, maxAttempts, failure, response, requestContext, request, failureThrowable, lastDelayMillis, attemptOffset);
-        }
+        return retryExecutor().execute(request, requestContext, attemptsHolder, attemptOffset, this::executeWithRedirects);
     }
 
-    // One DEBUG line per failed attempt, then the wait: full jitter over
-    // [0, bound], or the deterministic max(bound, Retry-After) when the
-    // failed response carries a parseable Retry-After header, delta-seconds
-    // or HTTP-date (ADR-0008 Aspect 4, ADR-0009 candidate 3, ADR-0040).
-    // Backoff and the log line are phase-local (the retry-policy window is
-    // per phase); the listener number is per-call (ADR-0036 Amendment #196).
-    private long scheduleRetry(
-            int attempt,
-            int maxAttempts,
-            String failure,
-            WireResponse response,
-            RequestContext requestContext,
-            WireRequest request,
-            Throwable failureThrowable,
-            long previousDelayMillis,
-            int attemptOffset
-    ) throws InterruptedException {
-        // ADR-0015 Aspect 2: every scheduled retry discards the failed
-        // attempt — its stream (if any) is closed before the wait; a
-        // transport failure carries no response and is a no-op
-        closeIntermediateStream(response);
-        long delayMillis = retryPolicy.nextDelayMillis(attempt, previousDelayMillis, RetryAfter.delayMillis(response), ThreadLocalRandom.current());
-        HttpDiagnosticLogger.logRetry(logger, attempt, maxAttempts, failure, delayMillis);
-        MetricsNotifier.retry(metricsListener, logger, requestContext, request, attempt + attemptOffset, failureThrowable, delayMillis);
-        if (delayMillis > 0) {
-            Thread.sleep(delayMillis);
-        }
-        return delayMillis;
+    boolean isRetryableStatus(WireResponse response) {
+        return retryExecutor().isRetryableStatus(response);
     }
 
-    // The loop's failure predicate — the exact decisions processResponse makes,
-    // so "what the loop calls a failure" and "what processResponse calls a
-    // failure" cannot drift apart (ADR-0008 Aspect 3)
-    private boolean isRetryableStatus(WireResponse response) {
-        int status = response.statusCode();
-
-        if (isExpectedStatus(status)) {
-            return false; // success — the loop ends
-        }
-        if (onErrorParser != null && onErrorParser.canParse(status) && !retryPolicy.isRetryOnErrorStatuses()) {
-            return false; // a declared @OnError status is a terminal contract by default
-        }
-        if (!retryPolicy.getRetryableStatuses().contains(status)) {
-            return false; // not in the retryable set — a bare 404 is a deterministic client error
-        }
-        return retryPolicy.isRetryNonIdempotent() || !isNonIdempotent(httpMethod);
-    }
-
-    // RFC 9110: of this library's methods, POST and PATCH are non-idempotent
-    private static boolean isNonIdempotent(HttpMethod method) {
-        return method == HttpMethod.POST || method == HttpMethod.PATCH;
-    }
-
-    // ADR-0011 Aspect 2: the decode probe — the payload-decode branch of
-    // processResponse reproduced side-effect-free (no auth-capture, no log,
-    // no exception construction), so the retry loop can ask "would this
-    // payload decode" without classifying the response: the side-effectful
-    // processResponse still runs exactly once, on the truly final response.
-    // It returns true whenever the payload decode cannot fail — @OnError
-    // statuses and unexpected statuses classify before the payload decode,
-    // so their scope (terminal / retryOnErrorStatuses) falls out of the
-    // probe's shape rather than a special case. The same predicates
-    // processResponse uses (onErrorParser, isExpectedStatus, returnType),
-    // so the two cannot drift apart (ADR-0008 Aspect 3, decode axis).
-    // A non-bindable body throws the codec's own unchecked exception,
-    // unwrapped (ADR-0011 Aspect 3: no new type).
     boolean probePayloadDecode(WireResponse response) {
-        int status = response.statusCode();
-        if (onErrorParser != null && onErrorParser.canParse(status)) {
-            return true; // @OnError classifies before the payload decode
-        }
-        if (!isExpectedStatus(status)) {
-            return true; // the status check classifies before the payload decode
-        }
-        if (response.stream() != null) {
-            return true; // ADR-0015 Aspect 3: byte binding — nothing is decoded, the decode cannot fail
-        }
-        byte[] bytes = response.body();
-        String payload = (bytes != null && bytes.length > 0) ? new String(bytes, StandardCharsets.UTF_8) : null;
-        if (optional) {
-            if (ResponseBody.isMissingResource(status) || payload == null) {
-                return true;
-            }
-            if (String.class.equals(returnType) || byte[].class.equals(returnType) || Void.class.equals(returnType) || void.class.equals(returnType)) {
-                return true;
-            }
-            responseCodec(response.headers()).deserialize(bytes, returnType, ResponseBody.contentTypeOf(response.headers()));
-            return true;
-        }
-        if (payload == null) {
-            return true; // no body
-        }
-        if (String.class.equals(returnType) || byte[].class.equals(returnType)) {
-            return true; // returned raw, never decoded
-        }
-        if (Void.class.equals(returnType) || void.class.equals(returnType)) {
-            return true; // body discarded (ADR-0009 candidate 2)
-        }
-        responseCodec(response.headers()).deserialize(bytes, returnType, ResponseBody.contentTypeOf(response.headers()));
-        return true;
+        return retryExecutor().probePayloadDecode(response);
     }
 
     // Async twin: same hop semantics, chained over sendAsync
@@ -974,13 +818,7 @@ class HttpTemplate {
         });
     }
 
-    // Async twin of executeWithRetries (ADR-0008 Aspect 6): the same loop
-    // chained over sendAsync, a disabled policy a straight pass-through. The
-    // backoff wait runs on CompletableFuture.delayedExecutor — non-blocking,
-    // no parked virtual thread per retry — and exchangeAsync's final exception
-    // mapping stays untouched. The decode axis (ADR-0011 Aspect 2) is mirrored
-    // verbatim: a status-acceptable response is additionally probe-checked
-    // under the distinct opt-in, exactly as the sync twin does.
+    // ADR-0008, ADR-0011, ADR-0091: async twin delegates to RetryExecutor
     private CompletableFuture<WireResponse> executeAsyncWithRetries(
             WireRequest request,
             RequestContext requestContext,
@@ -988,107 +826,7 @@ class HttpTemplate {
             int attemptOffset
     ) {
         int hopsLeft = followRedirectsNumber == null ? 0 : followRedirectsNumber;
-        if (!retryPolicy.isEnabled()) {
-            long attemptStart = System.nanoTime();
-            return executeAsyncWithRedirects(request, hopsLeft).whenComplete((response, failure) -> {
-                Throwable unwrapped = failure != null ? unwrapCause(failure) : null;
-                MetricsNotifier.attemptComplete(metricsListener, logger, requestContext, request, 1 + attemptOffset, response, unwrapped, attemptStart);
-            });
-        }
-        return attemptAsync(request, 1, retryPolicy.maxAttempts(), hopsLeft, requestContext, attemptsRef, 0L, attemptOffset);
-    }
-
-    // One attempt, or the next one after the wait: the exact sync decisions —
-    // only an IOException with retryTransport on and a non-last attempt is
-    // retried; InterruptedException (fail fast) and any other failure type
-    // pass through to exchangeAsync's mapping. The handle step yields the
-    // next stage (handle unwraps a returned CompletionStage at runtime); the
-    // identity compose only fixes the static type.
-    private CompletableFuture<WireResponse> attemptAsync(
-            WireRequest request,
-            int attempt,
-            int maxAttempts,
-            int hopsLeft,
-            RequestContext requestContext,
-            AtomicInteger attemptsRef,
-            long previousDelayMillis,
-            int attemptOffset
-    ) {
-        attemptsRef.set(attempt);
-        boolean last = attempt == maxAttempts;
-        long attemptStart = System.nanoTime();
-        return executeAsyncWithRedirects(request, hopsLeft)
-                .<CompletableFuture<WireResponse>>handle((response, failure) -> {
-                    Throwable cause = failure != null ? unwrapCause(failure) : null;
-                    if (cause != null) {
-                        MetricsNotifier.attemptComplete(metricsListener, logger, requestContext, request, attempt + attemptOffset, null, cause, attemptStart);
-                        if (!(cause instanceof IOException) || last || !retryPolicy.isRetryTransport()) {
-                            return CompletableFuture.<WireResponse>failedFuture(cause);
-                        }
-                        return scheduleAsyncRetry(request, attempt, maxAttempts, cause.getClass().getSimpleName(), null, hopsLeft, requestContext, cause, attemptsRef, previousDelayMillis, attemptOffset);
-                    }
-                    Throwable statusFailure = !isExpectedStatus(response.statusCode())
-                            ? createUnexpectedStatusException(response.statusCode(), ResponseBody.extractText(response), response.headers())
-                            : null;
-                    MetricsNotifier.attemptComplete(metricsListener, logger, requestContext, request, attempt + attemptOffset, response, statusFailure, attemptStart);
-                    if (last || !isRetryableStatus(response)) {
-                        // ADR-0011 Aspect 2, async twin: the status logic accepted
-                        // the response, but a complete body the codec cannot bind
-                        // is still not final under the distinct decode opt-in. The
-                        // probe is the payload-decode branch of processResponse
-                        // reproduced side-effect-free, so exchangeAsync's
-                        // side-effectful tail still runs exactly once. On the last
-                        // attempt it is not called at all — the final
-                        // processResponse throws the codec's own unchecked
-                        // exception (ADR-0011 Aspect 3: no new type). The probe
-                        // is a plain synchronous call: the handle callback already
-                        // runs on the completing thread.
-                        if (!last && retryPolicy.isRetryDecodeFailures()) {
-                            try {
-                                probePayloadDecode(response);
-                            } catch (RuntimeException e) {
-                                return scheduleAsyncRetry(request, attempt, maxAttempts,
-                                        "decode (" + e.getClass().getSimpleName() + ")", response, hopsLeft, requestContext, e, attemptsRef, previousDelayMillis, attemptOffset);
-                            }
-                        }
-                        return CompletableFuture.<WireResponse>completedFuture(response);
-                    }
-                    return scheduleAsyncRetry(request, attempt, maxAttempts, "HTTP " + response.statusCode(), response, hopsLeft, requestContext, statusFailure, attemptsRef, previousDelayMillis, attemptOffset);
-                })
-                .thenCompose(Function.identity());
-    }
-
-    // The async wait: the sync twin's exact DEBUG line, then the next attempt
-    // after the delay on CompletableFuture.delayedExecutor; a zero jitter draw
-    // skips the scheduler call, as the sync twin skips Thread.sleep(0)
-    private CompletableFuture<WireResponse> scheduleAsyncRetry(
-            WireRequest request,
-            int attempt,
-            int maxAttempts,
-            String failure,
-            WireResponse response,
-            int hopsLeft,
-            RequestContext requestContext,
-            Throwable failureThrowable,
-            AtomicInteger attemptsRef,
-            long previousDelayMillis,
-            int attemptOffset
-    ) {
-        // ADR-0015 Aspect 2, async twin: the same discard — the failed
-        // attempt's stream (if any) is closed before the deferred wait
-        closeIntermediateStream(response);
-        long delayMillis = retryPolicy.nextDelayMillis(attempt, previousDelayMillis, RetryAfter.delayMillis(response), ThreadLocalRandom.current());
-        HttpDiagnosticLogger.logRetry(logger, attempt, maxAttempts, failure, delayMillis);
-        MetricsNotifier.retry(metricsListener, logger, requestContext, request, attempt + attemptOffset, failureThrowable, delayMillis);
-        if (delayMillis <= 0) {
-            return attemptAsync(request, attempt + 1, maxAttempts, hopsLeft, requestContext, attemptsRef, 0L, attemptOffset);
-        }
-        Executor scheduler = executor != null
-                ? CompletableFuture.delayedExecutor(delayMillis, TimeUnit.MILLISECONDS, executor)
-                : CompletableFuture.delayedExecutor(delayMillis, TimeUnit.MILLISECONDS);
-        return CompletableFuture.runAsync(() -> {
-        }, scheduler)
-                .thenCompose(ignored -> attemptAsync(request, attempt + 1, maxAttempts, hopsLeft, requestContext, attemptsRef, delayMillis, attemptOffset));
+        return retryExecutor().executeAsync(request, requestContext, attemptsRef, attemptOffset, req -> executeAsyncWithRedirects(req, hopsLeft));
     }
 
     // ADR-0015 Aspect 2: the effective return type picks the body handler —

@@ -1,5 +1,23 @@
 # DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
+> **Сессия #351 (декомпозиция `HttpTemplate`: вынесен `RetryExecutor`; `HttpTemplate` 1,976→1,714 / −262 строки / WMC 364→304 / missed branches 63→54; новый коллаборатор 339 строк / 27 тестов / 124 branches / 0 missed branches; ADR-0091; гейт 2,016/2,016 — исторический рубеж >2,000 тестов взят!, JaCoCo Branch 93.23% — новый исторический абсолютный рекорд, Complexity 92.03% — новый рекорд >92%, missed branches 296 — впервые в истории ниже 300!):**
+> 1. *Вход:* HEAD `b0bba26` (#350), чистое дерево (счётчик 351), mailbox пуст с #341. Приоритет — продолжение декомпозиции последнего красного god-класса `HttpTemplate` (1,976 строк, WMC 364): вынос retry loop coordination.
+> 2. *Срез:* вся логика повторов — синхронный цикл (`executeWithRetries`), асинхронный пайплайн (`executeAsyncWithRetries`, `attemptAsync`, `scheduleAsyncRetry`), side-effect-free payload decode probe (`probePayloadDecode`), классификация статусов (`isRetryableStatus`, `isNonIdempotent`), экспоненциальный backoff с jitter и `Retry-After`, per-attempt metrics (`MetricsNotifier.attemptComplete`, `MetricsNotifier.retry`), диагностическое логирование (`HttpDiagnosticLogger.logRetry`) и intermediate stream closing.
+> 3. *Форма:* package-private `final class RetryExecutor` с record `RetryConfig` (удовлетворяет C8 ≤ 7 параметров). Независим от редиректов — принимает чистые функциональные интерфейсы `SyncSender` и `AsyncSender`.
+> 4. *Шов:* в `HttpTemplate` экземпляр `RetryExecutor` строится лениво в `retryExecutor()`. Методы `executeWithRetries`, `executeAsyncWithRetries`, `probePayloadDecode` и `isRetryableStatus` делегируют в `retryExecutor()` в 1 строку, сохраняя 100% обратную совместимость для всех тестов (`HttpTemplateDecodeProbeTest`, `HttpTemplateLineAndEventStreamErrorAndAsyncTest`, `HttpTemplateStreamContractTest`).
+> 5. *TDD red-first:* `RetryExecutorTest` написан до реализации (compile-red), 27 исчерпывающих тестов.
+> 6. *Сьют коллаборатора:* **124/124 branches (100%), 81/81 complexity (100%), 152/152 lines (100%), 885/885 instructions (100%), 0 missed branches (планка C11 ADR-0081)**.
+> 7. *Замеры ADR-0081:*
+>    - `HttpTemplate` **1,976 → 1,714** строк (−262 строки!) / WMC **364 → 304** (−60 complexity!) / missed branches **63 → 54** (−9 missed branches);
+>    - `RetryExecutor` — 339 строк / 78 WMC / **0 missed branches**;
+>    - Missed branches библиотеки: 308 → **296** (впервые в истории ниже 300!);
+>    - Branch coverage: 92.93% → **93.23%** (4,079/4,375 covered — **новый исторический абсолютный рекорд**);
+>    - Complexity coverage: 91.69% → **92.03%** (3,420/3,716 covered — **новый абсолютный рекорд >92%**);
+>    - Инструкции: **98.53%**, Линии: **98.25%**, Классы: **100%** (161/161); Методы: 99.87% (1,481/1,483).
+> 8. *ADR-0091* (`docs/0.13.0/ADR-0091-retry-executor-extraction.md`, Accepted) + навигационная карта ADR-0081 обновлена + `ru.jrestly.http/package-info` упоминает `RetryExecutor` + `ROADMAP.md` актуализирован. Highest ADR **0091**, next free **0092**.
+> 9. *Гейт:* полный **2,016/2,016** (root **1,852** = 1,825 + 27; субмодули 164), 0 failures/errors; `:javadoc` чисто во всех 8 модулях под `-Werror`.
+> 10. *Дальше (#352):* следующий шаг по декомпозиции `HttpTemplate` (1,714 строк, WMC 304) — вынос `RedirectHandler` / `RedirectExecutor` (циклы редиректов), либо `CacheDispatchPipeline` (интеграция кэша в exchange/exchangeAsync).
+> 
 > **Сессия #350 (декомпозиция `MethodMetadata`: вынесен `MethodMetadataParser`; `MethodMetadata` 1,140→379 / −761 строк / WMC 257→49 / missed 28→0, класс ПОЛНОСТЬЮ вышел из RED god-классов в GREEN!; новый коллаборатор 786 строк / 20 тестов / 334 branches / 0 missed; ADR-0090; гейт 1,989/1,989, JaCoCo Branch 92.93% — новый абсолютный рекорд, Complexity 91.69% — новый рекорд, missed branches 308 — новый минимум библиотеки):**
 > 1. *Вход:* HEAD `50e1814` (#349), чистое дерево (счётчик 350), mailbox пуст с #341. Приоритет — декомпозиция последнего красного класса из бэклога ADR-0081 кроме template: `MethodMetadata` (1,140 строк, WMC 257, 28 missed branches).
 > 2. *Срез:* вся рефлексия и парсинг аннотаций вынесены из модели метаданных: HTTP-глаголы, дескрипторы параметров (14 разновидностей), иерархия интерфейсов (ромбовидное наследование), статические заголовки, куки, дефолтные query-параметры, политики (timeout, retry, compression, circuit breaker, rate limiter, interceptors, metrics, error handling) и return type info.
