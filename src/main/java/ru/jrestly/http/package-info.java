@@ -1,7 +1,7 @@
 /**
  * The internal request pipeline: assembly ({@code HttpTemplateBuilder},
  * {@code UrlComposer}, {@code HeaderComposer}, {@code BodyComposer},
- * {@code ResilienceComposer}, {@code MethodMetadata}), execution
+ * {@code ResilienceComposer}, {@code MethodMetadata}, {@code MethodMetadataParser}), execution
  * ({@code HttpTemplate} — redirects, retries,
  * streaming, {@code ResponseDecompressor}, {@code HttpErrorHandler}, {@code HttpDiagnosticLogger}, cache dispatch, problem-detail resolution), the raw
  * {@code WireRequest}/{@code WireResponse} model, response metadata

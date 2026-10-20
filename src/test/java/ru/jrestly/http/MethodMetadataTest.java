@@ -271,6 +271,9 @@ class MethodMetadataTest {
         assertEquals("application/json", acceptMeta.methodAccept());
         assertNull(acceptMeta.interfaceAccept());
         assertNull(acceptMeta.interfaceTrace());
+        assertNotNull(acceptMeta.effectiveTrace());
+        assertNotNull(acceptMeta.staticHeaders());
+        assertFalse(acceptMeta.hasTargetUrl());
 
         Method multiMethod = SampleController.class.getMethod("withMultipart", byte[].class, String.class);
         MethodMetadata multiMeta = MethodMetadata.of(multiMethod, SampleController.class);

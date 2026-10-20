@@ -71,7 +71,7 @@ XML of the 0.12.0 gate (main code unchanged since then except `MultipartBodyPubl
 |---|---:|---:|---:|---|---|
 | `http.HttpTemplate` | 2,286 | 461 | 80 | **red** | keep extracting collaborators; no new responsibilities |
 | `http.HttpTemplateBuilder` | 1,516 | 407 | 110 | **red** | decomposition wave 2 (this ADR's follow-up) |
-| `http.MethodMetadata` | 1,140 | 257 | 28 | **red** | parse-only surface: extract static-header/param parsing if it grows |
+| `http.MethodMetadata` | 1,140 → 379 | 257 → 49 | 28 → 0 | **green** (ADR-0090) | parser extracted to `http.MethodMetadataParser` (786 lines / 0 missed) |
 | `ControllerValidator` | 871 | 279 | 10 | **red** | split `validateMethod` into named check methods |
 | `problem.ProblemDetail` | 922 | 126 (+80 nested parser) | 32 | yellow | nested parser already isolated; leave until it changes |
 | `http.ResponseHeaders` | 852 | 142 | 6 | yellow | stable value object; split only on next feature |
@@ -111,7 +111,7 @@ the missing piece is documentation or naming, not the reader.
 |---|---|---|
 | public facade / builders | `JRestlyClient`, `SimpleModuleInfo` | `JRestlyClientBuilderTest` |
 | annotations and validation | `annotation/*`, `ControllerValidator` (orchestration), `AnnotationChecks` (shared rules) (update: ADR-0086) | `ControllerValidationTest`, `AnnotationChecksTest` |
-| metadata and caches | `http/MethodMetadata` | `MethodMetadataTest` |
+| metadata and caches | `http/MethodMetadata` (model/cache), `http/MethodMetadataParser` (parsing) (update: ADR-0090) | `MethodMetadataTest`, `MethodMetadataParserTest` |
 | URL/query assembly | `http/UrlComposer`, `http/UriEncoder` (update: ADR-0082) | `UrlComposerTest`, `HttpTemplateUriTest` |
 | headers/cookies/auth | `http/HeaderComposer`, `http/HttpTemplateBuilder` (tracing), `http/AuthHeaderProvider` (update: ADR-0083) | `HeaderComposerTest`, `RequestHeadersTest`, `AuthTest` |
 | dispatch, retries, redirects, decompression, diagnostics & error handling | `http/HttpTemplate`, `http/Redirects`, `http/RetryAfter`, `http/ResponseDecompressor` (ADR-0087), `http/HttpErrorHandler` (ADR-0088), `http/HttpDiagnosticLogger` (ADR-0089) | `RetryPolicyJitterTest`, `RedirectsTest`, `ResponseDecompressorTest`, `HttpErrorHandlerTest`, `HttpDiagnosticLoggerTest` |
@@ -146,6 +146,10 @@ the missing piece is documentation or naming, not the reader.
   and the shared `AnnotationChecks` rules. `validateMethod` fell from
   complexity 121 to **3**, and `ControllerValidator` from 871 lines / WMC 279
   to 545 / 130.
+- `MethodMetadata` was decoupled in ADR-0090, extracting reflection and
+  annotation analysis into `MethodMetadataParser`. `MethodMetadata` fell from
+  1,140 lines / WMC 257 / 28 missed branches to **379 lines / WMC 49 / 0 missed branches**,
+  permanently exiting the RED god-class list.
 - Future release gates report the same table (lines/WMC/missed branches) next
   to JaCoCo percentages, so structural debt is visible in every cycle.
-- Next free ADR: **0087**.
+- Next free ADR: **0091**.

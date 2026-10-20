@@ -1,35 +1,38 @@
-# Last Session: #349 (2026-10-20)
+# Last Session: #350 (2026-10-20)
 
 ## Что сделано
 
-**Сессия #349: декомпозиция `HttpTemplate`: вынесен `HttpDiagnosticLogger` (ADR-0089). `HttpTemplate` впервые опустился ниже 2,000 строк (1,976 строк)! Новые абсолютные рекорды: Branch 92.33%, Complexity 90.95%, минимум missed branches 336.**
+**Сессия #350: декомпозиция `MethodMetadata`: вынесен `MethodMetadataParser` (ADR-0090). `MethodMetadata` навсегда вышел из RED god-классов в GREEN (379 строк, WMC 49, 0 missed branches)! Исторические абсолютные рекорды библиотеки: Branch 92.93%, Complexity 91.69%, missed branches 308.**
 
-1. *Вход:* HEAD `50e1814` (#348), чистое дерево (счётчик 349), mailbox пуст с #341.
-2. *Декомпозиция `HttpTemplate`:* вынесен весь срез wire-логирования и диагностики запросов, ответов, hop'ов, retry и вычисления multipart send-size:
-   - `logRequest(logger, request)`: форматирование метода, URI, заголовков, тела (POST, PUT, PATCH, DELETE по RFC 9110; GET/HEAD исключены), безопасного маркера `<streaming body>`, multipart-частей (`name`, `filename`) и размера `Sending size: ...`;
-   - `logResponse(logger, response, elapsedMs)`: форматирование версии протокола (HTTP/2 vs HTTP/1.1), кода статуса, латентности и заголовков;
-   - `logPerHop(logger, request, statusCode, startNanos)`: DEBUG-логирование промежуточных hop'ов редиректов и повторов;
-   - `logRetry(logger, attempt, maxAttempts, failure, delayMillis)`: унифицированное DEBUG-логирование попыток retry, устранившее дублирование между `scheduleRetry` и `scheduleRetryAsync`;
-   - `multipartSendSize(request)`: вычисление суммарного размера без построения publisher-графа.
-3. *Форма:* package-private `final HttpDiagnosticLogger` (stateless, private constructor).
-4. *Шов:* `HttpTemplate.logRequest(WireRequest)` сохранён как `protected` делегат в `HttpDiagnosticLogger.logRequest(logger, request)` — 100% бинарная совместимость хука подклассов и тестов `HttpTemplateLoggingTest`. Из `HttpTemplate` удалены `BODY_LOGGING_METHODS`, метод `multipartSendSize` и строковые конкатенации в retry-методах.
-5. *TDD red-first:* `HttpDiagnosticLoggerTest` написан до реализации (38 compile-red ошибок «cannot find symbol HttpDiagnosticLogger»), 14 тестов.
-6. *Сьют коллаборатора:* **46/46 branches (100%), 31/31 complexity (100%), 55/55 lines (100%), 245/245 instructions (100%), 0 missed branches (планка C11 ADR-0081)**.
-7. *Замеры ADR-0081:*
-   - `HttpTemplate` **2,057 → 1,976** строк (−81 строка, **ниже 2,000 строк!**) / WMC **383 → 364** (−19) / missed branches **69 → 63** (−6 missed);
-   - `HttpDiagnosticLogger` — 145 строк / 31 WMC / **0 missed branches**;
-   - Missed branches библиотеки: 339 → **336** (новый абсолютный минимум);
-   - Branch coverage: 92.23% → **92.33%** (4,043/4,379 covered — **новый исторический абсолютный рекорд**);
-   - Complexity coverage: 90.84% → **90.95%** (3,368/3,703 covered — **новый рекорд**);
-   - Инструкции: **98.39%**, Линии: **98.07%**, Классы: **100%** (158/158); Методы: 99.93% (1,467/1,468).
-8. *ADR-0089* (`docs/0.13.0/ADR-0089-http-diagnostic-logger-extraction.md`, Accepted) + навигационная карта ADR-0081 обновлена + `ru.jrestly.http/package-info` и `ROADMAP.md` актуализированы. Highest ADR **0089**, next free **0090**.
-9. *Гейт:* полный **1,969/1,969** (root **1,805** = 1,791 + 14; субмодули 164), 0 failures/errors; `:javadoc` чисто во всех 8 модулях под `-Werror`.
+1. *Вход:* HEAD `50e1814` (#349), чистое дерево (счётчик 350), mailbox пуст с #341.
+2. *Декомпозиция `MethodMetadata`:* вынесен весь срез рефлексии, парсинга аннотаций и дескрипторов:
+   - `parse(Method, Class<?>)`: общая оркестрация извлечения метаданных;
+   - HTTP-глаголы: `@Get`, `@Post`, `@Put`, `@Patch`, `@Delete` и fail-fast при отсутствии глагола;
+   - Дескрипторы параметров: 14 типов параметров (`@PathVariable`, `@RequestHeader`, `@Cookie`, `@RequestParam`, `@RequestBody`, `@MultipartFormFile`, `ResponseHeaders`, `UploadProgressListener`, `DownloadProgressListener`, `@TargetUrl`);
+   - Иерархия интерфейсов: `collectInterfaceHierarchy` с ромбовидным наследованием;
+   - Статические заголовки, куки и дефолтные query-параметры со слиянием и сохранением порядка;
+   - Политики: `@Timeout`, `@Retry`, `@HttpVersion`, `@ExpectStatus`, `@FollowRedirects`, `@Compress`, `@CircuitBreaker`, `@RateLimiter`, `@WithInterceptor`, `@WithMetrics`, `@OnError`;
+   - Анализ типов: `CompletableFuture`, `Optional`, reactive/streaming types.
+3. *Форма:* package-private `final MethodMetadataParser` (stateless, private constructor).
+4. *Шов:* `MethodMetadata` сохранил все final-поля, внутренние рекорды (`MethodKey`, `ReturnTypeInfo`, `EffectiveCompression`, `ParameterDescriptor`), кэш `CACHE` и метод `of(Method, Class<?>)`, делегирующий в `MethodMetadataParser.parse(...)`. Метод `MethodMetadata.parse(...)` сохранён как однострочный package-private делегат для 100% обратной совместимости.
+5. *Удаление мертвого кода (JLS §9.7):* удалены недостижимые проверки `ann.unit() == null`, `rp.format() != null &&`, `format != null &&`, `clazz != null &&` — сэкономлено 8 мертвых веток.
+6. *TDD red-first:* `MethodMetadataParserTest` написан до реализации (66 compile-red ошибок «cannot find symbol MethodMetadataParser»), 20 тестов.
+7. *Сьют коллаборатора:* **334/334 branches (100%), 200/200 complexity (100%), 406/406 lines (100%), 2,149/2,149 instructions (100%), 0 missed branches (планка C11 ADR-0081)**.
+8. *Замеры ADR-0081:*
+   - `MethodMetadata` **1,140 → 379** строк (−761 строка, **C1 Green ≤ 400!**) / WMC **257 → 49** (−208 complexity, **C2 Green ≤ 100!**) / missed branches **28 → 0** (−28 missed, 100% covered!).
+   - `MethodMetadata` **ПОЛНОСТЬЮ ПОКИНУЛ RED GOD-КЛАССЫ**! В RED зоне библиотеки остался только `HttpTemplate` (1,976 строк, WMC 364), который методично уменьшается.
+   - `MethodMetadataParser` — 786 строк / 200 WMC / **0 missed branches**;
+   - Missed branches библиотеки: 336 → **308** (−28 missed branches за сессию — **новый абсолютный минимум**);
+   - Branch coverage: 92.33% → **92.93%** (4,051/4,359 covered — **новый исторический абсолютный рекорд**);
+   - Complexity coverage: 90.95% → **91.69%** (3,388/3,695 covered — **новый рекорд**);
+   - Инструкции: **98.43%**, Линии: **98.13%**, Классы: **100%** (159/159); Методы: 99.93% (1,469/1,470).
+9. *ADR-0090* (`docs/0.13.0/ADR-0090-method-metadata-parser-extraction.md`, Accepted) + навигационная карта ADR-0081 обновлена + `ru.jrestly.http/package-info` и `ROADMAP.md` актуализированы. Highest ADR **0090**, next free **0091**.
+10. *Гейт:* полный **1,989/1,989** (root **1,825** = 1,805 + 20; субмодули 164), 0 failures/errors; `:javadoc` чисто во всех 8 модулях под `-Werror`.
 
-## Контекст для следующей сессии (#350)
+## Контекст для следующей сессии (#351)
 
-1. **Ветка** `agent-loop`, HEAD — коммит #349.
+1. **Ветка** `agent-loop`, HEAD — коммит #350.
 2. **Приоритет:**
-   - Аудит и декомпозиция `MethodMetadata` (1,140 строк, WMC ~257 red) по правилам ADR-0081;
-   - Либо следующий шаг по `HttpTemplate` (1,976 строк, WMC 364).
-3. *Окружение:* `GRADLE_USER_HOME=/tmp/opencode/gradle-home`; полный гейт `./gradlew test javadoc` ~1 мин. JaCoCo — `build/reports/jacoco/test/jacocoTestReport.xml`; тесты — `**/build/test-results/**/TEST-*.xml`.
-4. *Метрики:* гейт **1,969/1,969**; JaCoCo Branch **92.33%** (336 missed — рекорд) / Complexity **90.95%** (рекорд); `HttpTemplate` **1,976** строк; next free ADR **0090**.
+   - Дальнейшая декомпозиция оставшегося красного god-класса `HttpTemplate` (1,976 строк, WMC 364): вынос `RedirectHandler` / `RetryExecutor` / `CacheDispatchPipeline`.
+3. *Окружение:* `GRADLE_USER_HOME=/tmp/opencode/gradle-home`; полный гейт `./gradlew test javadoc` ~1–2 мин. JaCoCo — `build/reports/jacoco/test/jacocoTestReport.xml`; тесты — `**/build/test-results/**/TEST-*.xml`.
+4. *Метрики:* гейт **1,989/1,989**; JaCoCo Branch **92.93%** (308 missed — абсолютный рекорд) / Complexity **91.69%** (рекорд); `MethodMetadata` **379** строк (Green); next free ADR **0091**.
