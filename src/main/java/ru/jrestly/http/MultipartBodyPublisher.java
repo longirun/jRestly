@@ -6,6 +6,7 @@ import java.io.InputStream;
 import java.net.http.HttpRequest;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -38,10 +39,70 @@ public final class MultipartBodyPublisher {
             sequences.add(HttpRequest.BodyPublishers.ofByteArray(crlf));
         }
 
-        byte[] closingDelimiter = ("--" + boundary + "--\r\n").getBytes(StandardCharsets.UTF_8);
-        sequences.add(HttpRequest.BodyPublishers.ofByteArray(closingDelimiter));
+        sequences.add(HttpRequest.BodyPublishers.ofByteArray(closingDelimiter(boundary)));
 
         return HttpRequest.BodyPublishers.concat(sequences.toArray(HttpRequest.BodyPublisher[]::new));
+    }
+
+    /**
+     * Computes the exact on-wire size in bytes of the multipart body that
+     * {@link #of(String, List)} would render, without building the publisher
+     * graph: only the per-part header byte arrays are materialized.
+     *
+     * <p>The result mirrors {@link HttpRequest.BodyPublisher#contentLength()}
+     * of the rendered publisher: {@code -1} as soon as any part's content
+     * length is unknown (an unbounded stream source), and the same
+     * {@link RuntimeException} wrapping for a {@link Path} part that cannot
+     * be rendered as a file. The probe stops at the first unbounded part —
+     * parts after it are not probed, while the engine's {@code of(...)} call
+     * remains the full validator.
+     *
+     * @param boundary the multipart boundary string
+     * @param parts the list of multipart parts
+     * @return the rendered body size in bytes, or {@code -1} if any part's length is unknown
+     */
+    public static long contentLength(String boundary, List<MultipartPart> parts) {
+        long total = closingDelimiter(boundary).length;
+        for (MultipartPart part : parts) {
+            total += partHeaders(boundary, part).length;
+            long content = partContentLength(part);
+            if (content < 0) {
+                return -1;
+            }
+            total += content + 2;
+        }
+        return total;
+    }
+
+    private static byte[] closingDelimiter(String boundary) {
+        return ("--" + boundary + "--\r\n").getBytes(StandardCharsets.UTF_8);
+    }
+
+    // Mirrors contentPublisher's per-kind length: byte[] length, the Path size
+    // (same exists probe and RuntimeException wrap as ofFile — JDK 21's
+    // ofFile rejects only a missing path at build time, a directory is
+    // accepted and opened lazily), the Supplier's declared length
+    // (null = unbounded = -1); anything else fails fast exactly like of().
+    private static long partContentLength(MultipartPart part) {
+        Object content = part.content();
+        if (content instanceof byte[] bytes) {
+            return bytes.length;
+        }
+        if (content instanceof Path path) {
+            try {
+                if (!Files.exists(path)) {
+                    throw new FileNotFoundException(path.toString());
+                }
+                return Files.size(path);
+            } catch (IOException e) {
+                throw new RuntimeException("Cannot read multipart file: " + path, e);
+            }
+        }
+        if (content instanceof Supplier<?>) {
+            Long length = part.contentLength();
+            return length == null ? -1 : length;
+        }
+        throw new IllegalStateException("Unsupported multipart content: " + content.getClass().getName());
     }
 
     // RFC 7578 part framing: dash-boundary, Content-Disposition, optional Content-Type, CRLF

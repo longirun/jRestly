@@ -133,7 +133,8 @@ final class MetricsNotifier {
     // the body size at build time (Path/File streaming bodies, carried in
     // WireRequest.knownBodySize), report it; otherwise a streaming body's size
     // is unknown to the metrics layer (-1). Fully-known multipart bodies are
-    // measured from the rendered publisher (same seam as the INFO log).
+    // measured through the size-only seam MultipartBodyPublisher.contentLength
+    // (ADR-0078, same seam as the INFO log) — no publisher graph is built.
     static long requestBytes(WireRequest request) {
         if (request == null) {
             return -1;
@@ -146,7 +147,7 @@ final class MetricsNotifier {
         }
         if (request.parts() != null && request.boundary() != null) {
             try {
-                long length = MultipartBodyPublisher.of(request.boundary(), request.parts()).contentLength();
+                long length = MultipartBodyPublisher.contentLength(request.boundary(), request.parts());
                 if (length >= 0) {
                     return length;
                 }

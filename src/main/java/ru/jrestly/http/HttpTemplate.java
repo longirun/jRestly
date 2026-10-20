@@ -1426,7 +1426,7 @@ class HttpTemplate {
         if (request.parts() == null) {
             return "0";
         }
-        long size = MultipartBodyPublisher.of(request.boundary(), request.parts()).contentLength();
+        long size = MultipartBodyPublisher.contentLength(request.boundary(), request.parts());
         return size >= 0 ? String.valueOf(size) : "unknown (chunked)";
     }
 
