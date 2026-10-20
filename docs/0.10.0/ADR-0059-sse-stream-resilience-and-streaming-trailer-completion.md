@@ -1,8 +1,8 @@
 # ADR-0059: SSE Stream Resilience & Streaming Trailer Completion
 
-> 2026-10-16 · Proposed · Status: Concept
+> 2026-10-16 · Accepted · Status: Complete
 > Ф1 реализована в сессии #161, Ф2 — в #163, Ф3 — в #175 (спайк пройден,
-> guard оставлен; см. Amendments ниже). Все фазы закрыты.
+> guard оставлен; см. Amendments ниже). Все фазы закрыты (#360, гигиена статуса).
 > Next free ADR: 0060
 > Эпик-кандидат №2 из активной зоны DRAFT («HTTP Trailers & Advanced Streaming
 > ergonomics»). Сессия #160: аудит зоны + концепт. Реализация — последующие

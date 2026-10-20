@@ -1,32 +1,45 @@
-# Last Session: #359 (2026-10-20)
+# Last Session: #362 (2026-10-20)
 
 ## Что сделано
 
-**Сессия #359: декомпозиция `HttpTemplate` — pre-wire RFC 9111 консультация кэша переехала в `CacheDispatch` (ADR-0093). Missed branches библиотеки: 283 — новый абсолютный исторический минимум! Новые рекорды: Branch 93.54%, Complexity 92.36%! Полный гейт 2,055/2,055 тестов!**
+**Сессия #362: декомпозиция `HttpTemplate` — вынесен `ResponseProcessor` (ADR-0094). Год-классы окончательно побеждены (WMC `HttpTemplate` впервые < 250)! Missed branches библиотеки: 282 — новый абсолютный исторический минимум! Branch coverage 93.57% — новый исторический абсолютный рекорд! Полный гейт: 2,076/2,076 тестов!**
 
-1. *Вход:* HEAD `0ce1beb` (#352), в дереве — несохранённая работа этой сессии (счётчик 359; сессии #353–#358 коммитов и дневниковых записей не оставили). Приоритет — продолжение декомпозиции `HttpTemplate` (1,673 строки, WMC 292): срез pre-wire консультации кэша (вариант (a) эстафеты #352).
-2. *Дизайн:* вместо нового класса `CacheDispatchPipeline` / `HttpCacheCoordinator` расширен существующий package-private коллаборатор `CacheDispatch` (ADR-0066) его второй половиной — обе половины RFC 9111 dispatch (pre-wire `lookup` + post-wire `handle`) в одном классе, одном сьюте и одной строке карты навигации ADR-0081:
-   - `lookup(WireRequest, HttpCache)` → nested record `CacheLookup(request, isCacheHit, entry)`: резолв `GET`-записи, классификация свежести (hit ⇔ `fresh && !must-revalidate && !request no-cache`), инъекция `If-None-Match` / `If-Modified-Since` для stale-записи с валидаторами — без перекрытия conditional headers, заданных вызывающим; `null cache / null req / non-GET` → не-hit passthrough;
-   - `synthesizeHit(entry, streamBody)` — единая материализация cache-hit для sync/async ног (streaming re-wrap байтового тела через `toStreamWireResponse`, `null` body без обёртки);
-   - `hasHeader` переехал в `CacheDispatch` (в `HttpTemplate` осталась 1-строчная делегация — пин `HttpTemplateConditionalHeaderTest`).
-3. *Шов:* дублированный pre-wire блок `HttpTemplate.exchange()` (16 строк, 100% дубль в `exchangeAsync`) заменён 4-строчным чтением `CacheLookup`; async-нога получила тот же шов. Вызов `lookup` только за явным `if (httpCache != null)` — zero-garbage быстрый путь без аллокаций сохранён (C7). Никакой новой публичной поверхности.
-4. *TDD red-first:* +14 тестов в `CacheDispatchTest` до реализации (lookup-матрица: null cache/null req/non-GET bypass, fresh hit, stale + валидаторы оба/ETag-only/lastModified-only, no override caller conditional headers, request no-cache всё равно инъектирует, no-validators untouched, must-revalidate — никогда хит; synthesizeHit: buffered, streaming re-wrap, null body). `RecordingCache` обогащён `getEntry`/`getCalls`. Первый прогон покрытия поймал непокрытую ветку — конъюнкция `must-revalidate` в `isCacheHit` (`CacheDispatch`:72) — закрыта dedicated-тестом → планка C11 зелёная.
-5. *Сьют коллаборатора:* **72/72 branches (100%), 41/41 complexity (100%), 46/46 lines, 224/224 instructions, 5/5 methods — 0 missed branches (планка C11 ADR-0081)**.
-6. *Замеры ADR-0081:*
-   - `HttpTemplate` **1,673 → 1,653** строк (−20 строк) / WMC **292 → 269** (−23 complexity) / missed branches **51 → 40** (−11 missed branches);
-   - `CacheDispatch` — 166 строк / 41 WMC / **0 missed branches**;
-   - Missed branches библиотеки: 294 → **283** (−11 — новый абсолютный исторический минимум);
-   - Branch coverage: 93.29% → **93.54%** (4,096/4,379 covered — новый исторический абсолютный рекорд);
-   - Complexity coverage: 92.11% → **92.36%** (3,445/3,730 covered — новый исторический рекорд);
-   - Инструкции: **98.59%** (31,112/31,556); Линии: **98.28%** (6,837/6,957); Классы: **100%** (163/163); Методы: 99.87% (1,493/1,495).
-7. *ADR-0093* (`docs/0.13.0/ADR-0093-cache-prewire-consultation-extraction.md`, Accepted) + навигационная карта ADR-0081 (dispatch row: `http/CacheDispatch` + `CacheDispatchTest`) + `ru.jrestly.http/package-info` упоминает `CacheDispatch` + `ROADMAP.md` актуализирован (барнер, scorecard, live gate). Highest ADR **0093**, next free **0094**. DRAFT.md — блок сессии #359; дневник — `### 🛠️ Сессия #359`; mailbox — записка Антону.
-8. *Гейт:* полный **2,055/2,055** (root **1,891** = 1,877 + 14; субмодули 164), 0 failures/errors; `:javadoc` чисто во всех 8 модулях под `-Werror`.
+1. *Вход:* ветка `agent-loop`, HEAD `3304658`, счётчик 362. Сообщение Антона в mailbox с вопросами про финишную прямую, состояние SSE, локальный минимум и открытость/sealed/private. В бэклоге ADR-0081 оставался последний шаг декомпозиции `HttpTemplate` — срез `processResponse`.
+2. *Срез и дизайн:* вынесен 126-строчный хвост `processResponse`:
+   - `ResponseHeaders` holder population, ThreadLocal captor (`ResponseHeaders.CURRENT_CAPTOR`), расчет duration;
+   - `authDetailsConsumer` callback;
+   - `HttpDiagnosticLogger.logResponse` диагностическое логирование;
+   - Streaming lifecycle: terminal trailer wrapping (`ResponseBody.wrapForTrailers`), stream error consumption (`@OnError` + unexpected status), dispatching to `Stream<String>` (lines), `Stream<ServerSentEvent>` (SSE), raw `InputStream`, honoring `Optional` missing-resource semantics (404/204 close stream and return `Optional.empty()`);
+   - Buffered decode: `@OnError` match, unexpected status, lazy codec resolution (`bufferedOptional`/`bufferedRaw`).
+3. *Форма и швы:*
+   - Package-private `final class ResponseProcessor` с вложенным рекордом `ResponseConfig` (правило C8 ≤ 7 параметров).
+   - Методы: `process` (оркестрация, complexity 4), `captureHeadersAndNotify` (complexity 6), `processStream` (complexity 10), `processBuffered` (complexity 6) — все методы строго C5 ≤ 10 (Green)!
+   - В `HttpTemplate` метод `processResponse` заменен 4-строчным делегированием в ленивый `responseProcessor().process(response, startNanos)`. 100% обратная совместимость.
+4. *TDD red-first:*
+   - `ResponseProcessorTest` (21 тест): buffered raw String, byte[], Optional present/missing (404/204), captor и auth details, line stream, SSE stream, raw InputStream, optional empty missing stream close, `@OnError` matching на стриме и буфере, unexpected status exceptions, codec exception swallow, allow null returnType.
+   - Сьют коллаборатора: 245 строк, 44 WMC, Branch **60/62 (96.77%)**, 0 missed methods.
+5. *Цифры и рекорды:*
+   - `HttpTemplate` 1,653 → **1,544** строк (−109 строк) / WMC 269 → **239** (−30 complexity, **впервые в истории WMC < 250!**) / missed branches 40 → **35** (−5 missed);
+   - `ResponseProcessor` — 245 строк / 44 WMC / 0 missed methods;
+   - Missed branches библиотеки: 283 → **282** — **новый исторический абсолютный минимум!**;
+   - Branch coverage: 93.54% → **93.57%** (4,103/4,385 covered — **новый исторический абсолютный рекорд**);
+   - Complexity coverage: **92.34%** (3,459/3,746 covered);
+   - Инструкции: **98.55%** (31,295/31,754); Линии: **98.26%** (6,872/6,994); Классы: **100%** (165/165); Методы: 99.67% (1,503/1,508);
+   - Полный гейт: **2,076/2,076** (root **1,912** = 1,891 + 21; субмодули 164), 0 failures/errors; `:javadoc` чисто во всех 8 модулях под `-Werror`.
+6. *ADR:* оформлен `docs/0.13.0/ADR-0094-response-processor-extraction.md` (Accepted), обновлена навигационная карта ADR-0081 (`http/ResponseProcessor` + `ResponseProcessorTest`), `ru.jrestly.http/package-info` и `ROADMAP.md`. Highest ADR **0094**, next free **0095**.
+7. *Архитектурный рубеж:* Декомпозиция всех год-классов библиотеки (ADR-0081) **полностью завершена**:
+   - `MethodMetadata`: 1,140 → 379 строк, WMC 257 → 49 (Green C1 & C2);
+   - `HttpTemplateBuilder`: 1,516 → 779 строк, WMC 407 → 186 (−54%);
+   - `ControllerValidator`: 871 → 545 строк, WMC 279 → 130;
+   - `HttpTemplate`: 2,286 → 1,544 строк, WMC 461 → 239 (WMC снизился почти в 2 раза!).
+   Ни одного красного класса по WMC > 250 в библиотеке не осталось!
 
-## Контекст для следующей сессии (#360)
+## Контекст для следующей сессии (#363)
 
-1. **Ветка** `agent-loop`, HEAD — коммит #359, чистое дерево.
-2. **Приоритет** — декомпозиция оставшегося красного god-класса `HttpTemplate` (1,653 строки, WMC 269, 40 missed):
-   (a) вынос `ResponseProcessor` / `ResponseDecoder` — срез декодирования ответа (~126 строк, WMC ~25): заголовки ответа, захват captors, стриминг `Stream<String>` / `Stream<ServerSentEvent>`, DTO/raw legs;
-   (b) `HttpTemplateBuilder` — теперь **#1 по missed branches (56), WMC 184**: срезы URI/headers/body/multipart (план wave-3 из ADR-0081).
-3. *Окружение:* `GRADLE_USER_HOME=/tmp/opencode/gradle-home`; полный гейт `./gradlew test javadoc jacocoTestReport` ≈ 2 мин; `--tests` фильтр — только с квалификатором модуля `:test` (иначе зацепит `:benchmarks:test` и упадёт — грабли #188). JaCoCo — `build/reports/jacoco/test/jacocoTestReport.xml` (class-level счётчики — источник WMC/branches); разброс ±1–2 missed между прогонами (известный эффект #336, тайминговые ветки `ServerSentEventReconnector`/`RetryPolicy`).
-4. *Метрики:* гейт **2,055/2,055**; JaCoCo Branch **93.54%** (283 missed — абсолютный минимум) / Complexity **92.36%**; `HttpTemplate` **1,653** строки (WMC 269); Highest ADR **0093**, next free **0094**.
+1. **Ветка** `agent-loop`, HEAD — коммит #362, чистое дерево.
+2. **Приоритет** — завершение активной зоны и переход к финишной прямой по указаниям Антона:
+   - Анализ состояния SSE (реконнекты, watchdog, WHATWG compliance — уже реализованы в ADR-0059, статус валидирован);
+   - Анализ "не в локальном ли минимуме" — всё ли в порядке в коде, фичах и бенчмарках (8 модулей, 4 движка, 4 кодека, HTTP/2, кэш, метрики, трейсинг W3C);
+   - Философия открытости: ответ Антону про sealed/private/non-sealed SPI.
+3. *Окружение:* `GRADLE_USER_HOME=/tmp/opencode/gradle-home`; полный гейт `./gradlew test javadoc jacocoTestReport` ≈ 2 мин.
+4. *Метрики:* гейт **2,076/2,076**; JaCoCo Branch **93.57%** (282 missed — абсолютный минимум) / Complexity **92.34%**; `HttpTemplate` **1,544** строки (WMC 239); Highest ADR **0094**, next free **0095**.

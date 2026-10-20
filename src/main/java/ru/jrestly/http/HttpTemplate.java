@@ -121,6 +121,8 @@ class HttpTemplate {
     private RedirectExecutor redirectExecutor;
     // ADR-0091: retry execution collaborator, built lazily from the fields populated before exchange() runs
     private RetryExecutor retryExecutor;
+    // ADR-0094: response processor collaborator, built lazily from the fields populated before exchange() runs
+    private ResponseProcessor responseProcessor;
 
     void setHttpCache(ru.jrestly.cache.HttpCache httpCache) {
         this.httpCache = httpCache;
@@ -157,6 +159,23 @@ class HttpTemplate {
             ));
         }
         return retryExecutor;
+    }
+
+    private ResponseProcessor responseProcessor() {
+        if (responseProcessor == null) {
+            responseProcessor = new ResponseProcessor(new ResponseProcessor.ResponseConfig(
+                    returnType,
+                    optional,
+                    responseHeadersHolder,
+                    authDetailsConsumer,
+                    onErrorParser,
+                    expectStatuses,
+                    conditional,
+                    this::responseCodec,
+                    logger
+            ));
+        }
+        return responseProcessor;
     }
 
     /**
@@ -601,133 +620,11 @@ class HttpTemplate {
     }
 
     // Shared tail of both exchange paths: auth-details capture, response
-    // logging, @OnError handling, status check, payload decoding
+    // logging, @OnError handling, status check, payload decoding (ADR-0094: delegates to ResponseProcessor)
     @SuppressWarnings("unchecked")
     private <T> T processResponse(WireRequest request, WireResponse response, long startNanos)
             throws IOException {
-        long elapsedMs = (System.nanoTime() - startNanos) / 1_000_000;
-
-        List<Header> responseHeaders = response.headers();
-        int statusCode = response.statusCode();
-        // RFC 9110 §8.3.2: the declared Content-Type charset is authoritative
-        // for text payloads — every String materialization honors it and
-        // falls back to UTF-8, matching the line/SSE streaming path (ADR-0016)
-        Charset payloadCharset = ResponseBody.resolveCharset(responseHeaders);
-
-        // ADR-0022 & ADR-0038: Populate response headers holder and thread-local captor (lazy duration allocation)
-        Consumer<ResponseHeaders> captor = ResponseHeaders.CURRENT_CAPTOR.get();
-        ResponseHeaders capturedHeaderHolder = null;
-        if (responseHeadersHolder != null || captor != null) {
-            Duration callDuration = Duration.ofNanos(System.nanoTime() - startNanos);
-            if (responseHeadersHolder != null) {
-                responseHeadersHolder.populate(statusCode, responseHeaders, callDuration, response.version(), response.trailers());
-            }
-            if (captor != null) {
-                capturedHeaderHolder = new ResponseHeaders(statusCode, responseHeaders, callDuration, response.version(), response.trailers());
-                captor.accept(capturedHeaderHolder);
-            }
-        }
-
-        if (authDetailsConsumer != null) {
-            authDetailsConsumer.accept(responseHeaders);
-        }
-
-        logResponse(response, elapsedMs);
-
-        // ADR-0015 Aspect 3: an InputStream return declares byte binding —
-        // the success path hands the stream over untouched (codec-free),
-        // the error paths consume it fully and keep the byte[] contract
-        // (a payload cap is a revisit-on-demand, not a 0.x default)
-        InputStream stream = response.stream();
-        if (stream != null) {
-            // ADR-0059: Terminal streaming hook for late-arriving trailers
-            stream = ResponseBody.wrapForTrailers(stream, response.trailersSupplier(),
-                    responseHeadersHolder, capturedHeaderHolder);
-
-            if (onErrorParser != null && onErrorParser.canParse(statusCode)) {
-                String errorPayload = ResponseBody.consumePayload(stream, payloadCharset);
-                handleOnError(statusCode, errorPayload, responseHeaders, payloadCharset);
-            }
-            if (!isExpectedStatus(statusCode)) {
-                String rawPayload = ResponseBody.consumePayload(stream, payloadCharset);
-                throw createUnexpectedStatusException(statusCode, rawPayload == null ? "" : rawPayload, responseHeaders);
-            }
-            // ADR-0016 Aspect 1 & 5: Stream<String> returns line stream;
-            // Stream<ServerSentEvent> returns parsed event stream
-            if (ResponseBody.isStreamType(returnType, String.class)) {
-                if (logger.isLoggable(System.Logger.Level.INFO)) {
-                    logger.log(System.Logger.Level.INFO, ResponseBody.streamingPayloadLine("streaming lines", responseHeaders));
-                }
-                Stream<String> lineStream = ResponseBody.lineStream(stream, payloadCharset, logger);
-                if (optional) {
-                    // ADR-0023 × ADR-0016: a missing resource is Optional.empty()
-                    // with the stream closed, never a stream to drain; success
-                    // wraps the artifact, never hands it over raw
-                    if (ResponseBody.isMissingResource(statusCode)) {
-                        lineStream.close();
-                        return (T) Optional.empty();
-                    }
-                    return (T) Optional.of(lineStream);
-                }
-                return (T) lineStream;
-            }
-            if (ResponseBody.isStreamType(returnType, ServerSentEvent.class)) {
-                if (logger.isLoggable(System.Logger.Level.INFO)) {
-                    logger.log(System.Logger.Level.INFO, ResponseBody.streamingPayloadLine("streaming events", responseHeaders));
-                }
-                Stream<ServerSentEvent> eventStream = ResponseBody.eventStream(stream, payloadCharset, logger);
-                if (optional) {
-                    // ADR-0023 × ADR-0016: the same missing-resource rule as the
-                    // line stream — close propagates through the parser to the
-                    // wire stream
-                    if (ResponseBody.isMissingResource(statusCode)) {
-                        eventStream.close();
-                        return (T) Optional.empty();
-                    }
-                    return (T) Optional.of(eventStream);
-                }
-                return (T) eventStream;
-            }
-            // ADR-0015 Aspect 5: the payload line is skipped for stream
-            // responses — logging must not consume the body
-            if (logger.isLoggable(System.Logger.Level.INFO)) {
-                logger.log(System.Logger.Level.INFO, ResponseBody.streamingPayloadLine("streaming", responseHeaders));
-            }
-            if (optional) {
-                if (ResponseBody.isMissingResource(statusCode)) {
-                    ResponseBody.closeQuietly(stream, logger);
-                    return (T) Optional.empty();
-                }
-                if (InputStream.class.equals(returnType)) {
-                    return (T) Optional.of(stream);
-                }
-            }
-            return (T) stream;
-        }
-
-        byte[] bytes = response.body();
-
-        if (onErrorParser != null && onErrorParser.canParse(statusCode)) {
-            String errorPayload = (bytes != null && bytes.length > 0) ? new String(bytes, payloadCharset) : null;
-            handleOnError(statusCode, errorPayload, responseHeaders, payloadCharset);
-        }
-
-        if (!isExpectedStatus(statusCode)) {
-            String errorPayload = (bytes != null && bytes.length > 0) ? new String(bytes, payloadCharset) : "";
-            throw createUnexpectedStatusException(statusCode, errorPayload, responseHeaders);
-        }
-
-        // ADR-0066 step 5c: the buffered decode legs live on ResponseBody. The
-        // codec is supplied lazily — on the byte[]/String/Void legs it must not
-        // be resolved at all (a bare template used to survive those), and on
-        // the DTO leg it is resolved exactly once per leg, shared by the log
-        // preview and the deserialize (ADR-0077).
-        if (optional) {
-            return (T) ResponseBody.bufferedOptional(statusCode, bytes, returnType, payloadCharset,
-                    ResponseBody.contentTypeOf(responseHeaders), () -> responseCodec(responseHeaders), logger);
-        }
-        return (T) ResponseBody.bufferedRaw(bytes, returnType, payloadCharset,
-                ResponseBody.contentTypeOf(responseHeaders), () -> responseCodec(responseHeaders), logger);
+        return responseProcessor().process(response, startNanos);
     }
 
     // Handles redirects according to HTTP spec:
