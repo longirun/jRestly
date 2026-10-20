@@ -334,37 +334,23 @@ public class ProblemDetail {
      */
     public String toJson() {
         StringBuilder sb = new StringBuilder("{");
-        boolean first = true;
+        sb.append("\"type\":\"").append(escapeJson(type.toString())).append("\"");
 
-        if (type != null) {
-            sb.append("\"type\":\"").append(escapeJson(type.toString())).append("\"");
-            first = false;
-        }
         if (title != null) {
-            if (!first) sb.append(",");
-            sb.append("\"title\":\"").append(escapeJson(title)).append("\"");
-            first = false;
+            sb.append(",\"title\":\"").append(escapeJson(title)).append("\"");
         }
         if (status > 0) {
-            if (!first) sb.append(",");
-            sb.append("\"status\":").append(status);
-            first = false;
+            sb.append(",\"status\":").append(status);
         }
         if (detail != null) {
-            if (!first) sb.append(",");
-            sb.append("\"detail\":\"").append(escapeJson(detail)).append("\"");
-            first = false;
+            sb.append(",\"detail\":\"").append(escapeJson(detail)).append("\"");
         }
         if (instance != null) {
-            if (!first) sb.append(",");
-            sb.append("\"instance\":\"").append(escapeJson(instance.toString())).append("\"");
-            first = false;
+            sb.append(",\"instance\":\"").append(escapeJson(instance.toString())).append("\"");
         }
         for (Map.Entry<String, Object> entry : properties.entrySet()) {
-            if (!first) sb.append(",");
-            sb.append("\"").append(escapeJson(entry.getKey())).append("\":");
+            sb.append(",\"").append(escapeJson(entry.getKey())).append("\":");
             appendJsonValue(sb, entry.getValue());
-            first = false;
         }
         sb.append("}");
         return sb.toString();
@@ -521,11 +507,11 @@ public class ProblemDetail {
         if (this == o) return true;
         if (!(o instanceof ProblemDetail that)) return false;
         return status == that.status
-                && Objects.equals(type, that.type)
+                && type.equals(that.type)
                 && Objects.equals(title, that.title)
                 && Objects.equals(detail, that.detail)
                 && Objects.equals(instance, that.instance)
-                && Objects.equals(properties, that.properties);
+                && properties.equals(that.properties);
     }
 
     @Override
@@ -686,11 +672,11 @@ public class ProblemDetail {
     private static final class ZeroDepJsonParser {
 
         static Map<String, Object> parseObject(String json) {
+            if (json == null || json.isEmpty() || json.charAt(0) != '{') {
+                throw new IllegalArgumentException("Expected '{'");
+            }
             int len = json.length();
-            int i = 0;
-            while (i < len && json.charAt(i) != '{') i++;
-            if (i >= len) throw new IllegalArgumentException("Expected '{'");
-            i++; // skip '{'
+            int i = 1; // skip '{'
 
             Map<String, Object> map = new LinkedHashMap<>();
             while (i < len) {

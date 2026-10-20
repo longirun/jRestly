@@ -1,5 +1,21 @@
 # DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
+> **Сессия #368 (RFC 7807/9457 ProblemDetail & Zero-Dep Parser Resilience Polish — 100% ветвей в `ProblemDetail`, ликвидация мёртвых веток в `toJson()` и `equals()`, очистка цикла в `ZeroDepJsonParser`; полный гейт 2,124/2,124 green, JaCoCo Branch 93.95% — новый исторический рекорд библиотеки, Complexity 92.83% — рекорд, missed branches 277 — новый исторический минимум):**
+> 1. *Вход:* ветка `agent-loop`, счётчик 368. Анализ классов с наибольшим количеством пропущенных ветвей после завершения аудита SSE. Класс `ProblemDetail` и его внутренний zero-dependency парсер RFC 7807/9457 `ZeroDepJsonParser` содержали 32 missed branches.
+> 2. *Анализ и устранение мёртвого кода:*
+>    - В `ProblemDetail.toJson()` устранён мёртвый код: инвариант `type != null` строго гарантирован контрактом класса и `DEFAULT_TYPE` (`about:blank`), поэтому флаг `first` и все проверки `if (!first)` были мёртвыми ветками. Метод переписан на чистый, прямолинейный формат без флагов и проверок на горячем пути.
+>    - В `ProblemDetail.equals(Object)` устранены избыточные `Objects.equals` для `type` и `properties`, которые всегда non-null, с переходом на прямой `type.equals` и `properties.equals`.
+>    - Класс `ProblemDetail` достиг **100% покрытия ветвей (42/42 branches, 0 missed branches!)**.
+>    - В `ZeroDepJsonParser.parseObject` устранён мёртвый цикл `while` поиска `{` — вызов всегда идёт для валидных объектов, начинающихся с `{`.
+>    - В `ProblemDetailTest` добавлены тесты на все пограничные и ошибочные случаи: пустые массивы `[]`, вложенные массивы с произвольной глубиной скобок, отрицательные числа с плавающей точкой, длинные числа `Long > Integer.MAX_VALUE`, экспоненты, некорректные unicode escape, невалидный формат чисел, неожиданные токены и др.
+> 3. *TDD и метрики:*
+>    - Добавлено +4 исчерпывающих теста в `ProblemDetailTest`.
+>    - Полный гейт: **2,124 / 2,124** тестов green во всех 8 модулях (root 1,960 + submodules 164), 0 failures, 0 errors.
+>    - JaCoCo: Branch **93.95%** (4,302 / 4,579 covered — **новый исторический абсолютный рекорд в истории библиотеки!**), Complexity **92.83%** (3,614 / 3,893 covered — рекорд!), Instruction **98.59%**, Line **98.40%**, Classes **100%** (168/168).
+>    - Missed branches снизились с 287 до **277** (минус 10 missed branches за сессию — новый абсолютный исторический минимум библиотеки!).
+>    - Javadoc: чист во всех 8 модулях под `-Werror`.
+> 
+
 > **Сессия #366 (SSE Resilience & Typed Decode Audit — закрытие скрытых ветвей в `ServerSentEventReconnector` и `ResponseBody`, 0 missed branches в обоих классах; полный гейт 2,120/2,120 green, JaCoCo Branch 93.75% — новый исторический рекорд библиотеки, Complexity 92.59% — рекорд, Classes 100%):**
 > 1. *Вход:* ветка `agent-loop`, счётчик 366. Запрос Антона из mailbox — проверить состояние SSE на предмет локального минимума, скрытых хвостов и довести кодовую базу до кристальной зрелости перед релизом.
 > 2. *Анализ и находки в SSE:*

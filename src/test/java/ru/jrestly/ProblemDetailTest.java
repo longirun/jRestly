@@ -850,6 +850,161 @@ class ProblemDetailTest {
         assertTrue(json.contains("\"arrayProp\":[1,2,3]"));
         assertTrue(json.contains("\"customProp\":\"customValue\""));
     }
+
+    @Test
+    @DisplayName("ProblemDetail toJson handles single properties and control characters escaping")
+    void toJsonPropertyCombinationsAndEscaping() {
+        // default type with only title
+        ProblemDetail pdTitleOnly = new ProblemDetail();
+        pdTitleOnly.setTitle("Only Title");
+        assertEquals("{\"type\":\"about:blank\",\"title\":\"Only Title\"}", pdTitleOnly.toJson());
+
+        // default type with only status
+        ProblemDetail pdStatusOnly = new ProblemDetail();
+        pdStatusOnly.setStatus(500);
+        assertEquals("{\"type\":\"about:blank\",\"status\":500}", pdStatusOnly.toJson());
+
+        // default type with only detail
+        ProblemDetail pdDetailOnly = new ProblemDetail();
+        pdDetailOnly.setDetail("Only Detail");
+        assertEquals("{\"type\":\"about:blank\",\"detail\":\"Only Detail\"}", pdDetailOnly.toJson());
+
+        // default type with only instance
+        ProblemDetail pdInstanceOnly = new ProblemDetail();
+        pdInstanceOnly.setInstance("/instance/only");
+        assertEquals("{\"type\":\"about:blank\",\"instance\":\"/instance/only\"}", pdInstanceOnly.toJson());
+
+        // default type with only properties
+        ProblemDetail pdPropsOnly = new ProblemDetail();
+        pdPropsOnly.setProperty("foo", "bar");
+        assertEquals("{\"type\":\"about:blank\",\"foo\":\"bar\"}", pdPropsOnly.toJson());
+
+        // control characters escaping (c < 0x20)
+        ProblemDetail pdControlChars = new ProblemDetail();
+        pdControlChars.setTitle("Control: \u0001 \u001f \b \f \n \r \t");
+        String controlJson = pdControlChars.toJson();
+        assertTrue(controlJson.contains("\\u0001"));
+        assertTrue(controlJson.contains("\\u001f"));
+        assertTrue(controlJson.contains("\\b"));
+        assertTrue(controlJson.contains("\\f"));
+        assertTrue(controlJson.contains("\\n"));
+        assertTrue(controlJson.contains("\\r"));
+        assertTrue(controlJson.contains("\\t"));
+    }
+
+    @Test
+    @DisplayName("Builder handles blank type, blank instance, and invalid property names")
+    void builderEdgeCases() {
+        ProblemDetail pd = ProblemDetail.builder()
+                .type("   ")
+                .instance("   ")
+                .property("   ", "ignored")
+                .properties(null)
+                .build();
+
+        assertEquals(ProblemDetail.DEFAULT_TYPE, pd.getType());
+        assertNull(pd.getInstance());
+        assertTrue(pd.getProperties().isEmpty());
+
+        ProblemDetail pdEmpty = ProblemDetail.builder().type((String) null).instance((String) null).build();
+        assertEquals(ProblemDetail.DEFAULT_TYPE, pdEmpty.getType());
+        assertNull(pdEmpty.getInstance());
+    }
+
+    @Test
+    @DisplayName("fromJson handles null status, string status parsing, and invalid numbers")
+    void fromJsonStatusEdgeCases() {
+        ProblemDetail pdNullStatus = ProblemDetail.fromJson("{\"status\": null}");
+        assertEquals(0, pdNullStatus.getStatus());
+
+        ProblemDetail pdStringStatus = ProblemDetail.fromJson("{\"status\": \"404\"}");
+        assertEquals(404, pdStringStatus.getStatus());
+
+        ProblemDetail pdInvalidStatus = ProblemDetail.fromJson("{\"status\": \"not-a-number\"}");
+        assertEquals(0, pdInvalidStatus.getStatus());
+    }
+
+    @Test
+    @DisplayName("ZeroDepJsonParser covers all syntax errors and edge cases")
+    void zeroDepJsonParserEdgeCases() {
+        // Missing '{'
+        assertThrows(IllegalArgumentException.class, () -> ProblemDetail.fromJson("not-json"));
+
+        // Empty object
+        ProblemDetail pdEmpty = ProblemDetail.fromJson("{ }");
+        assertEquals(ProblemDetail.DEFAULT_TYPE, pdEmpty.getType());
+
+        // Non-string key
+        assertThrows(IllegalArgumentException.class, () -> ProblemDetail.fromJson("{ 123: \"val\" }"));
+
+        // Missing ':'
+        assertThrows(IllegalArgumentException.class, () -> ProblemDetail.fromJson("{\"key\" \"val\"}"));
+
+        // Missing ',' or '}'
+        assertThrows(IllegalArgumentException.class, () -> ProblemDetail.fromJson("{\"k1\": 1 \"k2\": 2}"));
+
+        // Unclosed key quote
+        assertThrows(IllegalArgumentException.class, () -> ProblemDetail.fromJson("{\"key: 1}"));
+
+        // Unclosed value quote
+        assertThrows(IllegalArgumentException.class, () -> ProblemDetail.fromJson("{\"key\": \"val}"));
+
+        // Incomplete unicode escape
+        assertThrows(IllegalArgumentException.class, () -> ProblemDetail.fromJson("{\"key\": \"\\u12\"}"));
+
+        // Invalid hex in unicode escape
+        assertThrows(IllegalArgumentException.class, () -> ProblemDetail.fromJson("{\"key\": \"\\uZZZZ\"}"));
+
+        // Unknown escape character retained
+        ProblemDetail pdEsc = ProblemDetail.fromJson("{\"key\": \"\\a\"}");
+        assertEquals("a", pdEsc.getProperty("key"));
+
+        // Invalid number format: bare minus
+        assertThrows(IllegalArgumentException.class, () -> ProblemDetail.fromJson("{\"key\": -}"));
+
+        // Large Long number > Integer.MAX_VALUE
+        ProblemDetail pdLong = ProblemDetail.fromJson("{\"big\": 999999999999}");
+        assertEquals(999999999999L, pdLong.getProperty("big"));
+
+        // Exponential double number
+        ProblemDetail pdExp = ProblemDetail.fromJson("{\"exp\": 1e3, \"expNeg\": 1.5E-2}");
+        assertEquals(1000.0, pdExp.getProperty("exp"));
+        assertEquals(0.015, pdExp.getProperty("expNeg"));
+
+        // Malformed number format
+        assertThrows(IllegalArgumentException.class, () -> ProblemDetail.fromJson("{\"badNum\": 1.2.3.4}"));
+
+        // Unexpected token
+        assertThrows(IllegalArgumentException.class, () -> ProblemDetail.fromJson("{\"key\": ?}"));
+
+        // Unclosed array
+        assertThrows(IllegalArgumentException.class, () -> ProblemDetail.fromJson("{\"arr\": [1, 2}"));
+
+        // Missing comma in array
+        assertThrows(IllegalArgumentException.class, () -> ProblemDetail.fromJson("{\"arr\": [1 2]}"));
+
+        // Array with brackets inside strings
+        ProblemDetail pdArr = ProblemDetail.fromJson("{\"arr\": [\"[\", \"]\", {\"nested\": \"}\"}]}");
+        assertNotNull(pdArr.getProperty("arr"));
+
+        // Empty array
+        ProblemDetail pdEmptyArr = ProblemDetail.fromJson("{\"emptyArr\": []}");
+        assertEquals(List.of(), pdEmptyArr.getProperty("emptyArr"));
+
+        // Nested arrays and multiple depth brackets
+        ProblemDetail pdNested = ProblemDetail.fromJson("{\"matrix\": [[1, 2], [3, 4]], \"negFloat\": -42.5}");
+        assertNotNull(pdNested.getProperty("matrix"));
+        assertEquals(-42.5, pdNested.getProperty("negFloat"));
+
+        // Multiple fields with commas
+        ProblemDetail pdMulti = ProblemDetail.fromJson("{\"a\": 1, \"b\": 2, \"c\": 3}");
+        assertEquals(1, pdMulti.getProperty("a"));
+        assertEquals(2, pdMulti.getProperty("b"));
+        assertEquals(3, pdMulti.getProperty("c"));
+
+        // Unclosed bracket in array
+        assertThrows(IllegalArgumentException.class, () -> ProblemDetail.fromJson("{\"arr\": [1, 2, 3}"));
+    }
 }
 
 
