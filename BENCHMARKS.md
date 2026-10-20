@@ -217,6 +217,53 @@ digest (`FeedSummary`).
 6. **Netty Transport Engine (ADR-0070) sets an allocation record on small payloads:**
    With pooled off-heap ByteBuf management (`PooledByteBufAllocator`), `jRestly + engine-netty (streaming)` achieved an absolute record **98,342 B/op** on `rss-20` (lower than raw OkHttp 98,725 B, Retrofit 102,772 B, and Apache5 101,141 B). Furthermore, streaming cuts allocations on Netty by **over 6.26 MB/op** on 1 MB payloads (3.49 MB vs 9.75 MB), while delivering throughput substantially higher than the standard JDK transport (308.3 ops/s vs 201.5 ops/s on `rss-20`).
 
+## Polyglot codec overhead (cycle 0.13.0, run #339)
+
+The `PayloadCodec` SPI (ADR-0060) has four official implementations since
+0.12.0: JSON (`JsonCodecAdapter` over Jackson), XML (`codec-jackson-xml`),
+YAML (`codec-yaml`) and Protocol Buffers (`codec-protobuf`). `CodecBenchmark`
+measures what the SPI costs per call, in memory, with no network:
+
+```bash
+./gradlew :benchmarks:jmh -PjmhArgs="-f 1 -wi 1 -i 2 -tu ns -bm avgt -prof gc -rf json -rff codec_results.json .*CodecBenchmark\.*"
+```
+
+**Payloads differ by design** — this is a per-call overhead matrix, not a
+format ranking: JSON/XML/YAML bind the same 6-field `UserDto` document, while
+protobuf binds a schema-bound `Timestamp` message (the smallest realistic
+protobuf value available without generating code).
+
+| Arm | decode ns/op | decode B/op | encode ns/op | encode B/op |
+|---|---:|---:|---:|---:|
+| JSON (`JsonCodecAdapter`) | ~1,200 | 1,256 | ~840 | 632 |
+| XML (`JacksonXmlCodec`) | ~6,390 | 3,896 | ~2,264 | 1,464 |
+| YAML (`YamlCodec`) | 26,900–60,300 | 22,736 | 9,450–10,250 | 5,184 |
+| Protobuf (`ProtobufCodec`) | ~55 | 56 | ~29 | 32 |
+| `CodecRegistry.resolveOrDefault` (4 codecs) | ~136 | 112 | — | — |
+
+### Key Insights & Findings
+1. **The SPI itself is free.** JSON decode/encode run at the same cost as a
+   direct `ObjectMapper` call — `JsonCodecAdapter` adds one virtual dispatch,
+   not a copy.
+2. **Protobuf is the cheapest arm**, but it is a different, much smaller
+   schema-bound value: ~55 ns and 56 B/op decode, ~29 ns and 32 B/op encode,
+   with the parser resolved from a per-class cache. It shows the codec path,
+   not a "protobuf beats JSON on the same data" claim.
+3. **XML costs ~5× JSON decode and ~3× the allocations** (StAX layer + Jackson
+   wrapper tree), and ~2.6× on encode — a fine trade for XML-only APIs, not a
+   format to pick for throughput.
+4. **YAML decode is the outlier of the matrix: 27–60 µs and ~22.7 KB/op**, an
+   order of magnitude above JSON and 4–9× above XML; YAML encode is ~9–10 µs.
+   The absolute spread is machine noise on a shared stand, but the gap is
+   structural (SnakeYAML event pipeline). Keep YAML for human-readable
+   configuration-style payloads, not for high-rate DTO traffic; a dedicated
+   look at the decode path is a recorded follow-up.
+5. **Registry resolution costs ~136 ns / 112 B per response** even with four
+   codecs registered (media-type normalization + a linear claim scan). That is
+   noise against any real decode, and the JSON-only client pins a one-codec
+   registry so existing baselines are unaffected by adding codec modules to the
+   benchmark classpath.
+
 ## Honest limitations
 
 - **Loopback, single machine, single thread.** No TLS handshake cost, no real
@@ -247,6 +294,9 @@ digest (`FeedSummary`).
 
 # allocation profiling of the dispatch pipeline
 ./gradlew :benchmarks:jmh -PjmhArgs="-f 1 -wi 2 -i 5 -prof gc .*DispatchOverheadBenchmark"
+
+# polyglot codec overhead matrix (run #339)
+./gradlew :benchmarks:jmh -PjmhArgs="-f 1 -wi 1 -i 2 -tu ns -bm avgt -prof gc -rf json -rff codec_results.json .*CodecBenchmark\..*"
 ```
 
 `-PjmhArgs` **replaces** the default arguments entirely. Every benchmark spins up
@@ -271,6 +321,13 @@ its own loopback server, so no external services are needed.
 > third-party engine. The `jRestly + engine-*` rows pass their engine explicitly
 > as well. Auto-detection is verified separately by
 > `SpiEngineAutoDetectionTest` in the core test suite.
+>
+> **Codec fairness note:** since cycle 0.13.0 the `codec-*` submodules also sit
+> on the benchmark classpath, so `JRestlyBenchmarkClient` and
+> `DispatchOverheadBenchmark` pin an explicit JSON-only `CodecRegistry` for the
+> baseline rows. Without the pin, `ServiceLoader` would widen the registry when
+> codec modules are added and quietly shift historical JSON numbers. The
+> polyglot matrix registers its codecs explicitly for the same reason.
 
 ---
 

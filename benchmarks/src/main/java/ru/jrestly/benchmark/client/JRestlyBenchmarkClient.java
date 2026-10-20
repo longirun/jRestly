@@ -73,7 +73,11 @@ public final class JRestlyBenchmarkClient implements AutoCloseable {
     public JRestlyBenchmarkClient(String baseUrl, ru.jrestly.engine.HttpEngine engine) {
         var builder = JRestlyClient.builder()
                 .baseUrl(baseUrl)
-                .logger(ru.jrestly.benchmark.util.NoOpLogger.INSTANCE);
+                .logger(ru.jrestly.benchmark.util.NoOpLogger.INSTANCE)
+                // Pinned: the codec-* submodules are on the benchmark classpath for the
+                // polyglot matrix, and ServiceLoader would otherwise widen the registry
+                // behind this JSON baseline (same rationale as the engine pin above).
+                .codecs(ru.jrestly.codec.CodecRegistry.of(ru.jrestly.json.JsonCodecResolver.resolve()));
         if (engine != null) {
             builder.httpEngine(engine);
         }
@@ -87,6 +91,7 @@ public final class JRestlyBenchmarkClient implements AutoCloseable {
                 .baseUrl(baseUrl)
                 .httpVersion(version)
                 .logger(ru.jrestly.benchmark.util.NoOpLogger.INSTANCE)
+                .codecs(ru.jrestly.codec.CodecRegistry.of(ru.jrestly.json.JsonCodecResolver.resolve()))
                 .build();
         this.api = client.get(UserApi.class);
         this.feedApi = client.get(FeedApi.class);

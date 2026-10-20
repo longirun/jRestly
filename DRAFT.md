@@ -1,5 +1,13 @@
 # DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
+> **Сессия #339 (старт цикла 0.13.0: бенчмарк-матрица полиглотных кодеков — `CodecBenchmark` (JSON/XML/YAML/Protobuf + registry resolve), пилотные замеры, пиннинг JSON-only реестра в baseline-клиентах, секция в BENCHMARKS.md; гейт 1,835/1,835):**
+> 1. *Приём состояния:* HEAD `c479410` (#338), чистое дерево (только счётчик 339), слов Антона в mailbox'е нет. Старт цикла 0.13.0 по пулу кандидатов — выбран пункт (a): бенчмарк-матрица новых форматов.
+> 2. *Гигиена базлайнов:* `benchmarks` получил `implementation project(':codec-jackson-xml'/'codec-yaml'/'codec-protobuf')` — ServiceLoader-провайдеры расширили бы реестр в дефолтных клиентах и сдвинули исторические JSON-цифры. `JRestlyBenchmarkClient` (оба конструктора) и `DispatchOverheadBenchmark` пиннят `CodecRegistry.of(JsonCodecResolver.resolve())` — тот же принцип, что пиннинг JDK-движка (ADR-0058).
+> 3. *`CodecBenchmark` (9 arm'ов):* декод/энкод для JSON (`JsonCodecAdapter(JacksonCodec.defaults())`), XML, YAML, Protobuf + `registry_resolveJson` (4-codec registry, `Application/JSON; charset=UTF-8`). Payloads намеренно разные (UserDto-документ vs schema-bound `Timestamp`) — матрица меряет стоимость SPI на вызов, не рейтинг форматов (записано в javadoc и BENCHMARKS).
+> 4. *Пилот (JMH, `-prof gc`, 1 fork):* JSON decode ~1.2 µs / 1,256 B/op, encode ~840 ns / 632 B; XML decode ~6.4 µs / 3,896 B, encode ~2.3 µs / 1,464 B; YAML decode 27–60 µs / 22.7 KB, encode 9.4–10.2 µs / 5.2 KB (пере-прогон `-wi 2 -i 3` подтвердил разрыв, абсолют шумный); protobuf decode ~55 ns / 56 B, encode ~29 ns / 32 B; registry resolve ~136 ns / 112 B. Секция «Polyglot codec overhead (cycle 0.13.0, run #339)», воспроизводящая команда и codec fairness note — в `BENCHMARKS.md`.
+> 5. *Находка-закладка:* YAML decode — структурный outlier (SnakeYAML event pipeline; ~22.7 KB аллокаций на маленький документ), отдельный аудит `YamlCodec.deserialize` (кэш `JavaType`, parser reuse, feature-настройки) — кандидат на реальный выигрыш, если YAML пойдёт в горячий путь.
+> 6. *TDD/гейт:* `CodecBenchmarkTest` (2 теста): все 8 arm'ов исполняются и биндят свой payload (значения + поля `Timestamp`), registry arm резолвит JSON; wire-size-порядок protobuf < YAML < JSON < XML. Полный **1,835/1,835** (benchmarks 37 → 39). Javadoc не затронут (benchmarks javadoc disabled, main-код не тронут).
+>
 > **Сессия #338 (упаковка релиза 0.12.0: ADR-0079, bump версии 0.12.0 во всех 7 gradle-файлах, CHANGELOG.md, POM verification 0 runtime dependencies, ROADMAP закрытие цикла; гейт 1,833/1,833, JaCoCo Branch 90.81–90.85%):**
 > 1. *Приём состояния:* HEAD `92256ee` (#337, ADR-0078), чистое дерево (только счётчик 338), слов Антона в mailbox'е нет. Завершение всех 9 аудитов цикла 0.12.0 (ADR-0070–0078, все Accepted) — выход на упаковку релиза 0.12.0.
 > 2. *Упаковка релиза 0.12.0 (ADR-0079):*
@@ -3727,6 +3735,11 @@ INSTRUCTION 98.15%, LINE 97.82%, COMPLEXITY 88.69% — рекорды; гейт 
 - ~~**ADR-0075 — оформление Кандидата №14**~~ — **закрыт в #332** (`docs/0.12.0/ADR-0075-header-merge-invariants-and-allocation-pruning.md`, Accepted; баннер ROADMAP: Highest ADR **0075**, next free **0076**).
 - ~~**Валидация `@ExpectStatus`/`@FollowRedirects` (#207 «фича, не дыра»)**~~ — **закрыт в #333**: сверка по коду показала, что eager-валидация #235 полностью на месте (коды + red-first тесты + javadoc валидатора); недостающим оказалось объявление инвариантов в публичном контракте — javadoc аннотаций `@ExpectStatus`/`@FollowRedirects` + ADR-0004 Amendment #333 (javadoc-шаг, без логики; гейт 1,809/1,809 + javadoc `-Werror`).
 - **Осталось:** свободный аудит следующего hot-path (dispatch `HttpTemplate` после ADR-0072, cookie-разбор `resolveCookies`/`HttpCookie.parse`, `MethodMetadata`-кэши).
+
+**Цикл 0.13.0 (открыт #338, первый шаг — #339):**
+- **Сделано (#339):** бенчмарк-матрица полиглотных кодеков (`CodecBenchmark`: JSON/XML/YAML/Protobuf × decode/encode + registry resolve, пилотные цифры в `BENCHMARKS.md`, JSON-only пиннинг реестра в baseline-клиентах, гейт 1,835/1,835).
+- **Пул дальше:** (a) аудит `YamlCodec.deserialize` (outlier 27–60 µs, 22.7 KB/op — SnakeYAML event pipeline; кэш `JavaType`/parser reuse/features); (b) независимый аудит кэшей/рефлексии `MethodMetadata`/`ControllerValidator`; (c) HTTP/3 / QUIC или client-side load balancing SPI; (d) по желанию — полный publishable-прогон `CodecBenchmark` (`-f 2 -wi 5 -i 10`) на тихой машине.
+- **Хвост:** `@ExpectStatus`/`@FollowRedirects` — закрыт (#333); family name-bearing — закрыт (#209).
 Хвосты-кандидаты
 из аудит-нити (не эпики): валидация `@ExpectStatus`/`@FollowRedirects`
 (инварианты нигде не объявлены — фича, не дыра; #207, трогать лишь при

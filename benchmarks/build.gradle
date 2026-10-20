@@ -13,6 +13,13 @@ dependencies {
     implementation project(':engine-apache5')
     implementation project(':engine-netty')
 
+    // Cycle 0.13.0: polyglot codec overhead matrix. These modules also put their
+    // providers on the ServiceLoader path, so the existing JSON arms pin their
+    // registry explicitly (see JRestlyBenchmarkClient/DispatchOverheadBenchmark).
+    implementation project(':codec-jackson-xml')
+    implementation project(':codec-yaml')
+    implementation project(':codec-protobuf')
+
     implementation 'org.openjdk.jmh:jmh-core:1.37'
     annotationProcessor 'org.openjdk.jmh:jmh-generator-annprocess:1.37'
 

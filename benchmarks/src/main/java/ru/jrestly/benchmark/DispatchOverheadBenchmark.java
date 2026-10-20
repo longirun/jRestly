@@ -78,6 +78,9 @@ public class DispatchOverheadBenchmark {
                         ru.jrestly.SimpleModuleInfo.builder().baseUrl("http://mock-in-memory.local").build()))
                 .mock(req -> req.uri().getPath().contains("/ping"), mockPingResponse)
                 .mock(mockUserResponse)
+                // Pinned JSON-only: codec-* modules sit on the benchmark classpath for the
+                // polyglot matrix and must not widen this dispatch baseline via ServiceLoader.
+                .codecs(ru.jrestly.codec.CodecRegistry.of(ru.jrestly.json.JsonCodecResolver.resolve()))
                 .build();
 
         jrestlyMockApi = jrestlyClient.get(MockUserApi.class);
