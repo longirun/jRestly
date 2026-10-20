@@ -1,5 +1,32 @@
 # DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
+> **Сессия #369 (HttpTemplateBuilder Branch Pruning & Resilience Coverage — ликвидация 20+ мёртвых веток, ветви в билдере выросли с 80.0% до 90.4% (missed 61→25); полный гейт 2,129/2,129 green, JaCoCo Branch 94.69% — исторический прорыв рубежа 94%!, Complexity 93.72% — новый рекорд, missed branches 241 — новый исторический минимум библиотеки):**
+> 1. *Вход:* ветка `agent-loop`, счётчик 369. Анализ классов с наибольшим количеством пропущенных ветвей: `HttpTemplateBuilder` занимал строчку #1 в библиотеке с 61 missed branches (80.0% branch coverage).
+> 2. *Анализ и устранение мёртвого кода в `HttpTemplateBuilder`:*
+>    - Устранена мёртвая ветка `else if (httpClient != null)` в `build()`: конструкторы оборачивают httpClient в JdkHttpEngine, поэтому при наличии engine `else if` был недостижим, а при null — оба были null.
+>    - Устранены избыточные проверки `methodMetadata != null` в 8 методах (`resolveResponseHeadersHolder`, `resolveUploadProgressListener`, `resolveDownloadProgressListener`, `getAuthDetailsConsumer`, `resolveDefaultCollectionFormat`, `createOnErrorParser`, `createExpectStatuses`, `getFollowRedirectsNumber`, `getHttpVersion`, `resolveInterceptors`, `resolveMetricsListener`, `resolveCompression`): `methodMetadata` гарантированно инициализируется в первой строке `build()`.
+>    - Устранены избыточные проверки `moduleInfo != null` в `applyTracingHeaders`, `resolveCompression`, `resolveCompressor`: `moduleInfo` обязателен для сборки запроса.
+>    - В `isConditionalRequest` удалена мёртвая ветка `headers == null` (результат `createHeaders` всегда List).
+>    - В `appendParamValues` удалена избыточная проверка `value == null` (проверяется вызывающим кодом перед вызовом).
+>    - Очищены избыточные проверки в сборе имен заголовков авторизации и boundary.
+> 3. *TDD и новые тесты в `HttpTemplateBuilderTest`:*
+>    - Добавлено +5 исчерпывающих тестов на пограничные сценарии:
+>      - сохранение существующего boundary в multipart и обработка non-multipart Content-Type;
+>      - отключение `retryOnUnauthorized` при наличии `@Authorization` на методе;
+>      - сохранение существующих W3C `traceparent` и кастомных trace-заголовков без перезаписи при `forceNew = false`;
+>      - пустые/пробельные traceId от `traceIdSupplier` и предотвращение дублирования `X-Request-ID` при уже существующих заголовках;
+>      - пограничные случаи `TracePropagator` (возврат null, Map с null-ключами/значениями, предотвращение дублирования существующих заголовков);
+>      - форматирование `CollectionFormat.TSV` и `PIPES` для списков и массивов с null-элементами.
+> 4. *TDD и метрики:*
+>    - Добавлено +5 тестов в `HttpTemplateBuilderTest`.
+>    - Полный гейт: **2,129 / 2,129** тестов green во всех 8 модулях (root 1,965 + submodules 164), 0 failures, 0 errors.
+>    - `HttpTemplateBuilder`: missed branches снизились с 61 до **25** (минус 36 missed!), Branch coverage вырос с 80.0% до **90.4%**!
+>    - JaCoCo: Branch **94.69%** (4,294 / 4,535 covered — **исторический абсолютный рекорд, пробит рубеж 94%!**), Complexity **93.72%** (3,628 / 3,871 covered — рекорд!), Instruction **98.63%**, Line **98.46%**, Classes **100%** (168/168).
+>    - Missed branches библиотеки снизились с 277 до **241** (минус 36 missed branches за сессию — новый исторический рекорд библиотеки!).
+>    - Javadoc: абсолютно чист во всех 8 модулях под `-Werror`.
+> 
+
+
 > **Сессия #368 (RFC 7807/9457 ProblemDetail & Zero-Dep Parser Resilience Polish — 100% ветвей в `ProblemDetail`, ликвидация мёртвых веток в `toJson()` и `equals()`, очистка цикла в `ZeroDepJsonParser`; полный гейт 2,124/2,124 green, JaCoCo Branch 93.95% — новый исторический рекорд библиотеки, Complexity 92.83% — рекорд, missed branches 277 — новый исторический минимум):**
 > 1. *Вход:* ветка `agent-loop`, счётчик 368. Анализ классов с наибольшим количеством пропущенных ветвей после завершения аудита SSE. Класс `ProblemDetail` и его внутренний zero-dependency парсер RFC 7807/9457 `ZeroDepJsonParser` содержали 32 missed branches.
 > 2. *Анализ и устранение мёртвого кода:*

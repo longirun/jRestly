@@ -1276,6 +1276,163 @@ class HttpTemplateBuilderTest {
         assertArrayEquals(new byte[]{1, 2, 3}, (byte[]) bin.content());
     }
 
+    interface CustomMultipartApi {
+        @Post(value = "/custom-multipart", requestType = RequestType.MULTIPART_FORM_DATA)
+        @RequestHeader(name = "Content-Type", value = "multipart/form-data; boundary=my-fixed-boundary")
+        String uploadWithFixedBoundary(@RequestParam(name = "field") String field);
+
+        @Post(value = "/custom-type-multipart", requestType = RequestType.MULTIPART_FORM_DATA)
+        @RequestHeader(name = "Content-Type", value = "application/custom-form")
+        String uploadWithCustomType(@RequestParam(name = "field") String field);
+    }
+
+    interface RetryAuthAnnotatedApi {
+        @Get("/auth-call")
+        @ru.jrestly.annotation.Authorization
+        String getWithAuth();
+    }
+
+    interface TraceEdgeApi {
+        @Get("/w3c-existing")
+        @Trace(w3c = true, forceNew = false)
+        @RequestHeader(name = "traceparent", value = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01")
+        String getWithExistingTraceparent();
+
+        @Get("/custom-trace-existing")
+        @Trace(w3c = false, header = "X-My-Trace", forceNew = false)
+        @RequestHeader(name = "X-My-Trace", value = "custom-id-999")
+        String getWithExistingCustomTrace();
+
+        @Get("/supplier-with-req-id")
+        @RequestHeader(name = "X-Request-ID", value = "req-123")
+        String getWithExistingRequestId();
+
+        @Get("/supplier-with-traceparent")
+        @RequestHeader(name = "traceparent", value = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01")
+        String getWithExistingTraceparentForSupplier();
+    }
+
+    interface ParamEdgeApi {
+        @Get("/params-edge")
+        String getWithTsvAndPipes(
+                @RequestParam(name = "tsvList", format = CollectionFormat.TSV) List<String> tsvList,
+                @RequestParam(name = "pipesList", format = CollectionFormat.PIPES) List<String> pipesList,
+                @RequestParam(name = "tsvArray", format = CollectionFormat.TSV) String[] tsvArray,
+                @RequestParam(name = "pipesArray", format = CollectionFormat.PIPES) String[] pipesArray
+        );
+    }
+
+    @Test
+    @DisplayName("Multipart handles existing boundary and custom content type properly")
+    void multipartCustomContentTypeBranches() throws Exception {
+        Method fixed = CustomMultipartApi.class.getMethod("uploadWithFixedBoundary", String.class);
+        HttpTemplate t1 = new HttpTemplateBuilder(defaultModuleInfo, httpClient, fixed, new Object[]{"val"}, CustomMultipartApi.class).build();
+        assertTrue(t1.getContentType().contains("boundary=my-fixed-boundary"));
+        assertFalse(t1.getContentType().contains("jrestly-"));
+
+        Method customType = CustomMultipartApi.class.getMethod("uploadWithCustomType", String.class);
+        HttpTemplate t2 = new HttpTemplateBuilder(defaultModuleInfo, httpClient, customType, new Object[]{"val"}, CustomMultipartApi.class).build();
+        assertTrue(t2.getContentType().startsWith("multipart/form-data; boundary=jrestly-"));
+    }
+
+    @Test
+    @DisplayName("retryOnUnauthorized is disabled when controller has @Auth annotation")
+    void retryOnUnauthorizedDisabledWithAuthAnnotation() throws Exception {
+        SimpleModuleInfo moduleWithRetryAuth = SimpleModuleInfo.builder()
+                .baseUrl("https://api.example.com")
+                .retryOnUnauthorized(true)
+                .build();
+        Method m = RetryAuthAnnotatedApi.class.getMethod("getWithAuth");
+        HttpTemplate t = new HttpTemplateBuilder(moduleWithRetryAuth, httpClient, m, new Object[0], RetryAuthAnnotatedApi.class).build();
+        assertFalse(t.isRetryOnUnauthorized());
+    }
+
+    @Test
+    @DisplayName("Trace edge cases: preserving existing traceparent/custom header, blank traceIdSupplier")
+    void traceEdgeCases() throws Exception {
+        Method w3c = TraceEdgeApi.class.getMethod("getWithExistingTraceparent");
+        HttpTemplate t1 = new HttpTemplateBuilder(defaultModuleInfo, httpClient, w3c, new Object[0], TraceEdgeApi.class).build();
+        assertEquals("00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
+                t1.getHeaders().stream().filter(h -> "traceparent".equalsIgnoreCase(h.name())).findFirst().orElseThrow().value());
+
+        Method custom = TraceEdgeApi.class.getMethod("getWithExistingCustomTrace");
+        HttpTemplate t2 = new HttpTemplateBuilder(defaultModuleInfo, httpClient, custom, new Object[0], TraceEdgeApi.class).build();
+        assertEquals("custom-id-999",
+                t2.getHeaders().stream().filter(h -> "X-My-Trace".equalsIgnoreCase(h.name())).findFirst().orElseThrow().value());
+
+        // Blank traceIdSupplier
+        SimpleModuleInfo blankSupplierModule = SimpleModuleInfo.builder()
+                .baseUrl("https://api.example.com")
+                .traceIdSupplier(() -> "   ")
+                .build();
+        Method plain = UrlApi.class.getMethod("getWithPathVariable", String.class);
+        HttpTemplate t3 = new HttpTemplateBuilder(blankSupplierModule, httpClient, plain, new Object[]{"1"}, UrlApi.class).build();
+        assertTrue(t3.getHeaders().stream().noneMatch(h -> "X-Request-ID".equalsIgnoreCase(h.name())));
+
+        // Existing X-Request-ID does not get overwritten by traceIdSupplier
+        SimpleModuleInfo validSupplierModule = SimpleModuleInfo.builder()
+                .baseUrl("https://api.example.com")
+                .traceIdSupplier(() -> "new-trace-id")
+                .build();
+        Method reqIdMethod = TraceEdgeApi.class.getMethod("getWithExistingRequestId");
+        HttpTemplate t4 = new HttpTemplateBuilder(validSupplierModule, httpClient, reqIdMethod, new Object[0], TraceEdgeApi.class).build();
+        long reqIdCount = t4.getHeaders().stream().filter(h -> "X-Request-ID".equalsIgnoreCase(h.name())).count();
+        assertEquals(1, reqIdCount);
+        assertEquals("req-123", t4.getHeaders().stream().filter(h -> "X-Request-ID".equalsIgnoreCase(h.name())).findFirst().orElseThrow().value());
+
+        // Existing traceparent prevents X-Request-ID insertion from traceIdSupplier
+        Method traceparentMethod = TraceEdgeApi.class.getMethod("getWithExistingTraceparentForSupplier");
+        HttpTemplate t5 = new HttpTemplateBuilder(validSupplierModule, httpClient, traceparentMethod, new Object[0], TraceEdgeApi.class).build();
+        assertTrue(t5.getHeaders().stream().noneMatch(h -> "X-Request-ID".equalsIgnoreCase(h.name())));
+    }
+
+    @Test
+    @DisplayName("TracePropagator returns null, null keys/values, or existing header")
+    void tracePropagatorEdgeCases() throws Exception {
+        // inject returns null
+        SimpleModuleInfo nullInjectModule = SimpleModuleInfo.builder()
+                .baseUrl("https://api.example.com")
+                .tracePropagator(context -> null)
+                .build();
+        Method m = UrlApi.class.getMethod("getWithPathVariable", String.class);
+        HttpTemplate t1 = new HttpTemplateBuilder(nullInjectModule, httpClient, m, new Object[]{"1"}, UrlApi.class).build();
+        assertNotNull(t1);
+
+        // inject returns map with null key, null value, and already-existing header
+        Map<String, String> edgeMap = new HashMap<>();
+        edgeMap.put(null, "val");
+        edgeMap.put("X-Null-Val", null);
+        edgeMap.put("User-Agent", "CustomAgent/1.0"); // assuming User-Agent or static header might exist
+        edgeMap.put("X-Injected", "injected-val");
+
+        SimpleModuleInfo edgePropagatorModule = SimpleModuleInfo.builder()
+                .baseUrl("https://api.example.com")
+                .tracePropagator(context -> edgeMap)
+                .build();
+        HttpTemplate t2 = new HttpTemplateBuilder(edgePropagatorModule, httpClient, m, new Object[]{"1"}, UrlApi.class).build();
+        assertTrue(t2.getHeaders().stream().anyMatch(h -> "X-Injected".equals(h.name())));
+        assertTrue(t2.getHeaders().stream().noneMatch(h -> h.name() == null));
+        assertTrue(t2.getHeaders().stream().noneMatch(h -> "X-Null-Val".equals(h.name())));
+    }
+
+    @Test
+    @DisplayName("TSV and PIPES collection formats for List and Array parameters")
+    void tsvAndPipesParameterFormats() throws Exception {
+        Method m = ParamEdgeApi.class.getMethod("getWithTsvAndPipes", List.class, List.class, String[].class, String[].class);
+        HttpTemplate t = new HttpTemplateBuilder(defaultModuleInfo, httpClient, m,
+                new Object[]{
+                        Arrays.asList("a", null, "b"),
+                        Arrays.asList("x", "y"),
+                        new String[]{"1", null, "2"},
+                        new String[]{"9", "8"}
+                }, ParamEdgeApi.class).build();
+
+        assertEquals("a\tb", t.getRequestParams().stream().filter(p -> "tsvList".equals(p.name())).findFirst().orElseThrow().value());
+        assertEquals("x|y", t.getRequestParams().stream().filter(p -> "pipesList".equals(p.name())).findFirst().orElseThrow().value());
+        assertEquals("1\t2", t.getRequestParams().stream().filter(p -> "tsvArray".equals(p.name())).findFirst().orElseThrow().value());
+        assertEquals("9|8", t.getRequestParams().stream().filter(p -> "pipesArray".equals(p.name())).findFirst().orElseThrow().value());
+    }
+
     /**
      * A {@link CharSequence} counting {@code toString()} invocations — a seam for observing
      * how many times the builder stringifies the {@code @TargetUrl} argument during a single

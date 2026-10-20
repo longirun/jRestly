@@ -213,8 +213,6 @@ public class HttpTemplateBuilder {
 
         if (httpEngine != null) {
             result.setHttpEngine(httpEngine);
-        } else if (httpClient != null) {
-            result.setHttpClient(httpClient);
         }
         String url = UrlComposer.compose(requestMeta, methodMetadata, args, moduleInfo.getEnvironment().getUrl());
         result.setUrl(url);
@@ -258,12 +256,10 @@ public class HttpTemplateBuilder {
         } else {
             Set<String> explicitNames = new HashSet<>();
             for (Header h : methodMetadata.staticHeaders()) {
-                if (h.name() != null) {
-                    explicitNames.add(h.name().toLowerCase(Locale.ROOT));
-                }
+                explicitNames.add(h.name().toLowerCase(Locale.ROOT));
             }
             for (MethodMetadata.ParameterDescriptor p : methodMetadata.parameterDescriptors()) {
-                if (p.isRequestHeader() && p.requestHeaderName() != null) {
+                if (p.isRequestHeader()) {
                     explicitNames.add(p.requestHeaderName().toLowerCase(Locale.ROOT));
                 }
             }
@@ -304,7 +300,7 @@ public class HttpTemplateBuilder {
             parts = BodyComposer.composeParts(moduleInfo, methodMetadata, requestMeta, args);
 
             String boundary = "jrestly-" + UUID.randomUUID().toString().replace("-", "");
-            if (effectiveContentType != null && effectiveContentType.toLowerCase(Locale.ROOT).contains("multipart/")) {
+            if (effectiveContentType.toLowerCase(Locale.ROOT).contains("multipart/")) {
                 if (!effectiveContentType.toLowerCase(Locale.ROOT).contains("boundary=")) {
                     effectiveContentType = effectiveContentType + "; boundary=" + boundary;
                 }
@@ -382,7 +378,7 @@ public class HttpTemplateBuilder {
     }
 
     private ResponseHeaders resolveResponseHeadersHolder() {
-        if (methodMetadata != null && methodMetadata.responseHeadersParamIndex() >= 0 && args != null
+        if (args != null && methodMetadata.responseHeadersParamIndex() >= 0
                 && methodMetadata.responseHeadersParamIndex() < args.length) {
             if (args[methodMetadata.responseHeadersParamIndex()] instanceof ResponseHeaders holder) {
                 return holder;
@@ -392,7 +388,7 @@ public class HttpTemplateBuilder {
     }
 
     private UploadProgressListener resolveUploadProgressListener() {
-        if (methodMetadata != null && methodMetadata.uploadProgressParamIndex() >= 0 && args != null
+        if (args != null && methodMetadata.uploadProgressParamIndex() >= 0
                 && methodMetadata.uploadProgressParamIndex() < args.length) {
             if (args[methodMetadata.uploadProgressParamIndex()] instanceof UploadProgressListener listener) {
                 return listener;
@@ -402,7 +398,7 @@ public class HttpTemplateBuilder {
     }
 
     private DownloadProgressListener resolveDownloadProgressListener() {
-        if (methodMetadata != null && methodMetadata.downloadProgressParamIndex() >= 0 && args != null
+        if (args != null && methodMetadata.downloadProgressParamIndex() >= 0
                 && methodMetadata.downloadProgressParamIndex() < args.length) {
             if (args[methodMetadata.downloadProgressParamIndex()] instanceof DownloadProgressListener listener) {
                 return listener;
@@ -416,17 +412,12 @@ public class HttpTemplateBuilder {
         if (!methodMetadata.hasRequestHeaders()) {
             return methodMetadata.isStaticConditional();
         }
-        if (headers == null) {
-            return false;
-        }
         for (int i = 0, size = headers.size(); i < size; i++) {
             Header h = headers.get(i);
-            if (h.name() != null) {
-                String name = h.name();
-                if (name.equalsIgnoreCase("if-none-match") || name.equalsIgnoreCase("if-modified-since")
-                        || name.equalsIgnoreCase("if-match") || name.equalsIgnoreCase("if-unmodified-since")) {
-                    return true;
-                }
+            String name = h.name();
+            if (name != null && (name.equalsIgnoreCase("if-none-match") || name.equalsIgnoreCase("if-modified-since")
+                    || name.equalsIgnoreCase("if-match") || name.equalsIgnoreCase("if-unmodified-since"))) {
+                return true;
             }
         }
         return false;
@@ -445,9 +436,9 @@ public class HttpTemplateBuilder {
         // a missing or disabled one falls back to the client-level TracePropagator (§6.4)
         Trace effectiveTrace = methodMetadata.effectiveTrace();
         if (effectiveTrace == null || !effectiveTrace.enabled()) {
-            if (moduleInfo != null && moduleInfo.getTracePropagator() != null) {
+            if (moduleInfo.getTracePropagator() != null) {
                 applyTracePropagator(result, url);
-            } else if (moduleInfo != null && moduleInfo.getTraceIdSupplier() != null) {
+            } else if (moduleInfo.getTraceIdSupplier() != null) {
                 if (!HeaderComposer.hasHeaderNamed(result, "X-Request-ID") && !HeaderComposer.hasHeaderNamed(result, "traceparent")) {
                     String traceId = moduleInfo.getTraceIdSupplier().get();
                     if (traceId != null && !traceId.isBlank()) {
@@ -516,7 +507,7 @@ public class HttpTemplateBuilder {
     }
 
     private Consumer<List<Header>> getAuthDetailsConsumer() {
-        if (methodMetadata != null && methodMetadata.authDetailsHeaderName() != null) {
+        if (methodMetadata.authDetailsHeaderName() != null) {
             String headerName = methodMetadata.authDetailsHeaderName();
             AuthProvider authProvider = moduleInfo.getAuthProvider();
 
@@ -570,7 +561,7 @@ public class HttpTemplateBuilder {
     }
 
     private CollectionFormat resolveDefaultCollectionFormat() {
-        return methodMetadata != null ? methodMetadata.defaultCollectionFormat() : CollectionFormat.EXPLODE;
+        return methodMetadata.defaultCollectionFormat();
     }
 
     byte[] createUrlEncodedBody() {
@@ -602,26 +593,22 @@ public class HttpTemplateBuilder {
     }
 
     private OnErrorParser createOnErrorParser() {
-        return methodMetadata != null ? methodMetadata.onErrorParser() : null;
+        return methodMetadata.onErrorParser();
     }
 
     private List<Integer> createExpectStatuses() {
-        return methodMetadata != null ? methodMetadata.expectStatuses() : null;
+        return methodMetadata.expectStatuses();
     }
 
     private Integer getFollowRedirectsNumber() {
-        return methodMetadata != null ? methodMetadata.followRedirectsNumber() : null;
+        return methodMetadata.followRedirectsNumber();
     }
 
     private HttpClient.Version getHttpVersion() {
-        return methodMetadata != null ? methodMetadata.httpVersion() : null;
+        return methodMetadata.httpVersion();
     }
 
     private static void appendParamValues(List<Param> result, String name, Object value, CollectionFormat format) {
-        if (value == null) {
-            return;
-        }
-
         if (value instanceof Collection<?> collection) {
             List<String> items = collection.stream()
                     .filter(Objects::nonNull)
@@ -687,18 +674,16 @@ public class HttpTemplateBuilder {
         List<RequestInterceptor> reqs = new ArrayList<>(moduleInfo.getRequestInterceptors());
         List<ResponseInterceptor> resps = new ArrayList<>(moduleInfo.getResponseInterceptors());
 
-        if (methodMetadata != null) {
-            for (Class<? extends RequestInterceptor> clazz : methodMetadata.declarativeRequestInterceptorClasses()) {
-                Object instance = getOrCreateInterceptor(clazz);
-                if (instance instanceof RequestInterceptor req) {
-                    reqs.add(req);
-                }
+        for (Class<? extends RequestInterceptor> clazz : methodMetadata.declarativeRequestInterceptorClasses()) {
+            Object instance = getOrCreateInterceptor(clazz);
+            if (instance instanceof RequestInterceptor req) {
+                reqs.add(req);
             }
-            for (Class<? extends ResponseInterceptor> clazz : methodMetadata.declarativeResponseInterceptorClasses()) {
-                Object instance = getOrCreateInterceptor(clazz);
-                if (instance instanceof ResponseInterceptor resp) {
-                    resps.add(resp);
-                }
+        }
+        for (Class<? extends ResponseInterceptor> clazz : methodMetadata.declarativeResponseInterceptorClasses()) {
+            Object instance = getOrCreateInterceptor(clazz);
+            if (instance instanceof ResponseInterceptor resp) {
+                resps.add(resp);
             }
         }
 
@@ -731,12 +716,10 @@ public class HttpTemplateBuilder {
         if (moduleInfo.getMetricsListener() != null) {
             listeners.add(moduleInfo.getMetricsListener());
         }
-        if (methodMetadata != null) {
-            for (Class<? extends ClientMetricsListener> clazz : methodMetadata.declarativeMetricsListenerClasses()) {
-                Object instance = getOrCreateInterceptor(clazz);
-                if (instance instanceof ClientMetricsListener listener) {
-                    listeners.add(listener);
-                }
+        for (Class<? extends ClientMetricsListener> clazz : methodMetadata.declarativeMetricsListenerClasses()) {
+            Object instance = getOrCreateInterceptor(clazz);
+            if (instance instanceof ClientMetricsListener listener) {
+                listeners.add(listener);
             }
         }
         if (listeners.isEmpty()) {
@@ -754,14 +737,12 @@ public class HttpTemplateBuilder {
             new EffectiveCompression(false, CompressionAlgorithm.NONE, 0);
 
     private EffectiveCompression resolveCompression() {
-        if (methodMetadata != null) {
-            MethodMetadata.EffectiveCompression metaComp = methodMetadata.compression();
-            if (metaComp.explicit()) {
-                return new EffectiveCompression(metaComp.enabled(), metaComp.algorithm(), metaComp.minSizeBytes());
-            }
+        MethodMetadata.EffectiveCompression metaComp = methodMetadata.compression();
+        if (metaComp.explicit()) {
+            return new EffectiveCompression(metaComp.enabled(), metaComp.algorithm(), metaComp.minSizeBytes());
         }
 
-        if (moduleInfo != null && moduleInfo.getRequestCompressionAlgorithm() != null
+        if (moduleInfo.getRequestCompressionAlgorithm() != null
                 && moduleInfo.getRequestCompressionAlgorithm() != CompressionAlgorithm.NONE) {
             return new EffectiveCompression(true, moduleInfo.getRequestCompressionAlgorithm(),
                     Math.max(0, moduleInfo.getRequestCompressionThreshold()));
@@ -774,11 +755,9 @@ public class HttpTemplateBuilder {
         if (algorithm == null || algorithm == CompressionAlgorithm.NONE) {
             return null;
         }
-        if (moduleInfo != null) {
-            ContentCompressor custom = moduleInfo.getContentCompressor(algorithm.encoding());
-            if (custom != null) {
-                return custom;
-            }
+        ContentCompressor custom = moduleInfo.getContentCompressor(algorithm.encoding());
+        if (custom != null) {
+            return custom;
         }
         return ContentCompressors.get(algorithm);
     }
