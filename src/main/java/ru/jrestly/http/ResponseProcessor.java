@@ -1,6 +1,7 @@
 package ru.jrestly.http;
 
 import ru.jrestly.codec.PayloadCodec;
+import ru.jrestly.tracing.TraceIdExtractor;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -39,8 +40,25 @@ final class ResponseProcessor {
             List<Integer> expectStatuses,
             boolean conditional,
             Function<List<Header>, PayloadCodec> codecResolver,
-            System.Logger logger
+            System.Logger logger,
+            boolean sanitizeLogs
     ) {
+        ResponseConfig(
+                Type returnType,
+                boolean optional,
+                ResponseHeaders responseHeadersHolder,
+                Consumer<List<Header>> authDetailsConsumer,
+                OnErrorParser onErrorParser,
+                List<Integer> expectStatuses,
+                boolean conditional,
+                Function<List<Header>, PayloadCodec> codecResolver,
+                System.Logger logger
+        ) {
+            this(returnType, optional, responseHeadersHolder, authDetailsConsumer, onErrorParser,
+                    expectStatuses, conditional, codecResolver, logger,
+                    HttpDiagnosticLogger.isSanitizingEnabled());
+        }
+
         ResponseConfig {
             logger = logger != null ? logger : System.getLogger(ResponseProcessor.class.getName());
         }
@@ -54,6 +72,11 @@ final class ResponseProcessor {
 
     @SuppressWarnings("unchecked")
     <T> T process(WireResponse response, long startNanos) throws IOException {
+        return process(null, response, startNanos);
+    }
+
+    @SuppressWarnings("unchecked")
+    <T> T process(WireRequest request, WireResponse response, long startNanos) throws IOException {
         long elapsedMs = (System.nanoTime() - startNanos) / 1_000_000;
 
         List<Header> responseHeaders = response.headers();
@@ -62,7 +85,11 @@ final class ResponseProcessor {
 
         ResponseHeaders capturedHeaderHolder = captureHeadersAndNotify(response, responseHeaders, statusCode, startNanos);
 
-        HttpDiagnosticLogger.logResponse(config.logger(), response, elapsedMs);
+        String traceId = TraceIdExtractor.extract(response);
+        if (traceId == null && request != null) {
+            traceId = TraceIdExtractor.extract(request);
+        }
+        HttpDiagnosticLogger.logResponse(config.logger(), response, elapsedMs, traceId, config.sanitizeLogs());
 
         InputStream stream = response.stream();
         if (stream != null) {

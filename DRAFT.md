@@ -1,6 +1,26 @@
 # DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
-> **Сессия #364 (Enterprise Observability, Production Debugging & Regulatory Compliance Audit — ADR-0095; внедрен `SensitiveDataSanitizer` для `HttpDiagnosticLogger` (маскирование PII, Bearer-токенов, Cookie, query params); принят ADR-0095; полный гейт 2,085/2,085, JaCoCo Branch 93.61% — новый абсолютный исторический рекорд):**
+> **Сессия #364 (Enterprise Log Correlation Tracing, Raw Debugging Mode, SSE Typed Decode Backlog & Rich Documentation — ADR-0096; внедрены `TraceIdExtractor`, префикс `[traceId]` во всех логах, `.sanitizeSensitiveData(boolean)` / `.sanitizeLogs(boolean)`, `traceIdSupplier`; принят ADR-0096; полный гейт 2,098/2,098 green, JaCoCo Branch 93.47%, 0 missed branches в новых классах):**
+> 1. *Вход:* ветка `agent-loop`, счётчик 364. Запросы Антона из mailbox: возможность отключать санитизацию для отладки, сквозной `traceId` в логах для устранения мешанины в Kibana/ELK, бэклог по SSE typed decode и расширение документации.
+> 2. *Реализация (ADR-0096):*
+>    - Создан `TraceIdExtractor`: zero-overhead извлечение W3C `traceparent` (RFC 8414 Level 1) или стандартных correlation-заголовков (`X-Request-ID`, `X-Correlation-ID`, `X-Trace-ID`, `trace-id`, `request-id`, `correlation-id`) и `traceIdSupplier`.
+>    - Обогащен `HttpDiagnosticLogger`: префикс `[traceId]` для `Request:`, `Response:`, per-hop и retry логов; безопасная поддержка сырого режима (`sanitize = false`) без накладных расходов.
+>    - `JRestlyClient.Builder`: добавлены `.sanitizeSensitiveData(boolean)` / `.sanitizeLogs(boolean)`, `.traceIdSupplier(Supplier<String>)`.
+>    - Системный флаг JVM: `-Djrestly.logging.sanitize=false` для staging/dev без пересборки.
+>    - Интеграция в `HttpTemplate`, `ResponseProcessor`, `RetryExecutor`.
+> 3. *Документация и бэклог SSE:*
+>    - `README.md`: добавлены примеры потокового LLM inference на Server-Sent Events, реконнект с `Last-Event-ID`, watchdog stall guard и большой раздел Enterprise Observability, Tracing & Data Privacy (GDPR, 152-FZ, PCI-DSS).
+>    - В `ROADMAP.md` и `DRAFT.md` внесен подробный бэклог SSE Typed Decode (`Stream<ServerSentEvent<T>>`).
+>    - Зафиксирован принятый **ADR-0096** (`docs/0.14.0/ADR-0096-production-correlation-tracing-and-raw-logging.md`).
+> 4. *TDD и метрики:*
+>    - Создан сьют `TraceIdExtractorTest` (7 исчерпывающих тестов) + новые тесты в `HttpDiagnosticLoggerTest`, `HttpTemplateLoggingTest`, `HttpTemplateBuilderTest`.
+>    - Полный гейт: **2,098 / 2,098** тестов green во всех 8 модулях (root 1,934 + submodules 164), 0 failures, 0 errors.
+>    - `TraceIdExtractor`: **100% instructions (118/118), 100% branches (36/36), 100% lines, 0 missed branches**.
+>    - `HttpDiagnosticLogger`: **100% instructions (390/390), 100% branches (76/76), 100% lines, 0 missed branches**.
+>    - JaCoCo: Branch **93.47%** (4,254 / 4,551 covered), Classes: **100%** (167/167). Javadoc `-Werror` абсолютно чист.
+> 
+
+> **Сессия #364-audit (Enterprise Observability, Production Debugging & Regulatory Compliance Audit — ADR-0095; внедрен `SensitiveDataSanitizer` для `HttpDiagnosticLogger` (маскирование PII, Bearer-токенов, Cookie, query params); принят ADR-0095):**
 > 1. *Вход:* ветка `agent-loop`, счётчик 364. Запрос Антона из mailbox: провести аудит обзервабилити для дебаггинга и аудит безопасности под требования крупной компании (152-ФЗ РФ, GDPR, интеграция со сторонними сервисами).
 > 2. *Аудит обзервабилити:*
 >    - Сильные стороны: W3C TraceContext Level 1 (`traceparent`, `tracestate`), 4 точки телеметрии в `ClientMetricsListener`, байтовый учет, duration, ProblemDetail типизация (RFC 7807/9457).
@@ -18,10 +38,8 @@
 >    - Интеграция в `HttpDiagnosticLogger`: безопасные `logRequest`, `logResponse`, `logPerHop`.
 > 5. *Инвариант ADR-0002 сохранен:* явные пользовательские `@RequestHeader` сохраняются при cross-origin редиректах, а ambient фоновые auth-заголовки сбрасываются.
 > 6. *Замеры:*
->    - Полный гейт: **2,085 / 2,085** тестов green во всех 8 модулях (root 1,921 = 1,912 + 9; субмодули 164), 0 failures, 0 errors;
->    - Javadoc: `-Werror` абсолютно чист во всех 8 модулях;
->    - JaCoCo: Branch **93.61%** (4,165 / 4,449 covered — **новый исторический абсолютный рекорд**!), missed branches: **284**, Classes: **100%** (166/166).
-> 7. *Документация:* принят **ADR-0095** (`docs/0.13.0/ADR-0095-observability-debugging-and-enterprise-security-audit.md`), актуализирован `ROADMAP.md` (Cycle 0.14.0 Enterprise Observability & Regulatory Compliance). Highest ADR **0095**, next free **0096**.
+>    - Полный гейт: **2,085 / 2,085** тестов green во всех 8 модулях; Javadoc: `-Werror` абсолютно чист; JaCoCo: Branch **93.61%**, Classes: **100%** (166/166).
+> 7. *Документация:* принят **ADR-0095** (`docs/0.13.0/ADR-0095-observability-debugging-and-enterprise-security-audit.md`), актуализирован `ROADMAP.md` (Cycle 0.14.0 Enterprise Observability & Regulatory Compliance).
 > 
 > 
 > **Сессия #363 (дистилляция цикла 0.13.0 в `ROADMAP.md`, стратегический аудит SSE, локального минимума и философии открытости; бэклог декомпозиции закрыт полностью, финишная прямая):**

@@ -1,5 +1,6 @@
 package ru.jrestly.http;
 
+import ru.jrestly.tracing.TraceIdExtractor;
 import ru.jrestly.codec.PayloadCodec;
 import ru.jrestly.interceptor.RequestContext;
 import ru.jrestly.metrics.ClientMetricsListener;
@@ -157,7 +158,8 @@ final class RetryExecutor {
     ) throws InterruptedException {
         closeIntermediateStream(response);
         long delayMillis = config.retryPolicy().nextDelayMillis(attempt, previousDelayMillis, RetryAfter.delayMillis(response), ThreadLocalRandom.current());
-        HttpDiagnosticLogger.logRetry(config.logger(), attempt, maxAttempts, failure, delayMillis);
+        String traceId = TraceIdExtractor.extract(request);
+        HttpDiagnosticLogger.logRetry(config.logger(), attempt, maxAttempts, failure, delayMillis, traceId);
         MetricsNotifier.retry(config.metricsListener(), config.logger(), requestContext, request, attempt + attemptOffset, failureThrowable, delayMillis);
         if (delayMillis > 0) {
             Thread.sleep(delayMillis);
@@ -310,7 +312,8 @@ final class RetryExecutor {
     ) {
         closeIntermediateStream(response);
         long delayMillis = config.retryPolicy().nextDelayMillis(attempt, previousDelayMillis, RetryAfter.delayMillis(response), ThreadLocalRandom.current());
-        HttpDiagnosticLogger.logRetry(config.logger(), attempt, maxAttempts, failure, delayMillis);
+        String traceId = TraceIdExtractor.extract(request);
+        HttpDiagnosticLogger.logRetry(config.logger(), attempt, maxAttempts, failure, delayMillis, traceId);
         MetricsNotifier.retry(config.metricsListener(), config.logger(), requestContext, request, attempt + attemptOffset, failureThrowable, delayMillis);
         if (delayMillis <= 0) {
             return attemptAsync(request, attempt + 1, maxAttempts, requestContext, attemptsRef, 0L, attemptOffset, asyncSender);

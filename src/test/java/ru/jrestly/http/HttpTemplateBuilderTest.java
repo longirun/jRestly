@@ -581,6 +581,22 @@ class HttpTemplateBuilderTest {
     }
 
     @Test
+    @DisplayName("traceIdSupplier injects X-Request-ID when no @Trace or tracePropagator configured (ADR-0096)")
+    void testTraceIdSupplierInjectsXRequestIdHeader() throws Exception {
+        SimpleModuleInfo moduleInfo = SimpleModuleInfo.builder()
+                .baseUrl("https://api.example.com")
+                .traceIdSupplier(() -> "enterprise-flow-trace-123")
+                .build();
+        Method method = HeaderApi.class.getMethod("getConditional", String.class);
+        HttpTemplate template = new HttpTemplateBuilder(moduleInfo, httpClient, method,
+                new Object[]{"etag1"}, HeaderApi.class).build();
+
+        List<Header> headers = template.getHeaders();
+        assertTrue(headers.stream().anyMatch(h -> "X-Request-ID".equalsIgnoreCase(h.name())
+                && "enterprise-flow-trace-123".equals(h.value())));
+    }
+
+    @Test
     @DisplayName("Client-level propagator observes the built URL, assembled exactly once per build (Amendment #301)")
     void testTracePropagatorReceivesBuiltUrlComputedOnce() throws Exception {
         AtomicReference<String> observedUrl = new AtomicReference<>();

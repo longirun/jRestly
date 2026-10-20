@@ -91,12 +91,16 @@ public class SimpleModuleInfo implements ModuleInfo {
     private final System.Logger logger;
     private final ru.jrestly.engine.HttpEngine httpEngine;
     private final ru.jrestly.cache.HttpCache httpCache;
+    private final boolean sanitizeSensitiveData;
+    private final java.util.function.Supplier<String> traceIdSupplier;
 
     private SimpleModuleInfo(Builder builder) {
         this.name = builder.name;
         this.baseUrl = builder.baseUrl;
         this.httpEngine = builder.httpEngine;
         this.httpCache = builder.httpCache;
+        this.sanitizeSensitiveData = builder.sanitizeSensitiveData;
+        this.traceIdSupplier = builder.traceIdSupplier;
         this.authProvider = builder.authHeaderName != null
                 ? new AuthHeaderProvider(builder.authHeaderName, builder.authHeaderValue)
                 : new AuthHeaderProvider();
@@ -330,6 +334,16 @@ public class SimpleModuleInfo implements ModuleInfo {
         return httpCache;
     }
 
+    @Override
+    public boolean isSanitizeSensitiveData() {
+        return sanitizeSensitiveData;
+    }
+
+    @Override
+    public java.util.function.Supplier<String> getTraceIdSupplier() {
+        return traceIdSupplier;
+    }
+
     /**
      * A builder for {@link SimpleModuleInfo}, pre-set to the defaults:
      * name {@code "default"}, 5 s connect timeout, 30 s socket timeout,
@@ -375,6 +389,8 @@ public class SimpleModuleInfo implements ModuleInfo {
         private boolean retryOnUnauthorized = false;
         private System.Logger logger;
         private ru.jrestly.cache.HttpCache httpCache;
+        private boolean sanitizeSensitiveData = Boolean.parseBoolean(System.getProperty("jrestly.logging.sanitize", "true"));
+        private java.util.function.Supplier<String> traceIdSupplier;
 
         /**
          * Sets the custom HTTP cache conforming to RFC 9111 (ADR-0063).
@@ -395,6 +411,29 @@ public class SimpleModuleInfo implements ModuleInfo {
          */
         public Builder logger(System.Logger logger) {
             this.logger = logger;
+            return this;
+        }
+
+        /**
+         * Sets whether sensitive credentials, PII, and sensitive query parameters in diagnostic logs
+         * should be masked (ADR-0095).
+         *
+         * @param sanitizeSensitiveData {@code true} to mask sensitive data, {@code false} to allow raw logging
+         * @return this builder, for chaining
+         */
+        public Builder sanitizeSensitiveData(boolean sanitizeSensitiveData) {
+            this.sanitizeSensitiveData = sanitizeSensitiveData;
+            return this;
+        }
+
+        /**
+         * Sets an optional supplier of active trace or correlation ID (ADR-0095, ADR-0096).
+         *
+         * @param traceIdSupplier the trace ID supplier, or {@code null}
+         * @return this builder, for chaining
+         */
+        public Builder traceIdSupplier(java.util.function.Supplier<String> traceIdSupplier) {
+            this.traceIdSupplier = traceIdSupplier;
             return this;
         }
 

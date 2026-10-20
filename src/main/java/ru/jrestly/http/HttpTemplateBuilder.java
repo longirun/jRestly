@@ -447,6 +447,13 @@ public class HttpTemplateBuilder {
         if (effectiveTrace == null || !effectiveTrace.enabled()) {
             if (moduleInfo != null && moduleInfo.getTracePropagator() != null) {
                 applyTracePropagator(result, url);
+            } else if (moduleInfo != null && moduleInfo.getTraceIdSupplier() != null) {
+                if (!HeaderComposer.hasHeaderNamed(result, "X-Request-ID") && !HeaderComposer.hasHeaderNamed(result, "traceparent")) {
+                    String traceId = moduleInfo.getTraceIdSupplier().get();
+                    if (traceId != null && !traceId.isBlank()) {
+                        result.add(new Header("X-Request-ID", traceId.trim()));
+                    }
+                }
             }
             return;
         }

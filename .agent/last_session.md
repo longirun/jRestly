@@ -1,35 +1,42 @@
-# Last Session: #364 (2026-10-20)
+# Last Session: #364 (2026-10-21)
 
 ## Что сделано
 
-**Сессия #364: Enterprise Observability & Security Audit (152-ФЗ, GDPR, PCI-DSS, ADR-0095). Внедрен `SensitiveDataSanitizer` для `HttpDiagnosticLogger` (маскирование PII, Bearer-токенов, Cookie, query params); принят ADR-0095; полный гейт 2,085/2,085, JaCoCo Branch 93.61% — новый абсолютный исторический рекорд.**
+**Сессия #364: Enterprise Correlation Tracing, Raw Debugging Mode, SSE Typed Decode Backlog & Rich Documentation (ADR-0096).**
+Внедрен `TraceIdExtractor` (100% coverage, 0 missed branches), сквозной префикс `[traceId]` во всех логах (`Request:`, `Response:`, per-hop, retry), гибкое отключение санитизации `.sanitizeSensitiveData(false)` / `.sanitizeLogs(false)` / `-Djrestly.logging.sanitize=false`, интеграция с `traceIdSupplier(Supplier<String>)`, кардинально расширен `README.md` (LLM Server-Sent Events streaming, stall guard watchdog, auto-reconnect, Enterprise Observability, 152-ФЗ/GDPR), принят ADR-0096; полный гейт 2,098/2,098 green, JaCoCo Branch 93.47%, Classes 100%.
 
-1. *Вход:* ветка `agent-loop`, счётчик 364. Запрос Антона из mailbox: провести аудит обзервабилити для дебаггинга и аудит безопасности под требования крупной компании (152-ФЗ РФ, GDPR, интеграция со сторонними сервисами).
-2. *Результаты аудита (ADR-0095):*
-   - **Обзервабилити:** W3C TraceContext Level 1 и 4 точки телеметрии в `ClientMetricsListener` — отличный фундамент. Главный пробел: разрыв корреляции в логах (отсутствие `[traceId]` в первой строке лога `Request:` и `Response:`, что затрудняет поиск в ELK при десятках тысяч параллельных виртуальных потоков).
-   - **Безопасность и регуляторный комплаенс (152-ФЗ РФ ст. 19, GDPR Art. 25 & 32, PCI-DSS 3.4):**
-     - Выявлен критический дефект (CWE-532): `HttpDiagnosticLogger` выводил заголовки (`Authorization: Bearer <JWT>`, `Cookie: ...`, `Set-Cookie: ...`, `X-Api-Key`) и URL с query-параметрами (`?token=...`, `?phone=...`, `?email=...`) в открытом виде на уровне INFO/DEBUG.
-     - Тело запроса логировалось целиком без лимита размера (риск DoS/OOM при отправке 100 МБ файла).
-   - **Российская специфика (mTLS и ГОСТ):**
-     - Полная готовность из коробки без vendor lock-in! Через `JRestly.builder().sslContext(gostSslContext)` поддерживаются любые сертифицированные СКЗИ (КриптоПро JCP, ViPNet Java CSP) для интеграции со СМЭВ, ЕСИА, ГИС ЖКХ и ЦБ РФ.
-3. *Реализация (Шаг 1 ADR-0095):*
-   - Создан package-private коллаборатор `SensitiveDataSanitizer` (65 строк, 0 missed lines, 99% instructions, 38 complexity):
-     - `isSensitiveHeader`: распознает `authorization`, `proxy-authorization`, `cookie`, `set-cookie`, `x-api-key`, `api-key`, `apikey`, `secret-token`, `x-auth-token` и подстроки `token`, `secret`, `password`, `credential`, `signature`.
-     - `sanitizeHeader`: маскирует значение (`Bearer [REDACTED]` или `[REDACTED]`), нечувствительные заголовки возвращаются исходным экземпляром (0 аллокаций!).
-     - `sanitizeUri`: аккуратный парсинг query и маскирование `token`, `secret`, `phone`, `email`, `passport`, `code`, `password`.
-     - `sanitizeBody`: лимит 4 КБ с маркером truncated и regex-маскированием паролей в JSON.
-   - Интеграция в `HttpDiagnosticLogger`: защищены методы `logRequest`, `logResponse`, `logPerHop`.
-   - Сохранен инвариант ADR-0002: явные пользовательские `@RequestHeader` вычитаются из ambient-заголовков и сохраняются при cross-origin редиректах, а фоновые токены сбрасываются.
-4. *TDD red-first:*
-   - `SensitiveDataSanitizerTest` (7 тестов) + дополнения в `HttpDiagnosticLoggerTest` (2 теста).
-5. *Цифры и рекорды:*
-   - Полный гейт: **2,085 / 2,085** тестов green во всех 8 модулях (root 1,921 = 1,912 + 9; субмодули 164), 0 failures, 0 errors;
-   - Javadoc: `-Werror` абсолютно чист во всех 8 модулях;
-   - JaCoCo Branch Coverage: **93.61%** (4,165 / 4,449 covered — **новый исторический абсолютный рекорд**!), missed branches: **284**, Classes: **100%** (166/166).
-6. *Документация:* принят **ADR-0095** (`docs/0.13.0/ADR-0095-observability-debugging-and-enterprise-security-audit.md`), актуализирован `ROADMAP.md` (Cycle 0.14.0 Enterprise Observability & Regulatory Compliance). Highest ADR **0095**, next free **0096**.
+1. *Вход:* ветка `agent-loop`, счётчик 364. Запросы Антона из mailbox:
+   - Возможность отключать санитизацию логов (raw mode);
+   - Прокидывание `traceId`, чтобы логи запросов и ответов не перемешивались в Kibana/ELK при параллельных Virtual Threads;
+   - Добавление в бэклог SSE Typed Decode (`Stream<ServerSentEvent<T>>`);
+   - Обогащение README практическими примерами и документацией.
+
+2. *Реализация (ADR-0096):*
+   - **`TraceIdExtractor`:** Создан высокопроизводительный экстрактор идентификаторов трассировки и корреляции (package-private в `ru.jrestly.tracing`). Приоритетно извлекает W3C `traceparent` (RFC 8414 Level 1 hex ID) или стандартные заголовки (`X-Request-ID`, `X-Correlation-ID`, `X-Trace-ID`, `trace-id`, `request-id`, `correlation-id`).
+   - **`HttpDiagnosticLogger`:**
+     - Методы `logRequest`, `logResponse`, `logPerHop`, `logRetry` форматируют сообщения с префиксом `[traceId]`.
+     - При `sanitize = false` выводит сырой URL, сырые заголовки и тело без регулярных выражений и маскирования (0 накладных расходов).
+   - **`JRestlyClient.Builder`:**
+     - `.sanitizeSensitiveData(boolean)` / `.sanitizeLogs(boolean)` для настройки режима маскирования (по умолчанию `true` — Secure by Default).
+     - `.traceIdSupplier(Supplier<String>)` для привязки к SLF4J MDC (`() -> MDC.get("traceId")`), OpenTelemetry или `ThreadLocal`.
+     - Системный флаг JVM `-Djrestly.logging.sanitize=false`.
+   - **`HttpTemplate`, `ResponseProcessor`, `RetryExecutor`:** сквозной проброс контекста трассировки и флага санитизации.
+
+3. *Документация и бэклог:*
+   - `README.md`: добавлен пример потокового LLM inference на Server-Sent Events (парсинг чанков/дельт через JSON кодек, обработка `[DONE]`), реконнект с `Last-Event-ID`, watchdog stall guard, и большой раздел по Enterprise Observability & Compliance (152-ФЗ РФ, GDPR, PCI-DSS, ГОСТ TLS).
+   - В `ROADMAP.md` и `DRAFT.md` внесен подробный бэклог по SSE Typed Decode.
+   - Зафиксирован принятый **ADR-0096** (`docs/0.14.0/ADR-0096-production-correlation-tracing-and-raw-logging.md`).
+
+4. *TDD и метрики:*
+   - Тесты: `TraceIdExtractorTest` (7 тестов), расширены `HttpDiagnosticLoggerTest`, `HttpTemplateLoggingTest`, `HttpTemplateBuilderTest`.
+   - Полный гейт: **2,098 / 2,098** тестов green во всех 8 модулях (root 1,934 + submodules 164), 0 failures, 0 errors.
+   - `TraceIdExtractor`: **100% instructions (118/118), 100% branches (36/36), 100% lines, 0 missed branches**.
+   - `HttpDiagnosticLogger`: **100% instructions (390/390), 100% branches (76/76), 100% lines, 0 missed branches**.
+   - JaCoCo: Branch **93.47%** (4,254 / 4,551 covered), Classes: **100%** (167 / 167). Javadoc `-Werror` абсолютно чист.
 
 ## Контекст для следующей сессии (#365)
 
-1. **Ветка** `agent-loop`.
-2. **Статус:** ADR-0095 принят, первый шаг маскирования PII/секретов (`SensitiveDataSanitizer`) успешно внедрен и закрыт тестами. Проект готов к переносу фич в `main` или следующим шагам ADR-0095 (инъекция `[traceId]` в лог-сообщения `HttpDiagnosticLogger` и cURL-генератор).
-3. **Метрики:** Полный гейт **2,085 / 2,085**; Branch coverage **93.61%**; Javadoc clean под `-Werror`; Highest ADR **0095**, next free **0096**.
+1. **Ветка:** `agent-loop`.
+2. **Статус:** Требования Антона по Enterprise Observability, безопасности (ADR-0095) и сквозной корреляции с raw-режимом (ADR-0096) полностью закрыты. Документация и примеры SSE расширены.
+3. **Метрики:** Полный гейт **2,098 / 2,098**; Branch coverage **93.47%**; Javadoc clean под `-Werror`; Highest ADR **0096**, next free **0097**.
+4. **Дальше:** Перенос фич из `agent-loop` в `main` Антоном или реализация следующего шага из бэклога — SSE Typed Decode (`Stream<ServerSentEvent<T>>`).

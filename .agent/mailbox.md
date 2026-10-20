@@ -95,3 +95,32 @@
 Антон: Отлично, просто отлично! Но должна быть возможность логировать  все что есть, отключить санитизацию.
 Должна быть возможность прокидывать какой-то traceId, чтобы логи не мешались в кучу - в энтерпарйзе в проде там
 будет жесть и надо как-то отличать разные пользовательские флоу в едином месиве.
+
+---
+Антон: Дополнительно: добавь в беклог SSE typed decode
+Да и вообще надо как следует проработать SSE - на сейчас это очень важная тема для индустрии.
+Может примеров в ридми добавить? Или просто написать нормальную документацию на нашу либу?
+
+[2026-10-21 00:15] Агент (сессия #364): Привет, Антон! Реализовал все задачи в полном объеме (ADR-0096):
+
+1. **Отключение санитизации (Raw Logging Mode):**
+   - В `JRestlyClient.Builder` добавлены методы `.sanitizeSensitiveData(boolean)` и `.sanitizeLogs(boolean)`. По умолчанию — безопасный режим (`true`, комплаенс 152-ФЗ, GDPR, PCI-DSS). Если разработчику на staging/dev или в локальном дебаге нужно видеть всё сырое (сырые токены, полные URI query, нерезанное тело) — передается `false`.
+   - Также поддержан флаг JVM `-Djrestly.logging.sanitize=false` для быстрого переключения без пересборки.
+   - В `HttpDiagnosticLogger` ветка `sanitize = false` пропускает данные как есть с zero-overhead.
+
+2. **Сквозной `[traceId]` префикс в логах (Correlation Tracing):**
+   - Создан `TraceIdExtractor` (100% покрытие instruction/branch/lines, 0 missed): извлекает W3C `traceparent` (RFC 8414 Level 1) или стандартные заголовки (`X-Request-ID`, `X-Correlation-ID`, `X-Trace-ID`, `trace-id`, `request-id`, `correlation-id`).
+   - В `JRestlyClient.Builder` добавлен `.traceIdSupplier(Supplier<String>)` для привязки к SLF4J MDC (`() -> MDC.get("traceId")`) или OpenTelemetry.
+   - Теперь все сообщения логгера начинаются с префикса:
+     `Request: [c4b92f3577b34da6] GET https://...`
+     `Response: [c4b92f3577b34da6] HTTP/2 200 in 34 ms`
+     а также per-hop и retry логи. Теперь даже при миллионах запросов на Virtual Threads логи запроса и ответа гарантированно коррелируют в Kibana/ELK!
+
+3. **SSE Typed Decode в бэклоге и документация:**
+   - В `ROADMAP.md` и `DRAFT.md` внесен подробный бэклог по **SSE Typed Decode** (`Stream<ServerSentEvent<T>>` и прямой `Stream<T>` с автоматической десериализацией через `PayloadCodec` и поддержкой маркера `[DONE]`).
+   - `README.md` кардинально обновлен и расширен:
+     - Раздел **Server-Sent Events & line streaming** дополнен примером LLM Inference (OpenAI/Anthropic chat completions), потоковым парсингом дельт, реконнектом с сохранением `Last-Event-ID` и описанием stall guard watchdog;
+     - Добавлен большой раздел **Enterprise Observability, Tracing & Data Privacy (GDPR, 152-FZ, PCI-DSS)** с практическими сниппетами для продакшена.
+   - Принят **ADR-0096** (`docs/0.14.0/ADR-0096-production-correlation-tracing-and-raw-logging.md`).
+   - Полный гейт: **2,098 / 2,098** тестов green во всех 8 модулях, Javadoc clean под `-Werror`, покрытие новых классов 100%.
+

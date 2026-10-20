@@ -599,6 +599,7 @@ public class JRestlyClient extends AbstractHttpClient {
          */
         public Builder correlationId(String headerName, java.util.function.Supplier<String> generator) {
             moduleInfoBuilder.correlationId(headerName, generator);
+            moduleInfoBuilder.traceIdSupplier(generator);
             return this;
         }
 
@@ -610,6 +611,9 @@ public class JRestlyClient extends AbstractHttpClient {
          */
         public Builder correlationId(ThreadLocal<String> threadLocal) {
             moduleInfoBuilder.correlationId(threadLocal);
+            if (threadLocal != null) {
+                moduleInfoBuilder.traceIdSupplier(threadLocal::get);
+            }
             return this;
         }
 
@@ -623,6 +627,9 @@ public class JRestlyClient extends AbstractHttpClient {
          */
         public Builder correlationId(String headerName, ThreadLocal<String> threadLocal, boolean generateIfMissing) {
             moduleInfoBuilder.correlationId(headerName, threadLocal, generateIfMissing);
+            if (threadLocal != null) {
+                moduleInfoBuilder.traceIdSupplier(threadLocal::get);
+            }
             return this;
         }
 
@@ -890,6 +897,39 @@ public class JRestlyClient extends AbstractHttpClient {
          */
         public Builder logger(System.Logger logger) {
             moduleInfoBuilder.logger(logger);
+            return this;
+        }
+
+        /**
+         * Sets whether sensitive credentials, PII, and sensitive query parameters in diagnostic logs
+         * should be masked (ADR-0095).
+         *
+         * @param sanitize {@code true} to mask sensitive data (default), {@code false} to allow raw logging
+         * @return this builder, for chaining
+         */
+        public Builder sanitizeSensitiveData(boolean sanitize) {
+            moduleInfoBuilder.sanitizeSensitiveData(sanitize);
+            return this;
+        }
+
+        /**
+         * Synonym for {@link #sanitizeSensitiveData(boolean)}.
+         *
+         * @param sanitize {@code true} to mask sensitive data, {@code false} for raw logging
+         * @return this builder, for chaining
+         */
+        public Builder sanitizeLogs(boolean sanitize) {
+            return sanitizeSensitiveData(sanitize);
+        }
+
+        /**
+         * Sets an optional supplier of active trace or correlation ID for diagnostic logs and header propagation (ADR-0095, ADR-0096).
+         *
+         * @param traceIdSupplier the trace ID supplier, or {@code null}
+         * @return this builder, for chaining
+         */
+        public Builder traceIdSupplier(java.util.function.Supplier<String> traceIdSupplier) {
+            moduleInfoBuilder.traceIdSupplier(traceIdSupplier);
             return this;
         }
 

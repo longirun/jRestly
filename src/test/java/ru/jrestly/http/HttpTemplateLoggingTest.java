@@ -5,8 +5,10 @@ import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
 import java.net.URI;
+import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.nio.charset.StandardCharsets;
+import ru.jrestly.SimpleModuleInfo;
 import java.time.Duration;
 import java.util.ArrayDeque;
 import java.util.Collections;
@@ -322,6 +324,84 @@ class HttpTemplateLoggingTest {
             assertFalse(messages.isEmpty(), "no log records captured");
             return messages.get(messages.size() - 1);
         }
+    }
+
+    @Test
+    @DisplayName("traceId correlation prefix in request and response logs via HttpTemplate (ADR-0096)")
+    void traceIdCorrelationInRequestAndResponse() throws Exception {
+        CapturingLogger capLogger = new CapturingLogger();
+        CountingEngine engine = new CountingEngine(WireResponse.of(200, "ok"));
+
+        SimpleModuleInfo info = new SimpleModuleInfo.Builder()
+                .baseUrl("http://example.com")
+                .logger(capLogger)
+                .build();
+
+        HttpTemplate t = new HttpTemplate();
+        t.setModuleInfo(info);
+        t.setLogger(capLogger);
+        t.setHttpEngine(engine);
+        t.setUrl("http://example.com/api/test");
+        t.setHttpMethod(HttpMethod.GET);
+        t.setReturnType(String.class);
+        t.setHeaders(List.of(new Header("X-Request-ID", "corr-test-456")));
+
+        t.exchange();
+
+        assertTrue(capLogger.messages.stream().anyMatch(m -> m.startsWith("Request: [corr-test-456] GET")), "request log must have trace prefix");
+        assertTrue(capLogger.messages.stream().anyMatch(m -> m.startsWith("Response: [corr-test-456] HTTP/1.1 200")), "response log must have trace prefix");
+    }
+
+    @Test
+    @DisplayName("sanitization can be disabled via ModuleInfo for raw debug logging (ADR-0095, ADR-0096)")
+    void disabledSanitizationViaModuleInfo() throws Exception {
+        CapturingLogger capLogger = new CapturingLogger();
+        CountingEngine engine = new CountingEngine(new WireResponse(
+                200,
+                List.of(new Header("Set-Cookie", "secret_session_token=123")),
+                new byte[0], null, HttpClient.Version.HTTP_1_1
+        ));
+
+        SimpleModuleInfo info = new SimpleModuleInfo.Builder()
+                .baseUrl("http://example.com")
+                .logger(capLogger)
+                .sanitizeSensitiveData(false)
+                .build();
+
+        HttpTemplate t = new HttpTemplate();
+        t.setModuleInfo(info);
+        t.setLogger(capLogger);
+        t.setHttpEngine(engine);
+        t.setUrl("http://example.com/api/test?token=raw_secret");
+        t.setHttpMethod(HttpMethod.GET);
+        t.setReturnType(String.class);
+        t.setHeaders(List.of(new Header("Authorization", "Bearer raw_jwt_secret")));
+
+        t.exchange();
+
+        String reqLog = capLogger.messages.stream().filter(m -> m.startsWith("Request:")).findFirst().orElseThrow();
+        assertTrue(reqLog.contains("token=raw_secret"));
+        assertTrue(reqLog.contains("raw_jwt_secret"));
+        assertFalse(reqLog.contains("[REDACTED]"));
+
+        String respLog = capLogger.messages.stream().filter(m -> m.startsWith("Response:")).findFirst().orElseThrow();
+        assertTrue(respLog.contains("secret_session_token=123"));
+        assertFalse(respLog.contains("[REDACTED]"));
+    }
+
+    @Test
+    @DisplayName("JRestlyClient.Builder configures sanitizeLogs and traceIdSupplier fluently")
+    void clientBuilderConfiguresSanitizerAndTraceIdSupplier() {
+        ru.jrestly.JRestlyClient client = ru.jrestly.JRestlyClient.builder()
+                .baseUrl("http://example.com")
+                .sanitizeLogs(false)
+                .traceIdSupplier(() -> "trace-flow-777")
+                .build();
+
+        ru.jrestly.ModuleInfo moduleInfo = client.getModuleInfo();
+        assertFalse(moduleInfo.isSanitizeSensitiveData());
+        assertNotNull(moduleInfo.getTraceIdSupplier());
+        assertEquals("trace-flow-777", moduleInfo.getTraceIdSupplier().get());
     }
 
     private void assertBodyLogged(HttpMethod method, String body) {

@@ -238,32 +238,43 @@ public interface DownloadApi {
 Declare `Stream<ServerSentEvent>` or `Stream<String>` (and their `CompletableFuture<Stream<...>>` twins) to consume real-time event streams (such as LLM token completions) or newline-delimited payloads (NDJSON / JSON lines) lazily as chunks arrive over the wire:
 
 ```java
-public interface LlmApi {
+public interface OpenAiChatApi {
 
     @Post("/v1/chat/completions")
-    Stream<ServerSentEvent> streamChat(@RequestBody ChatRequest request);
+    Stream<ServerSentEvent> streamChat(@RequestBody ChatCompletionRequest request);
 
     @Post("/v1/chat/completions")
-    CompletableFuture<Stream<ServerSentEvent>> streamChatAsync(@RequestBody ChatRequest request);
+    CompletableFuture<Stream<ServerSentEvent>> streamChatAsync(@RequestBody ChatCompletionRequest request);
 
     @Get("/events/ndjson")
     Stream<String> streamLines();
 }
 ```
 
-Consume in a `try-with-resources` block to ensure the underlying network connection and response stream close when finished:
+### LLM Token Streaming Example
+
+Consume real-time LLM inference streams lazily in a `try-with-resources` block:
 
 ```java
-try (Stream<ServerSentEvent> events = api.streamChat(request)) {
+ChatCompletionRequest req = new ChatCompletionRequest("gpt-4o", List.of(new Message("user", "Hello!")));
+
+try (Stream<ServerSentEvent> events = api.streamChat(req)) {
     events.takeWhile(e -> !e.isDone()).forEach(event -> {
-        System.out.print(event.data());
+        // Parse raw JSON chunk or extract text token directly
+        ChatChunk chunk = jsonCodec.deserialize(event.data(), ChatChunk.class);
+        if (chunk.contentDelta() != null) {
+            System.out.print(chunk.contentDelta());
+        }
     });
 }
 ```
 
-- **WHATWG SSE conformance:** `ServerSentEvent` exposes `id()`, `event()`, `data()` (multi-line data concatenated with `\n`), `retry()`, and `isDone()` (detects the `[DONE]` marker common in LLM APIs). SSE comments (`: ping`) are ignored.
-- **Encoding:** Charset is parsed from the `Content-Type` header (e.g. `text/event-stream; charset=utf-8`), defaulting to UTF-8.
+- **WHATWG SSE conformance:** `ServerSentEvent` exposes `id()`, `event()`, `data()` (multi-line data concatenated with `\n`), `retry()`, and `isDone()` (detects the `[DONE]` marker common in OpenAI, Anthropic, Ollama, and DeepSeek streaming APIs). SSE comment lines (`: ping`) are ignored automatically.
+- **Auto-reconnection & Resilience:** Use `ServerSentEvent.reconnecting(supplier, config)` to wrap streams with automatic reconnects, exponential backoff, and transparent `Last-Event-ID` re-transmission.
+- **Stall Guard Watchdog:** Built-in virtual-thread stall guard (`jrestly-sse-stall-guard`) detects silent network hangs and stalls when an upstream server stops sending chunks without closing the connection.
+- **Encoding & Trailers:** Charset is parsed from the `Content-Type` header (e.g. `text/event-stream; charset=utf-8`), defaulting to UTF-8. Late HTTP/2 streaming trailers are captured gracefully.
 - **Unified error contract:** On `@OnError` or unexpected HTTP statuses, the stream is consumed eagerly and produces `HandledException` or `UnexpectedStatusException`, preserving the uniform error contract across all return types.
+- **Roadmap:** Native typed event streaming (`Stream<ServerSentEvent<T>>`) is coming in 0.14.0+ (ADR-0096).
 
 ## Request parameter & header flexibility
 
@@ -333,6 +344,40 @@ For stateless request transformation, you can pass a `UnaryOperator<WireRequest>
 ```java
 clientBuilder.addRequestInterceptor(req -> req.withHeader("X-App-Client", "v1"));
 ```
+
+## Enterprise Observability, Tracing & Data Privacy (GDPR, 152-FZ, PCI-DSS)
+
+jRestly provides production-grade observability and regulatory compliance out of the box (ADR-0095, ADR-0096):
+
+```java
+JRestlyClient client = JRestlyClient.builder()
+        .baseUrl("https://partner.api.example.com")
+        // Correlation ID propagation: ThreadLocal / MDC / OpenTelemetry traceId
+        .traceIdSupplier(() -> org.slf4j.MDC.get("traceId"))
+        // Or configure a specific correlation header with generator
+        .correlationId("X-Request-ID", () -> UUID.randomUUID().toString())
+        // Compliance: data masking enabled by default (GDPR, 152-FZ, PCI-DSS)
+        .sanitizeSensitiveData(true)
+        .build();
+```
+
+- **Trace Correlation in Diagnostic Logs:** Outgoing requests and incoming responses carry correlation ID prefixes in log output, preventing log interleaving across millions of parallel Virtual Threads:
+  ```text
+  Request: [c4b92f3577b34da6] GET https://partner.api.example.com/v1/users?phone=[REDACTED]
+  Authorization: Bearer [REDACTED]
+  X-Request-ID: c4b92f3577b34da6
+
+  Response: [c4b92f3577b34da6] HTTP/2 200 in 34 ms
+  Set-Cookie: [REDACTED]
+  ```
+- **W3C Distributed Tracing:** Full W3C TraceContext Level 1 support (`traceparent`, `tracestate`) parsed via `TraceIdExtractor`.
+- **Sensitive Data & PII Masking:** Case-insensitive masking of sensitive HTTP headers (`Authorization`, `Cookie`, `Set-Cookie`, `X-Api-Key`, `*secret*`, `*token*`), query parameters (`token`, `secret`, `phone`, `email`, `passport`), and request body password fields.
+- **Raw Debugging Mode:** For local development, sandbox, or staging troubleshooting, sanitization can be disabled to inspect raw wire traffic:
+  ```java
+  clientBuilder.sanitizeLogs(false); // Disables redaction for staging/dev troubleshooting
+  ```
+  Or pass JVM flag `-Djrestly.logging.sanitize=false`.
+- **GOST TLS & Russian Banking Compliance:** Full zero-lock-in support for Russian certified cryptographic providers (CryptoPro JCP, ViPNet Java CSP) via `JRestlyClient.builder().sslContext(gostSslContext)` for integrating with SMEV, ESIA, and Bank of Russia APIs.
 
 ## Retry with backoff
 

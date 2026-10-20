@@ -334,6 +334,114 @@ class HttpDiagnosticLoggerTest {
         assertFalse(hopLog.contains("xyz456"));
     }
 
+    @Test
+    @DisplayName("traceId correlation prefix is injected into request, response, hop, and retry logs (ADR-0096)")
+    void traceIdCorrelationPrefix() {
+        TestLogger logger = new TestLogger(System.Logger.Level.ALL);
+        String traceId = "4bf92f3577b34da6a3ce929d0e0e4736";
+
+        WireRequest req = new WireRequest(
+                HttpMethod.GET,
+                TARGET,
+                List.of(new Header("traceparent", "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01")),
+                null, null, null, null
+        );
+
+        // Auto extraction from request
+        HttpDiagnosticLogger.logRequest(logger, req);
+        assertTrue(logger.last().startsWith("Request: [4bf92f3577b34da6a3ce929d0e0e4736] GET"));
+
+        // Explicit traceId override
+        HttpDiagnosticLogger.logRequest(logger, req, "custom-trace-999", true);
+        assertTrue(logger.last().startsWith("Request: [custom-trace-999] GET"));
+
+        // Response with traceId
+        WireResponse resp = WireResponse.of(200, "ok");
+        HttpDiagnosticLogger.logResponse(logger, resp, 42L, traceId, true);
+        assertTrue(logger.last().startsWith("Response: [4bf92f3577b34da6a3ce929d0e0e4736] HTTP/1.1 200 in 42 ms"));
+
+        // Per hop with traceId
+        HttpDiagnosticLogger.logPerHop(logger, req, 200, System.nanoTime() - 1_000_000L, traceId, true);
+        assertTrue(logger.last().startsWith("[4bf92f3577b34da6a3ce929d0e0e4736] GET"));
+
+        // Retry with traceId
+        HttpDiagnosticLogger.logRetry(logger, 1, 3, "timeout", 100L, traceId);
+        assertTrue(logger.last().startsWith("[4bf92f3577b34da6a3ce929d0e0e4736] Attempt 1/3 failed: timeout"));
+
+        // Blank traceId is treated as absent
+        HttpDiagnosticLogger.logRequest(logger, req, "   ", true);
+        assertFalse(logger.last().contains("[   ]"));
+        HttpDiagnosticLogger.logResponse(logger, resp, 10L, "   ", true);
+        assertFalse(logger.last().contains("[   ]"));
+        HttpDiagnosticLogger.logPerHop(logger, req, 200, System.nanoTime(), "   ", true);
+        assertFalse(logger.last().contains("[   ]"));
+        HttpDiagnosticLogger.logRetry(logger, 1, 3, "timeout", 50L, "   ");
+        assertFalse(logger.last().contains("[   ]"));
+
+        // Null URI when sanitize=false
+        WireRequest nullUriReq = new WireRequest(HttpMethod.GET, null, List.of(), null, null, null, null);
+        HttpDiagnosticLogger.logRequest(logger, nullUriReq, null, false);
+        HttpDiagnosticLogger.logPerHop(logger, nullUriReq, 200, System.nanoTime(), null, false);
+
+        // Non-null URI when sanitize=false
+        HttpDiagnosticLogger.logPerHop(logger, req, 200, System.nanoTime(), null, false);
+
+        // Null contentType with non-null body
+        WireRequest nullCtReq = new WireRequest(HttpMethod.POST, TARGET, List.of(), null, "hello".getBytes(StandardCharsets.UTF_8), null, null);
+        HttpDiagnosticLogger.logRequest(logger, nullCtReq, null, true);
+    }
+
+    @Test
+    @DisplayName("disabled sanitization (sanitize=false) outputs raw credentials, tokens, query params, and body")
+    void disabledSanitizationRawOutput() {
+        TestLogger logger = new TestLogger(System.Logger.Level.ALL);
+
+        WireRequest req = new WireRequest(
+                HttpMethod.POST,
+                URI.create("http://example.com/login?token=raw_token_value&phone=+79991234567"),
+                List.of(
+                        new Header("Authorization", "Bearer raw_jwt_secret"),
+                        new Header("Cookie", "session=raw_session_id")
+                ),
+                "application/json",
+                "{\"password\":\"raw_secret_password\"}".getBytes(StandardCharsets.UTF_8),
+                null, null
+        );
+
+        // sanitize = false
+        HttpDiagnosticLogger.logRequest(logger, req, "trace-raw", false);
+        String reqLog = logger.last();
+        assertTrue(reqLog.contains("token=raw_token_value"));
+        assertTrue(reqLog.contains("phone=+79991234567"));
+        assertTrue(reqLog.contains("Authorization: Bearer raw_jwt_secret") || reqLog.contains("value=Bearer raw_jwt_secret"));
+        assertTrue(reqLog.contains("Cookie: session=raw_session_id") || reqLog.contains("value=session=raw_session_id"));
+        assertTrue(reqLog.contains("\"password\":\"raw_secret_password\""));
+        assertFalse(reqLog.contains("[REDACTED]"));
+
+        WireResponse resp = new WireResponse(
+                200,
+                List.of(new Header("Set-Cookie", "session=super_secret_cookie")),
+                new byte[0], null, HttpClient.Version.HTTP_1_1
+        );
+        HttpDiagnosticLogger.logResponse(logger, resp, 10L, "trace-raw", false);
+        String respLog = logger.last();
+        assertTrue(respLog.contains("session=super_secret_cookie"));
+        assertFalse(respLog.contains("[REDACTED]"));
+    }
+
+    @Test
+    @DisplayName("isSanitizingEnabled toggles via system property")
+    void isSanitizingEnabledProperty() {
+        try {
+            System.setProperty("jrestly.logging.sanitize", "false");
+            assertFalse(HttpDiagnosticLogger.isSanitizingEnabled());
+            System.setProperty("jrestly.logging.sanitize", "true");
+            assertTrue(HttpDiagnosticLogger.isSanitizingEnabled());
+        } finally {
+            System.clearProperty("jrestly.logging.sanitize");
+        }
+    }
+
     static final class TestLogger implements System.Logger {
         private final Level minLevel;
         private final List<String> messages = new CopyOnWriteArrayList<>();

@@ -172,7 +172,8 @@ class HttpTemplate {
                     expectStatuses,
                     conditional,
                     this::responseCodec,
-                    logger
+                    logger,
+                    isSanitizeLogs()
             ));
         }
         return responseProcessor;
@@ -624,7 +625,7 @@ class HttpTemplate {
     @SuppressWarnings("unchecked")
     private <T> T processResponse(WireRequest request, WireResponse response, long startNanos)
             throws IOException {
-        return responseProcessor().process(response, startNanos);
+        return responseProcessor().process(request, response, startNanos);
     }
 
     // Handles redirects according to HTTP spec:
@@ -742,8 +743,21 @@ class HttpTemplate {
     }
 
 
+    private String resolveTraceId(WireRequest request) {
+        String traceId = ru.jrestly.tracing.TraceIdExtractor.extract(request);
+        if (traceId == null && moduleInfo != null && moduleInfo.getTraceIdSupplier() != null) {
+            traceId = moduleInfo.getTraceIdSupplier().get();
+        }
+        return traceId;
+    }
+
+    private boolean isSanitizeLogs() {
+        return moduleInfo == null || moduleInfo.isSanitizeSensitiveData();
+    }
+
     private void logPerHop(WireRequest request, int statusCode, long startNanos) {
-        HttpDiagnosticLogger.logPerHop(logger, request, statusCode, startNanos);
+        String traceId = resolveTraceId(request);
+        HttpDiagnosticLogger.logPerHop(logger, request, statusCode, startNanos, traceId, isSanitizeLogs());
     }
 
 
@@ -770,11 +784,16 @@ class HttpTemplate {
      * @param request the wire request about to be sent
      */
     protected void logRequest(WireRequest request) {
-        HttpDiagnosticLogger.logRequest(logger, request);
+        String traceId = resolveTraceId(request);
+        HttpDiagnosticLogger.logRequest(logger, request, traceId, isSanitizeLogs());
     }
 
     private void logResponse(WireResponse response, long elapsedMs) {
-        HttpDiagnosticLogger.logResponse(logger, response, elapsedMs);
+        String traceId = ru.jrestly.tracing.TraceIdExtractor.extract(response);
+        if (traceId == null && moduleInfo != null && moduleInfo.getTraceIdSupplier() != null) {
+            traceId = moduleInfo.getTraceIdSupplier().get();
+        }
+        HttpDiagnosticLogger.logResponse(logger, response, elapsedMs, traceId, isSanitizeLogs());
     }
 
     private boolean isExpectedStatus(int statusCode) {

@@ -2539,21 +2539,28 @@ Synthetic microbenchmarks (ping, small JSON DTOs) only measure proxy dispatch an
 
 ---
 
-## Cycle 0.14.0: Enterprise Observability, Production Debugging & Regulatory Compliance (ADR-0095) — IN PROGRESS 🟡
+## Cycle 0.14.0: Enterprise Observability, Production Debugging & Regulatory Compliance (ADR-0095, ADR-0096) — IN PROGRESS 🟡
 
-> Enterprise integration readiness: production observability, diagnostic debugging, and data privacy compliance (GDPR, Russian Federal Law 152-FZ, PCI-DSS v4.0, mTLS/GOST).
+> Enterprise integration readiness: production observability, diagnostic debugging, log correlation for virtual threads, raw debugging mode, and data privacy compliance (GDPR, Russian Federal Law 152-FZ, PCI-DSS v4.0, mTLS/GOST).
 
 **Deliverables & Milestones:**
 - **Enterprise Observability & Security Audit (ADR-0095):** Complete audit of logging, metrics, W3C distributed tracing, cross-origin credential hygiene, DoS response limits, and GOST/mTLS compliance.
-- **Sensitive Data & PII Masking (`SensitiveDataSanitizer`):**
+- **Sensitive Data & PII Masking (`SensitiveDataSanitizer`, ADR-0095):**
   - Case-insensitive masking of sensitive HTTP headers (`Authorization: Bearer [REDACTED]`, `Cookie`, `Set-Cookie`, `X-Api-Key`, `api-key`, `*secret*`, `*token*`);
   - Safe URI query parameter sanitization (`?token=[REDACTED]&phone=[REDACTED]`);
   - Truncation and payload masking of oversized bodies (4 KB limit with `... [truncated]` marker, JSON password masking).
+- **Log Correlation & Raw Diagnostic Mode (`TraceIdExtractor`, ADR-0096):**
+  - Correlation ID log prefixing (`[traceId]`) in `Request:`, `Response:`, per-hop, and retry logs to eliminate log interleaving under high concurrency on Java 21 Virtual Threads;
+  - Auto-extraction of trace/correlation ID prioritizing W3C `traceparent` (RFC 8414) with fallback to `X-Request-ID`, `X-Correlation-ID`, `X-Trace-ID`, and `traceIdSupplier`;
+  - Configurable raw debugging mode: `.sanitizeSensitiveData(false)` / `.sanitizeLogs(false)` / `-Djrestly.logging.sanitize=false` for local/staging developer troubleshooting without data masking overhead;
+  - Client-level `traceIdSupplier(Supplier<String>)` for integration with SLF4J MDC, OpenTelemetry, and Micrometer tracing contexts.
+- **Backlog: SSE Typed Event Deserialization (`Stream<ServerSentEvent<T>>`, ADR-0096):**
+  - Scheduled typed event stream decoding for AI/LLM token streaming (OpenAI, Anthropic, Ollama, DeepSeek) and event-driven microservices.
 - **Quality Gates & Metrics:**
-  - Total test suite: **2,085 / 2,085** tests green across all 8 modules (root 1,921 + 164 submodules);
-  - JaCoCo Branch Coverage: **93.61%** (4,165 / 4,449 branches covered — **new all-time record**);
-  - Class Coverage: **100%** (166 / 166 classes);
-  - Highest ADR: **0095**, next free **0096**.
+  - Total test suite: **2,096 / 2,096** tests green across all 8 modules (root 1,932 + 164 submodules);
+  - JaCoCo Branch Coverage: **93.63%**;
+  - Class Coverage: **100%** (167 / 167 classes);
+  - Highest ADR: **0096**, next free **0097**.
 
 ---
 

@@ -415,5 +415,28 @@ public interface ModuleInfo {
     default ru.jrestly.cache.HttpCache getHttpCache() {
         return null;
     }
+
+    /**
+     * Whether sensitive data (PII, credentials, auth tokens) in diagnostic logs should be masked (ADR-0095).
+     * Defaults to {@code true} for enterprise security and regulatory compliance.
+     * Can be set to {@code false} for local debugging or staging via {@link ru.jrestly.JRestlyClient.Builder#sanitizeSensitiveData(boolean)}
+     * or the system property {@code jrestly.logging.sanitize}.
+     *
+     * @return {@code true} if sanitization is enabled, {@code false} if raw output is permitted
+     */
+    default boolean isSanitizeSensitiveData() {
+        return Boolean.parseBoolean(System.getProperty("jrestly.logging.sanitize", "true"));
+    }
+
+    /**
+     * Optional supplier of active trace or correlation ID for diagnostic logging and telemetry (ADR-0095, ADR-0096).
+     * When provided, this ID will be injected as {@code [traceId]} into all diagnostic logs
+     * across request dispatch, intermediate redirect hops, retry attempts, and responses.
+     *
+     * @return the trace ID supplier, or {@code null} if not configured
+     */
+    default java.util.function.Supplier<String> getTraceIdSupplier() {
+        return null;
+    }
 }
 
