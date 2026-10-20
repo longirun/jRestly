@@ -1285,19 +1285,7 @@ class HttpTemplate {
     }
 
     private boolean isExpectedStatus(int statusCode) {
-        if (expectStatuses != null) {
-            return expectStatuses.contains(statusCode);
-        }
-        if (statusCode >= 200 && statusCode < 300) {
-            return true;
-        }
-        if (conditional && statusCode == 304) {
-            return true;
-        }
-        if (optional && (statusCode == 304 || statusCode == 404)) {
-            return true;
-        }
-        return false;
+        return HttpErrorHandler.isExpectedStatus(expectStatuses, conditional, optional, statusCode);
     }
 
     /**
@@ -2055,73 +2043,15 @@ class HttpTemplate {
 
     // ADR-0064: package-private on purpose — the @OnError dispatch (decode,
     // built-in fallback, ProblemDetail slicing, throwable instantiation) is
-    // pinned directly without a wire round-trip.
+    // pinned directly without a wire round-trip. Delegated to HttpErrorHandler (ADR-0088).
     void handleOnError(int statusCode, String payload, List<Header> responseHeaders, Charset payloadCharset) {
-        Class<?> targetErrorClass = onErrorParser.getErrorClass(statusCode);
-        boolean isProblemException = ru.jrestly.problem.ProblemDetailException.class.isAssignableFrom(targetErrorClass);
-        Class<?> deserializeClass = isProblemException ? ru.jrestly.problem.ProblemDetail.class : targetErrorClass;
-
-        Object errorObject = null;
-        if (payload != null && !payload.isEmpty() && deserializeClass != Void.class) {
-            if (deserializeClass == ru.jrestly.problem.ProblemDetail.class) {
-                try {
-                    errorObject = responseCodec(responseHeaders).deserialize(
-                            payload.getBytes(payloadCharset), deserializeClass, ResponseBody.contentTypeOf(responseHeaders));
-                } catch (Throwable ignored) {
-                }
-            } else {
-                errorObject = responseCodec(responseHeaders).deserialize(
-                        payload.getBytes(payloadCharset), deserializeClass, ResponseBody.contentTypeOf(responseHeaders));
-            }
-        }
-
-        if (errorObject == null && (targetErrorClass == ru.jrestly.problem.ProblemDetail.class || isProblemException) && payload != null && !payload.isBlank()) {
-            try {
-                errorObject = ru.jrestly.problem.ProblemDetail.fromJson(payload);
-            } catch (Throwable ignored) {
-            }
-        }
-        if (errorObject instanceof ru.jrestly.problem.ProblemDetail pd && pd.getStatus() <= 0) {
-            pd.setStatus(statusCode);
-        }
-        if (isProblemException) {
-            ru.jrestly.problem.ProblemDetail pd = (errorObject instanceof ru.jrestly.problem.ProblemDetail p)
-                    ? p
-                    : ru.jrestly.problem.ProblemDetail.forStatus(statusCode);
-            errorObject = new ru.jrestly.problem.ProblemDetailException(pd, responseHeaders);
-        }
-
-        if (Throwable.class.isAssignableFrom(targetErrorClass)) {
-            switch (errorObject) {
-                case RuntimeException re -> throw re;
-                case Error err -> throw err;
-                case Throwable t -> throw new RuntimeException(t);
-                case null, default -> {
-                    Throwable instance = ProblemDetailResolver.instantiateThrowable(targetErrorClass, statusCode, responseHeaders);
-                    switch (instance) {
-                        case RuntimeException re -> throw re;
-                        case Error err -> throw err;
-                        case null -> throw new NullPointerException("instantiateThrowable returned null");
-                        default -> throw new RuntimeException(instance);
-                    }
-                }
-            }
-        }
-
-        throw new HandledException(errorObject, statusCode, responseHeaders);
+        HttpErrorHandler.handleOnError(
+                onErrorParser, () -> responseCodec(responseHeaders), statusCode, payload, responseHeaders, payloadCharset);
     }
 
     private UnexpectedStatusException createUnexpectedStatusException(
             int statusCode, String rawBody, List<Header> responseHeaders) {
-        ru.jrestly.problem.ProblemDetail problemDetail = ProblemDetailResolver.resolve(
-                statusCode, rawBody, responseHeaders, ResponseBody.contentTypeOf(responseHeaders),
-                responseCodecOrNull(responseHeaders));
-        if (statusCode >= 400 && statusCode < 500) {
-            return new ClientErrorException(statusCode, rawBody, responseHeaders, problemDetail);
-        }
-        if (statusCode >= 500 && statusCode < 600) {
-            return new ServerErrorException(statusCode, rawBody, responseHeaders, problemDetail);
-        }
-        return new UnexpectedStatusException(statusCode, rawBody, responseHeaders, problemDetail);
+        return HttpErrorHandler.createUnexpectedStatusException(
+                statusCode, rawBody, responseHeaders, responseCodecOrNull(responseHeaders));
     }
 }

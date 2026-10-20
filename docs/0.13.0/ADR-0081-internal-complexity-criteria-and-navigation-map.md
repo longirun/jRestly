@@ -114,12 +114,12 @@ the missing piece is documentation or naming, not the reader.
 | metadata and caches | `http/MethodMetadata` | `MethodMetadataTest` |
 | URL/query assembly | `http/UrlComposer`, `http/UriEncoder` (update: ADR-0082) | `UrlComposerTest`, `HttpTemplateUriTest` |
 | headers/cookies/auth | `http/HeaderComposer`, `http/HttpTemplateBuilder` (tracing), `http/AuthHeaderProvider` (update: ADR-0083) | `HeaderComposerTest`, `RequestHeadersTest`, `AuthTest` |
-| dispatch, retries, redirects, decompression | `http/HttpTemplate`, `http/Redirects`, `http/RetryAfter`, `http/ResponseDecompressor` (update: ADR-0087) | `RetryPolicyJitterTest`, `RedirectsTest`, `ResponseDecompressorTest` |
+| dispatch, retries, redirects, decompression, error handling | `http/HttpTemplate`, `http/Redirects`, `http/RetryAfter`, `http/ResponseDecompressor` (ADR-0087), `http/HttpErrorHandler` (ADR-0088) | `RetryPolicyJitterTest`, `RedirectsTest`, `ResponseDecompressorTest`, `HttpErrorHandlerTest` |
 | request body/multipart assembly | `http/BodyComposer`, `http/MultipartBodyPublisher` (wire encoding) (update: ADR-0084) | `BodyComposerTest`, `MultipartPartFlexibilityTest` |
 | response body/streaming/SSE | `http/ResponseBody`, `http/MultipartBodyPublisher`, `http/ServerSentEvent*` | `ResponseBodyTest`, `StreamingTrailersTest` |
 | codecs | `codec/PayloadCodec*`, `json/*`, submodules `codec-*` | `CodecRegistryTest`, codec module tests |
 | resilience | `http/ResilienceComposer` (wiring), `resilience/*` (policies) (update: ADR-0085) | `ResilienceComposerTest`, `CircuitBreakerTest`, `RateLimiterTest` |
-| cache / problem details | `cache/*`, `problem/*` | `InMemoryHttpCacheTest`, `ProblemDetailTest` |
+| cache / problem details / error dispatch | `cache/*`, `problem/*`, `http/HttpErrorHandler` (update: ADR-0088) | `InMemoryHttpCacheTest`, `ProblemDetailTest`, `HttpErrorHandlerTest` |
 | metrics / tracing | `http/MetricsNotifier`, `tracing/*` | `MetricsNotifierTest`, `TraceContextTest` |
 
 ### Rules that keep the map readable
