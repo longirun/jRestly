@@ -594,7 +594,14 @@ public class HttpTemplateBuilder {
                 Header h = result.get(i);
                 if ("Cookie".equalsIgnoreCase(h.name())) {
                     hasCookieHeader = true;
-                    result.set(i, new Header("Cookie", h.value() + "; " + cookieHeader));
+                    // An empty/blank existing value (an empty dynamic Cookie argument or a
+                    // null-valued ambient header) has no cookie-pair to join: appending would
+                    // emit a leading "; " and the header would be malformed per RFC 6265.
+                    String existing = h.value();
+                    String merged = (existing == null || existing.isBlank())
+                            ? cookieHeader
+                            : existing + "; " + cookieHeader;
+                    result.set(i, new Header("Cookie", merged));
                     break;
                 }
             }

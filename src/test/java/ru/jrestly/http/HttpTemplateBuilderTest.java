@@ -152,6 +152,10 @@ class HttpTemplateBuilderTest {
         String getWithExistingCookieHeader(
                 @RequestHeader(name = "Cookie") String existingCookieHeader
         );
+
+        @Get("/cookies-static-only")
+        @Cookie(name = "annotatedCookie", value = "annotatedVal")
+        String getStaticCookiesOnly();
     }
 
     interface ParamApi {
@@ -500,6 +504,68 @@ class HttpTemplateBuilderTest {
                 .findFirst().orElse(null);
         assertNotNull(cookieHeader);
         assertEquals("manual=value; annotatedCookie=annotatedVal", cookieHeader.value());
+    }
+
+    @Test
+    @DisplayName("resolveCookies replaces an empty/blank dynamic Cookie header instead of prepending a separator")
+    void testResolveCookiesEmptyDynamicCookieHeaderNoLeadingSeparator() throws Exception {
+        Method method = CookieApi.class.getMethod("getWithExistingCookieHeader", String.class);
+
+        HttpTemplate emptyTemplate = new HttpTemplateBuilder(defaultModuleInfo, httpClient, method,
+                new Object[]{""}, CookieApi.class).build();
+        Header emptyHeader = emptyTemplate.getHeaders().stream()
+                .filter(h -> "Cookie".equalsIgnoreCase(h.name()))
+                .findFirst().orElse(null);
+        assertNotNull(emptyHeader);
+        assertEquals("annotatedCookie=annotatedVal", emptyHeader.value());
+
+        HttpTemplate blankTemplate = new HttpTemplateBuilder(defaultModuleInfo, httpClient, method,
+                new Object[]{"   "}, CookieApi.class).build();
+        Header blankHeader = blankTemplate.getHeaders().stream()
+                .filter(h -> "Cookie".equalsIgnoreCase(h.name()))
+                .findFirst().orElse(null);
+        assertNotNull(blankHeader);
+        assertEquals("annotatedCookie=annotatedVal", blankHeader.value());
+    }
+
+    @Test
+    @DisplayName("resolveCookies replaces a null-valued ambient Cookie header instead of stringifying it")
+    void testResolveCookiesNullValuedAmbientCookieHeader() throws Exception {
+        AuthProvider authProvider = new AuthProvider() {
+            @Override
+            public boolean isAuthorized() {
+                return true;
+            }
+
+            @Override
+            public List<Header> getAuthHeaders() {
+                return List.of(new Header("Cookie", null));
+            }
+
+            @Override
+            public void updateAuthHeader(String name, String value) {}
+        };
+        SimpleModuleInfo baseInfo = SimpleModuleInfo.builder()
+                .baseUrl("https://api.example.com")
+                .build();
+        ru.jrestly.ModuleInfo moduleWithAuth = new ru.jrestly.ModuleInfo() {
+            @Override public String getName() { return baseInfo.getName(); }
+            @Override public <T> ru.jrestly.Environment<T> getEnvironment() { return baseInfo.getEnvironment(); }
+            @Override public AuthProvider getAuthProvider() { return authProvider; }
+            @Override public boolean isDecompressionEnabled() { return baseInfo.isDecompressionEnabled(); }
+        };
+
+        // No dynamic Cookie parameter: the ambient header survives to the merge as-is,
+        // so a null value would be stringified ("null; ...") without the guard.
+        Method method = CookieApi.class.getMethod("getStaticCookiesOnly");
+        HttpTemplate template = new HttpTemplateBuilder(moduleWithAuth, httpClient, method,
+                new Object[0], CookieApi.class).build();
+
+        Header cookieHeader = template.getHeaders().stream()
+                .filter(h -> "Cookie".equalsIgnoreCase(h.name()))
+                .findFirst().orElse(null);
+        assertNotNull(cookieHeader);
+        assertEquals("annotatedCookie=annotatedVal", cookieHeader.value());
     }
 
     @Test
