@@ -2179,9 +2179,9 @@ Gates (session #241):
 
 ---
 
-> **Current status (2026-10-20).** Highest ADR issued: **0078** (Multipart Size-Only Seam — Measuring Without Building the Publisher Graph — request-side hot-path audit №4); next free: **0079**.
-> Cycle 0.11.0 packaged and verified (ADR-0069); version `0.11.0` in root and all published submodules. Cycle 0.12.0: Netty Transport Engine (`jrestly-engine-netty`, ADR-0070) COMPLETE ✅, Java 21+ Pattern Matching & Sealed Architecture Audit (ADR-0071) COMPLETE ✅, Zero-Allocation URI Composition & RFC 3986 Fast-Paths (ADR-0072) COMPLETE ✅, Codec Ecosystem (Candidate №12) COMPLETE ✅ — `codec-yaml` (ADR-0073, Phase 1) + `codec-protobuf` (ADR-0074, Phase 2), Header Merge / W3C Tracing / `ResponseHeaders` Allocation Pruning (Candidate №14, ADR-0075) COMPLETE ✅, Dispatch-Tail Hot-Path Audit №2 (ADR-0076) COMPLETE ✅, Response-Decode Hot-Path Audit №3 (ADR-0077) COMPLETE ✅, Request-Side Multipart Hot-Path Audit №4 (ADR-0078) COMPLETE ✅.
-> Live gate: **1,833/1,833** tests green across all eight modules (root 1,671 + engine-okhttp 25 + engine-apache5 25 + engine-netty 26 + codec-jackson-xml 15 + codec-yaml 15 + codec-protobuf 19 + benchmarks 37), 0 warnings under `-Werror`. Note: a fresh root re-run calibrated the core baseline to **1,642** tests (the 1,619 recorded at ADR-0072 was an aggregation under-count; core sources unchanged since then), Candidate №14 added 5 structural tests (root **1,647**), the #334 cookie-merge fix added 2 regression tests (root **1,649**), ADR-0076 added 7 tests (root **1,656**), ADR-0077 added 4 tests (root **1,660**), and ADR-0078 added 11 tests (root **1,671**). Core JaCoCo re-measured at #337 (two fresh reports): **100% Class**, **100% Method**, **98.13% Instructions**, **97.78% Lines**, **90.81–90.85% Branches (4,071–4,073/4,483) — new record** (the ±1–2 run-to-run variance from the timing-dependent branch in `ServerSentEventReconnector` is unchanged; the on-disk report stands at 4,071; superseding the 4,058/4,469 = 90.80% held at #336), **89.06–89.11% Complexity**; ADR-0076's gate branches and ADR-0077's single-resolution DTO legs are covered on both sides, superseding the #334 record (90.72%, 4,047/4,461). The previously stated 4,051/4,469 (90.65%) was a stale assumption: the #330 allocation-shape refactors removed dead branches without a re-measure, and the #334 cookie-merge guard added 4 branch outcomes, all covered by the new regression tests (empty/blank dynamic `Cookie` argument + null-valued ambient `Cookie` header). The codec ecosystem is complete on one binding engine through the `PayloadCodec` SPI (all at parity priority 50): YAML (`application/yaml` / `text/yaml` / `*+yaml`, RFC 9512 + RFC 6839, Jackson `YAMLMapper` 2.18.2) closes the human-readable JSON/XML/YAML triangle; Protocol Buffers (`application/x-protobuf` / `application/protobuf` / `*+protobuf`, `protobuf-java` 3.25.5, parser resolution `PARSER` → static factory → fail-fast with a per-class cache) is the schema-bound binary axis; gRPC framing and `protobuf-javalite` remain documented non-goals.
+> **Current status (2026-10-20).** Highest ADR issued: **0079** (The 0.12.0 cycle — Netty Transport, Polyglot Codec Ecosystem & Deep Zero-Garbage Dispatch Audits); next free: **0080**.
+> Cycle 0.12.0 packaged and verified (ADR-0079); version `0.12.0` in root and all published submodules (`engine-okhttp`, `engine-apache5`, `engine-netty`, `codec-jackson-xml`, `codec-yaml`, `codec-protobuf`).
+> Live gate: **1,833/1,833** tests green across all eight modules (root 1,671 + engine-okhttp 25 + engine-apache5 25 + engine-netty 26 + codec-jackson-xml 15 + codec-yaml 15 + codec-protobuf 19 + benchmarks 37), 0 warnings under `-Werror`. Core JaCoCo: **100% Class**, **100% Method**, **98.13% Instructions**, **97.78% Lines**, **90.81–90.85% Branches (4,071–4,073/4,483) — historical all-time record**, **89.06–89.11% Complexity**. Zero-dep core preserved (0 runtime dependencies in published root POM). Polyglot codec ecosystem complete (JSON, XML, YAML, Protobuf); multi-engine transport complete (JDK, OkHttp, Apache HC5, Netty). Cycle 0.13.0 open.
 
 ## Internal Code Structure: HttpTemplate Decomposition (ADR-0066) — COMPLETE ✅ (2026-10-18, unreleased)
 
@@ -2426,6 +2426,70 @@ Synthetic microbenchmarks (ping, small JSON DTOs) only measure proxy dispatch an
 - Five red structural tests: empty trailers share the `emptyMap()` singleton (reflection on the private `trailerMap`); single-value entries are `ImmutableCollections$List12`; the trace-propagator view is exactly one `Collections$Unmodifiable*` layer whose backing `list` is the live merge `ArrayList` (the field is declared in the parent — resolved by walking the class hierarchy); the exact merge order (surviving ambient in its own position → statics → dynamics → `Accept-Encoding` last — decompression is ON by default); a case-insensitive dynamic override replaces a differently-cased static (new `DupHeaderApi` fixture).
 - Gotchas: (a) `SimpleModuleInfo` enables decompression by default ⇒ `Accept-Encoding: gzip, deflate` is appended last to every merged list (hit the parity expectations twice); (b) JPMS — `setAccessible` on the private `java.util.Collections$UnmodifiableList.list` requires `--add-opens java.base/java.util=ALL-UNNAMED` (added to the root test-JVM `build.gradle` with a rationale comment).
 - Target suites 56/56; full gate **1,809 / 1,809** green across all 8 modules (root 1,647 — the 1,642 baseline + 5 new structural tests — plus engine-okhttp 25 + engine-apache5 25 + engine-netty 26 + codec-jackson-xml 15 + codec-yaml 15 + codec-protobuf 19 + benchmarks 37). Main changes are `//` comments — the javadoc gate is untouched; core JaCoCo unchanged (no new behavioral branches).
+
+---
+
+## Dispatch-Tail Log Gates & Decompression Strip Loop (ADR-0076) — COMPLETE ✅ (2026-10-20, unreleased)
+
+> Source of truth: [`docs/0.12.0/ADR-0076-dispatch-tail-log-gates-and-decompression-strip-loop.md`](docs/0.12.0/ADR-0076-dispatch-tail-log-gates-and-decompression-strip-loop.md).
+> Session #335 (agent-loop). ADR-0076 status: **Accepted**.
+
+**Problem:**
+1. `HttpTemplate.logPerHop` constructed per-send, per-hop DEBUG log messages without an `isLoggable(DEBUG)` guard, allocating message strings on every hop when DEBUG was disabled.
+2. `scheduleRetry` and `scheduleAsyncRetry` similarly constructed attempt failure strings without an `isLoggable(DEBUG)` guard.
+3. `handleDecompression` used a `.stream().filter().toList()` pipeline for `strippedHeaders`, which was subsequently defensive-copied again by `WireResponse`'s compact constructor (double copying).
+
+**Solution & Verification:**
+- Enclosed all three logging message constructions in `isLoggable(DEBUG)` checks.
+- Refactored `handleDecompression` into a plain forward loop with a pre-sized `ArrayList`, maintaining exact case-insensitive removal semantics for `Content-Encoding` and `Content-Length` while retaining unnamed headers and order with a single defensive copy.
+- 7 new tests (2 red-first gate-skip tests, sync/async retry emit tests, decompression behavior pins); full gate **1,818 / 1,818** green. JaCoCo branch coverage reached a new record of **90.80%** (4,058/4,469 covered).
+
+---
+
+## DTO Decode Single-Resolution & Wire-Byte Size Line (ADR-0077) — COMPLETE ✅ (2026-10-20, unreleased)
+
+> Source of truth: [`docs/0.12.0/ADR-0077-dto-decode-single-resolution-and-wire-byte-size.md`](docs/0.12.0/ADR-0077-dto-decode-single-resolution-and-wire-byte-size.md).
+> Session #336 (agent-loop). ADR-0077 status: **Accepted**.
+
+**Problem:**
+1. On DTO response decoding legs in `ResponseBody.bufferedOptional` and `bufferedRaw`, `codec.get()` was invoked twice per response (once for pretty-print preview logging and once for actual deserialization), causing redundant header scans and registry lookups.
+2. The response size INFO log line materialized the entire payload as a UTF-8 `String` solely to call `.length()`, logging character counts under the label "bytes" and mismatching raw byte-array branches.
+
+**Solution & Verification:**
+- Resolved `PayloadCodec` exactly once per DTO leg before log-level checks, shared between preview logging and deserialization.
+- Replaced temporary string materialization with wire byte length (`bytes.length`).
+- 4 new tests (2 red-first counting and multibyte character tests); full gate **1,822 / 1,822** green. JaCoCo branch record held at **90.80%** (with isolated ±1–2 variance due to timing in `ServerSentEventReconnector`).
+
+---
+
+## Multipart Size-Only Seam (ADR-0078) — COMPLETE ✅ (2026-10-20, unreleased)
+
+> Source of truth: [`docs/0.12.0/ADR-0078-multipart-size-only-seam.md`](docs/0.12.0/ADR-0078-multipart-size-only-seam.md).
+> Session #337 (agent-loop). ADR-0078 status: **Accepted**.
+
+**Problem:**
+`HttpTemplate.multipartSendSize` (INFO log) and `MetricsNotifier.requestBytes` both constructed the complete `MultipartBodyPublisher.of(...)` publisher graph (per-part header byte arrays, publisher wrappers, stream adapters, closing delimiters) solely to query `.contentLength()`.
+
+**Solution & Verification:**
+- Introduced public seam `MultipartBodyPublisher.contentLength(boundary, parts)` following strict "probe, not build" contracts (streams are never opened, early termination on unbounded parts).
+- Mirrored JDK 21 `Files.exists` directory behavior for exact structural parity with `ofFile`.
+- 11 new tests (red-first matrix, RFC 7578 wire parity, streaming probes, exception parity, directory edge-case); full gate **1,833 / 1,833** green. JaCoCo branch coverage reached an all-time record of **90.81–90.85%** (4,071–4,073/4,483 covered).
+
+---
+
+## Cycle 0.12.0: Netty Transport, Polyglot Codec Ecosystem & Deep Zero-Garbage Dispatch Audits — COMPLETE ✅ (2026-10-20, unreleased)
+
+> Source of truth: [`docs/0.12.0/ADR-0079-release-0.12.0-cycle.md`](docs/0.12.0/ADR-0079-release-0.12.0-cycle.md).
+> Minor release cycle consolidating ADR-0070 through ADR-0078 into published version `0.12.0`.
+
+**Deliverables:**
+- **Netty Transport Engine (ADR-0070):** Submodule `jrestly-engine-netty` (Netty 4.1.118.Final), `AbstractChannelPoolMap` connection pooling, push-to-pull `NettyChunkedInputStream` with reactive backpressure, verified zero leaks under `-Dio.netty.leakDetection.level=PARANOID`, benchmark record **98,342 B/op** on small feeds, and **308.3 ops/s** throughput.
+- **Java 21 Modernization & Non-Sealed SPI (ADR-0071):** Pattern matching for switch across dispatch and serialization, zero compiler warnings under `-Werror`, and guaranteed non-sealed SPI contracts for seamless Mockito mocking.
+- **Zero-Allocation URI Composition (ADR-0072):** Single-pass URI assembly, `UriEncoder` RFC 3986 unreserved ASCII fast-path (0 allocations for numbers, UUIDs, ISO dates, slugs), and precomputed `{id}` placeholder tokens.
+- **Polyglot Codec Ecosystem (ADR-0073, ADR-0074):** Jackson YAML adapter (`jrestly-codec-yaml`, RFC 9512 + RFC 6839) and Protocol Buffers adapter (`jrestly-codec-protobuf`, `protobuf-java` 3.25.5, cached parser resolution with well-known type support) at parity SPI priority 50. Core constants `MediaType.APPLICATION_YAML`, `TEXT_YAML`, `APPLICATION_PROTOBUF`, `APPLICATION_X_PROTOBUF`.
+- **Zero-Garbage Dispatch Audits (ADR-0075 – ADR-0078):** Case-insensitive O(a·s) header merging without hash sets, single-wrap live tracing view, shape-driven `ResponseHeaders.buildValueMap`, `isLoggable(DEBUG)` logging guards, single-resolution DTO decoding with wire byte reporting, and multipart size-only probe seam.
+- **Quality Gates & Historical Records:** Test suite expanded from 1,710 to **1,833 tests** (+123 tests) across 8 modules. JaCoCo **Branch coverage 90.81–90.85%** (all-time peak), **Instruction 98.13%**, **Line 97.78%**, **Method 100%**, **Class 100%**.
+- **Build & Artifacts:** Version `0.12.0` in root `build.gradle` and all six published submodules (`engine-okhttp`, `engine-apache5`, `engine-netty`, `codec-jackson-xml`, `codec-yaml`, `codec-protobuf`), 0 warnings under `-Werror`, 0 runtime dependencies in core POM.
 
 ---
 

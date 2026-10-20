@@ -3,6 +3,30 @@
 User-facing changes per version. History prior to 0.7.0 (cycles 0.5.0 →
 0.6.1) lives in [ROADMAP.md](ROADMAP.md).
 
+## 0.12.0 — 2026-10-20 (unpublished)
+
+> *Unpublished — no git tag. Per the maintainer's versioning rule the
+> version lives in `build.gradle` and the release commit message; the
+> tag-based coordinates (JitPack) remain at `v0.6.1` until the maintainer
+> tags.*
+
+### Added
+
+- **Netty transport engine (`jrestly-engine-netty`)** — High-performance, asynchronous non-blocking HTTP client engine based on Netty 4.1.118.Final and the `HttpEngine` SPI (priority 60). Leverages connection pooling via `AbstractChannelPoolMap`, EventLoop I/O, and an asynchronous push-to-pull streaming bridge (`NettyChunkedInputStream`) with reactive backpressure and zero buffer leaks under `-Dio.netty.leakDetection.level=PARANOID`. Demonstrates benchmark-leading memory allocations on small payloads (**98,342 B/op** on 20 KB feeds vs raw OkHttp 98,725 B/op and Apache HC5 101,141 B/op) and **308.3 ops/s** throughput (+53% over default JDK). Details: [ADR-0070](docs/0.12.0/ADR-0070-http-engine-netty-transport.md) and [BENCHMARKS.md](BENCHMARKS.md).
+- **YAML payload codec submodule (`jrestly-codec-yaml`)** — Official YAML payload adapter powered by Jackson `YAMLMapper` 2.18.2 for the `PayloadCodec` SPI (priority 50). Full media type support for `application/yaml`, `text/yaml`, and `*+yaml` (RFC 9512 + RFC 6839) with classpath auto-discovery. Core gains named constants `MediaType.APPLICATION_YAML` and `TEXT_YAML` while remaining strictly zero-dependency. Details: [ADR-0073](docs/0.12.0/ADR-0073-codec-yaml-submodule.md).
+- **Protocol Buffers payload codec submodule (`jrestly-codec-protobuf`)** — Official Protocol Buffers binary adapter powered by `protobuf-java` 3.25.5 for the `PayloadCodec` SPI (priority 50). Full media type support for `application/x-protobuf`, `application/protobuf`, and `*+protobuf`. High-performance cached parser resolution supporting both protoc-generated messages (public static `PARSER`) and hand-crafted / well-known types (`Timestamp`, `Struct`) via static factory methods. Safe hex-dump `prettyPrint` for response logging. Core gains `MediaType.APPLICATION_PROTOBUF` and `APPLICATION_X_PROTOBUF`. Details: [ADR-0074](docs/0.12.0/ADR-0074-codec-protobuf-submodule.md).
+- **Java 21+ pattern matching & non-sealed architectural guarantees** — Modern Java 21 pattern matching for `switch` (JEP 441) and pattern guards across dispatch, failure classification, and JSON serialization. Public SPIs and execution contexts are formally guaranteed non-sealed for seamless Mockito mocking and user extensibility. Details: [ADR-0071](docs/0.12.0/ADR-0071-java-21-pattern-matching-and-sealed-architecture.md).
+- **Zero-allocation URI composition & RFC 3986 unreserved fast-path** — Single-pass URI assembly eliminating intermediate substring allocations, precomputed `{id}` path placeholders cached in `MethodMetadata`, and `ru.jrestly.http.UriEncoder` providing zero-allocation pass-through for unreserved ASCII identifiers (UUIDs, numbers, booleans, ISO dates, slugs). Details: [ADR-0072](docs/0.12.0/ADR-0072-zero-allocation-uri-composition-and-fast-paths.md).
+- **Multipart size-only probe seam (`MultipartBodyPublisher.contentLength`)** — Public seam measuring exact multipart body size without building publisher trees, allocating per-part header buffers, or opening stream sources. Applied to response logging and metric emission with full parity to JDK 21 `Files.exists` directory behavior. Details: [ADR-0078](docs/0.12.0/ADR-0078-multipart-size-only-seam.md).
+- **Record test coverage & JaCoCo quality gate** — Test suite grown to **1,833 tests** (+123 tests) across 8 modules. JaCoCo branch coverage reached an all-time record of **90.81–90.85%** (4,071–4,073 / 4,483 covered branches), instruction coverage **98.13%**, line coverage **97.78%**, and 100% method and class coverage.
+
+### Changed
+
+- **Header merge & W3C tracing allocation pruning** — Replaced hash set tracking with direct case-insensitive O(a·s) scans in header merging, eliminated redundant unmodifiable wrapping in W3C tracing propagators, and optimized `ResponseHeaders.buildValueMap` with singleton `emptyMap()` and compact `List.of()` shapes. Details: [ADR-0075](docs/0.12.0/ADR-0075-header-merge-invariants-and-allocation-pruning.md).
+- **Dispatch-tail log gating & single-pass decompression** — Gated message construction in `logPerHop`, `scheduleRetry`, and `scheduleAsyncRetry` behind `isLoggable(DEBUG)` checks to eliminate message string allocations on default log levels. Streamlined decompression header stripping to a pre-sized plain loop. Details: [ADR-0076](docs/0.12.0/ADR-0076-dispatch-tail-log-gates-and-decompression-strip-loop.md).
+- **Response decoding single-resolution & wire byte reporting** — Eliminated duplicate codec resolution in DTO response branches (`ResponseBody.bufferedOptional` and `bufferedRaw`), resolving the codec exactly once per response. Response size logging now reports exact wire byte sizes (`bytes.length`) rather than materializing transient UTF-8 strings. Details: [ADR-0077](docs/0.12.0/ADR-0077-dto-decode-single-resolution-and-wire-byte-size.md).
+- Core remains strictly zero-dependency on Java 21 `java.net.http.HttpClient` with zero third-party runtime dependencies in published POMs.
+
 ## 0.11.0 — 2026-10-19 (unpublished)
 
 > *Unpublished — no git tag. Per the maintainer's versioning rule the

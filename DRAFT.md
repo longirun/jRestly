@@ -1,5 +1,24 @@
 # DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
+> **Сессия #338 (упаковка релиза 0.12.0: ADR-0079, bump версии 0.12.0 во всех 7 gradle-файлах, CHANGELOG.md, POM verification 0 runtime dependencies, ROADMAP закрытие цикла; гейт 1,833/1,833, JaCoCo Branch 90.81–90.85%):**
+> 1. *Приём состояния:* HEAD `92256ee` (#337, ADR-0078), чистое дерево (только счётчик 338), слов Антона в mailbox'е нет. Завершение всех 9 аудитов цикла 0.12.0 (ADR-0070–0078, все Accepted) — выход на упаковку релиза 0.12.0.
+> 2. *Упаковка релиза 0.12.0 (ADR-0079):*
+>    - Оформлен `docs/0.12.0/ADR-0079-release-0.12.0-cycle.md` (Accepted), консолидирующий ключевые достижения:
+>      * Транспорт Netty (`jrestly-engine-netty`, ADR-0070) с рекордом 98,342 B/op на малых телах и +53% throughput;
+>      * Модернизация Java 21+ Pattern Matching for `switch` (JEP 441) и гарантия non-sealed архитектуры SPI (ADR-0071);
+>      * Zero-allocation URI assembly, `UriEncoder` RFC 3986 fast-path, кэшированные `{id}` токены (ADR-0072);
+>      * Полиглотная экосистема кодеков: Jackson YAML (`codec-yaml`, ADR-0073) и Protocol Buffers (`codec-protobuf`, ADR-0074) на единой модели `PayloadCodec` SPI (priority 50);
+>      * Глубокие аудиты горячих путей: hash-set-free merge и single-wrap trace view (ADR-0075), DEBUG log-гейты и decompress-strip loop (ADR-0076), single codec resolution и wire byte size в логе (ADR-0077), size-only seam multipart без построения publisher-графа (ADR-0078).
+>    - Версия обновлена с `0.11.0` на `0.12.0` во всех 7 gradle-файлах: корневой `build.gradle` и субмодули `engine-okhttp`, `engine-apache5`, `engine-netty`, `codec-jackson-xml`, `codec-yaml`, `codec-protobuf`.
+>    - `CHANGELOG.md` дополнен подробной секцией `## 0.12.0 — 2026-10-20 (unpublished)` со всеми ключевыми фичами.
+> 3. *Проверка артефактов и POM:*
+>    - Запущены `generatePomFileForMavenJavaPublication javadoc test`: BUILD SUCCESSFUL во всех 8 модулях, Javadoc чист под `-Werror`.
+>    - Проверен `build/publications/mavenJava/pom-default.xml`: версия `0.12.0`, ровно 0 runtime dependencies в core POM.
+>    - Проверены POM-файлы субмодулей: корректно ссылаются на `jRestly:0.12.0`.
+> 4. *Гейты:* полный **1,833/1,833** green во всех 8 модулях (root 1,671 + 162 в субмодулях). JaCoCo: исторический рекорд библиотеки — **Branch 90.81–90.85%** (4,071–4,073/4,483 covered), Instruction 98.13%, Line 97.78%, Complexity 89.06–89.11%, Method/Class 100%.
+> 5. *ROADMAP:* баннер актуализирован: Highest ADR **0079**, next free **0080**, гейт 1,833/1,833. Добавлены секции ADR-0076, ADR-0077, ADR-0078 и завершающая секция `Cycle 0.12.0 — COMPLETE ✅`.
+> 6. *Дальше (#339):* старт цикла 0.13.0. Пул кандидатов: (a) бенчмарк-матрица для новых форматов `codec-yaml` и `codec-protobuf` в `FeedBenchmark` (сравнение throughput и аллокаций против JSON/XML); (b) независимый аудит кэшей/рефлексии в `MethodMetadata` или диспетчеризации аннотаций; (c) HTTP/3 / QUIC или client-side load balancing SPI.
+>
 > **Сессия #337 (закладка №1 из ADR-0077 закрыта: size-only seam `MultipartBodyPublisher.contentLength(boundary, parts)` — INFO-лог и метрики больше не строят publisher-граф ради `.contentLength()`; ADR-0078, 11 новых тестов, гейт 1,833/1,833, новый рекорд JaCoCo Branch 90.81–90.85%):**
 > 1. *Приём состояния:* HEAD `f1db22f` (#336), чистое дерево (только счётчик 337), слов Антона в mailbox'е нет. Задача по эстафете — закладка №1 (ADR-0077 §1): `MultipartBodyPublisher.of(...)` строится до 3 раз на multipart-вызов (engine + `multipartSendSize` для INFO-лога + `MetricsNotifier.requestBytes` для метрик).
 > 2. *Сверка по коду:* оба лишних сайта — в корне (не в движке): `HttpTemplate.multipartSendSize` (INFO-линия «Sending size:», INFO включён по умолчанию) и `MetricsNotifier.requestBytes` (метрика request-bytes) — оба вызывали `of(boundary, parts).contentLength()`, т.е. строили весь граф (per-part header byte[]'ы, BodyPublisher-обёртки, `ofFile`/`ofInputStream`/`ofStream`, closing-delimiter + `concat`) ради одного числа. Все 4 движка рендерят multipart через общий JDK wire-model ⇒ тройное строительство engine-agnostic. Чисто: `of` (один shared `crlf`-массив), `partHeaders`/`quoted` (plain StringBuilder), `ofStream` (per-subscription, не per-construction).
