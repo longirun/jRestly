@@ -903,7 +903,7 @@ class HttpTemplateBuilderTest {
     @Test
     @DisplayName("adaptToByteBufferPublisher adapts ByteBuffer, byte[], String, Object, errors and completes")
     void testAdaptToByteBufferPublisher() {
-        assertNull(HttpTemplateBuilder.adaptToByteBufferPublisher(null, StandardCharsets.UTF_8));
+        assertNull(BodyComposer.adaptToByteBufferPublisher(null, StandardCharsets.UTF_8));
 
         class TestSource implements Flow.Publisher<Object> {
             Flow.Subscriber<? super Object> subscriber;
@@ -919,7 +919,7 @@ class HttpTemplateBuilderTest {
         }
 
         TestSource source = new TestSource();
-        Flow.Publisher<ByteBuffer> adapted = HttpTemplateBuilder.adaptToByteBufferPublisher(source, StandardCharsets.UTF_8);
+        Flow.Publisher<ByteBuffer> adapted = BodyComposer.adaptToByteBufferPublisher(source, StandardCharsets.UTF_8);
         List<ByteBuffer> received = new ArrayList<>();
         AtomicBoolean completed = new AtomicBoolean(false);
         AtomicReference<Throwable> errorRef = new AtomicReference<>();
@@ -949,11 +949,11 @@ class HttpTemplateBuilderTest {
     @Test
     @DisplayName("parseCharset handles quotes, semicolons and unknown charsets")
     void testParseCharset() {
-        assertEquals(StandardCharsets.UTF_8, HttpTemplateBuilder.parseCharset(null, StandardCharsets.UTF_8));
-        assertEquals(StandardCharsets.UTF_8, HttpTemplateBuilder.parseCharset("", StandardCharsets.UTF_8));
-        assertEquals(StandardCharsets.ISO_8859_1, HttpTemplateBuilder.parseCharset("text/plain; charset=ISO-8859-1", StandardCharsets.UTF_8));
-        assertEquals(StandardCharsets.UTF_16, HttpTemplateBuilder.parseCharset("text/plain; charset=\"UTF-16\"; other=1", StandardCharsets.UTF_8));
-        assertEquals(StandardCharsets.UTF_8, HttpTemplateBuilder.parseCharset("text/plain; charset=NON_EXISTENT_CS", StandardCharsets.UTF_8));
+        assertEquals(StandardCharsets.UTF_8, BodyComposer.parseCharset(null, StandardCharsets.UTF_8));
+        assertEquals(StandardCharsets.UTF_8, BodyComposer.parseCharset("", StandardCharsets.UTF_8));
+        assertEquals(StandardCharsets.ISO_8859_1, BodyComposer.parseCharset("text/plain; charset=ISO-8859-1", StandardCharsets.UTF_8));
+        assertEquals(StandardCharsets.UTF_16, BodyComposer.parseCharset("text/plain; charset=\"UTF-16\"; other=1", StandardCharsets.UTF_8));
+        assertEquals(StandardCharsets.UTF_8, BodyComposer.parseCharset("text/plain; charset=NON_EXISTENT_CS", StandardCharsets.UTF_8));
     }
 
     // -------------------------------------------------------------------------
@@ -1023,8 +1023,9 @@ class HttpTemplateBuilderTest {
         // Calling createMultipartParts directly on non-multipart builder throws UnsupportedOperationException
         Method jsonMethod = BodyApi.class.getMethod("postBody", Object.class);
         HttpTemplateBuilder nonMultiBuilder = new HttpTemplateBuilder(defaultModuleInfo, httpClient, jsonMethod, new Object[]{"body"}, BodyApi.class);
-        nonMultiBuilder.build();
-        assertThrows(UnsupportedOperationException.class, nonMultiBuilder::createMultipartParts);
+        MethodMetadata nonMultiMetadata = MethodMetadata.of(jsonMethod, BodyApi.class);
+        assertThrows(UnsupportedOperationException.class, () -> BodyComposer.composeParts(
+                defaultModuleInfo, nonMultiMetadata, nonMultiMetadata.requestMeta(), new Object[]{"body"}));
     }
 
     @Test

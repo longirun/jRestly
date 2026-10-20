@@ -115,7 +115,8 @@ the missing piece is documentation or naming, not the reader.
 | URL/query assembly | `http/UrlComposer`, `http/UriEncoder` (update: ADR-0082) | `UrlComposerTest`, `HttpTemplateUriTest` |
 | headers/cookies/auth | `http/HeaderComposer`, `http/HttpTemplateBuilder` (tracing), `http/AuthHeaderProvider` (update: ADR-0083) | `HeaderComposerTest`, `RequestHeadersTest`, `AuthTest` |
 | dispatch, retries, redirects | `http/HttpTemplate`, `http/Redirects`, `http/RetryAfter` | `RetryPolicyJitterTest`, `RedirectsTest` |
-| body/streaming/SSE | `http/ResponseBody`, `http/MultipartBodyPublisher`, `http/ServerSentEvent*` | `ResponseBodyTest`, `StreamingTrailersTest` |
+| request body/multipart assembly | `http/BodyComposer`, `http/MultipartBodyPublisher` (wire encoding) (update: ADR-0084) | `BodyComposerTest`, `MultipartPartFlexibilityTest` |
+| response body/streaming/SSE | `http/ResponseBody`, `http/MultipartBodyPublisher`, `http/ServerSentEvent*` | `ResponseBodyTest`, `StreamingTrailersTest` |
 | codecs | `codec/PayloadCodec*`, `json/*`, submodules `codec-*` | `CodecRegistryTest`, codec module tests |
 | resilience | `resilience/*` | `CircuitBreakerTest`, `RateLimiterTest` |
 | cache / problem details | `cache/*`, `problem/*` | `InMemoryHttpCacheTest`, `ProblemDetailTest` |
@@ -137,9 +138,10 @@ the missing piece is documentation or naming, not the reader.
 - The next structural wave targets `HttpTemplateBuilder` in four steps: URI
   assembly, header/cookie merge, body/multipart assembly, resilience wiring.
   Each step is measured against this scorecard and must shrink C1/C2 without
-  touching the public API. Steps (a) and (b) landed as ADR-0082 and ADR-0083.
+  touching the public API. Steps (a), (b) and (c) landed as ADR-0082, ADR-0083
+  and ADR-0084.
 - `ControllerValidator.validateMethod` is split into named check methods after
   the builder wave (C5 target: ≤ 20).
 - Future release gates report the same table (lines/WMC/missed branches) next
   to JaCoCo percentages, so structural debt is visible in every cycle.
-- Next free ADR: **0082**.
+- Next free ADR: **0085**.
