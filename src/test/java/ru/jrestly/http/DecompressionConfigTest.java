@@ -315,6 +315,53 @@ class DecompressionConfigTest {
     }
 
     @Test
+    @DisplayName("handleDecompression keeps nameless headers, strips encodings case-insensitively, and preserves order (ADR-0076)")
+    void handleDecompressionKeepsNamelessHeadersAndOrder() throws IOException {
+        SimpleModuleInfo moduleInfo = SimpleModuleInfo.builder().baseUrl("http://localhost:1").build();
+        HttpTemplate template = new HttpTemplate();
+        template.setModuleInfo(moduleInfo);
+
+        byte[] original = "nameless survives".getBytes(StandardCharsets.UTF_8);
+        byte[] gzipped = gzip(original);
+
+        // a nameless header (AuthProvider-style public seam) plus the two
+        // stripped names in non-canonical casing, interleaved with a keeper
+        List<Header> headers = List.of(
+                new Header(null, "nameless-value"),
+                new Header("content-encoding", "gzip"),
+                new Header("X-Keep", "keep"),
+                new Header("Content-Length", String.valueOf(gzipped.length))
+        );
+        WireResponse raw = new WireResponse(200, headers, gzipped, null);
+        WireResponse decompressed = template.handleDecompression(raw);
+
+        assertArrayEquals(original, decompressed.body());
+        assertEquals(List.of(new Header(null, "nameless-value"), new Header("X-Keep", "keep")),
+                decompressed.headers());
+    }
+
+    @Test
+    @DisplayName("handleDecompression returns an immutable stripped header list (ADR-0076)")
+    void handleDecompressionStrippedHeadersAreImmutable() throws IOException {
+        SimpleModuleInfo moduleInfo = SimpleModuleInfo.builder().baseUrl("http://localhost:1").build();
+        HttpTemplate template = new HttpTemplate();
+        template.setModuleInfo(moduleInfo);
+
+        byte[] original = "immutability".getBytes(StandardCharsets.UTF_8);
+        byte[] gzipped = gzip(original);
+        WireResponse raw = new WireResponse(200, List.of(
+                new Header("Content-Encoding", "gzip"),
+                new Header("Content-Length", String.valueOf(gzipped.length)),
+                new Header("X-Keep", "keep")
+        ), gzipped, null);
+
+        WireResponse decompressed = template.handleDecompression(raw);
+
+        assertThrows(UnsupportedOperationException.class,
+                () -> decompressed.headers().add(new Header("X-Late", "nope")));
+    }
+
+    @Test
     @DisplayName("handleDecompression on corrupted gzip payload throws IOException")
     void handleDecompressionCorruptedGzipThrowsIOException() {
         SimpleModuleInfo moduleInfo = SimpleModuleInfo.builder().baseUrl("http://localhost:1").build();

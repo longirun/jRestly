@@ -33,6 +33,7 @@ import java.net.http.HttpResponse;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
@@ -883,8 +884,13 @@ class HttpTemplate {
         // transport failure carries no response and is a no-op
         closeIntermediateStream(response);
         long delayMillis = retryPolicy.nextDelayMillis(attempt, previousDelayMillis, RetryAfter.delayMillis(response), ThreadLocalRandom.current());
-        logger.log(System.Logger.Level.DEBUG,
-                "Attempt " + attempt + "/" + maxAttempts + " failed: " + failure + " — retrying in " + delayMillis + " ms");
+        // ADR-0076: honor the log-level gate, as logRequest/logResponse do —
+        // a disabled DEBUG must not build the message string (the line is
+        // produced on every failed retry attempt of the zero-garbage hot path)
+        if (logger.isLoggable(System.Logger.Level.DEBUG)) {
+            logger.log(System.Logger.Level.DEBUG,
+                    "Attempt " + attempt + "/" + maxAttempts + " failed: " + failure + " — retrying in " + delayMillis + " ms");
+        }
         MetricsNotifier.retry(metricsListener, logger, requestContext, request, attempt + attemptOffset, failureThrowable, delayMillis);
         if (delayMillis > 0) {
             Thread.sleep(delayMillis);
@@ -1090,8 +1096,13 @@ class HttpTemplate {
         // attempt's stream (if any) is closed before the deferred wait
         closeIntermediateStream(response);
         long delayMillis = retryPolicy.nextDelayMillis(attempt, previousDelayMillis, RetryAfter.delayMillis(response), ThreadLocalRandom.current());
-        logger.log(System.Logger.Level.DEBUG,
-                "Attempt " + attempt + "/" + maxAttempts + " failed: " + failure + " — retrying in " + delayMillis + " ms");
+        // ADR-0076: honor the log-level gate, as logRequest/logResponse do —
+        // a disabled DEBUG must not build the message string (the line is
+        // produced on every failed retry attempt of the zero-garbage hot path)
+        if (logger.isLoggable(System.Logger.Level.DEBUG)) {
+            logger.log(System.Logger.Level.DEBUG,
+                    "Attempt " + attempt + "/" + maxAttempts + " failed: " + failure + " — retrying in " + delayMillis + " ms");
+        }
         MetricsNotifier.retry(metricsListener, logger, requestContext, request, attempt + attemptOffset, failureThrowable, delayMillis);
         if (delayMillis <= 0) {
             return attemptAsync(request, attempt + 1, maxAttempts, hopsLeft, requestContext, attemptsRef, 0L, attemptOffset);
@@ -1203,10 +1214,20 @@ class HttpTemplate {
             return response;
         }
 
-        List<Header> strippedHeaders = response.headers().stream()
-                .filter(h -> h.name() == null || (!h.name().equalsIgnoreCase("Content-Encoding")
-                        && !h.name().equalsIgnoreCase("Content-Length")))
-                .toList();
+        // ADR-0076: the plain loop replaces the stream pipeline — the same
+        // strip (Content-Encoding / Content-Length, case-insensitive), the
+        // nameless headers kept, order preserved; no Stream machinery and no
+        // second list, the WireResponse compact constructor does the one
+        // defensive copy of this array-backed list
+        List<Header> strippedHeaders = new ArrayList<>(response.headers().size());
+        for (Header header : response.headers()) {
+            if (header.name() != null
+                    && (header.name().equalsIgnoreCase("Content-Encoding")
+                    || header.name().equalsIgnoreCase("Content-Length"))) {
+                continue;
+            }
+            strippedHeaders.add(header);
+        }
 
         if (response.stream() != null) {
             InputStream decompressedStream;
@@ -1259,6 +1280,12 @@ class HttpTemplate {
 
 
     private void logPerHop(WireRequest request, int statusCode, long startNanos) {
+        // ADR-0076: honor the log-level gate, as logRequest/logResponse do —
+        // a disabled DEBUG must not build the message string (the line is
+        // produced on every send, every hop, of the zero-garbage hot path)
+        if (!logger.isLoggable(System.Logger.Level.DEBUG)) {
+            return;
+        }
         long elapsedMs = (System.nanoTime() - startNanos) / 1_000_000;
         // per-hop timing; the total (redirect chain included) is logged in the response INFO line
         logger.log(System.Logger.Level.DEBUG,
