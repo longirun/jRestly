@@ -117,8 +117,8 @@ class HttpTemplate {
     private boolean retryOnUnauthorized;
     private ru.jrestly.engine.HttpEngineOptions engineOptions;
     private ru.jrestly.cache.HttpCache httpCache;
-    // ADR-0066: redirect policy collaborator, built lazily on the first hop
-    private Redirects redirects;
+    // ADR-0066, ADR-0092: redirect executor collaborator, built lazily on the first hop
+    private RedirectExecutor redirectExecutor;
     // ADR-0091: retry execution collaborator, built lazily from the fields populated before exchange() runs
     private RetryExecutor retryExecutor;
 
@@ -133,11 +133,11 @@ class HttpTemplate {
     // Lazily built (redirects only run when @FollowRedirects is present, so the
     // zero-redirect hot path allocates nothing) from the fields the builder
     // populated before exchange() runs.
-    private Redirects redirects() {
-        if (redirects == null) {
-            redirects = new Redirects(followRedirectsNumber, authHeaderNames, logger);
+    private RedirectExecutor redirectExecutor() {
+        if (redirectExecutor == null) {
+            redirectExecutor = new RedirectExecutor(followRedirectsNumber, authHeaderNames, logger);
         }
-        return redirects;
+        return redirectExecutor;
     }
 
     private RetryExecutor retryExecutor() {
@@ -754,28 +754,9 @@ class HttpTemplate {
 
     // Handles redirects according to HTTP spec:
     // 301/302/303 downgrade to GET and drop the body; 307/308 re-send the method and body.
+    // ADR-0002, ADR-0066, ADR-0092: delegates to RedirectExecutor
     private WireResponse executeWithRedirects(WireRequest request) throws IOException, InterruptedException {
-        if (followRedirectsNumber == null) {
-            return send(request);
-        }
-
-        Redirects redirects = redirects();
-        int hopsLeft = followRedirectsNumber;
-
-        WireResponse response = send(request);
-        while (hopsLeft > 0) {
-            WireRequest next = redirects.nextHop(request, response);
-            if (next == null) {
-                break;
-            }
-            request = next;
-            hopsLeft--;
-            closeIntermediateStream(response);
-            response = send(request);
-        }
-
-        redirects.logExhausted(response);
-        return response;
+        return redirectExecutor().execute(request, this::send);
     }
 
     // ADR-0008, ADR-0011, ADR-0091: delegates to RetryExecutor
@@ -796,37 +777,19 @@ class HttpTemplate {
         return retryExecutor().probePayloadDecode(response);
     }
 
-    // Async twin: same hop semantics, chained over sendAsync
-    private CompletableFuture<WireResponse> executeAsyncWithRedirects(WireRequest request, int hopsLeft) {
-        if (followRedirectsNumber == null) {
-            return sendAsync(request);
-        }
-        return executeAsyncHop(request, hopsLeft, redirects());
+    // Async twin: same hop semantics, delegates to RedirectExecutor (ADR-0002, ADR-0066, ADR-0092)
+    private CompletableFuture<WireResponse> executeAsyncWithRedirects(WireRequest request) {
+        return redirectExecutor().executeAsync(request, this::sendAsync);
     }
 
-    private CompletableFuture<WireResponse> executeAsyncHop(WireRequest request, int hopsLeft, Redirects redirects) {
-        return sendAsync(request).thenCompose(response -> {
-            WireRequest next = redirects.nextHop(request, response);
-            if (next == null || hopsLeft <= 0) {
-                return CompletableFuture.completedFuture(response);
-            }
-            closeIntermediateStream(response);
-            return executeAsyncHop(next, hopsLeft - 1, redirects);
-        }).thenApply(response -> {
-            redirects.logExhausted(response);
-            return response;
-        });
-    }
-
-    // ADR-0008, ADR-0011, ADR-0091: async twin delegates to RetryExecutor
+    // ADR-0008, ADR-0011, ADR-0091, ADR-0092: async twin delegates to RetryExecutor and RedirectExecutor
     private CompletableFuture<WireResponse> executeAsyncWithRetries(
             WireRequest request,
             RequestContext requestContext,
             AtomicInteger attemptsRef,
             int attemptOffset
     ) {
-        int hopsLeft = followRedirectsNumber == null ? 0 : followRedirectsNumber;
-        return retryExecutor().executeAsync(request, requestContext, attemptsRef, attemptOffset, req -> executeAsyncWithRedirects(req, hopsLeft));
+        return retryExecutor().executeAsync(request, requestContext, attemptsRef, attemptOffset, this::executeAsyncWithRedirects);
     }
 
     // ADR-0015 Aspect 2: the effective return type picks the body handler —
@@ -916,9 +879,7 @@ class HttpTemplate {
     // reaches the caller (or is consumed by the error path). A close
     // failure is logged, not thrown: body hygiene, not the call's fate
     private void closeIntermediateStream(WireResponse response) {
-        if (response != null) {
-            ResponseBody.closeQuietly(response.stream(), logger);
-        }
+        redirectExecutor().closeIntermediateStream(response);
     }
 
 

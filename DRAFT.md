@@ -1,5 +1,25 @@
 # DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
+> **Сессия #352 (декомпозиция `HttpTemplate`: вынесен `RedirectExecutor`; `HttpTemplate` 1,714→1,673 / −41 строка / WMC 304→292 — впервые в истории WMC < 300! / missed branches 54→51; новый коллаборатор 196 строк / 25 тестов / 84 branches / 0 missed branches; ADR-0092; гейт 2,041/2,041, JaCoCo Branch 93.29% — новый исторический абсолютный рекорд, Complexity 92.11% — новый рекорд, missed branches 294 — новый минимум библиотеки):**
+> 1. *Вход:* HEAD `50e1814` (#351), чистое дерево (счётчик 352), mailbox пуст с #341. Приоритет — продолжение декомпозиции `HttpTemplate` (1,714 строк, WMC 304): вынос циклов исполнения редиректов и управления ресурсами промежуточных стримов.
+> 2. *Срез:* вся оркестрация циклов редиректов — синхронный цикл (`executeWithRedirects`), асинхронный рекурсивный пайплайн (`executeAsyncWithRedirects`, `executeAsyncHop`), безопасное закрытие промежуточных стримов (`closeIntermediateStream`), логирование исчерпания бюджета (`logExhausted`), единая политика переходов (301/302/303 downgrade в GET и drop body, 307/308 сохранение метода и тела) и cross-origin auth credential hygiene (удаление ambient client auth headers).
+> 3. *Форма:* package-private `final class RedirectExecutor` с функциональными интерфейсами `SyncSender` и `AsyncSender`. Нулевая связность с движками (C9 green). Для полной обратной совместимости `Redirects` сохранён как делегирующий фасад.
+> 4. *Шов:* в `HttpTemplate` экземпляр `RedirectExecutor` строится лениво в `redirectExecutor()`. Методы `executeWithRedirects`, `executeAsyncWithRedirects`, `closeIntermediateStream` делегируют в `redirectExecutor()` в 1 строку; `executeAsyncHop` удален из `HttpTemplate`.
+> 5. *TDD red-first:* `RedirectExecutorTest` написан до реализации (56 compile-red ошибок), 25 исчерпывающих тестов.
+> 6. *Сьют коллаборатора:* **84/84 branches (100%), 58/58 complexity (100%), 85/85 lines (100%), 369/369 instructions (100%), 0 missed branches (планка C11 ADR-0081)**.
+> 7. *Замеры ADR-0081:*
+>    - `HttpTemplate` **1,714 → 1,673** строк (−41 строка) / WMC **304 → 292** (−12 complexity, **впервые в истории WMC < 300!**) / missed branches **54 → 51** (−3 missed branches);
+>    - `RedirectExecutor` — 196 строк / 58 WMC / **0 missed branches**;
+>    - `Redirects` — 35 строк / 6 WMC / **0 missed branches**;
+>    - Missed branches библиотеки: 296 → **294** (новый абсолютный рекорд < 300!);
+>    - Branch coverage: 93.23% → **93.29%** (4,085/4,379 covered — **новый исторический абсолютный рекорд**);
+>    - Complexity coverage: 92.03% → **92.11%** (3,432/3,726 covered — **новый исторический рекорд**);
+>    - Инструкции: **98.54%** (31,046/31,508); Линии: **98.26%** (6,825/6,947); Классы: **100%** (162/162); Методы: 99.87% (1,489/1,491).
+> 8. *ADR-0092* (`docs/0.13.0/ADR-0092-redirect-executor-extraction.md`, Accepted) + навигационная карта ADR-0081 обновлена + `ru.jrestly.http/package-info` упоминает `RedirectExecutor` + `ROADMAP.md` актуализирован. Highest ADR **0092**, next free **0093**.
+> 9. *Гейт:* полный **2,041/2,041** (root **1,877** = 1,852 + 25; субмодули 164), 0 failures/errors; `:javadoc` чисто во всех 8 модулях под `-Werror`.
+> 10. *Дальше (#353):* следующий шаг по декомпозиции `HttpTemplate` (1,673 строки, WMC 292) — вынос `CacheDispatchPipeline` / `HttpCacheCoordinator` (устранение 100% дублирования pre-wire lookup и cache-hit синтеза между sync exchange и async exchangeAsync), либо вынос `ResponseProcessor` / `ResponseDecoder` (декодирование ответа, заголовки, стриминг).
+> 
+
 > **Сессия #351 (декомпозиция `HttpTemplate`: вынесен `RetryExecutor`; `HttpTemplate` 1,976→1,714 / −262 строки / WMC 364→304 / missed branches 63→54; новый коллаборатор 339 строк / 27 тестов / 124 branches / 0 missed branches; ADR-0091; гейт 2,016/2,016 — исторический рубеж >2,000 тестов взят!, JaCoCo Branch 93.23% — новый исторический абсолютный рекорд, Complexity 92.03% — новый рекорд >92%, missed branches 296 — впервые в истории ниже 300!):**
 > 1. *Вход:* HEAD `b0bba26` (#350), чистое дерево (счётчик 351), mailbox пуст с #341. Приоритет — продолжение декомпозиции последнего красного god-класса `HttpTemplate` (1,976 строк, WMC 364): вынос retry loop coordination.
 > 2. *Срез:* вся логика повторов — синхронный цикл (`executeWithRetries`), асинхронный пайплайн (`executeAsyncWithRetries`, `attemptAsync`, `scheduleAsyncRetry`), side-effect-free payload decode probe (`probePayloadDecode`), классификация статусов (`isRetryableStatus`, `isNonIdempotent`), экспоненциальный backoff с jitter и `Retry-After`, per-attempt metrics (`MetricsNotifier.attemptComplete`, `MetricsNotifier.retry`), диагностическое логирование (`HttpDiagnosticLogger.logRetry`) и intermediate stream closing.

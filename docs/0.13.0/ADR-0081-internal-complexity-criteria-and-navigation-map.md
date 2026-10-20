@@ -77,7 +77,7 @@ XML of the 0.12.0 gate (main code unchanged since then except `MultipartBodyPubl
 | `http.ResponseHeaders` | 852 | 142 | 6 | yellow | stable value object; split only on next feature |
 | `SimpleModuleInfo$Builder` | 1,320 (outer) | 90 | 5 | yellow | fluent surface, not algorithmic debt |
 | `JRestlyClient$Builder` | 951 (outer) | 73 | 0 | yellow | same |
-| `http.ResponseBody`, `http.Redirects`, `http.RetryExecutor`, `http.CacheDispatch`, `http.MetricsNotifier`, `http.MultipartBodyPublisher` | < 700 each | ≤ 78 | 0 | green | reference examples for new collaborators |
+| `http.ResponseBody`, `http.RedirectExecutor`, `http.Redirects`, `http.RetryExecutor`, `http.CacheDispatch`, `http.MetricsNotifier`, `http.MultipartBodyPublisher` | < 700 each | ≤ 78 | 0 | green | reference examples for new collaborators |
 
 The important number is not the absolute count of yellow classes: it is that
 the **red set is shrinking and bounded**. In 0.12.0 it went from one unbounded
@@ -114,7 +114,7 @@ the missing piece is documentation or naming, not the reader.
 | metadata and caches | `http/MethodMetadata` (model/cache), `http/MethodMetadataParser` (parsing) (update: ADR-0090) | `MethodMetadataTest`, `MethodMetadataParserTest` |
 | URL/query assembly | `http/UrlComposer`, `http/UriEncoder` (update: ADR-0082) | `UrlComposerTest`, `HttpTemplateUriTest` |
 | headers/cookies/auth | `http/HeaderComposer`, `http/HttpTemplateBuilder` (tracing), `http/AuthHeaderProvider` (update: ADR-0083) | `HeaderComposerTest`, `RequestHeadersTest`, `AuthTest` |
-| dispatch, retries, redirects, decompression, diagnostics & error handling | `http/HttpTemplate`, `http/RetryExecutor` (ADR-0091), `http/Redirects`, `http/RetryAfter`, `http/ResponseDecompressor` (ADR-0087), `http/HttpErrorHandler` (ADR-0088), `http/HttpDiagnosticLogger` (ADR-0089) | `RetryExecutorTest`, `RetryPolicyJitterTest`, `RedirectsTest`, `ResponseDecompressorTest`, `HttpErrorHandlerTest`, `HttpDiagnosticLoggerTest` |
+| dispatch, retries, redirects, decompression, diagnostics & error handling | `http/HttpTemplate`, `http/RetryExecutor` (ADR-0091), `http/RedirectExecutor` (ADR-0092), `http/Redirects`, `http/RetryAfter`, `http/ResponseDecompressor` (ADR-0087), `http/HttpErrorHandler` (ADR-0088), `http/HttpDiagnosticLogger` (ADR-0089) | `RetryExecutorTest`, `RedirectExecutorTest`, `RetryPolicyJitterTest`, `RedirectsTest`, `ResponseDecompressorTest`, `HttpErrorHandlerTest`, `HttpDiagnosticLoggerTest` |
 | request body/multipart assembly | `http/BodyComposer`, `http/MultipartBodyPublisher` (wire encoding) (update: ADR-0084) | `BodyComposerTest`, `MultipartPartFlexibilityTest` |
 | response body/streaming/SSE | `http/ResponseBody`, `http/MultipartBodyPublisher`, `http/ServerSentEvent*` | `ResponseBodyTest`, `StreamingTrailersTest` |
 | codecs | `codec/PayloadCodec*`, `json/*`, submodules `codec-*` | `CodecRegistryTest`, codec module tests |
