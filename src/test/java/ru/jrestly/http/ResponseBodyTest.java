@@ -14,6 +14,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
 
@@ -402,8 +403,8 @@ class ResponseBodyTest {
     }
 
     @Test
-    @DisplayName("bufferedOptional: the DTO log line previews UTF-8, while prettyPrint receives the payload charset")
-    void optionalDtoLogUsesUtf8Preview() {
+    @DisplayName("bufferedOptional: the DTO size line reports the wire byte size, prettyPrint receives the payload charset")
+    void optionalDtoLogWireByteSizeAndPayloadCharset() {
         byte[] body = {(byte) 0xC3, (byte) 0xA9};
         StubPayloadCodec codec = new StubPayloadCodec();
         codec.result = "decoded";
@@ -412,10 +413,50 @@ class ResponseBodyTest {
         assertEquals(Optional.of("decoded"), ResponseBody.bufferedOptional(
                 200, body, Dto.class, StandardCharsets.ISO_8859_1, "application/xml", () -> codec, verbose));
         String message = verbose.lastMessage();
-        // The log preview is deliberately UTF-8: the 2-byte body is 1 preview char
-        assertTrue(message.startsWith("Response size: 1 bytes\n"), "not a UTF-8 preview: " + message);
+        // The size line is the wire byte size — no preview string is
+        // materialized just to count its characters (ADR-0077)
+        assertTrue(message.startsWith("Response size: 2 bytes\n"), "not a wire byte size: " + message);
         // prettyPrint receives the payload charset: the same bytes decode to "Ã©"
         assertTrue(message.contains("pretty:application/xml:Ã©"), "prettyPrint got the wrong charset: " + message);
+        assertEquals(1, codec.deserializeCalls);
+    }
+
+    @Test
+    @DisplayName("bufferedOptional: the DTO leg resolves the codec supplier exactly once (ADR-0077)")
+    void optionalDtoLegResolvesCodecOnce() {
+        byte[] body = "payload".getBytes(StandardCharsets.UTF_8);
+        StubPayloadCodec codec = new StubPayloadCodec();
+        codec.result = "decoded";
+        AtomicInteger resolutions = new AtomicInteger();
+        Supplier<PayloadCodec> counting = () -> {
+            resolutions.incrementAndGet();
+            return codec;
+        };
+
+        assertEquals(Optional.of("decoded"), ResponseBody.bufferedOptional(
+                200, body, Dto.class, StandardCharsets.UTF_8, "application/json", counting, new RecordingLogger()));
+        assertEquals(1, resolutions.get(), "the log preview and the deserialize must share one resolution");
+
+        // a quiet logger must not change the contract: still exactly one resolution
+        assertEquals(Optional.of("decoded"), ResponseBody.bufferedOptional(
+                200, body, Dto.class, StandardCharsets.UTF_8, "application/json", counting, new RecordingLogger(false)));
+        assertEquals(2, resolutions.get());
+    }
+
+    @Test
+    @DisplayName("bufferedOptional: the DTO size line reports the wire byte size, not a materialized preview (ADR-0077)")
+    void optionalDtoSizeLineIsWireByteSize() {
+        // one character, three UTF-8 bytes — a materialized preview would count 1
+        byte[] body = "中".getBytes(StandardCharsets.UTF_8);
+        assertEquals(3, body.length);
+        StubPayloadCodec codec = new StubPayloadCodec();
+        codec.result = "decoded";
+        RecordingLogger verbose = new RecordingLogger();
+
+        assertEquals(Optional.of("decoded"), ResponseBody.bufferedOptional(
+                200, body, Dto.class, StandardCharsets.UTF_8, "application/json", () -> codec, verbose));
+        String message = verbose.lastMessage();
+        assertTrue(message.startsWith("Response size: 3 bytes\n"), "not a wire byte size: " + message);
         assertEquals(1, codec.deserializeCalls);
     }
 
@@ -500,8 +541,8 @@ class ResponseBodyTest {
     }
 
     @Test
-    @DisplayName("bufferedRaw: the DTO log line previews UTF-8 while prettyPrint receives the payload charset")
-    void rawDtoLogUsesUtf8Preview() {
+    @DisplayName("bufferedRaw: the DTO size line reports the wire byte size, prettyPrint receives the payload charset")
+    void rawDtoLogWireByteSizeAndPayloadCharset() {
         byte[] body = {(byte) 0xC3, (byte) 0xA9};
         StubPayloadCodec codec = new StubPayloadCodec();
         codec.result = "decoded";
@@ -510,8 +551,50 @@ class ResponseBodyTest {
         assertEquals("decoded", ResponseBody.bufferedRaw(
                 body, Dto.class, StandardCharsets.ISO_8859_1, "application/xml", () -> codec, verbose));
         String message = verbose.lastMessage();
-        assertTrue(message.startsWith("Response size: 1 bytes\n"), "not a UTF-8 preview: " + message);
+        // The size line is the wire byte size — no preview string is
+        // materialized just to count its characters (ADR-0077)
+        assertTrue(message.startsWith("Response size: 2 bytes\n"), "not a wire byte size: " + message);
+        // prettyPrint receives the payload charset: the same bytes decode to "Ã©"
         assertTrue(message.contains("pretty:application/xml:Ã©"), "prettyPrint got the wrong charset: " + message);
+        assertEquals(1, codec.deserializeCalls);
+    }
+
+    @Test
+    @DisplayName("bufferedRaw: the DTO leg resolves the codec supplier exactly once (ADR-0077)")
+    void rawDtoLegResolvesCodecOnce() {
+        byte[] body = "payload".getBytes(StandardCharsets.UTF_8);
+        StubPayloadCodec codec = new StubPayloadCodec();
+        codec.result = "decoded";
+        AtomicInteger resolutions = new AtomicInteger();
+        Supplier<PayloadCodec> counting = () -> {
+            resolutions.incrementAndGet();
+            return codec;
+        };
+
+        assertEquals("decoded", ResponseBody.bufferedRaw(
+                body, Dto.class, StandardCharsets.UTF_8, "application/json", counting, new RecordingLogger()));
+        assertEquals(1, resolutions.get(), "the log preview and the deserialize must share one resolution");
+
+        // a quiet logger must not change the contract: still exactly one resolution
+        assertEquals("decoded", ResponseBody.bufferedRaw(
+                body, Dto.class, StandardCharsets.UTF_8, "application/json", counting, new RecordingLogger(false)));
+        assertEquals(2, resolutions.get());
+    }
+
+    @Test
+    @DisplayName("bufferedRaw: the DTO size line reports the wire byte size, not a materialized preview (ADR-0077)")
+    void rawDtoSizeLineIsWireByteSize() {
+        // one character, three UTF-8 bytes — a materialized preview would count 1
+        byte[] body = "中".getBytes(StandardCharsets.UTF_8);
+        assertEquals(3, body.length);
+        StubPayloadCodec codec = new StubPayloadCodec();
+        codec.result = "decoded";
+        RecordingLogger verbose = new RecordingLogger();
+
+        assertEquals("decoded", ResponseBody.bufferedRaw(
+                body, Dto.class, StandardCharsets.UTF_8, "application/json", () -> codec, verbose));
+        String message = verbose.lastMessage();
+        assertTrue(message.startsWith("Response size: 3 bytes\n"), "not a wire byte size: " + message);
         assertEquals(1, codec.deserializeCalls);
     }
 

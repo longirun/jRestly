@@ -734,7 +734,8 @@ class HttpTemplate {
         // ADR-0066 step 5c: the buffered decode legs live on ResponseBody. The
         // codec is supplied lazily — on the byte[]/String/Void legs it must not
         // be resolved at all (a bare template used to survive those), and on
-        // the DTO leg it is resolved once per use (log preview, deserialize).
+        // the DTO leg it is resolved exactly once per leg, shared by the log
+        // preview and the deserialize (ADR-0077).
         if (optional) {
             return (T) ResponseBody.bufferedOptional(statusCode, bytes, returnType, payloadCharset,
                     ResponseBody.contentTypeOf(responseHeaders), () -> responseCodec(responseHeaders), logger);

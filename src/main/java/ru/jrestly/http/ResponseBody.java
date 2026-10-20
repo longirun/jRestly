@@ -52,8 +52,8 @@ import ru.jrestly.codec.PayloadCodec;
  *         — the two buffered decode legs of {@code processResponse}: the
  *         Optional-returning contour (ADR-0023) and the raw contour. The codec
  *         is passed as a {@code Supplier} and is only resolved on the DTO leg
- *         — on the byte[]/String/Void legs a bare template must survive with
- *         no codec at all.</li>
+ *         (exactly once per leg, ADR-0077) — on the byte[]/String/Void legs a
+ *         bare template must survive with no codec at all.</li>
  * </ul>
  *
  * <p>It is stateless, like {@link RetryAfter} and {@link ProblemDetailResolver}:
@@ -229,9 +229,10 @@ final class ResponseBody {
     // Optional-returning contour (ADR-0023). A missing resource (404/304/204)
     // or a null/empty body is Optional.empty(); byte[]/String/Void return
     // without ever touching the codec; a DTO decodes through the lazily
-    // supplied response codec, which is resolved once per use (log preview,
-    // then deserialize) — eagerly resolving it here would break a bare
-    // template whose registry has no codec for this media type.
+    // supplied response codec, which is resolved exactly once per leg and
+    // shared by the log preview and the deserialize (ADR-0077) — eagerly
+    // resolving it here would break a bare template whose registry has no
+    // codec for this media type.
     static Object bufferedOptional(int statusCode, byte[] bytes, Type returnType, Charset payloadCharset,
                                    String contentType, Supplier<PayloadCodec> codec, System.Logger logger) {
         if (isMissingResource(statusCode) || bytes == null || bytes.length == 0) {
@@ -256,15 +257,19 @@ final class ResponseBody {
         if (Void.class.equals(returnType) || void.class.equals(returnType)) {
             return Optional.empty();
         }
-        // DTO leg. The INFO preview is deliberately UTF-8, not the payload
-        // charset — a log line is not data (ADR-0056) — while prettyPrint
-        // receives the payload charset.
+        // DTO leg. The codec is resolved once for the whole leg — the
+        // supplier may be a registry lookup (content-type scan + media-type
+        // normalization), and resolving it per use (log preview, deserialize)
+        // doubled the work (ADR-0077). The size line reports the wire byte
+        // size — materializing a UTF-8 preview string just for its length
+        // would decode the whole payload a second time (a log line is not
+        // data, ADR-0056) — while prettyPrint receives the payload charset.
+        PayloadCodec resolvedCodec = codec.get();
         if (logger.isLoggable(System.Logger.Level.INFO)) {
-            String payload = new String(bytes, StandardCharsets.UTF_8);
-            logger.log(System.Logger.Level.INFO, "Response size: " + payload.length() + " bytes\n"
-                    + codec.get().prettyPrint(bytes, contentType, payloadCharset));
+            logger.log(System.Logger.Level.INFO, "Response size: " + bytes.length + " bytes\n"
+                    + resolvedCodec.prettyPrint(bytes, contentType, payloadCharset));
         }
-        return Optional.ofNullable(codec.get().deserialize(bytes, returnType, contentType));
+        return Optional.ofNullable(resolvedCodec.deserialize(bytes, returnType, contentType));
     }
 
     // ADR-0066 step 5c: the buffered decode leg of processResponse — the raw
@@ -295,11 +300,13 @@ final class ResponseBody {
         if (Void.class.equals(returnType) || void.class.equals(returnType)) {
             return null;
         }
+        // DTO leg — the same single-resolution and wire-byte-size contract
+        // as the Optional contour (ADR-0077).
+        PayloadCodec resolvedCodec = codec.get();
         if (logger.isLoggable(System.Logger.Level.INFO)) {
-            String payload = new String(bytes, StandardCharsets.UTF_8);
-            logger.log(System.Logger.Level.INFO, "Response size: " + payload.length() + " bytes\n"
-                    + codec.get().prettyPrint(bytes, contentType, payloadCharset));
+            logger.log(System.Logger.Level.INFO, "Response size: " + bytes.length + " bytes\n"
+                    + resolvedCodec.prettyPrint(bytes, contentType, payloadCharset));
         }
-        return codec.get().deserialize(bytes, returnType, contentType);
+        return resolvedCodec.deserialize(bytes, returnType, contentType);
     }
 }
