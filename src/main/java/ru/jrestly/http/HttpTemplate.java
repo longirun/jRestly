@@ -218,23 +218,14 @@ class HttpTemplate {
             }
         }
 
+        // ADR-0063 pre-wire consultation is delegated to CacheDispatch (lookup)
         ru.jrestly.cache.CachedResponse cachedEntry = null;
-        if (httpCache != null && effectiveRequest.method() == HttpMethod.GET) {
-            cachedEntry = httpCache.get(effectiveRequest).orElse(null);
-        }
-        boolean requestNoCache = false;
-        if (cachedEntry != null) {
-            ru.jrestly.cache.CacheControl reqCc = ru.jrestly.cache.CacheControl.parse(effectiveRequest.headers());
-            requestNoCache = reqCc.noCache();
-        }
-        boolean isCacheHit = (cachedEntry != null && cachedEntry.isFresh() && !cachedEntry.mustRevalidate() && !requestNoCache);
-        if (cachedEntry != null && !isCacheHit && cachedEntry.hasValidators()) {
-            if (cachedEntry.etag().isPresent() && !hasHeader(effectiveRequest, "If-None-Match")) {
-                effectiveRequest = effectiveRequest.withHeader("If-None-Match", cachedEntry.etag().get());
-            }
-            if (cachedEntry.lastModified().isPresent() && !hasHeader(effectiveRequest, "If-Modified-Since")) {
-                effectiveRequest = effectiveRequest.withHeader("If-Modified-Since", cachedEntry.lastModified().get());
-            }
+        boolean isCacheHit = false;
+        if (httpCache != null) {
+            CacheDispatch.CacheLookup cacheLookup = CacheDispatch.lookup(effectiveRequest, httpCache);
+            effectiveRequest = cacheLookup.request();
+            cachedEntry = cacheLookup.entry();
+            isCacheHit = cacheLookup.isCacheHit();
         }
 
         logRequest(effectiveRequest);
@@ -260,10 +251,7 @@ class HttpTemplate {
                 if (attemptsHolder != null) {
                     attemptsHolder[0] = 0;
                 }
-                response = cachedEntry.toWireResponse();
-                if (streamBody && response.body() != null) {
-                    response = CacheDispatch.toStreamWireResponse(response);
-                }
+                response = CacheDispatch.synthesizeHit(cachedEntry, streamBody);
             } else {
                 try {
                     if (rateLimiter != null) {
@@ -391,10 +379,7 @@ class HttpTemplate {
             }
         } else if (isCacheHit) {
             attemptsRef.set(0);
-            WireResponse cachedResp = cachedEntry.toWireResponse();
-            if (streamBody && cachedResp.body() != null) {
-                cachedResp = CacheDispatch.toStreamWireResponse(cachedResp);
-            }
+            WireResponse cachedResp = CacheDispatch.synthesizeHit(cachedEntry, streamBody);
             retriesFuture = CompletableFuture.completedFuture(cachedResp);
         } else {
             if (rateLimiter != null) {
@@ -556,16 +541,9 @@ class HttpTemplate {
     }
 
     // Package-private seam: unit tests verify all defensive branches
+    // (delegated to CacheDispatch, which owns the conditional-header scan — ADR-0093)
     static boolean hasHeader(WireRequest req, String name) {
-        if (req == null || req.headers() == null) {
-            return false;
-        }
-        for (Header h : req.headers()) {
-            if (h != null && h.name() != null && h.name().equalsIgnoreCase(name)) {
-                return true;
-            }
-        }
-        return false;
+        return CacheDispatch.hasHeader(req, name);
     }
 
     private RequestContext createRequestContext() {

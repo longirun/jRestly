@@ -5,8 +5,11 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import ru.jrestly.cache.CachedResponse;
 import ru.jrestly.cache.HttpCache;
+import ru.jrestly.cache.SimpleCachedResponse;
 
 import java.net.URI;
+import java.nio.charset.StandardCharsets;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -17,14 +20,18 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Unit tests for {@code CacheDispatch} — the ADR-0063 RFC 9111 dispatch after
- * the wire: a conditional 304 revalidation resolves through the store's
- * {@code update} (the synthesized 200 is returned, or the raw 304 passes
- * through when the entry vanished), fresh 200/301/404 GETs are stored, and
- * unsafe methods with a 200..399 outcome invalidate the target URI. No
- * network — the collaborator is package-private on purpose and the cache is a
- * recording fake, so the store contract and the dispatch contract are pinned
- * separately.
+ * Unit tests for {@code CacheDispatch} — the ADR-0063 RFC 9111 dispatch on
+ * both sides of the wire. After the wire: a conditional 304 revalidation
+ * resolves through the store's {@code update} (the synthesized 200 is
+ * returned, or the raw 304 passes through when the entry vanished), fresh
+ * 200/301/404 GETs are stored, and unsafe methods with a 200..399 outcome
+ * invalidate the target URI. Before the wire: {@code lookup} consults the
+ * store, classifies the entry as a fresh hit or a stale revalidation
+ * candidate and injects the conditional request headers, and
+ * {@code synthesizeHit} materializes the entry for the buffered or the
+ * streaming return. No network — the collaborator is package-private on
+ * purpose and the cache is a recording fake, so the store contract and the
+ * dispatch contract are pinned separately.
  */
 class CacheDispatchTest {
 
@@ -123,6 +130,198 @@ class CacheDispatchTest {
         assertEquals(resp.version(), streamed.version());
     }
 
+    private static CachedResponse freshEntry(String etag, String lastModified) {
+        return cachedEntry(List.of(), null, 60, etag, lastModified);
+    }
+
+    private static CachedResponse staleEntry(String etag, String lastModified) {
+        return cachedEntry(List.of(), null, 0, etag, lastModified);
+    }
+
+    private static CachedResponse cachedEntry(List<Header> headers, byte[] body, long freshnessSeconds,
+                                              String etag, String lastModified) {
+        return new SimpleCachedResponse(200, headers, body, Instant.now(), freshnessSeconds, false, false, etag,
+                lastModified, java.net.http.HttpClient.Version.HTTP_1_1);
+    }
+
+    private static String headerValue(List<Header> headers, String name) {
+        return headers.stream()
+                .filter(h -> h.name().equalsIgnoreCase(name))
+                .map(Header::value)
+                .findFirst()
+                .orElse(null);
+    }
+
+    private static void assertConditional(WireRequest req, String etag, String lastModified) {
+        assertEquals(etag, headerValue(req.headers(), "If-None-Match"), "If-None-Match");
+        assertEquals(lastModified, headerValue(req.headers(), "If-Modified-Since"), "If-Modified-Since");
+    }
+
+    @Test
+    @DisplayName("lookup: absent store — no hit, no entry, the request passes through unchanged")
+    void absentStoreLookupIsNotHit() {
+        WireRequest req = request(HttpMethod.GET);
+
+        CacheDispatch.CacheLookup result = CacheDispatch.lookup(req, null);
+
+        assertNull(result.entry());
+        assertTrue(!result.isCacheHit());
+        assertSame(req, result.request());
+    }
+
+    @Test
+    @DisplayName("lookup: null request — defensive not-hit without touching the store")
+    void nullRequestLookupIsDefensivelyNotHit() {
+        CacheDispatch.CacheLookup result = CacheDispatch.lookup(null, cache);
+
+        assertNull(result.entry());
+        assertTrue(!result.isCacheHit());
+        assertEquals(0, cache.getCalls);
+    }
+
+    @Test
+    @DisplayName("lookup: non-GET skips the store entirely even when the store holds entries")
+    void nonGetLookupBypassesTheStore() {
+        cache.getEntry = staleEntry("etag-1", null);
+
+        CacheDispatch.CacheLookup result = CacheDispatch.lookup(request(HttpMethod.POST), cache);
+
+        assertNull(result.entry());
+        assertTrue(!result.isCacheHit());
+        assertEquals(0, cache.getCalls);
+    }
+
+    @Test
+    @DisplayName("lookup: a fresh entry is a hit and the request is returned unchanged")
+    void freshEntryIsCacheHitWithUnchangedRequest() {
+        CachedResponse entry = freshEntry("etag-1", "lm-1");
+        cache.getEntry = entry;
+        WireRequest req = request(HttpMethod.GET);
+
+        CacheDispatch.CacheLookup result = CacheDispatch.lookup(req, cache);
+
+        assertSame(entry, result.entry());
+        assertTrue(result.isCacheHit());
+        assertSame(req, result.request());
+        assertConditional(result.request(), null, null);
+    }
+
+    @Test
+    @DisplayName("lookup: a stale entry is not a hit and both validators become conditional request headers")
+    void staleEntryInjectsBothValidators() {
+        cache.getEntry = staleEntry("etag-1", "lm-1");
+
+        CacheDispatch.CacheLookup result = CacheDispatch.lookup(request(HttpMethod.GET), cache);
+
+        assertSame(cache.getEntry, result.entry());
+        assertTrue(!result.isCacheHit());
+        assertConditional(result.request(), "etag-1", "lm-1");
+    }
+
+    @Test
+    @DisplayName("lookup: an etag-only stale entry injects only If-None-Match")
+    void staleEntryWithEtagOnlyInjectsIfNoneMatch() {
+        cache.getEntry = staleEntry("etag-1", null);
+
+        CacheDispatch.CacheLookup result = CacheDispatch.lookup(request(HttpMethod.GET), cache);
+
+        assertConditional(result.request(), "etag-1", null);
+    }
+
+    @Test
+    @DisplayName("lookup: a Last-Modified-only stale entry injects only If-Modified-Since")
+    void staleEntryWithLastModifiedOnlyInjectsIfModifiedSince() {
+        cache.getEntry = staleEntry(null, "lm-1");
+
+        CacheDispatch.CacheLookup result = CacheDispatch.lookup(request(HttpMethod.GET), cache);
+
+        assertConditional(result.request(), null, "lm-1");
+    }
+
+    @Test
+    @DisplayName("lookup: existing conditional headers are never overridden")
+    void existingConditionalHeadersAreNotOverridden() {
+        cache.getEntry = staleEntry("etag-1", "lm-1");
+        WireRequest req = request(HttpMethod.GET)
+                .withHeader("If-None-Match", "mine")
+                .withHeader("If-Modified-Since", "mine-date");
+
+        CacheDispatch.CacheLookup result = CacheDispatch.lookup(req, cache);
+
+        assertConditional(result.request(), "mine", "mine-date");
+    }
+
+    @Test
+    @DisplayName("lookup: a fresh entry with request Cache-Control: no-cache is not a hit, but validators are still injected")
+    void requestNoCacheDisablesHitButStillInjectsValidators() {
+        cache.getEntry = freshEntry("etag-1", null);
+        WireRequest req = request(HttpMethod.GET).withHeader("Cache-Control", "no-cache");
+
+        CacheDispatch.CacheLookup result = CacheDispatch.lookup(req, cache);
+
+        assertTrue(!result.isCacheHit());
+        assertConditional(result.request(), "etag-1", null);
+    }
+
+    @Test
+    @DisplayName("lookup: a stale entry without validators is left untouched (nothing to revalidate with)")
+    void staleEntryWithoutValidatorsIsUntouched() {
+        cache.getEntry = staleEntry(null, null);
+
+        CacheDispatch.CacheLookup result = CacheDispatch.lookup(request(HttpMethod.GET), cache);
+
+        assertTrue(!result.isCacheHit());
+        assertConditional(result.request(), null, null);
+    }
+
+    @Test
+    @DisplayName("lookup: a fresh entry with must-revalidate is not a hit (revalidation is always required)")
+    void mustRevalidateEntryIsNeverAHit() {
+        cache.getEntry = new SimpleCachedResponse(200, List.of(), null, Instant.now(), 60, false, true, null, null,
+                java.net.http.HttpClient.Version.HTTP_1_1);
+
+        CacheDispatch.CacheLookup result = CacheDispatch.lookup(request(HttpMethod.GET), cache);
+
+        assertTrue(!result.isCacheHit());
+        assertConditional(result.request(), null, null);
+    }
+
+    @Test
+    @DisplayName("synthesizeHit: a buffered return gets the entry's wire response as-is")
+    void bufferedHitReturnsTheEntryResponse() {
+        CachedResponse entry = cachedEntry(List.of(new Header("Content-Type", "text/plain")),
+                "hit-body".getBytes(StandardCharsets.UTF_8), 60, null, null);
+
+        WireResponse hit = CacheDispatch.synthesizeHit(entry, false);
+
+        assertEquals(200, hit.statusCode());
+        assertTrue(java.util.Arrays.equals("hit-body".getBytes(StandardCharsets.UTF_8), hit.body()));
+        assertEquals("text/plain", headerValue(hit.headers(), "Content-Type"));
+    }
+
+    @Test
+    @DisplayName("synthesizeHit: a streaming return re-wraps the byte body as a live stream")
+    void streamingHitReWrapsByteBodyAsLiveStream() throws Exception {
+        CachedResponse entry = cachedEntry(List.of(), "hit-body".getBytes(StandardCharsets.UTF_8), 60, null, null);
+
+        WireResponse hit = CacheDispatch.synthesizeHit(entry, true);
+
+        assertNull(hit.body());
+        assertEquals("hit-body", new String(hit.stream().readAllBytes(), StandardCharsets.UTF_8));
+    }
+
+    @Test
+    @DisplayName("synthesizeHit: a body-less entry on a streaming return is returned without streamify")
+    void streamingHitWithNullBodyStaysAsIs() {
+        CachedResponse entry = cachedEntry(List.of(), null, 60, null, null);
+
+        WireResponse hit = CacheDispatch.synthesizeHit(entry, true);
+
+        assertEquals(200, hit.statusCode());
+        assertNull(hit.body());
+        assertNull(hit.stream());
+    }
+
     @Test
     @DisplayName("GET 200/301/404: the response is stored, the original instance passes through")
     void getCacheableStatusesAreStored() {
@@ -196,6 +395,8 @@ class CacheDispatchTest {
         private WireResponse putResponse;
         private WireResponse updatedWith;
         private WireResponse updateResult = WireResponse.of(200, "cached");
+        private CachedResponse getEntry;
+        private int getCalls;
 
         void reset() {
             puts.clear();
@@ -204,11 +405,14 @@ class CacheDispatchTest {
             putResponse = null;
             updatedWith = null;
             updateResult = WireResponse.of(200, "cached");
+            getEntry = null;
+            getCalls = 0;
         }
 
         @Override
         public Optional<CachedResponse> get(WireRequest request) {
-            return Optional.empty();
+            getCalls++;
+            return getEntry == null ? Optional.empty() : Optional.of(getEntry);
         }
 
         @Override
