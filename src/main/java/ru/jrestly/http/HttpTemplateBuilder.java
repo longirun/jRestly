@@ -39,12 +39,6 @@ import ru.jrestly.tracing.TraceRequestContext;
 import ru.jrestly.interceptor.RequestInterceptor;
 import ru.jrestly.interceptor.ResponseInterceptor;
 import ru.jrestly.metrics.ClientMetricsListener;
-import ru.jrestly.resilience.CircuitBreaker;
-import ru.jrestly.resilience.CircuitBreakerConfig;
-import ru.jrestly.resilience.CircuitBreakerRegistry;
-import ru.jrestly.resilience.RateLimiter;
-import ru.jrestly.resilience.RateLimiterConfig;
-import ru.jrestly.resilience.RateLimiterRegistry;
 
 import java.io.IOException;
 import java.lang.reflect.Constructor;
@@ -86,9 +80,6 @@ import java.util.stream.Collectors;
  * {@link #execute()} — the stateful engine lives in the produced template.
  */
 public class HttpTemplateBuilder {
-
-    private static final CircuitBreakerRegistry DEFAULT_CIRCUIT_BREAKER_REGISTRY = CircuitBreakerRegistry.ofDefaults();
-    private static final RateLimiterRegistry DEFAULT_RATE_LIMITER_REGISTRY = RateLimiterRegistry.ofDefaults();
 
     private final ModuleInfo moduleInfo;
     private final HttpClient httpClient;
@@ -358,7 +349,7 @@ public class HttpTemplateBuilder {
         result.setExpectStatuses(createExpectStatuses());
         result.setFollowRedirectsNumber(getFollowRedirectsNumber());
         result.setHttpVersion(getHttpVersion());
-        result.setRetryPolicy(resolveRetryPolicy());
+        result.setRetryPolicy(ResilienceComposer.retryPolicy(moduleInfo, methodMetadata));
         ResolvedInterceptors resolvedInterceptors = resolveInterceptors();
         result.setRequestInterceptors(resolvedInterceptors.requestInterceptors());
         result.setResponseInterceptors(resolvedInterceptors.responseInterceptors());
@@ -367,9 +358,9 @@ public class HttpTemplateBuilder {
         result.setDownloadProgressListener(resolveDownloadProgressListener());
         result.setMetricsListener(resolveMetricsListener());
         result.setExecutor(executor != null ? executor : moduleInfo.getExecutor());
-        result.setTimeout(resolveTimeout());
-        result.setCircuitBreaker(resolveCircuitBreaker());
-        result.setRateLimiter(resolveRateLimiter());
+        result.setTimeout(ResilienceComposer.timeout(methodMetadata));
+        result.setCircuitBreaker(ResilienceComposer.circuitBreaker(moduleInfo, methodMetadata));
+        result.setRateLimiter(ResilienceComposer.rateLimiter(moduleInfo, methodMetadata));
         result.setTokenManager(moduleInfo.getTokenManager());
         boolean retryAuth = moduleInfo.isRetryOnUnauthorized() && !methodMetadata.hasAuthAnnotation();
         result.setRetryOnUnauthorized(retryAuth);
@@ -619,19 +610,6 @@ public class HttpTemplateBuilder {
         return methodMetadata != null ? methodMetadata.httpVersion() : null;
     }
 
-    private RetryPolicy resolveRetryPolicy() {
-        if (methodMetadata != null && methodMetadata.retryPolicy() != null) {
-            return methodMetadata.retryPolicy();
-        }
-
-        return moduleInfo.getRetryPolicy();
-    }
-
-    private Duration resolveTimeout() {
-        return methodMetadata != null ? methodMetadata.timeout() : null;
-    }
-
-
     private static void appendParamValues(List<Param> result, String name, Object value, CollectionFormat format) {
         if (value == null) {
             return;
@@ -798,53 +776,4 @@ public class HttpTemplateBuilder {
         return ContentCompressors.get(algorithm);
     }
 
-    private CircuitBreaker resolveCircuitBreaker() {
-        if (methodMetadata != null && methodMetadata.circuitBreakerAnnotation() != null) {
-            ru.jrestly.annotation.CircuitBreaker ann = methodMetadata.circuitBreakerAnnotation();
-            if (!ann.enabled()) {
-                return null;
-            }
-            return getCircuitBreakerFromAnnotation(ann);
-        }
-
-        return moduleInfo != null ? moduleInfo.getCircuitBreaker() : null;
-    }
-
-    private CircuitBreaker getCircuitBreakerFromAnnotation(ru.jrestly.annotation.CircuitBreaker ann) {
-        CircuitBreakerConfig config = CircuitBreakerConfig.builder()
-                .failureRateThreshold(ann.failureRateThreshold())
-                .minimumNumberOfCalls(ann.minimumNumberOfCalls())
-                .slidingWindowSize(ann.slidingWindowSize())
-                .waitDurationInOpenState(Duration.ofMillis(ann.waitDurationMs()))
-                .permittedNumberOfCallsInHalfOpenState(ann.permittedNumberOfCallsInHalfOpenState())
-                .build();
-        CircuitBreakerRegistry registry = (moduleInfo != null && moduleInfo.getCircuitBreakerRegistry() != null)
-                ? moduleInfo.getCircuitBreakerRegistry()
-                : DEFAULT_CIRCUIT_BREAKER_REGISTRY;
-        return registry.getOrCreate(ann.name(), config);
-    }
-
-    private RateLimiter resolveRateLimiter() {
-        if (methodMetadata != null && methodMetadata.rateLimiterAnnotation() != null) {
-            ru.jrestly.annotation.RateLimiter ann = methodMetadata.rateLimiterAnnotation();
-            if (!ann.enabled()) {
-                return null;
-            }
-            return getRateLimiterFromAnnotation(ann);
-        }
-
-        return moduleInfo != null ? moduleInfo.getRateLimiter() : null;
-    }
-
-    private RateLimiter getRateLimiterFromAnnotation(ru.jrestly.annotation.RateLimiter ann) {
-        RateLimiterConfig config = RateLimiterConfig.builder()
-                .limitForPeriod(ann.limitForPeriod())
-                .limitRefreshPeriod(Duration.ofMillis(ann.limitRefreshPeriodMs()))
-                .timeoutDuration(Duration.ofMillis(ann.timeoutDurationMs()))
-                .build();
-        RateLimiterRegistry registry = (moduleInfo != null && moduleInfo.getRateLimiterRegistry() != null)
-                ? moduleInfo.getRateLimiterRegistry()
-                : DEFAULT_RATE_LIMITER_REGISTRY;
-        return registry.getOrCreate(ann.name(), config);
-    }
 }

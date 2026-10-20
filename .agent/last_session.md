@@ -1,24 +1,24 @@
-# Last Session: #344 (2026-10-20)
+# Last Session: #345 (2026-10-20)
 
 ## Что сделано
 
-**Сессия #344: структурная волна 2 (ADR-0081), шаг (c) — body/multipart assembly вынесен из `HttpTemplateBuilder` в `BodyComposer` (ADR-0084).**
+**Сессия #345: структурная волна 2 (ADR-0081), шаг (d) — resilience wiring вынесен из `HttpTemplateBuilder` в `ResilienceComposer` (ADR-0085). Волна 2 закрыта.**
 
-1. *Вход:* HEAD `933b36e` (#343), но рабочее дерево содержало незакоммиченные изменения #343 — проверил диффы, прогнал полный гейт 1,873/1,873, закоммитил, затем начал шаг (c).
-2. *Срез:* `BodyComposer.compose(ModuleInfo, MethodMetadata, RequestMeta, Object[], String, boolean)` — весь payload-диспетчер: BodyPublisher, Flow.Publisher, InputStream, Path, File, Supplier (с вложенными типами), byte[], String, DTO через codec + no-codec fail-fast. Возвращает вложенный `record BodyPayload(bytes, publisherSupplier, effectiveContentType, knownSize)`.
-3. *Multipart:* `composeParts(ModuleInfo, MethodMetadata, RequestMeta, Object[])` — `@MultipartFormFile` (FileContent/File/Path/String/массивы/коллекции, root path fail, bare byte[] fail), `@RequestParam`-части (scalar/collection/array/Map-префикс, CSV/SSV/TSV/PIPES/BRACKETS/EXPLODE, explicit content types). Порядок = порядок дескрипторов; Map использует raw annotation name как prefix (ADR-0017 Amendment #296).
-4. *Helpers:* `parseCharset`, `adaptToByteBufferPublisher`, `fileSizeBytes`, `partFromValue`, `createFilePart`, `createFilePartFromPath`, `multipartFileValues`.
-5. *Швы перенесены, не продублированы:* `HttpTemplateBuilder.build` зовёт `BodyComposer.compose(...)`/`composeParts(...)`; старые методы/импорты удалены; `HttpTemplateBuilderTest` переведён на прямые ссылки. `createUrlEncodedBody` сознательно оставлен в builder (зависит от builder-private `createRequestParams()`); `MultipartBodyPublisher` (ADR-0078) и tracing/headers не тронуты.
-6. *Dead code удалён:* недостижимые `defaultCollectionFormat`/`requestParamFormat` тернарники, нормализация `format == null || DEFAULT` + отдельный DEFAULT-case, `explicitContentType.isEmpty()`, null-тернарники значений, null-guard `createFilePart`, мёртвый `Object[]` case. Null-фильтры Map/коллекций и bare-byte[] guard сохранены как behavior pins.
-7. *Сьют:* 17 тестов, **142/142 branches, 191/191 lines, 100/100 complexity, 1,008/1,008 instructions, 0 missed**. Одно ожидание поправлено против кода: raw `byte[]` в Flow.Publisher проходят as-is (коллектор декодирует их своим charset).
-8. *Замеры:* builder **1,225 → 850** (−375) / WMC **313 → 205** (−108) / missed **88 → 66** (−22); `BodyComposer` 432 / 100 / **0**. Branch-вселенная библиотеки 4,475 → 4,458 (−17 net), хотя новый класс добавил 147 слотов.
-9. *ADR-0084* (`docs/0.13.0/ADR-0084-body-composer-extraction.md`, Accepted); navigation map ADR-0081: request body/multipart → `http/BodyComposer`, response streaming остался на `ResponseBody`; `package-info` упоминает коллаборатор. Highest ADR **0084**, next free **0085**.
-10. *Гейт:* полный **1,890/1,890** (root **1,726** = 1,709 + 17; субмодули 164), 0 failures/errors; `:javadoc` чисто. JaCoCo: **Branch 91.79% (4,092/4,458) — рекорд**, **Complexity 90.23% (3,363/3,727) — рекорд**, Instruction 98.36%, Line 98.05%, Class/Method 100%.
+1. *Вход:* HEAD `2cdae9d` (#344), чистое дерево (только счётчик 345), mailbox без новых сообщений с #341.
+2. *Срез:* `retryPolicy(ModuleInfo, MethodMetadata)` — методный `@Retry` заменяет клиентскую политику; `timeout(MethodMetadata)`; `circuitBreaker(...)` и `rateLimiter(...)` — enabled annotation wins, disabled opt-out, client-level fallback; private `circuitBreakerFromAnnotation`/`rateLimiterFromAnnotation` строят config и берут instance из registry.
+3. *Форма:* package-private `final`, private constructor, stateless. Статические default-регистраторы переехали вместе с мапперами. `HttpEngineOptions` сознательно оставлен в builder'е — это transfer уже resolved-значений, не policy.
+4. *Швы перенесены, не продублированы:* `build()` зовёт `ResilienceComposer.*`; шесть старых методов, два поля и шесть импортов удалены. Client-level политики возвращаются теми же инстансами (`assertSame`).
+5. *Инвариант вместо guard'а:* `build()` дереференсит `moduleInfo.getEnvironment()` до resilience-вызовов, поэтому `moduleInfo != null` в circuit-breaker/rate-limiter fallback'ах недостижим — убран (−2 ветки). `methodMetadata != null` сохранён. Static-registry fallback сохранён для кастомных `ModuleInfo` с null-регистраторами (`SimpleModuleInfo` их нормализует).
+6. *TDD:* `ResilienceComposerTest` до класса (compile-red), 13 тестов. Первый прогон упал на `MethodMetadata.parse` — фикстурам нужен HTTP-verb; добавил `@Get` (правка фикстуры, не ожиданий против кода).
+7. *Сьют:* 13 тестов, **22/22 branches, 38/38 lines, 18/18 complexity, 122/122 instructions, 0 missed** (C11-планка).
+8. *Замеры:* builder **850 → 779** (−71) / WMC **205 → 186** (−19) / missed **66 → 56** (−10); `ResilienceComposer` 124 / 18 / **0**. Branch-вселенная 4,458 → 4,450 (−8 net) при +22 слотах. Волна 2: 1,516 → 779 строк (−49%), WMC 407 → 186 (−54%).
+9. *ADR-0085* (`docs/0.13.0/ADR-0085-resilience-composer-extraction.md`, Accepted); navigation map ADR-0081: resilience → `http/ResilienceComposer` + `resilience/*`, wave 2 complete; `package-info` упоминает коллаборатор. Highest ADR **0085**, next free **0086**.
+10. *Гейт:* полный **1,903/1,903** (root **1,739** = 1,726 + 13; субмодули 164), 0 failures/errors; `:javadoc` чисто. JaCoCo: **Branch 92.04% (4,096/4,450) — рекорд**, **Complexity 90.55% (3,372/3,724) — рекорд**, Instruction 98.37%, Line 98.05%, Class/Method 100%.
 
-## Контекст для следующей сессии (#345)
+## Контекст для следующей сессии (#346)
 
-1. **Ветка** `agent-loop`, HEAD — коммит #344.
-2. **Приоритет:** шаг **(d)** волны 2 — resilience wiring в `HttpTemplateBuilder` (850 строк / WMC 205 / 66 missed). Кандидаты в срез: circuit breaker, rate limiter, retry policy, engine options/timeouts; не трогать уже вынесенные `UrlComposer`/`HeaderComposer`/`BodyComposer`, tracing и `MultipartBodyPublisher`.
-3. После волны: split `ControllerValidator.validateMethod` (C5 ≤ 20); аудит `YamlCodec.deserialize` (закладка #339: 27–60 µs / 22.7 KB/op).
-4. *Окружение:* `GRADLE_USER_HOME=/tmp/opencode/gradle-home`; полный гейт `./gradlew test` ~2 мин; `:javadoc` в той же команде. JaCoCo — `build/reports/jacoco/test/jacocoTestReport.xml`; тесты — `**/build/test-results/**/TEST-*.xml`.
-5. *Метрики:* гейт **1,890/1,890**; JaCoCo Branch **91.79%** / Complexity **90.23%** — новые рекорды. Next free ADR **0085**.
+1. **Ветка** `agent-loop`, HEAD — коммит #345.
+2. **Приоритет:** split `ControllerValidator.validateMethod` (C5 ≤ 20) — следующий кандидат ADR-0081. Затем аудит `YamlCodec.deserialize` (закладка #339: 27–60 µs / 22.7 KB/op).
+3. Альтернатива: новая структурная волна по scorecard — `HttpTemplate` (2,221 / WMC 441) или `MethodMetadata` (WMC ~257).
+4. *Окружение:* `GRADLE_USER_HOME=/tmp/opencode/gradle-home`; полный гейт `./gradlew test` ~2 мин; `:javadoc` отдельной командой. JaCoCo — `build/reports/jacoco/test/jacocoTestReport.xml`; тесты — `**/build/test-results/**/TEST-*.xml`.
+5. *Метрики:* гейт **1,903/1,903**; JaCoCo Branch **92.04%** / Complexity **90.55%** — новые рекорды. Next free ADR **0086**.
