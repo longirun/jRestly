@@ -369,10 +369,10 @@ class HttpTemplateBuilderTest {
     @Test
     @DisplayName("joinUrlPath covers all 4 slash permutations")
     void testJoinUrlPathPermutations() {
-        assertEquals("https://base/path", HttpTemplateBuilder.joinUrlPath("https://base/", "/path"));
-        assertEquals("https://base/path", HttpTemplateBuilder.joinUrlPath("https://base/", "path"));
-        assertEquals("https://base/path", HttpTemplateBuilder.joinUrlPath("https://base", "/path"));
-        assertEquals("https://base/path", HttpTemplateBuilder.joinUrlPath("https://base", "path"));
+        assertEquals("https://base/path", UrlComposer.joinUrlPath("https://base/", "/path"));
+        assertEquals("https://base/path", UrlComposer.joinUrlPath("https://base/", "path"));
+        assertEquals("https://base/path", UrlComposer.joinUrlPath("https://base", "/path"));
+        assertEquals("https://base/path", UrlComposer.joinUrlPath("https://base", "path"));
     }
 
     // -------------------------------------------------------------------------

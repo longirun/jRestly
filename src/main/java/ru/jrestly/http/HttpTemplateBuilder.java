@@ -236,7 +236,7 @@ public class HttpTemplateBuilder {
         } else if (httpClient != null) {
             result.setHttpClient(httpClient);
         }
-        String url = createUrl();
+        String url = UrlComposer.compose(requestMeta, methodMetadata, args, moduleInfo.getEnvironment().getUrl());
         result.setUrl(url);
         result.setHttpMethod(requestMeta.httpMethod());
 
@@ -451,83 +451,6 @@ public class HttpTemplateBuilder {
         return false;
     }
 
-    private String createUrl() {
-        String path = requestMeta.path();
-        if (methodMetadata.hasPathVariables() && args != null) {
-            for (MethodMetadata.ParameterDescriptor p : methodMetadata.parameterDescriptors()) {
-                if (p.isPathVariable() && p.index() < args.length) {
-                    Object arg = args[p.index()];
-                    if (arg == null) {
-                        throw new IllegalArgumentException("Path variable '" + p.pathVariableName() + "' value cannot be null");
-                    }
-                    String substitutedValue = p.pathVariableEncoded()
-                            ? arg.toString()
-                            : UriEncoder.encode(arg.toString());
-                    path = path.replace(p.placeholderToken(), substitutedValue);
-                }
-            }
-        }
-
-        String targetUrl = null;
-        if (methodMetadata.hasTargetUrl() && args != null && methodMetadata.targetUrlParamIndex() < args.length) {
-            Object arg = args[methodMetadata.targetUrlParamIndex()];
-            if (arg == null) {
-                throw new IllegalArgumentException("@TargetUrl parameter value cannot be null");
-            }
-            targetUrl = arg.toString();
-        }
-
-        if (targetUrl != null) {
-            if (path == null || path.isEmpty()) {
-                return targetUrl;
-            }
-            if (path.startsWith("http://") || path.startsWith("https://")) {
-                return path;
-            }
-            int queryOrFrag = -1;
-            int qIdx = targetUrl.indexOf('?');
-            int hIdx = targetUrl.indexOf('#');
-            if (qIdx >= 0 && hIdx >= 0) {
-                queryOrFrag = Math.min(qIdx, hIdx);
-            } else if (qIdx >= 0) {
-                queryOrFrag = qIdx;
-            } else {
-                queryOrFrag = hIdx;
-            }
-            if (queryOrFrag >= 0) {
-                String basePart = targetUrl.substring(0, queryOrFrag);
-                String restPart = targetUrl.substring(queryOrFrag);
-                // The verb path may carry its own static query (e.g. @Get("/items?size=10"));
-                // merge it before the target's query/fragment so both survive.
-                int pathQueryIdx = path.indexOf('?');
-                if (pathQueryIdx < 0) {
-                    return joinUrlPath(basePart, path) + restPart;
-                }
-                String pathPart = joinUrlPath(basePart, path.substring(0, pathQueryIdx));
-                String pathQuery = path.substring(pathQueryIdx + 1);
-                if (restPart.startsWith("?")) {
-                    return pathPart + "?" + pathQuery + "&" + restPart.substring(1);
-                }
-                return pathPart + "?" + pathQuery + restPart;
-            }
-            return joinUrlPath(targetUrl, path);
-        }
-
-        return !path.startsWith("http")
-                ? moduleInfo.getEnvironment().getUrl() + path
-                : path;
-    }
-
-    static String joinUrlPath(String base, String path) {
-        if (base.endsWith("/") && path.startsWith("/")) {
-            return base + path.substring(1);
-        } else if (!base.endsWith("/") && !path.startsWith("/")) {
-            return base + "/" + path;
-        } else {
-            return base + path;
-        }
-    }
-
     private List<Header> createHeaders(String url) {
         List<Header> authHeaders = moduleInfo.getAuthProvider().getAuthHeaders();
         List<Header> staticHeaders = methodMetadata.staticHeaders();
@@ -688,7 +611,7 @@ public class HttpTemplateBuilder {
     }
 
     // Amendment #301 (ADR-0042): the URL is reused from build() — re-running
-    // createUrl() here would repeat path-variable substitution and query
+    // UrlComposer.compose here would repeat path-variable substitution and query
     // joining on every ambient propagation, doubling URL assembly allocations.
     private void applyTracePropagator(List<Header> result, String url) {
         // Candidate #14: pass the live merge list — the TraceRequestContext compact

@@ -175,7 +175,7 @@ class HttpTemplate {
      */
     @SuppressWarnings("unchecked")
     <T> T exchange() {
-        WireRequest request = new WireRequest(httpMethod, createUri(), headers, contentType, body, multipartFormParts, multipartBoundary, bodyPublisherSupplier, knownBodySize);
+        WireRequest request = new WireRequest(httpMethod, UrlComposer.resolve(url, requestParams), headers, contentType, body, multipartFormParts, multipartBoundary, bodyPublisherSupplier, knownBodySize);
 
         long start = System.nanoTime();
         boolean hasInterceptors = !requestInterceptors.isEmpty() || !responseInterceptors.isEmpty();
@@ -1306,71 +1306,6 @@ class HttpTemplate {
         }
     }
 
-
-    /**
-     * Resolves the target URI by combining the base URL and query parameters.
-     *
-     * @return the resolved URI
-     */
-    URI createUri() {
-        if (requestParams == null || requestParams.isEmpty()) {
-            return URI.create(url);
-        }
-
-        int hashIndex = url.indexOf('#');
-        int qIdx = url.indexOf('?');
-        boolean hasQuestion = qIdx >= 0 && (hashIndex < 0 || qIdx < hashIndex);
-        int baseEnd = hashIndex >= 0 ? hashIndex : url.length();
-
-        // Single-pass buffer avoiding intermediate query strings and substrings (ADR-0072)
-        StringBuilder sb = new StringBuilder(url.length() + requestParams.size() * 16 + 8);
-        sb.append(url, 0, baseEnd);
-        char sep = hasQuestion ? '&' : '?';
-
-        for (int i = 0, size = requestParams.size(); i < size; i++) {
-            Param param = requestParams.get(i);
-            sb.append(sep);
-            sep = '&';
-            UriEncoder.encodeTo(param.name(), sb);
-            if (param.value() != null) {
-                sb.append('=');
-                UriEncoder.encodeTo(param.value(), sb);
-            }
-        }
-
-        if (hashIndex >= 0) {
-            sb.append(url, hashIndex, url.length());
-        }
-
-        return URI.create(sb.toString());
-    }
-
-    /**
-     * Appends a query string to a URL while ensuring RFC 3986 fragment placement.
-     * If the URL contains a fragment ({@code #anchor}), the query is inserted before the fragment.
-     *
-     * @param url the base URL
-     * @param query the query string to append
-     * @return the combined URI
-     */
-    static URI appendQuery(String url, String query) {
-        if (query == null || query.isEmpty()) {
-            return URI.create(url);
-        }
-        int hashIndex = url.indexOf('#');
-        int qIdx = url.indexOf('?');
-        boolean hasQuestion = qIdx >= 0 && (hashIndex < 0 || qIdx < hashIndex);
-        int baseEnd = hashIndex >= 0 ? hashIndex : url.length();
-
-        StringBuilder sb = new StringBuilder(url.length() + query.length() + 1);
-        sb.append(url, 0, baseEnd)
-                .append(hasQuestion ? '&' : '?')
-                .append(query);
-        if (hashIndex >= 0) {
-            sb.append(url, hashIndex, url.length());
-        }
-        return URI.create(sb.toString());
-    }
 
     /**
      * Logs the outgoing request at INFO — the method, URI and headers,

@@ -112,7 +112,7 @@ the missing piece is documentation or naming, not the reader.
 | public facade / builders | `JRestlyClient`, `SimpleModuleInfo` | `JRestlyClientBuilderTest` |
 | annotations and validation | `annotation/*`, `ControllerValidator` | `ControllerValidationTest` |
 | metadata and caches | `http/MethodMetadata` | `MethodMetadataTest` |
-| URL/query assembly | `http/HttpTemplateBuilder`, `http/UriEncoder` | `UriEncoderTest`, `HttpTemplateUriTest` |
+| URL/query assembly | `http/UrlComposer`, `http/UriEncoder` (update: ADR-0082) | `UrlComposerTest`, `HttpTemplateUriTest` |
 | headers/cookies/auth | `http/HttpTemplateBuilder`, `http/AuthHeaderProvider`, `http/ResponseHeaders` | `RequestHeadersTest`, `AuthTest` |
 | dispatch, retries, redirects | `http/HttpTemplate`, `http/Redirects`, `http/RetryAfter` | `RetryPolicyJitterTest`, `RedirectsTest` |
 | body/streaming/SSE | `http/ResponseBody`, `http/MultipartBodyPublisher`, `http/ServerSentEvent*` | `ResponseBodyTest`, `StreamingTrailersTest` |

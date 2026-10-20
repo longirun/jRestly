@@ -124,26 +124,26 @@ class UriEncoderTest {
     }
 
     @Test
-    @DisplayName("HttpTemplate.appendQuery preserves query and fragment invariants without substrings")
+    @DisplayName("UrlComposer.appendQuery preserves query and fragment invariants without substrings")
     void appendQueryComprehensiveInvariants() {
         // Plain URL without query or fragment
-        assertEquals("http://host/items?page=1", HttpTemplate.appendQuery("http://host/items", "page=1").toString());
+        assertEquals("http://host/items?page=1", UrlComposer.appendQuery("http://host/items", "page=1").toString());
 
         // URL with existing query
-        assertEquals("http://host/items?status=open&page=1", HttpTemplate.appendQuery("http://host/items?status=open", "page=1").toString());
+        assertEquals("http://host/items?status=open&page=1", UrlComposer.appendQuery("http://host/items?status=open", "page=1").toString());
 
         // URL with fragment but no query
-        assertEquals("http://host/items?page=1#top", HttpTemplate.appendQuery("http://host/items#top", "page=1").toString());
+        assertEquals("http://host/items?page=1#top", UrlComposer.appendQuery("http://host/items#top", "page=1").toString());
 
         // URL with existing query and fragment
-        assertEquals("http://host/items?status=open&page=1#top", HttpTemplate.appendQuery("http://host/items?status=open#top", "page=1").toString());
+        assertEquals("http://host/items?status=open&page=1#top", UrlComposer.appendQuery("http://host/items?status=open#top", "page=1").toString());
 
         // URL with fragment containing '?' character: query must still be placed before '#' with '?'
-        assertEquals("http://host/items?page=1#frag?withQuestion", HttpTemplate.appendQuery("http://host/items#frag?withQuestion", "page=1").toString());
+        assertEquals("http://host/items?page=1#frag?withQuestion", UrlComposer.appendQuery("http://host/items#frag?withQuestion", "page=1").toString());
 
         // Null and empty queries return identical URI
-        assertEquals("http://host/items#top", HttpTemplate.appendQuery("http://host/items#top", null).toString());
-        assertEquals("http://host/items#top", HttpTemplate.appendQuery("http://host/items#top", "").toString());
+        assertEquals("http://host/items#top", UrlComposer.appendQuery("http://host/items#top", null).toString());
+        assertEquals("http://host/items#top", UrlComposer.appendQuery("http://host/items#top", "").toString());
     }
 
     @Test
@@ -158,7 +158,7 @@ class UriEncoderTest {
                 new Param("slug", "привет")
         ));
 
-        URI uri = template.createUri();
+        URI uri = UrlComposer.resolve(template.getUrl(), template.getRequestParams());
         String expected = "http://host/api/users?active=true&role=admin&flag&name=John%20Doe&slug=%D0%BF%D1%80%D0%B8%D0%B2%D0%B5%D1%82#section";
         assertEquals(expected, uri.toString());
     }
@@ -173,7 +173,7 @@ class UriEncoderTest {
                 new Param("limit", "25")
         ));
 
-        URI uri = template.createUri();
+        URI uri = UrlComposer.resolve(template.getUrl(), template.getRequestParams());
         assertEquals("http://host/api/search?q=java&limit=25", uri.toString());
     }
 
@@ -183,9 +183,9 @@ class UriEncoderTest {
         HttpTemplate template = new HttpTemplate();
         template.setUrl("http://host/api/ping");
 
-        assertEquals(URI.create("http://host/api/ping"), template.createUri());
+        assertEquals(URI.create("http://host/api/ping"), UrlComposer.resolve(template.getUrl(), template.getRequestParams()));
 
         template.setRequestParams(List.of());
-        assertEquals(URI.create("http://host/api/ping"), template.createUri());
+        assertEquals(URI.create("http://host/api/ping"), UrlComposer.resolve(template.getUrl(), template.getRequestParams()));
     }
 }

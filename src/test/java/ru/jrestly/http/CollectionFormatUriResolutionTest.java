@@ -92,7 +92,7 @@ class CollectionFormatUriResolutionTest {
         HttpTemplate template = new HttpTemplateBuilder(module, httpClient, method, new Object[]{List.of("alpha", "beta")}, SubSearchApi.class).build();
 
         // SubSearchApi has @QueryCollectionFormat(PIPES), overriding default EXPLODE
-        assertEquals("http://localhost:8080/sub/default?tags=alpha%7Cbeta", template.createUri().toString());
+        assertEquals("http://localhost:8080/sub/default?tags=alpha%7Cbeta", UrlComposer.resolve(template.getUrl(), template.getRequestParams()).toString());
     }
 
     @Test
@@ -107,7 +107,7 @@ class CollectionFormatUriResolutionTest {
         HttpTemplate template = new HttpTemplateBuilder(module, httpClient, method, new Object[]{List.of("alpha", "beta")}, SubSearchApi.class).build();
 
         // searchSubMethodOverride has @QueryCollectionFormat(SSV) -> space separated
-        assertEquals("http://localhost:8080/sub/override-method?tags=alpha%20beta", template.createUri().toString());
+        assertEquals("http://localhost:8080/sub/override-method?tags=alpha%20beta", UrlComposer.resolve(template.getUrl(), template.getRequestParams()).toString());
     }
 
     @Test
@@ -122,7 +122,7 @@ class CollectionFormatUriResolutionTest {
         HttpTemplate template = new HttpTemplateBuilder(module, httpClient, method, new Object[]{List.of("alpha", "beta")}, SubSearchApi.class).build();
 
         // Parameter has format = BRACKETS -> tags[]=alpha&tags[]=beta (tags%5B%5D=alpha&tags%5B%5D=beta)
-        assertEquals("http://localhost:8080/sub/override-param?tags%5B%5D=alpha&tags%5B%5D=beta", template.createUri().toString());
+        assertEquals("http://localhost:8080/sub/override-param?tags%5B%5D=alpha&tags%5B%5D=beta", UrlComposer.resolve(template.getUrl(), template.getRequestParams()).toString());
     }
 
     @Test
@@ -136,7 +136,7 @@ class CollectionFormatUriResolutionTest {
         Method method = SubSearchApi.class.getMethod("searchScalar", int.class);
         HttpTemplate template = new HttpTemplateBuilder(module, httpClient, method, new Object[]{42}, SubSearchApi.class).build();
 
-        assertEquals("http://localhost:8080/sub/scalar?page=42", template.createUri().toString());
+        assertEquals("http://localhost:8080/sub/scalar?page=42", UrlComposer.resolve(template.getUrl(), template.getRequestParams()).toString());
     }
 
     @Test
@@ -150,10 +150,10 @@ class CollectionFormatUriResolutionTest {
         Method method = SubSearchApi.class.getMethod("searchSubDefault", List.class);
 
         HttpTemplate emptyTemplate = new HttpTemplateBuilder(module, httpClient, method, new Object[]{List.of()}, SubSearchApi.class).build();
-        assertEquals("http://localhost:8080/sub/default", emptyTemplate.createUri().toString());
+        assertEquals("http://localhost:8080/sub/default", UrlComposer.resolve(emptyTemplate.getUrl(), emptyTemplate.getRequestParams()).toString());
 
         HttpTemplate nullsTemplate = new HttpTemplateBuilder(module, httpClient, method, new Object[]{Arrays.asList(null, null)}, SubSearchApi.class).build();
-        assertEquals("http://localhost:8080/sub/default", nullsTemplate.createUri().toString());
+        assertEquals("http://localhost:8080/sub/default", UrlComposer.resolve(nullsTemplate.getUrl(), nullsTemplate.getRequestParams()).toString());
     }
 
     @Test
@@ -168,7 +168,7 @@ class CollectionFormatUriResolutionTest {
         HttpTemplate template = new HttpTemplateBuilder(module, httpClient, method, new Object[]{Arrays.asList("first", null, "second")}, SubSearchApi.class).build();
 
         // PIPES format: first|second
-        assertEquals("http://localhost:8080/sub/default?tags=first%7Csecond", template.createUri().toString());
+        assertEquals("http://localhost:8080/sub/default?tags=first%7Csecond", UrlComposer.resolve(template.getUrl(), template.getRequestParams()).toString());
     }
 
     @Test
@@ -183,7 +183,7 @@ class CollectionFormatUriResolutionTest {
         HttpTemplate template = new HttpTemplateBuilder(module, httpClient, method, new Object[]{List.of("alpha", "beta")}, DefaultFallbackApi.class).build();
 
         // DEFAULT on the method must fall through to the interface-level PIPES
-        assertEquals("http://localhost:8080/df/inherit?tags=alpha%7Cbeta", template.createUri().toString());
+        assertEquals("http://localhost:8080/df/inherit?tags=alpha%7Cbeta", UrlComposer.resolve(template.getUrl(), template.getRequestParams()).toString());
     }
 
     @Test
@@ -198,7 +198,7 @@ class CollectionFormatUriResolutionTest {
         HttpTemplate template = new HttpTemplateBuilder(module, httpClient, method, new Object[]{List.of("alpha", "beta")}, DefaultFallbackApi.class).build();
 
         // Parameter DEFAULT must fall back to the method-level SSV
-        assertEquals("http://localhost:8080/df/param-default?tags=alpha%20beta", template.createUri().toString());
+        assertEquals("http://localhost:8080/df/param-default?tags=alpha%20beta", UrlComposer.resolve(template.getUrl(), template.getRequestParams()).toString());
     }
 
     @Test
@@ -213,7 +213,7 @@ class CollectionFormatUriResolutionTest {
         HttpTemplate template = new HttpTemplateBuilder(module, httpClient, method, new Object[]{List.of("alpha", "beta")}, LeafSearchApi.class).build();
 
         // LeafSearchApi has no annotation; nearest annotated ancestor is MidSearchApi (TSV), not GrandSearchApi (CSV)
-        assertEquals("http://localhost:8080/deep/leaf?tags=alpha%09beta", template.createUri().toString());
+        assertEquals("http://localhost:8080/deep/leaf?tags=alpha%09beta", UrlComposer.resolve(template.getUrl(), template.getRequestParams()).toString());
     }
 
     @Test
@@ -227,7 +227,7 @@ class CollectionFormatUriResolutionTest {
         Method method = DefaultFallbackApi.class.getMethod("formEmptyCollection", List.class);
         HttpTemplate template = new HttpTemplateBuilder(module, httpClient, method, new Object[]{List.of()}, DefaultFallbackApi.class).build();
 
-        assertEquals("http://localhost:8080/df/form-empty", template.createUri().toString());
+        assertEquals("http://localhost:8080/df/form-empty", UrlComposer.resolve(template.getUrl(), template.getRequestParams()).toString());
         assertArrayEquals(new byte[0], template.getBody());
     }
 }
