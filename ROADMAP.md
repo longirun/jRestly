@@ -2179,7 +2179,7 @@ Gates (session #241):
 
 ---
 
-> **Current status (2026-10-20).** Highest ADR issued: **0079** (The 0.12.0 cycle — Netty Transport, Polyglot Codec Ecosystem & Deep Zero-Garbage Dispatch Audits); next free: **0080**.
+> **Current status (2026-10-20).** Highest ADR issued: **0081** (Internal-Complexity Criteria and a Navigation Map); next free: **0082**. Cycle 0.13.0 now has ADR-0080 (concurrent-load scaling + structural health audit) and ADR-0081 (measurable complexity thresholds, no-new-debt ratchet, LLM-free navigation map); the Netty arm was added to the concurrency matrix and measured (run #341).
 > Cycle 0.12.0 packaged and verified (ADR-0079); version `0.12.0` in root and all published submodules (`engine-okhttp`, `engine-apache5`, `engine-netty`, `codec-jackson-xml`, `codec-yaml`, `codec-protobuf`).
 > Live gate: **1,835/1,835** tests green across all eight modules (root 1,671 + engine-okhttp 25 + engine-apache5 25 + engine-netty 26 + codec-jackson-xml 15 + codec-yaml 15 + codec-protobuf 19 + benchmarks 39), 0 warnings under `-Werror`. Core JaCoCo: **100% Class**, **100% Method**, **98.13% Instructions**, **97.78% Lines**, **90.81–90.85% Branches (4,071–4,073/4,483) — historical all-time record**, **89.06–89.11% Complexity**. Zero-dep core preserved (0 runtime dependencies in published root POM). Polyglot codec ecosystem complete (JSON, XML, YAML, Protobuf) and measured per call (`CodecBenchmark`, cycle 0.13.0 — `BENCHMARKS.md`); multi-engine transport complete (JDK, OkHttp, Apache HC5, Netty). Cycle 0.13.0 open.
 

@@ -25,9 +25,10 @@ import java.io.IOException;
 import java.util.concurrent.TimeUnit;
 
 /**
- * High-concurrency throughput benchmark simulating intense multi-threaded production load (16 concurrent threads)
- * comparing jRestly against raw JDK HttpClient, Spring 6 RestClient, Apache HttpClient 5,
- * Square Retrofit 2, and OpenFeign.
+ * High-concurrency throughput benchmark simulating intense multi-threaded production load (16 concurrent threads
+ * by default; override with the JMH {@code -t} option) comparing jRestly against raw JDK HttpClient,
+ * Spring 6 RestClient, Apache HttpClient 5, Square Retrofit 2, and OpenFeign.
+ * <p>jRestly is measured on all four transports: the default JDK engine, OkHttp, Apache5 and Netty.</p>
  */
 @State(Scope.Benchmark)
 @BenchmarkMode(Mode.Throughput)
@@ -42,6 +43,7 @@ public class ConcurrentLoadNetworkBenchmark {
     private JRestlyBenchmarkClient jrestlyClient;
     private JRestlyBenchmarkClient jrestlyOkHttpClient;
     private JRestlyBenchmarkClient jrestlyApache5Client;
+    private JRestlyBenchmarkClient jrestlyNettyClient;
     private JRestlyBenchmarkClient jrestlyHttp11Client;
     private RawHttpClientBenchmarkClient rawHttpClient;
     private SpringRestClientBenchmarkClient springClient;
@@ -58,6 +60,7 @@ public class ConcurrentLoadNetworkBenchmark {
         jrestlyClient = new JRestlyBenchmarkClient(baseUrl);
         jrestlyOkHttpClient = new JRestlyBenchmarkClient(baseUrl, new ru.jrestly.engine.okhttp.OkHttpEngine());
         jrestlyApache5Client = new JRestlyBenchmarkClient(baseUrl, new ru.jrestly.engine.apache5.Apache5HttpEngine());
+        jrestlyNettyClient = new JRestlyBenchmarkClient(baseUrl, new ru.jrestly.engine.netty.NettyHttpEngine());
         jrestlyHttp11Client = new JRestlyBenchmarkClient(baseUrl, java.net.http.HttpClient.Version.HTTP_1_1);
         rawHttpClient = new RawHttpClientBenchmarkClient(baseUrl);
         springClient = new SpringRestClientBenchmarkClient(baseUrl);
@@ -76,6 +79,9 @@ public class ConcurrentLoadNetworkBenchmark {
         }
         if (jrestlyApache5Client != null) {
             jrestlyApache5Client.close();
+        }
+        if (jrestlyNettyClient != null) {
+            jrestlyNettyClient.close();
         }
         if (jrestlyHttp11Client != null) {
             jrestlyHttp11Client.close();
@@ -115,6 +121,11 @@ public class ConcurrentLoadNetworkBenchmark {
     @Benchmark
     public UserDto jrestlyApache5_concurrentGetUser() {
         return jrestlyApache5Client.getUser(42L);
+    }
+
+    @Benchmark
+    public UserDto jrestlyNetty_concurrentGetUser() {
+        return jrestlyNettyClient.getUser(42L);
     }
 
     @Benchmark
@@ -162,6 +173,11 @@ public class ConcurrentLoadNetworkBenchmark {
     @Benchmark
     public String jrestlyApache5_concurrentPing() {
         return jrestlyApache5Client.ping();
+    }
+
+    @Benchmark
+    public String jrestlyNetty_concurrentPing() {
+        return jrestlyNettyClient.ping();
     }
 
     @Benchmark

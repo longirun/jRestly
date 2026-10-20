@@ -125,3 +125,15 @@ God-classes are **not** fully defeated. Facts from the current tree
 - Next structural target: `HttpTemplateBuilder` decomposition (new ADR in
   0.13.0); `ControllerValidator.validateMethod` split is the second candidate.
 - Next free ADR: **0081**.
+
+## Amendment #341 — Netty arm added to the concurrency matrix
+
+The #340 matrix accidentally omitted the Netty engine: `ConcurrentLoadNetworkBenchmark`
+predates `engine-netty` and was never updated when the engine landed (only
+`FeedBenchmark` got Netty arms in #325). Anton caught the gap. The benchmark now
+measures **four** jRestly transports — JDK (default and HTTP/1.1-pinned), OkHttp,
+Apache5 and Netty — in both `getUser` and `ping`, and `BenchmarkSmokeTest`
+asserts every arm. Fresh numbers and the interpretation are published in
+`BENCHMARKS.md` ("Netty in the concurrency matrix, run #341"). Lesson recorded:
+when a new transport ships, the checklist is **all** benchmark matrices
+(single-thread, concurrent, feed), not just the newest one.

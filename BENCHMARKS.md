@@ -386,3 +386,51 @@ What this does and does not say:
 - **Thread-safety smoke:** 64 threads ran to completion on every arm with zero
   errors/exceptions, exercising the shared proxy/metadata caches, codec and
   cookie paths concurrently.
+
+## Netty in the concurrency matrix (run #341)
+
+Anton's catch: the #340 load matrix had no Netty arm even though the engine is
+the main beneficiary of a concurrency test. The omission was real:
+`ConcurrentLoadNetworkBenchmark` predates `engine-netty` and was never updated
+when the engine landed (only `FeedBenchmark` got Netty arms in #325). The class
+now measures four jRestly transports — JDK default, JDK pinned to HTTP/1.1,
+OkHttp, Apache5 and Netty — for both `getUser` and `ping`; `BenchmarkSmokeTest`
+asserts every arm.
+
+Same host, same clients/endpoints, same method as #340:
+
+```bash
+./gradlew :benchmarks:jmh -PjmhArgs="-f 1 -wi 1 -i 2 -t 64 \
+  -rf json -rff /tmp/scaling_netty_t64.json \
+  .*ConcurrentLoadNetworkBenchmark\..*GetUser"
+```
+
+Throughput, ops/s, `GET /api/users/42` → `UserDto`; higher is better.
+
+| client | 1 thread | 4 threads | 16 threads | 64 threads |
+|---|---:|---:|---:|---:|
+| Apache HC5 (raw) | 2032 | 1266 | 1542 | 1976 |
+| Retrofit 2 | 1507 | 1597 | 1714 | 2000 |
+| jRestly + `engine-okhttp` | 1298 | 1277 | 1164 | 1384 |
+| jRestly + `engine-apache5` | 1616 | 1412 | 1307 | 1289 |
+| jRestly HTTP/1.1 pinned | 758 | 745 | 988 | 1048 |
+| **jRestly + `engine-netty`** | **820** | **770** | **871** | **1001** |
+| raw JDK `HttpClient` | 450 | 537 | 691 | 877 |
+| jRestly (default JDK) | 441 | 442 | 595 | 740 |
+| OpenFeign | 296 | 275 | 487 | 601 |
+| Spring 6 `RestClient` | 331 | 336 | 358 | 383 |
+
+Interpretation:
+
+- **Netty is thread-safe under load:** 64 threads, zero errors, no collapse.
+  It sits in the JDK-transport group (820→1001 ops/s), not the fast-transport
+  group, for this workload.
+- **Small bodies are not Netty's win.** On a sub-KB JSON DTO over loopback the
+  event-loop handoff and pooled-buffer bookkeeping dominate, so OkHttp/Apache5
+  stay ahead. Netty's measured advantages are elsewhere and hold: large bodies
+  and allocations (`FeedBenchmark`, ADR-0070: 98,342 B/op on `rss-20`, 6.26 MB/op
+  saved on 1 MB bodies, +53% throughput over the JDK engine in that scenario).
+  The 64-thread result here still shows +35% over jRestly's default JDK engine.
+- The absolute numbers differ from run #340 (shared host, 2-CPU cgroup quota);
+  only compare rows **within** this table. The group structure is the stable
+  signal, not the individual ops/s.

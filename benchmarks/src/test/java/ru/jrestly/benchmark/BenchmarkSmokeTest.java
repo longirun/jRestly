@@ -240,12 +240,16 @@ class BenchmarkSmokeTest {
     }
 
     @Test
-    @DisplayName("ConcurrentLoadNetworkBenchmark executes successfully across all 6 clients")
+    @DisplayName("ConcurrentLoadNetworkBenchmark executes successfully across all 10 clients")
     void testConcurrentLoadNetworkBenchmarkExecution() throws IOException {
         ConcurrentLoadNetworkBenchmark benchmark = new ConcurrentLoadNetworkBenchmark();
         benchmark.setup();
         try {
             assertEquals(42L, benchmark.jrestly_concurrentGetUser().id());
+            assertEquals(42L, benchmark.jrestlyOkHttp_concurrentGetUser().id());
+            assertEquals(42L, benchmark.jrestlyApache5_concurrentGetUser().id());
+            assertEquals(42L, benchmark.jrestlyNetty_concurrentGetUser().id());
+            assertEquals(42L, benchmark.jrestlyHttp11_concurrentGetUser().id());
             assertEquals(42L, benchmark.rawHttpClient_concurrentGetUser().id());
             assertEquals(42L, benchmark.springRestClient_concurrentGetUser().id());
             assertEquals(42L, benchmark.apacheHttpClient_concurrentGetUser().id());
@@ -253,6 +257,10 @@ class BenchmarkSmokeTest {
             assertEquals(42L, benchmark.feign_concurrentGetUser().id());
 
             assertEquals("pong", benchmark.jrestly_concurrentPing());
+            assertEquals("pong", benchmark.jrestlyOkHttp_concurrentPing());
+            assertEquals("pong", benchmark.jrestlyApache5_concurrentPing());
+            assertEquals("pong", benchmark.jrestlyNetty_concurrentPing());
+            assertEquals("pong", benchmark.jrestlyHttp11_concurrentPing());
             assertEquals("pong", benchmark.rawHttpClient_concurrentPing());
             assertEquals("pong", benchmark.springRestClient_concurrentPing());
             assertEquals("pong", benchmark.apacheHttpClient_concurrentPing());
