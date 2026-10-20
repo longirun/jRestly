@@ -1,5 +1,21 @@
 # DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
+> **Сессия #366 (SSE Resilience & Typed Decode Audit — закрытие скрытых ветвей в `ServerSentEventReconnector` и `ResponseBody`, 0 missed branches в обоих классах; полный гейт 2,120/2,120 green, JaCoCo Branch 93.75% — новый исторический рекорд библиотеки, Complexity 92.59% — рекорд, Classes 100%):**
+> 1. *Вход:* ветка `agent-loop`, счётчик 366. Запрос Антона из mailbox — проверить состояние SSE на предмет локального минимума, скрытых хвостов и довести кодовую базу до кристальной зрелости перед релизом.
+> 2. *Анализ и находки в SSE:*
+>    - В `ServerSentEventReconnector` были выявлены мёртвые ветки конъюнкции `!closed && !finished` и `finished || closed` (из-за того, что `close()` одновременно выставлял оба флага, правая часть условий не вычислялась из-за short-circuit evaluation).
+>    - `advance()` и `watchdogLoop()` очищены от мёртвых циклов выхода, контракт `closed` изолирован для отслеживания явного закрытия во время реконнект-паузы.
+>    - В `ResponseBody` добавлены отсутствующие тесты на новые методы типизированного SSE стриминга: `isTypedEventStream(Type)`, `extractTypedEventType(Type)` и `typedEventStream(...)`.
+> 3. *Результаты по классам:*
+>    - `ResponseBody`: **100% instructions (604/604), 100% branches (138/138), 100% lines (133/133), 100% complexity (90/90), 0 missed branches!**
+>    - `ServerSentEventReconnector`: **100% branches (62/62), 100% complexity (47/47), 100% methods (16/16), 0 missed branches!**
+> 4. *TDD и метрики:*
+>    - Добавлено +6 исчерпывающих тестов в `ServerSentEventReconnectTest` и `ResponseBodyTest`.
+>    - Полный гейт: **2,120 / 2,120** тестов green во всех 8 модулях (root 1,956 + submodules 164), 0 failures, 0 errors.
+>    - JaCoCo: Branch **93.75%** (4,304 / 4,591 covered — **новый абсолютный рекорд в истории библиотеки!**), Complexity **92.59%** (3,610 / 3,899 covered — рекорд), Instruction **98.58%**, Line **98.41%**, Classes **100%** (168/168).
+>    - Javadoc: чист во всех 8 модулях под `-Werror`.
+> 
+
 > **Сессия #365 (SSE Typed Event Deserialization & LLM Token Streaming — ADR-0097; внедрены `TypedServerSentEvent<T>`, `SseEventContract`, `Stream<TypedServerSentEvent<T>>`, авто-обработка `[DONE]`, `toTyped`/`dataAs`; принят ADR-0097; полный гейт 2,114/2,114 green, JaCoCo Branch 93.32%, Classes 100%, 0 missed branches в `TypedServerSentEvent`):**
 > 1. *Вход:* ветка `agent-loop`, счётчик 365. Пожелание Антона из mailbox: реализовать SSE typed decode и глубоко проработать SSE под AI/LLM streaming.
 > 2. *Реализация (ADR-0097):*

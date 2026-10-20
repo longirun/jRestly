@@ -19,6 +19,7 @@ import java.util.function.Function;
 import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -686,6 +687,45 @@ class ServerSentEventReconnectTest {
         ).iterator();
         assertFalse(it.hasNext());
         assertThrows(java.util.NoSuchElementException.class, it::next);
+    }
+
+    @Test
+    @DisplayName("direct ServerSentEventReconnector instance tests for edge branches")
+    void directReconnectorEdgeBranches() {
+        ServerSentEventReconnector<ServerSentEvent> emptyRec =
+                new ServerSentEventReconnector<>(id -> Stream.empty(), quickPolicy(0));
+        assertFalse(emptyRec.hasNext());
+        assertThrows(NoSuchElementException.class, emptyRec::next);
+
+        ServerSentEventReconnector<ServerSentEvent> recWithData =
+                new ServerSentEventReconnector<>(id -> Stream.of(ServerSentEvent.ofData("item")), quickPolicy(0));
+        recWithData.close();
+        assertFalse(recWithData.hasNext());
+        assertFalse(recWithData.reconnect(null));
+
+        assertDoesNotThrow(() -> ServerSentEventReconnector.sleep(0));
+        assertDoesNotThrow(() -> ServerSentEventReconnector.sleep(-10));
+        assertDoesNotThrow(() -> ServerSentEventReconnector.abortStalled(null));
+    }
+
+    @Test
+    @DisplayName("reconnect cancelled mid-wait when outer stream is closed inside onReconnect callback")
+    void reconnectCancelledMidWaitByClose() {
+        java.util.concurrent.atomic.AtomicReference<Stream<ServerSentEvent>> streamRef =
+                new java.util.concurrent.atomic.AtomicReference<>();
+        ReconnectPolicy policy = ReconnectPolicy.builder()
+                .maxAttempts(2)
+                .initialBackoff(Duration.ofMillis(5))
+                .onReconnect(info -> {
+                    if (streamRef.get() != null) {
+                        streamRef.get().close();
+                    }
+                })
+                .build();
+        Function<String, Stream<ServerSentEvent>> opener = id -> failing("boom");
+        Stream<ServerSentEvent> stream = ServerSentEvent.reconnecting(opener, policy);
+        streamRef.set(stream);
+        assertEquals(List.of(), stream.toList());
     }
 
 

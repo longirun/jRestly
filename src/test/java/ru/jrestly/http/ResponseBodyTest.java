@@ -258,6 +258,57 @@ class ResponseBodyTest {
     }
 
     // ------------------------------------------------------------------
+    // typedEventStream — wire stream → Stream<TypedServerSentEvent<T>> (ADR-0097)
+    // ------------------------------------------------------------------
+
+    @Test
+    @DisplayName("isTypedEventStream: recognizes Stream<TypedServerSentEvent<T>> and raw Stream<TypedServerSentEvent>, rejects others")
+    void isTypedEventStreamMatrix() throws Exception {
+        assertTrue(ResponseBody.isTypedEventStream(genericReturn("typedEvents")));
+        assertTrue(ResponseBody.isTypedEventStream(genericReturn("rawTypedEvents")));
+        assertFalse(ResponseBody.isTypedEventStream(genericReturn("events")));
+        assertFalse(ResponseBody.isTypedEventStream(genericReturn("lines")));
+        assertFalse(ResponseBody.isTypedEventStream(genericReturn("streamOfLists")));
+        assertFalse(ResponseBody.isTypedEventStream(genericReturn("typedEventList")));
+        assertFalse(ResponseBody.isTypedEventStream(String.class));
+        assertFalse(ResponseBody.isTypedEventStream(wrongArity(Stream.class)));
+    }
+
+    @Test
+    @DisplayName("extractTypedEventType: extracts payload type T, falls back to Object.class")
+    void extractTypedEventTypeMatrix() throws Exception {
+        assertEquals(Dto.class, ResponseBody.extractTypedEventType(genericReturn("typedEvents")));
+        assertEquals(Object.class, ResponseBody.extractTypedEventType(genericReturn("rawTypedEvents")));
+        assertEquals(Object.class, ResponseBody.extractTypedEventType(genericReturn("events")));
+        assertEquals(Object.class, ResponseBody.extractTypedEventType(genericReturn("lines")));
+        assertEquals(Object.class, ResponseBody.extractTypedEventType(genericReturn("streamOfLists")));
+        assertEquals(Object.class, ResponseBody.extractTypedEventType(genericReturn("strings")));
+        assertEquals(Object.class, ResponseBody.extractTypedEventType(String.class));
+        assertEquals(Object.class, ResponseBody.extractTypedEventType(wrongArity(Stream.class)));
+        assertEquals(Object.class, ResponseBody.extractTypedEventType(wrongSubArity(Stream.class, TypedServerSentEvent.class)));
+    }
+
+    @Test
+    @DisplayName("typedEventStream: parses and deserializes typed events, close propagates to wire")
+    void typedEventStreamDecodesAndClosesWire() {
+        AtomicBoolean wireClosed = new AtomicBoolean();
+        InputStream wire = closingTrack("data: payload\n\n".getBytes(StandardCharsets.UTF_8), wireClosed);
+        StubPayloadCodec codec = new StubPayloadCodec();
+        codec.result = new Dto();
+
+        Stream<TypedServerSentEvent<Dto>> stream = ResponseBody.typedEventStream(
+                wire, StandardCharsets.UTF_8, codec, Dto.class, null);
+
+        List<TypedServerSentEvent<Dto>> events = stream.toList();
+        assertEquals(1, events.size());
+        assertSame(codec.result, events.get(0).data());
+        assertFalse(wireClosed.get());
+
+        stream.close();
+        assertTrue(wireClosed.get());
+    }
+
+    // ------------------------------------------------------------------
     // wrapForTrailers — terminal hook (ADR-0059)
     // ------------------------------------------------------------------
 
@@ -310,6 +361,20 @@ class ResponseBodyTest {
         hooked.close();
 
         assertEquals(trailers, captured.trailers());
+    }
+
+    @Test
+    @DisplayName("wrapForTrailers: perCallHolder non-null and captured null populates only perCallHolder at EOF")
+    void wrapForTrailersCapturedNullHolderUntouched() throws IOException {
+        ResponseHeaders perCall = new ResponseHeaders();
+        List<Header> trailers = List.of(new Header("X-Hash", "abc"));
+        InputStream hooked = ResponseBody.wrapForTrailers(
+                new ByteArrayInputStream(new byte[0]), () -> trailers, perCall, null);
+
+        hooked.readAllBytes();
+        hooked.close();
+
+        assertEquals(trailers, perCall.trailers());
     }
 
     // ------------------------------------------------------------------
@@ -658,6 +723,8 @@ class ResponseBodyTest {
                 List.of(new Header("content-length", "42"))));
         assertEquals("streaming lines (length unknown)", ResponseBody.streamingPayloadLine("streaming lines", List.of()));
         assertEquals("streaming lines (length unknown)", ResponseBody.streamingPayloadLine("streaming lines",
+                List.of(new Header("X-Other", "val"))));
+        assertEquals("streaming lines (length unknown)", ResponseBody.streamingPayloadLine("streaming lines",
                 List.of(new Header("Content-Length", null))));
 
         List<Header> mixed = new java.util.ArrayList<>();
@@ -770,9 +837,18 @@ class ResponseBodyTest {
 
         Stream<ServerSentEvent> events();
 
+        Stream<TypedServerSentEvent<Dto>> typedEvents();
+
+        @SuppressWarnings("rawtypes")
+        Stream<TypedServerSentEvent> rawTypedEvents();
+
         Stream<Integer> integers();
 
+        Stream<List<String>> streamOfLists();
+
         List<String> strings();
+
+        List<TypedServerSentEvent<Dto>> typedEventList();
     }
 
     private static Type genericReturn(String name) throws Exception {
@@ -790,6 +866,42 @@ class ResponseBodyTest {
             @Override
             public Type getRawType() {
                 return raw;
+            }
+
+            @Override
+            public Type getOwnerType() {
+                return null;
+            }
+        };
+    }
+
+    private static ParameterizedType wrongSubArity(Type rawOuter, Type rawInner) {
+        return new ParameterizedType() {
+            @Override
+            public Type[] getActualTypeArguments() {
+                return new Type[]{
+                        new ParameterizedType() {
+                            @Override
+                            public Type[] getActualTypeArguments() {
+                                return new Type[]{String.class, Integer.class};
+                            }
+
+                            @Override
+                            public Type getRawType() {
+                                return rawInner;
+                            }
+
+                            @Override
+                            public Type getOwnerType() {
+                                return null;
+                            }
+                        }
+                };
+            }
+
+            @Override
+            public Type getRawType() {
+                return rawOuter;
             }
 
             @Override

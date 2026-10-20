@@ -50,7 +50,7 @@ final class ServerSentEventReconnector<E extends SseEventContract> implements It
     private volatile boolean finished;
     private volatile boolean closed;
 
-    private ServerSentEventReconnector(Function<String, Stream<E>> opener, ReconnectPolicy policy) {
+    ServerSentEventReconnector(Function<String, Stream<E>> opener, ReconnectPolicy policy) {
         this.opener = Objects.requireNonNull(opener, "opener");
         this.policy = Objects.requireNonNull(policy, "policy");
         if (policy.hasStallTimeout()) {
@@ -86,7 +86,7 @@ final class ServerSentEventReconnector<E extends SseEventContract> implements It
         if (nextEvent != null) {
             return true;
         }
-        if (finished || closed) {
+        if (finished) {
             return false;
         }
         nextEvent = advance();
@@ -109,7 +109,7 @@ final class ServerSentEventReconnector<E extends SseEventContract> implements It
     }
 
     private E advance() {
-        while (!finished && !closed) {
+        while (true) {
             if (doneSeen && policy.isStopOnDone()) {
                 return null;
             }
@@ -152,7 +152,6 @@ final class ServerSentEventReconnector<E extends SseEventContract> implements It
                 return null;
             }
         }
-        return null;
     }
 
     private void observe(E event) {
@@ -179,7 +178,7 @@ final class ServerSentEventReconnector<E extends SseEventContract> implements It
      * @throws UncheckedIOException when the attempts are exhausted and the
      *                              last ending carried a failure
      */
-    private boolean reconnect(Throwable failure) {
+    boolean reconnect(Throwable failure) {
         if (closed) {
             finished = true;
             notifyMonitor();
@@ -207,7 +206,7 @@ final class ServerSentEventReconnector<E extends SseEventContract> implements It
         return true;
     }
 
-    private static void sleep(long delayMillis) {
+    static void sleep(long delayMillis) {
         if (delayMillis <= 0) {
             return;
         }
@@ -222,17 +221,17 @@ final class ServerSentEventReconnector<E extends SseEventContract> implements It
     }
 
     private void watchdogLoop() {
-        while (!closed && !finished) {
+        while (true) {
             Stream<E> toAbort = null;
             synchronized (monitor) {
-                while (!waitingForData && !closed && !finished) {
+                while (!waitingForData && !finished) {
                     try {
                         monitor.wait();
                     } catch (InterruptedException e) {
                         return;
                     }
                 }
-                if (closed || finished) {
+                if (finished) {
                     return;
                 }
 
@@ -258,7 +257,7 @@ final class ServerSentEventReconnector<E extends SseEventContract> implements It
 
     private void waitForConsumerToUnblock() {
         synchronized (monitor) {
-            while (waitingForData && !closed && !finished) {
+            while (waitingForData) {
                 try {
                     monitor.wait(50);
                 } catch (InterruptedException e) {
@@ -269,7 +268,7 @@ final class ServerSentEventReconnector<E extends SseEventContract> implements It
         }
     }
 
-    private static void abortStalled(Stream<?> stream) {
+    static void abortStalled(Stream<?> stream) {
         if (stream == null) {
             return;
         }

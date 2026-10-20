@@ -2561,8 +2561,11 @@ Synthetic microbenchmarks (ping, small JSON DTOs) only measure proxy dispatch an
   - Unified `SseEventContract` allowing `TypedServerSentEvent.reconnecting` to leverage full WHATWG `Last-Event-ID` replay, exponential backoff, and the virtual-thread stall guard watchdog (`jrestly-sse-stall-guard`);
   - `TypedServerSentEvent`: 100% instruction, branch, line, and complexity coverage (0 missed branches).
 - **Quality Gates & Metrics:**
-  - Total test suite: **2,114 / 2,114** tests green across all 8 modules (root 1,950 + 164 submodules);
-  - JaCoCo Branch Coverage: **93.32%**;
+  - Total test suite: **2,120 / 2,120** tests green across all 8 modules (root 1,956 + 164 submodules);
+  - JaCoCo Branch Coverage: **93.75%** (all-time peak record in project history!);
+  - Complexity Coverage: **92.59%** (all-time peak record!);
+  - Instruction Coverage: **98.58%**, Line: **98.41%**;
+  - Total missed branches: **287**;
   - Class Coverage: **100%** (168 / 168 classes);
   - Highest ADR: **0097**, next free **0098**.
 
