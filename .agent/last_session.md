@@ -1,45 +1,27 @@
-# Last Session: #362 (2026-10-20)
+# Last Session: #363 (2026-10-20)
 
 ## Что сделано
 
-**Сессия #362: декомпозиция `HttpTemplate` — вынесен `ResponseProcessor` (ADR-0094). Год-классы окончательно побеждены (WMC `HttpTemplate` впервые < 250)! Missed branches библиотеки: 282 — новый абсолютный исторический минимум! Branch coverage 93.57% — новый исторический абсолютный рекорд! Полный гейт: 2,076/2,076 тестов!**
+**Сессия #363: дистилляция Цикла 0.13.0 в `ROADMAP.md`, стратегический аудит SSE, локального минимума и философии открытости. Бэклог декомпозиции закрыт полностью, проект вышел на финишную прямую для переноса в `main`!**
 
-1. *Вход:* ветка `agent-loop`, HEAD `3304658`, счётчик 362. Сообщение Антона в mailbox с вопросами про финишную прямую, состояние SSE, локальный минимум и открытость/sealed/private. В бэклоге ADR-0081 оставался последний шаг декомпозиции `HttpTemplate` — срез `processResponse`.
-2. *Срез и дизайн:* вынесен 126-строчный хвост `processResponse`:
-   - `ResponseHeaders` holder population, ThreadLocal captor (`ResponseHeaders.CURRENT_CAPTOR`), расчет duration;
-   - `authDetailsConsumer` callback;
-   - `HttpDiagnosticLogger.logResponse` диагностическое логирование;
-   - Streaming lifecycle: terminal trailer wrapping (`ResponseBody.wrapForTrailers`), stream error consumption (`@OnError` + unexpected status), dispatching to `Stream<String>` (lines), `Stream<ServerSentEvent>` (SSE), raw `InputStream`, honoring `Optional` missing-resource semantics (404/204 close stream and return `Optional.empty()`);
-   - Buffered decode: `@OnError` match, unexpected status, lazy codec resolution (`bufferedOptional`/`bufferedRaw`).
-3. *Форма и швы:*
-   - Package-private `final class ResponseProcessor` с вложенным рекордом `ResponseConfig` (правило C8 ≤ 7 параметров).
-   - Методы: `process` (оркестрация, complexity 4), `captureHeadersAndNotify` (complexity 6), `processStream` (complexity 10), `processBuffered` (complexity 6) — все методы строго C5 ≤ 10 (Green)!
-   - В `HttpTemplate` метод `processResponse` заменен 4-строчным делегированием в ленивый `responseProcessor().process(response, startNanos)`. 100% обратная совместимость.
-4. *TDD red-first:*
-   - `ResponseProcessorTest` (21 тест): buffered raw String, byte[], Optional present/missing (404/204), captor и auth details, line stream, SSE stream, raw InputStream, optional empty missing stream close, `@OnError` matching на стриме и буфере, unexpected status exceptions, codec exception swallow, allow null returnType.
-   - Сьют коллаборатора: 245 строк, 44 WMC, Branch **60/62 (96.77%)**, 0 missed methods.
-5. *Цифры и рекорды:*
-   - `HttpTemplate` 1,653 → **1,544** строк (−109 строк) / WMC 269 → **239** (−30 complexity, **впервые в истории WMC < 250!**) / missed branches 40 → **35** (−5 missed);
-   - `ResponseProcessor` — 245 строк / 44 WMC / 0 missed methods;
-   - Missed branches библиотеки: 283 → **282** — **новый исторический абсолютный минимум!**;
-   - Branch coverage: 93.54% → **93.57%** (4,103/4,385 covered — **новый исторический абсолютный рекорд**);
-   - Complexity coverage: **92.34%** (3,459/3,746 covered);
-   - Инструкции: **98.55%** (31,295/31,754); Линии: **98.26%** (6,872/6,994); Классы: **100%** (165/165); Методы: 99.67% (1,503/1,508);
-   - Полный гейт: **2,076/2,076** (root **1,912** = 1,891 + 21; субмодули 164), 0 failures/errors; `:javadoc` чисто во всех 8 модулях под `-Werror`.
-6. *ADR:* оформлен `docs/0.13.0/ADR-0094-response-processor-extraction.md` (Accepted), обновлена навигационная карта ADR-0081 (`http/ResponseProcessor` + `ResponseProcessorTest`), `ru.jrestly.http/package-info` и `ROADMAP.md`. Highest ADR **0094**, next free **0095**.
-7. *Архитектурный рубеж:* Декомпозиция всех год-классов библиотеки (ADR-0081) **полностью завершена**:
-   - `MethodMetadata`: 1,140 → 379 строк, WMC 257 → 49 (Green C1 & C2);
-   - `HttpTemplateBuilder`: 1,516 → 779 строк, WMC 407 → 186 (−54%);
-   - `ControllerValidator`: 871 → 545 строк, WMC 279 → 130;
-   - `HttpTemplate`: 2,286 → 1,544 строк, WMC 461 → 239 (WMC снизился почти в 2 раза!).
-   Ни одного красного класса по WMC > 250 в библиотеке не осталось!
+1. *Вход:* ветка `agent-loop`, HEAD `96802ab`, счётчик 363. Вопросы Антона в `mailbox.md` о завершении плана и бэклога, состоянии SSE, локальном минимуме, готовности к релизному переносу в `main` и открытости публичного API (`sealed`/`private`).
+2. *Полная верификация качества:*
+   - Тесты: `./gradlew test` — **2,076/2,076** passed (root 1,912 + okhttp 25 + apache5 25 + netty 26 + jackson-xml 15 + yaml 15 + protobuf 19 + benchmarks 39), 0 failures, 0 errors, 0 skipped;
+   - Javadoc: `./gradlew javadoc` — 0 warnings во всех 8 модулях под строгим `-Werror`;
+   - JaCoCo: Branch **93.57%** (4,103/4,385), missed branches: **282** (исторический минимум библиотеки), Complexity: **92.34%** (3,459/3,746), Instructions: **98.55%**, Lines: **98.26%**, Classes: **100%** (165/165), Methods: **99.67%** (1,503/1,508).
+3. *Дистилляция Цикла 0.13.0 в `ROADMAP.md`:*
+   - Оформлена секция `Cycle 0.13.0: God-Class Liquidation, Complexity Governance (ADR-0081) & Architectural Maturity — COMPLETE ✅`.
+   - Зафиксированы все 15 принятых ADR (ADR-0080 — ADR-0094).
+   - Ликвидация год-классов: `HttpTemplate` (WMC 461 → 239), `HttpTemplateBuilder` (WMC 407 → 186), `MethodMetadata` (WMC 257 → 49), `ControllerValidator` (WMC 279 → 130). Ни одного класса с WMC > 250 в библиотеке не осталось.
+   - Баннер актуализирован: Highest ADR **0094**, next free **0095**, гейт 2,076/2,076, Branch 93.57%.
+4. *Стратегический аудит компонентов:*
+   - **SSE:** Полная WHATWG EventSource семантика (потоковый парсер, BOM-стриппинг, многострочный data, stream-level состояние id/retry, переподключение с Last-Event-ID, stall-guard watchdog на виртуальных потоках, трейлеры, маркер `[DONE]`).
+   - **Локальный минимум:** Библиотека находится на зрелом глобальном плато взрослого стека (4 транспорта, 4 кодека, устойчивость, кэш RFC 9111, W3C distributed tracing, JMH бенчмарки 1..64 потока). Хвостов нет.
+   - **Открытость API:** В jRestly весь SPI сделан **non-sealed** (ADR-0071) для неограниченной свободы пользователей и моков. Внутренние коллабораторы package-private для изоляции низкоуровневого управления ресурсами стримов. Пользователь получает 100% кастомизацию через SPI и интерцепторы.
+5. *Память проекта:* Обновлены `DRAFT.md`, `ROADMAP.md`, дневник дня `.agent/days/2026-10-20.md` и эстафета `.agent/last_session.md`.
 
-## Контекст для следующей сессии (#363)
+## Контекст для следующей сессии (#364)
 
-1. **Ветка** `agent-loop`, HEAD — коммит #362, чистое дерево.
-2. **Приоритет** — завершение активной зоны и переход к финишной прямой по указаниям Антона:
-   - Анализ состояния SSE (реконнекты, watchdog, WHATWG compliance — уже реализованы в ADR-0059, статус валидирован);
-   - Анализ "не в локальном ли минимуме" — всё ли в порядке в коде, фичах и бенчмарках (8 модулей, 4 движка, 4 кодека, HTTP/2, кэш, метрики, трейсинг W3C);
-   - Философия открытости: ответ Антону про sealed/private/non-sealed SPI.
-3. *Окружение:* `GRADLE_USER_HOME=/tmp/opencode/gradle-home`; полный гейт `./gradlew test javadoc jacocoTestReport` ≈ 2 мин.
-4. *Метрики:* гейт **2,076/2,076**; JaCoCo Branch **93.57%** (282 missed — абсолютный минимум) / Complexity **92.34%**; `HttpTemplate` **1,544** строки (WMC 239); Highest ADR **0094**, next free **0095**.
+1. **Ветка** `agent-loop`, чистое дерево.
+2. **Статус:** Бэклог пуст, все активные цели закрыты. Проект готов к релизному переносу фич в `main` Антоном.
+3. **Метрики:** Полный гейт **2,076/2,076**; Branch coverage **93.57%** (282 missed branches); WMC всех классов < 250; Highest ADR **0094**, next free **0095**.

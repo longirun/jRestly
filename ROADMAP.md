@@ -2494,6 +2494,51 @@ Synthetic microbenchmarks (ping, small JSON DTOs) only measure proxy dispatch an
 
 ---
 
+## Cycle 0.13.0: God-Class Liquidation, Complexity Governance (ADR-0081) & Architectural Maturity — COMPLETE ✅ (2026-10-20, unreleased)
+
+> Source of truth: ADR-0080 through ADR-0094 (`docs/0.13.0/`).
+> Major refactoring and structural health cycle consolidating 15 Accepted ADRs into published release `0.13.0`.
+
+**Deliverables:**
+- **Concurrency Scaling & Load Verification (ADR-0080):** Multi-threaded load benchmarks across 1, 4, 16, and 64 threads (`ConcurrentLoadNetworkBenchmark`) evaluating all four engines (JDK, OkHttp, Apache HC5, Netty) under 2-CPU cgroup quotas; verified zero memory leaks and stability under thread oversubscription.
+- **Internal Complexity Criteria & Navigation Ratchet (ADR-0081):** Introduced 13 measurable thresholds (C1–C13) including physical lines, WMC, method complexity (CCN ≤ 10), fan-out, zero-dependency core, and 100% collaborator suite coverage. Established the no-new-debt ratchet ensuring existing large classes only shrink and new collaborators are born green. Included the LLM-free navigation map.
+- **Decomposition of `HttpTemplateBuilder` (ADR-0082 – ADR-0085):**
+  - `UrlComposer` (ADR-0082): URI assembly, `{id}` path variables, `@TargetUrl`, base URL merging, query/fragment handling.
+  - `HeaderComposer` (ADR-0083): Case-insensitive header/cookie merge, parameter order, dynamic names, zero-allocation scans.
+  - `BodyComposer` (ADR-0084): Unified payload dispatcher (`BodyPayload`) for reactive publishers, streams, files, byte arrays, strings, DTO codecs, and multipart parts (`@RequestParam`, collection formats).
+  - `ResilienceComposer` (ADR-0085): Resilience wiring for retry, timeout, circuit breaker, and rate limiter.
+  - *Result:* `HttpTemplateBuilder` reduced from 1,516 → **779 lines** (−49%), WMC **407 → 186** (−54%).
+- **Validation Rule Deduplication (ADR-0086):**
+  - `AnnotationChecks` (ADR-0086): Extracted unified declarations, media types, `@OnError` conflicts, parameter bindings, and interceptor/metrics validation rules shared between class-pass and method-pass.
+  - *Result:* `ControllerValidator` reduced from 871 → **545 lines**, WMC **279 → 130** (−53%), method complexity from 121 → **3**.
+- **Polyglot Codec Memory Profiling & Response Decompression (ADR-0087):**
+  - Profiled `YamlCodec.deserialize` memory allocations: established that 22.7 KB/op overhead is 100% inherent to SnakeYAML's event-based AST parser, while jRestly's adapter is zero-overhead.
+  - `ResponseDecompressor` (ADR-0087): RFC 1951 / zlib deflate fallback, gzip / x-gzip decompression, custom decompressor SPI, and stream wrapper handling.
+- **Decomposition of `HttpTemplate` (ADR-0088 – ADR-0089, ADR-0091 – ADR-0094):**
+  - `HttpErrorHandler` (ADR-0088): Status classification (`expectStatuses`, 2xx default, conditional 304, optional 404), exception factories (`ClientErrorException`, `ServerErrorException`), and lazy `@OnError` dispatch.
+  - `HttpDiagnosticLogger` (ADR-0089): Wire request/response logging, safe streaming markers, hop latencies, and unified retry log formatting.
+  - `RetryExecutor` (ADR-0091): Sync/async retry execution loops, non-blocking delayed scheduling, decode probing (`probePayloadDecode`), idempotency classification, exponential backoff with jitter and `Retry-After`.
+  - `RedirectExecutor` (ADR-0092): Sync/async redirect loop orchestration, hop budget enforcement, safe intermediate stream closing, status/method transitions (301/302/303 vs 307/308), and cross-origin credential stripping.
+  - `CacheDispatch` Pre-wire Consultation (ADR-0093): RFC 9111 pre-wire lookup, conditional validator injection (`If-None-Match`, `If-Modified-Since`), and synthetic cache-hit materialization across sync and async legs.
+  - `ResponseProcessor` (ADR-0094): Response header capture, duration tracking, auth details callback, line/SSE/raw stream lifecycle, error routing, and buffered DTO/raw decoding.
+  - *Result:* `HttpTemplate` reduced from 2,286 → **1,544 lines** (−32%), WMC **461 → 239** (−48%, falling below 250 for the first time in project history!).
+- **Decoupling Reflection Metadata Parsing (ADR-0090):**
+  - `MethodMetadataParser` (ADR-0090): Extracted all reflection and annotation introspection (14 parameter types, interface hierarchies with diamond inheritance, static headers/cookies, policies).
+  - *Result:* `MethodMetadata` reduced from 1,140 → **379 lines** (−67%), WMC **257 → 49** (−81%), achieving **Green C1 (≤ 400 lines) and Green C2 (≤ 100 WMC)** with 0 missed branches!
+- **Total Elimination of God Classes:** Zero classes with WMC > 250 remain in the entire codebase. All 11 newly extracted collaborators carry independent offline test suites with 0–2 missed branches each (C11 satisfied).
+- **Historical Quality Records:**
+  - Total test suite: **2,076 / 2,076** tests green across all 8 modules (root 1,912 + 164 submodules);
+  - JaCoCo Branch Coverage: **93.57%** (4,103 / 4,385 branches covered — all-time record);
+  - Missed Branches: **282** (all-time historic low, down from 354);
+  - JaCoCo Complexity Coverage: **92.34%** (3,459 / 3,746);
+  - Instruction Coverage: **98.55%** (31,295 / 31,754);
+  - Line Coverage: **98.26%** (6,872 / 6,994);
+  - Class Coverage: **100%** (165 / 165);
+  - Method Coverage: **99.67%** (1,503 / 1,508);
+  - Zero warnings under `-Werror` across all 8 modules during compilation and Javadoc generation.
+
+---
+
 ## Post-0.5.0 shortlist (not scheduled — see ADR-0003)
 
 - ~~Retry with backoff (integrates with `@OnError` semantics)~~ — done 2026-10-13, section above
