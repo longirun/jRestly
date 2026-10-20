@@ -262,6 +262,78 @@ class HttpDiagnosticLoggerTest {
         assertEquals("Attempt 2/5 failed: Connection reset — retrying in 1500 ms", log);
     }
 
+    @Test
+    @DisplayName("logRequest sanitizes Authorization, Cookie, query parameters and sensitive body fields (ADR-0095)")
+    void logRequestSanitizesSensitiveData() {
+        TestLogger logger = new TestLogger(System.Logger.Level.INFO);
+        URI sensitiveUri = URI.create("http://example.com/api?token=sec_secret_123&page=2");
+        byte[] sensitiveBody = "{\"name\":\"alice\",\"password\":\"super_secret_pw\"}".getBytes(StandardCharsets.UTF_8);
+
+        WireRequest req = new WireRequest(
+                HttpMethod.POST,
+                sensitiveUri,
+                List.of(
+                        new Header("Authorization", "Bearer jwt_token_value"),
+                        new Header("Cookie", "session_id=abcdef123"),
+                        new Header("Accept", "application/json")
+                ),
+                "application/json",
+                sensitiveBody,
+                null,
+                null
+        );
+
+        HttpDiagnosticLogger.logRequest(logger, req);
+
+        String log = logger.last();
+        assertTrue(log.contains("token=[REDACTED]&page=2"));
+        assertFalse(log.contains("sec_secret_123"));
+
+        assertTrue(log.contains("Header[name=Authorization, value=Bearer [REDACTED]]"));
+        assertFalse(log.contains("jwt_token_value"));
+
+        assertTrue(log.contains("Header[name=Cookie, value=[REDACTED]]"));
+        assertFalse(log.contains("abcdef123"));
+
+        assertTrue(log.contains("Header[name=Accept, value=application/json]"));
+
+        assertTrue(log.contains("\"password\":\"[REDACTED]\""));
+        assertFalse(log.contains("super_secret_pw"));
+    }
+
+    @Test
+    @DisplayName("logResponse and logPerHop sanitize Set-Cookie and sensitive query params (ADR-0095)")
+    void logResponseAndPerHopSanitize() {
+        TestLogger logger = new TestLogger(System.Logger.Level.ALL);
+
+        WireResponse resp = new WireResponse(
+                200,
+                List.of(
+                        new Header("Set-Cookie", "session=top_secret_cookie; HttpOnly"),
+                        new Header("Content-Type", "application/json")
+                ),
+                new byte[0],
+                null,
+                HttpClient.Version.HTTP_2
+        );
+
+        HttpDiagnosticLogger.logResponse(logger, resp, 15L);
+        String respLog = logger.last();
+        assertTrue(respLog.contains("Header[name=Set-Cookie, value=[REDACTED]]"));
+        assertFalse(respLog.contains("top_secret_cookie"));
+        assertTrue(respLog.contains("Header[name=Content-Type, value=application/json]"));
+
+        WireRequest hopReq = new WireRequest(
+                HttpMethod.GET,
+                URI.create("http://example.com/hop?secret=xyz456"),
+                List.of(), null, null, null, null
+        );
+        HttpDiagnosticLogger.logPerHop(logger, hopReq, 302, System.nanoTime() - 1_000_000L);
+        String hopLog = logger.last();
+        assertTrue(hopLog.contains("GET http://example.com/hop?secret=[REDACTED] -> 302"));
+        assertFalse(hopLog.contains("xyz456"));
+    }
+
     static final class TestLogger implements System.Logger {
         private final Level minLevel;
         private final List<String> messages = new CopyOnWriteArrayList<>();

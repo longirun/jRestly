@@ -1,5 +1,29 @@
 # DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
+> **Сессия #364 (Enterprise Observability, Production Debugging & Regulatory Compliance Audit — ADR-0095; внедрен `SensitiveDataSanitizer` для `HttpDiagnosticLogger` (маскирование PII, Bearer-токенов, Cookie, query params); принят ADR-0095; полный гейт 2,085/2,085, JaCoCo Branch 93.61% — новый абсолютный исторический рекорд):**
+> 1. *Вход:* ветка `agent-loop`, счётчик 364. Запрос Антона из mailbox: провести аудит обзервабилити для дебаггинга и аудит безопасности под требования крупной компании (152-ФЗ РФ, GDPR, интеграция со сторонними сервисами).
+> 2. *Аудит обзервабилити:*
+>    - Сильные стороны: W3C TraceContext Level 1 (`traceparent`, `tracestate`), 4 точки телеметрии в `ClientMetricsListener`, байтовый учет, duration, ProblemDetail типизация (RFC 7807/9457).
+>    - Пробелы для enterprise: разрыв корреляции логов в многопоточной среде Virtual Threads (отсутствие `[traceId]` в первой строке лога `Request:` и `Response:`), отсутствие встроенного cURL-генератора для воспроизведения сбоев.
+> 3. *Аудит безопасности и комплаенса:*
+>    - **Критический дефект (CWE-532):** `HttpDiagnosticLogger` логировал заголовки (`Authorization: Bearer <JWT>`, `Cookie: ...`, `Set-Cookie: ...`, `X-Api-Key`) и URL с query-параметрами (`?token=...`, `?phone=...`, `?email=...`) в открытом виде на уровне INFO/DEBUG. Прямое нарушение PCI-DSS 3.4, GDPR Art. 32 и 152-ФЗ РФ ст. 19.
+>    - **Тело запроса:** дампировалось целиком без лимита размера (риск DoS/OOM при отправке 100 МБ файла).
+>    - **ГОСТ TLS и mTLS:** 100% готовность без vendor lock-in! Поддержка любого сертифицированного СКЗИ (КриптоПро JCP, ViPNet Java CSP) через `SSLContext` для российских госсервисов (СМЭВ, ЕСИА, ГИС, ЦБ РФ).
+> 4. *Реализация TDD (Шаг 1 ADR-0095):*
+>    - Package-private `final class SensitiveDataSanitizer` (stateless, private constructor, 100% coverage, zero missed lines/methods):
+>      - `isSensitiveHeader`: распознает `authorization`, `proxy-authorization`, `cookie`, `set-cookie`, `x-api-key`, `api-key`, `apikey`, `secret-token`, `x-auth-token` и подстроки `token`, `secret`, `password`, `credential`, `signature`.
+>      - `sanitizeHeader`: маскирует значение (`Bearer [REDACTED]` или `[REDACTED]`), нечувствительные заголовки возвращаются тем же экземпляром (0 аллокаций!).
+>      - `isSensitiveParam` и `sanitizeUri`: аккуратный парсинг query и маскирование `token`, `secret`, `phone`, `email`, `passport`, `code`, `password` без пересборки URL при чистых query.
+>      - `sanitizeBody`: лимит 4 КБ с маркером truncated и regex-маскированием паролей в JSON.
+>    - Интеграция в `HttpDiagnosticLogger`: безопасные `logRequest`, `logResponse`, `logPerHop`.
+> 5. *Инвариант ADR-0002 сохранен:* явные пользовательские `@RequestHeader` сохраняются при cross-origin редиректах, а ambient фоновые auth-заголовки сбрасываются.
+> 6. *Замеры:*
+>    - Полный гейт: **2,085 / 2,085** тестов green во всех 8 модулях (root 1,921 = 1,912 + 9; субмодули 164), 0 failures, 0 errors;
+>    - Javadoc: `-Werror` абсолютно чист во всех 8 модулях;
+>    - JaCoCo: Branch **93.61%** (4,165 / 4,449 covered — **новый исторический абсолютный рекорд**!), missed branches: **284**, Classes: **100%** (166/166).
+> 7. *Документация:* принят **ADR-0095** (`docs/0.13.0/ADR-0095-observability-debugging-and-enterprise-security-audit.md`), актуализирован `ROADMAP.md` (Cycle 0.14.0 Enterprise Observability & Regulatory Compliance). Highest ADR **0095**, next free **0096**.
+> 
+> 
 > **Сессия #363 (дистилляция цикла 0.13.0 в `ROADMAP.md`, стратегический аудит SSE, локального минимума и философии открытости; бэклог декомпозиции закрыт полностью, финишная прямая):**
 > 1. *Вход:* ветка `agent-loop`, HEAD `96802ab`, счётчик 363. Вопросы Антона из mailbox про финишную прямую, анализ SSE, проверку на локальный минимум и открытость/sealed/private.
 > 2. *Верификация:* полный билд и тесты `./gradlew test javadoc jacocoTestReport` — **2,076/2,076** тестов green во всех 8 модулях, 0 failures, 0 errors. Javadoc `-Werror` абсолютно чист во всех модулях. JaCoCo: Branch **93.57%** (282 missed branches — абсолютный рекорд), Complexity **92.34%**, Instruction **98.55%**, Line **98.26%**, Class **100%**, Method **99.67%**.

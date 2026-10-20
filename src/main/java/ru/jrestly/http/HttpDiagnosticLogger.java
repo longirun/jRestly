@@ -32,10 +32,11 @@ final class HttpDiagnosticLogger {
             return;
         }
         StringBuilder sb = new StringBuilder();
-        sb.append(request.method()).append(' ').append(request.uri()).append('\n');
+        sb.append(request.method()).append(' ').append(SensitiveDataSanitizer.sanitizeUri(request.uri())).append('\n');
 
         if (request.headers() != null) {
             String headers = request.headers().stream()
+                    .map(SensitiveDataSanitizer::sanitizeHeader)
                     .map(Object::toString)
                     .collect(Collectors.joining("\n"));
             sb.append(headers);
@@ -61,7 +62,7 @@ final class HttpDiagnosticLogger {
             }
             sb.append("Sending size: ").append(multipartSendSize(request));
         } else if (request.body() != null) {
-            sb.append(new String(request.body(), StandardCharsets.UTF_8));
+            sb.append(SensitiveDataSanitizer.sanitizeBody(request.body(), SensitiveDataSanitizer.DEFAULT_MAX_LOG_BODY_SIZE));
         } else if (request.bodyPublisherSupplier() != null) {
             sb.append("<streaming body>");
         } else {
@@ -102,6 +103,7 @@ final class HttpDiagnosticLogger {
             return;
         }
         String headers = response.headers().stream()
+                .map(SensitiveDataSanitizer::sanitizeHeader)
                 .map(Object::toString)
                 .collect(Collectors.joining("\n"));
 
@@ -124,7 +126,7 @@ final class HttpDiagnosticLogger {
         }
         long elapsedMs = (System.nanoTime() - startNanos) / 1_000_000;
         logger.log(System.Logger.Level.DEBUG,
-                request.method() + " " + request.uri() + " -> " + statusCode + " in " + elapsedMs + " ms");
+                request.method() + " " + SensitiveDataSanitizer.sanitizeUri(request.uri()) + " -> " + statusCode + " in " + elapsedMs + " ms");
     }
 
     /**

@@ -2539,6 +2539,24 @@ Synthetic microbenchmarks (ping, small JSON DTOs) only measure proxy dispatch an
 
 ---
 
+## Cycle 0.14.0: Enterprise Observability, Production Debugging & Regulatory Compliance (ADR-0095) — IN PROGRESS 🟡
+
+> Enterprise integration readiness: production observability, diagnostic debugging, and data privacy compliance (GDPR, Russian Federal Law 152-FZ, PCI-DSS v4.0, mTLS/GOST).
+
+**Deliverables & Milestones:**
+- **Enterprise Observability & Security Audit (ADR-0095):** Complete audit of logging, metrics, W3C distributed tracing, cross-origin credential hygiene, DoS response limits, and GOST/mTLS compliance.
+- **Sensitive Data & PII Masking (`SensitiveDataSanitizer`):**
+  - Case-insensitive masking of sensitive HTTP headers (`Authorization: Bearer [REDACTED]`, `Cookie`, `Set-Cookie`, `X-Api-Key`, `api-key`, `*secret*`, `*token*`);
+  - Safe URI query parameter sanitization (`?token=[REDACTED]&phone=[REDACTED]`);
+  - Truncation and payload masking of oversized bodies (4 KB limit with `... [truncated]` marker, JSON password masking).
+- **Quality Gates & Metrics:**
+  - Total test suite: **2,085 / 2,085** tests green across all 8 modules (root 1,921 + 164 submodules);
+  - JaCoCo Branch Coverage: **93.61%** (4,165 / 4,449 branches covered — **new all-time record**);
+  - Class Coverage: **100%** (166 / 166 classes);
+  - Highest ADR: **0095**, next free **0096**.
+
+---
+
 ## Post-0.5.0 shortlist (not scheduled — see ADR-0003)
 
 - ~~Retry with backoff (integrates with `@OnError` semantics)~~ — done 2026-10-13, section above

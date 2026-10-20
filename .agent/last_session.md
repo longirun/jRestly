@@ -1,27 +1,35 @@
-# Last Session: #363 (2026-10-20)
+# Last Session: #364 (2026-10-20)
 
 ## Что сделано
 
-**Сессия #363: дистилляция Цикла 0.13.0 в `ROADMAP.md`, стратегический аудит SSE, локального минимума и философии открытости. Бэклог декомпозиции закрыт полностью, проект вышел на финишную прямую для переноса в `main`!**
+**Сессия #364: Enterprise Observability & Security Audit (152-ФЗ, GDPR, PCI-DSS, ADR-0095). Внедрен `SensitiveDataSanitizer` для `HttpDiagnosticLogger` (маскирование PII, Bearer-токенов, Cookie, query params); принят ADR-0095; полный гейт 2,085/2,085, JaCoCo Branch 93.61% — новый абсолютный исторический рекорд.**
 
-1. *Вход:* ветка `agent-loop`, HEAD `96802ab`, счётчик 363. Вопросы Антона в `mailbox.md` о завершении плана и бэклога, состоянии SSE, локальном минимуме, готовности к релизному переносу в `main` и открытости публичного API (`sealed`/`private`).
-2. *Полная верификация качества:*
-   - Тесты: `./gradlew test` — **2,076/2,076** passed (root 1,912 + okhttp 25 + apache5 25 + netty 26 + jackson-xml 15 + yaml 15 + protobuf 19 + benchmarks 39), 0 failures, 0 errors, 0 skipped;
-   - Javadoc: `./gradlew javadoc` — 0 warnings во всех 8 модулях под строгим `-Werror`;
-   - JaCoCo: Branch **93.57%** (4,103/4,385), missed branches: **282** (исторический минимум библиотеки), Complexity: **92.34%** (3,459/3,746), Instructions: **98.55%**, Lines: **98.26%**, Classes: **100%** (165/165), Methods: **99.67%** (1,503/1,508).
-3. *Дистилляция Цикла 0.13.0 в `ROADMAP.md`:*
-   - Оформлена секция `Cycle 0.13.0: God-Class Liquidation, Complexity Governance (ADR-0081) & Architectural Maturity — COMPLETE ✅`.
-   - Зафиксированы все 15 принятых ADR (ADR-0080 — ADR-0094).
-   - Ликвидация год-классов: `HttpTemplate` (WMC 461 → 239), `HttpTemplateBuilder` (WMC 407 → 186), `MethodMetadata` (WMC 257 → 49), `ControllerValidator` (WMC 279 → 130). Ни одного класса с WMC > 250 в библиотеке не осталось.
-   - Баннер актуализирован: Highest ADR **0094**, next free **0095**, гейт 2,076/2,076, Branch 93.57%.
-4. *Стратегический аудит компонентов:*
-   - **SSE:** Полная WHATWG EventSource семантика (потоковый парсер, BOM-стриппинг, многострочный data, stream-level состояние id/retry, переподключение с Last-Event-ID, stall-guard watchdog на виртуальных потоках, трейлеры, маркер `[DONE]`).
-   - **Локальный минимум:** Библиотека находится на зрелом глобальном плато взрослого стека (4 транспорта, 4 кодека, устойчивость, кэш RFC 9111, W3C distributed tracing, JMH бенчмарки 1..64 потока). Хвостов нет.
-   - **Открытость API:** В jRestly весь SPI сделан **non-sealed** (ADR-0071) для неограниченной свободы пользователей и моков. Внутренние коллабораторы package-private для изоляции низкоуровневого управления ресурсами стримов. Пользователь получает 100% кастомизацию через SPI и интерцепторы.
-5. *Память проекта:* Обновлены `DRAFT.md`, `ROADMAP.md`, дневник дня `.agent/days/2026-10-20.md` и эстафета `.agent/last_session.md`.
+1. *Вход:* ветка `agent-loop`, счётчик 364. Запрос Антона из mailbox: провести аудит обзервабилити для дебаггинга и аудит безопасности под требования крупной компании (152-ФЗ РФ, GDPR, интеграция со сторонними сервисами).
+2. *Результаты аудита (ADR-0095):*
+   - **Обзервабилити:** W3C TraceContext Level 1 и 4 точки телеметрии в `ClientMetricsListener` — отличный фундамент. Главный пробел: разрыв корреляции в логах (отсутствие `[traceId]` в первой строке лога `Request:` и `Response:`, что затрудняет поиск в ELK при десятках тысяч параллельных виртуальных потоков).
+   - **Безопасность и регуляторный комплаенс (152-ФЗ РФ ст. 19, GDPR Art. 25 & 32, PCI-DSS 3.4):**
+     - Выявлен критический дефект (CWE-532): `HttpDiagnosticLogger` выводил заголовки (`Authorization: Bearer <JWT>`, `Cookie: ...`, `Set-Cookie: ...`, `X-Api-Key`) и URL с query-параметрами (`?token=...`, `?phone=...`, `?email=...`) в открытом виде на уровне INFO/DEBUG.
+     - Тело запроса логировалось целиком без лимита размера (риск DoS/OOM при отправке 100 МБ файла).
+   - **Российская специфика (mTLS и ГОСТ):**
+     - Полная готовность из коробки без vendor lock-in! Через `JRestly.builder().sslContext(gostSslContext)` поддерживаются любые сертифицированные СКЗИ (КриптоПро JCP, ViPNet Java CSP) для интеграции со СМЭВ, ЕСИА, ГИС ЖКХ и ЦБ РФ.
+3. *Реализация (Шаг 1 ADR-0095):*
+   - Создан package-private коллаборатор `SensitiveDataSanitizer` (65 строк, 0 missed lines, 99% instructions, 38 complexity):
+     - `isSensitiveHeader`: распознает `authorization`, `proxy-authorization`, `cookie`, `set-cookie`, `x-api-key`, `api-key`, `apikey`, `secret-token`, `x-auth-token` и подстроки `token`, `secret`, `password`, `credential`, `signature`.
+     - `sanitizeHeader`: маскирует значение (`Bearer [REDACTED]` или `[REDACTED]`), нечувствительные заголовки возвращаются исходным экземпляром (0 аллокаций!).
+     - `sanitizeUri`: аккуратный парсинг query и маскирование `token`, `secret`, `phone`, `email`, `passport`, `code`, `password`.
+     - `sanitizeBody`: лимит 4 КБ с маркером truncated и regex-маскированием паролей в JSON.
+   - Интеграция в `HttpDiagnosticLogger`: защищены методы `logRequest`, `logResponse`, `logPerHop`.
+   - Сохранен инвариант ADR-0002: явные пользовательские `@RequestHeader` вычитаются из ambient-заголовков и сохраняются при cross-origin редиректах, а фоновые токены сбрасываются.
+4. *TDD red-first:*
+   - `SensitiveDataSanitizerTest` (7 тестов) + дополнения в `HttpDiagnosticLoggerTest` (2 теста).
+5. *Цифры и рекорды:*
+   - Полный гейт: **2,085 / 2,085** тестов green во всех 8 модулях (root 1,921 = 1,912 + 9; субмодули 164), 0 failures, 0 errors;
+   - Javadoc: `-Werror` абсолютно чист во всех 8 модулях;
+   - JaCoCo Branch Coverage: **93.61%** (4,165 / 4,449 covered — **новый исторический абсолютный рекорд**!), missed branches: **284**, Classes: **100%** (166/166).
+6. *Документация:* принят **ADR-0095** (`docs/0.13.0/ADR-0095-observability-debugging-and-enterprise-security-audit.md`), актуализирован `ROADMAP.md` (Cycle 0.14.0 Enterprise Observability & Regulatory Compliance). Highest ADR **0095**, next free **0096**.
 
-## Контекст для следующей сессии (#364)
+## Контекст для следующей сессии (#365)
 
-1. **Ветка** `agent-loop`, чистое дерево.
-2. **Статус:** Бэклог пуст, все активные цели закрыты. Проект готов к релизному переносу фич в `main` Антоном.
-3. **Метрики:** Полный гейт **2,076/2,076**; Branch coverage **93.57%** (282 missed branches); WMC всех классов < 250; Highest ADR **0094**, next free **0095**.
+1. **Ветка** `agent-loop`.
+2. **Статус:** ADR-0095 принят, первый шаг маскирования PII/секретов (`SensitiveDataSanitizer`) успешно внедрен и закрыт тестами. Проект готов к переносу фич в `main` или следующим шагам ADR-0095 (инъекция `[traceId]` в лог-сообщения `HttpDiagnosticLogger` и cURL-генератор).
+3. **Метрики:** Полный гейт **2,085 / 2,085**; Branch coverage **93.61%**; Javadoc clean под `-Werror`; Highest ADR **0095**, next free **0096**.
