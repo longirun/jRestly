@@ -71,14 +71,6 @@ import java.util.stream.Stream;
  */
 class HttpTemplate {
 
-    // ADR-0009 candidate 1: the request-log body section covers POST, PATCH,
-    // DELETE and PUT (PUT was missing — 0.5.0 carry-over). GET/HEAD stay out
-    // deliberately: RFC 9110 allows a GET body but leaves its semantics
-    // undefined. Static, not a per-request Arrays.asList — logRequest runs
-    // on every exchange.
-    private static final Set<HttpMethod> BODY_LOGGING_METHODS =
-            Set.of(HttpMethod.POST, HttpMethod.PATCH, HttpMethod.DELETE, HttpMethod.PUT);
-
     private System.Logger logger;
 
     private ru.jrestly.engine.HttpEngine httpEngine;
@@ -880,13 +872,7 @@ class HttpTemplate {
         // transport failure carries no response and is a no-op
         closeIntermediateStream(response);
         long delayMillis = retryPolicy.nextDelayMillis(attempt, previousDelayMillis, RetryAfter.delayMillis(response), ThreadLocalRandom.current());
-        // ADR-0076: honor the log-level gate, as logRequest/logResponse do —
-        // a disabled DEBUG must not build the message string (the line is
-        // produced on every failed retry attempt of the zero-garbage hot path)
-        if (logger.isLoggable(System.Logger.Level.DEBUG)) {
-            logger.log(System.Logger.Level.DEBUG,
-                    "Attempt " + attempt + "/" + maxAttempts + " failed: " + failure + " — retrying in " + delayMillis + " ms");
-        }
+        HttpDiagnosticLogger.logRetry(logger, attempt, maxAttempts, failure, delayMillis);
         MetricsNotifier.retry(metricsListener, logger, requestContext, request, attempt + attemptOffset, failureThrowable, delayMillis);
         if (delayMillis > 0) {
             Thread.sleep(delayMillis);
@@ -1092,13 +1078,7 @@ class HttpTemplate {
         // attempt's stream (if any) is closed before the deferred wait
         closeIntermediateStream(response);
         long delayMillis = retryPolicy.nextDelayMillis(attempt, previousDelayMillis, RetryAfter.delayMillis(response), ThreadLocalRandom.current());
-        // ADR-0076: honor the log-level gate, as logRequest/logResponse do —
-        // a disabled DEBUG must not build the message string (the line is
-        // produced on every failed retry attempt of the zero-garbage hot path)
-        if (logger.isLoggable(System.Logger.Level.DEBUG)) {
-            logger.log(System.Logger.Level.DEBUG,
-                    "Attempt " + attempt + "/" + maxAttempts + " failed: " + failure + " — retrying in " + delayMillis + " ms");
-        }
+        HttpDiagnosticLogger.logRetry(logger, attempt, maxAttempts, failure, delayMillis);
         MetricsNotifier.retry(metricsListener, logger, requestContext, request, attempt + attemptOffset, failureThrowable, delayMillis);
         if (delayMillis <= 0) {
             return attemptAsync(request, attempt + 1, maxAttempts, hopsLeft, requestContext, attemptsRef, 0L, attemptOffset);
@@ -1187,16 +1167,7 @@ class HttpTemplate {
 
 
     private void logPerHop(WireRequest request, int statusCode, long startNanos) {
-        // ADR-0076: honor the log-level gate, as logRequest/logResponse do —
-        // a disabled DEBUG must not build the message string (the line is
-        // produced on every send, every hop, of the zero-garbage hot path)
-        if (!logger.isLoggable(System.Logger.Level.DEBUG)) {
-            return;
-        }
-        long elapsedMs = (System.nanoTime() - startNanos) / 1_000_000;
-        // per-hop timing; the total (redirect chain included) is logged in the response INFO line
-        logger.log(System.Logger.Level.DEBUG,
-                request.method() + " " + request.uri() + " -> " + statusCode + " in " + elapsedMs + " ms");
+        HttpDiagnosticLogger.logPerHop(logger, request, statusCode, startNanos);
     }
 
 
@@ -1225,63 +1196,11 @@ class HttpTemplate {
      * @param request the wire request about to be sent
      */
     protected void logRequest(WireRequest request) {
-        if (!logger.isLoggable(System.Logger.Level.INFO)) {
-            return;
-        }
-        StringBuilder sb = new StringBuilder();
-        sb.append(request.method()).append(" ").append(request.uri());
-        sb.append("\n");
-
-        if (request.headers() != null) {
-            String headers = request.headers().stream()
-                    .map(Object::toString)
-                    .collect(Collectors.joining("\n"));
-            sb.append(headers);
-        }
-
-        if (BODY_LOGGING_METHODS.contains(request.method())) {
-            sb.append("\n");
-
-            if (request.contentType() != null && request.contentType().contains("multipart/form-data")) {
-                if (request.parts() != null) {
-                    sb.append(request.parts().stream()
-                            .map(part -> "name=" + part.name()
-                                    + (part.filename() == null ? "" : ", filename=" + part.filename()))
-                            .collect(Collectors.joining(", ")));
-                    sb.append("\n");
-                }
-                sb.append("Sending size: ").append(multipartSendSize(request));
-            } else if (request.body() != null) {
-                sb.append(new String(request.body(), StandardCharsets.UTF_8));
-            } else if (request.bodyPublisherSupplier() != null) {
-                sb.append("<streaming body>");
-            } else {
-                sb.append("No request body");
-            }
-        }
-
-        logger.log(System.Logger.Level.INFO, "Request: " + sb);
-    }
-
-    private String multipartSendSize(WireRequest request) {
-        if (request.parts() == null) {
-            return "0";
-        }
-        long size = MultipartBodyPublisher.contentLength(request.boundary(), request.parts());
-        return size >= 0 ? String.valueOf(size) : "unknown (chunked)";
+        HttpDiagnosticLogger.logRequest(logger, request);
     }
 
     private void logResponse(WireResponse response, long elapsedMs) {
-        if (!logger.isLoggable(System.Logger.Level.INFO)) {
-            return;
-        }
-        String headers = response.headers().stream()
-                .map(Object::toString)
-                .collect(Collectors.joining("\n"));
-
-        String proto = response.version() == HttpClient.Version.HTTP_2 ? "HTTP/2" : "HTTP/1.1";
-        logger.log(System.Logger.Level.INFO,
-                "Response: " + proto + " " + response.statusCode() + " in " + elapsedMs + " ms\n" + headers);
+        HttpDiagnosticLogger.logResponse(logger, response, elapsedMs);
     }
 
     private boolean isExpectedStatus(int statusCode) {

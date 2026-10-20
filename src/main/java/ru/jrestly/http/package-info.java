@@ -3,7 +3,7 @@
  * {@code UrlComposer}, {@code HeaderComposer}, {@code BodyComposer},
  * {@code ResilienceComposer}, {@code MethodMetadata}), execution
  * ({@code HttpTemplate} — redirects, retries,
- * streaming, {@code ResponseDecompressor}, {@code HttpErrorHandler}, cache dispatch, problem-detail resolution), the raw
+ * streaming, {@code ResponseDecompressor}, {@code HttpErrorHandler}, {@code HttpDiagnosticLogger}, cache dispatch, problem-detail resolution), the raw
  * {@code WireRequest}/{@code WireResponse} model, response metadata
  * ({@code ResponseHeaders}), SSE/line streaming, multipart and progress
  * publishing, and the typed exception hierarchy.
