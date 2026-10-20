@@ -16,13 +16,8 @@ import ru.jrestly.resilience.CircuitBreakerOpenException;
 import ru.jrestly.resilience.RateLimiter;
 import ru.jrestly.resilience.RateLimitExceededException;
 
-import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.util.zip.GZIPInputStream;
-import java.util.zip.Inflater;
-import java.util.zip.InflaterInputStream;
-import java.util.zip.ZipException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Type;
 import java.net.URI;
@@ -1179,104 +1174,15 @@ class HttpTemplate {
     /**
      * Decompresses the response payload if transparent decompression is
      * enabled and {@code Content-Encoding} is {@code gzip}, {@code x-gzip},
-     * or {@code deflate} (ADR-0021).
+     * or {@code deflate} (ADR-0021, ADR-0076, ADR-0087). Delegated to
+     * {@link ResponseDecompressor}.
      *
      * @param response the raw wire response
      * @return the decompressed wire response with stripped encoding headers
      * @throws IOException on I/O or decompression failure
      */
     WireResponse handleDecompression(WireResponse response) throws IOException {
-        if (moduleInfo == null || !moduleInfo.isDecompressionEnabled() || response == null) {
-            return response;
-        }
-
-        String contentEncoding = null;
-        for (Header header : response.headers()) {
-            if (header.name() != null && header.name().equalsIgnoreCase("Content-Encoding")) {
-                contentEncoding = header.value();
-                break;
-            }
-        }
-
-        if (contentEncoding == null) {
-            return response;
-        }
-
-        String encoding = contentEncoding.trim().toLowerCase(Locale.ROOT);
-        if ("identity".equals(encoding)) {
-            return response;
-        }
-
-        ContentCompressor customCompressor = moduleInfo.getContentCompressor(encoding);
-        boolean isGzip = "gzip".equals(encoding) || "x-gzip".equals(encoding);
-        boolean isDeflate = "deflate".equals(encoding);
-
-        if (!isGzip && !isDeflate && customCompressor == null) {
-            return response;
-        }
-
-        // ADR-0076: the plain loop replaces the stream pipeline — the same
-        // strip (Content-Encoding / Content-Length, case-insensitive), the
-        // nameless headers kept, order preserved; no Stream machinery and no
-        // second list, the WireResponse compact constructor does the one
-        // defensive copy of this array-backed list
-        List<Header> strippedHeaders = new ArrayList<>(response.headers().size());
-        for (Header header : response.headers()) {
-            if (header.name() != null
-                    && (header.name().equalsIgnoreCase("Content-Encoding")
-                    || header.name().equalsIgnoreCase("Content-Length"))) {
-                continue;
-            }
-            strippedHeaders.add(header);
-        }
-
-        if (response.stream() != null) {
-            InputStream decompressedStream;
-            if (customCompressor != null) {
-                decompressedStream = customCompressor.decompress(response.stream());
-            } else if (isGzip) {
-                decompressedStream = new GZIPInputStream(response.stream());
-            } else {
-                decompressedStream = new InflaterInputStream(response.stream());
-            }
-            return new WireResponse(response.statusCode(), strippedHeaders, null, decompressedStream, response.version(), response.trailers(), response.trailersSupplier());
-        }
-
-        byte[] rawBody = response.body();
-        if (rawBody == null || rawBody.length == 0) {
-            return new WireResponse(response.statusCode(), strippedHeaders, rawBody, null, response.version(), response.trailers(), response.trailersSupplier());
-        }
-
-        byte[] decompressedBytes;
-        if (customCompressor != null) {
-            decompressedBytes = customCompressor.decompress(rawBody);
-        } else if (isGzip) {
-            decompressedBytes = decompressGzip(rawBody);
-        } else {
-            decompressedBytes = decompressDeflate(rawBody);
-        }
-        return new WireResponse(response.statusCode(), strippedHeaders, decompressedBytes, null, response.version(), response.trailers(), response.trailersSupplier());
-    }
-
-    private static byte[] decompressGzip(byte[] compressed) throws IOException {
-        try (GZIPInputStream gis = new GZIPInputStream(new ByteArrayInputStream(compressed))) {
-            return gis.readAllBytes();
-        }
-    }
-
-    private static byte[] decompressDeflate(byte[] compressed) throws IOException {
-        try {
-            try (InflaterInputStream iis = new InflaterInputStream(new ByteArrayInputStream(compressed))) {
-                return iis.readAllBytes();
-            }
-        } catch (ZipException e) {
-            Inflater rawInflater = new Inflater(true);
-            try (InflaterInputStream rawIisIn = new InflaterInputStream(new ByteArrayInputStream(compressed), rawInflater)) {
-                return rawIisIn.readAllBytes();
-            } finally {
-                rawInflater.end();
-            }
-        }
+        return ResponseDecompressor.decompress(response, moduleInfo);
     }
 
 
