@@ -110,7 +110,7 @@ the missing piece is documentation or naming, not the reader.
 | concern | first file(s) | pinned by |
 |---|---|---|
 | public facade / builders | `JRestlyClient`, `SimpleModuleInfo` | `JRestlyClientBuilderTest` |
-| annotations and validation | `annotation/*`, `ControllerValidator` | `ControllerValidationTest` |
+| annotations and validation | `annotation/*`, `ControllerValidator` (orchestration), `AnnotationChecks` (shared rules) (update: ADR-0086) | `ControllerValidationTest`, `AnnotationChecksTest` |
 | metadata and caches | `http/MethodMetadata` | `MethodMetadataTest` |
 | URL/query assembly | `http/UrlComposer`, `http/UriEncoder` (update: ADR-0082) | `UrlComposerTest`, `HttpTemplateUriTest` |
 | headers/cookies/auth | `http/HeaderComposer`, `http/HttpTemplateBuilder` (tracing), `http/AuthHeaderProvider` (update: ADR-0083) | `HeaderComposerTest`, `RequestHeadersTest`, `AuthTest` |
@@ -141,8 +141,11 @@ the missing piece is documentation or naming, not the reader.
   touching the public API. Steps (a), (b), (c) and (d) landed as ADR-0082,
   ADR-0083, ADR-0084 and ADR-0085; the builder wave is complete at 779
   lines / WMC 186 / 56 missed branches.
-- `ControllerValidator.validateMethod` is split into named check methods after
-  the builder wave (C5 target: ≤ 20).
+- `ControllerValidator.validateMethod` was split into named check methods
+  after the builder wave (C5 target: ≤ 20); ADR-0086 records the extraction
+  and the shared `AnnotationChecks` rules. `validateMethod` fell from
+  complexity 121 to **3**, and `ControllerValidator` from 871 lines / WMC 279
+  to 545 / 130.
 - Future release gates report the same table (lines/WMC/missed branches) next
   to JaCoCo percentages, so structural debt is visible in every cycle.
-- Next free ADR: **0086**.
+- Next free ADR: **0087**.

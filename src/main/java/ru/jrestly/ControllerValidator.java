@@ -1,25 +1,16 @@
 package ru.jrestly;
 
-import ru.jrestly.annotation.Accept;
-import ru.jrestly.annotation.CollectionFormat;
 import ru.jrestly.annotation.Compress;
-import ru.jrestly.annotation.ContentType;
 import ru.jrestly.annotation.Cookie;
 import ru.jrestly.annotation.Delete;
 import ru.jrestly.annotation.ExpectStatus;
 import ru.jrestly.annotation.FollowRedirects;
 import ru.jrestly.annotation.Get;
-import ru.jrestly.annotation.OnError;
 import ru.jrestly.annotation.Patch;
 import ru.jrestly.annotation.Post;
 import ru.jrestly.annotation.Put;
-import ru.jrestly.annotation.QueryCollectionFormat;
 import ru.jrestly.annotation.RequestDefaultParam;
 import ru.jrestly.annotation.RequestHeader;
-import ru.jrestly.annotation.Timeout;
-import ru.jrestly.annotation.Trace;
-import ru.jrestly.annotation.WithInterceptor;
-import ru.jrestly.annotation.WithMetrics;
 import ru.jrestly.annotation.MultipartFormFile;
 import ru.jrestly.annotation.PathVariable;
 import ru.jrestly.annotation.RequestBody;
@@ -146,96 +137,11 @@ public final class ControllerValidator {
         if (current == null || !current.isInterface() || !visited.add(current)) {
             return;
         }
-        for (RequestHeader header : current.getAnnotationsByType(RequestHeader.class)) {
-            if (header.name().isBlank()) {
-                problems.add(current.getSimpleName() + ": @RequestHeader name must not be blank");
-            }
-        }
-        for (RequestDefaultParam param : current.getAnnotationsByType(RequestDefaultParam.class)) {
-            if (param.name().isBlank()) {
-                problems.add(current.getSimpleName() + ": @RequestDefaultParam name must not be blank");
-            }
-        }
-        for (Timeout timeout : current.getAnnotationsByType(Timeout.class)) {
-            if (timeout.value() <= 0) {
-                problems.add(current.getSimpleName() + ": @Timeout value must be strictly positive, was " + timeout.value());
-            }
-        }
-        for (Compress compress : current.getAnnotationsByType(Compress.class)) {
-            validateCompress(current.getSimpleName(), compress, problems);
-        }
-        for (Trace trace : current.getAnnotationsByType(Trace.class)) {
-            if (trace.header().isBlank()) {
-                problems.add(current.getSimpleName() + ": @Trace header must not be blank");
-            }
-        }
-        for (ru.jrestly.annotation.CircuitBreaker cb : current.getAnnotationsByType(ru.jrestly.annotation.CircuitBreaker.class)) {
-            validateCircuitBreaker(current.getSimpleName(), cb, problems);
-        }
-        for (ru.jrestly.annotation.RateLimiter rl : current.getAnnotationsByType(ru.jrestly.annotation.RateLimiter.class)) {
-            validateRateLimiter(current.getSimpleName(), rl, problems);
-        }
-        for (Accept accept : current.getAnnotationsByType(Accept.class)) {
-            if (accept.value().length == 0) {
-                problems.add(current.getSimpleName() + ": @Accept value must not be empty");
-            }
-            for (String val : accept.value()) {
-                if (val.isBlank()) {
-                    problems.add(current.getSimpleName() + ": @Accept media type must not be blank");
-                }
-                if (val.contains("\r") || val.contains("\n")) {
-                    problems.add(current.getSimpleName() + ": @Accept media type must not contain CRLF characters");
-                }
-            }
-        }
-        for (ContentType contentType : current.getAnnotationsByType(ContentType.class)) {
-            if (contentType.value().isBlank()) {
-                problems.add(current.getSimpleName() + ": @ContentType must not be blank");
-            }
-            if (contentType.value().contains("\r") || contentType.value().contains("\n")) {
-                problems.add(current.getSimpleName() + ": @ContentType must not contain CRLF characters");
-            }
-        }
-        for (Cookie cookie : current.getAnnotationsByType(Cookie.class)) {
-            if (cookie.name().isBlank()) {
-                problems.add(current.getSimpleName() + ": @Cookie name must not be blank");
-            }
-            if (cookie.name().contains("\r") || cookie.name().contains("\n")) {
-                problems.add(current.getSimpleName() + ": @Cookie name must not contain CRLF characters");
-            }
-            if (cookie.value().contains("\r") || cookie.value().contains("\n")) {
-                problems.add(current.getSimpleName() + ": @Cookie value must not contain CRLF characters");
-            }
-        }
-        for (QueryCollectionFormat qcf : current.getAnnotationsByType(QueryCollectionFormat.class)) {
-            if (qcf.value() == null) {
-                problems.add(current.getSimpleName() + ": @QueryCollectionFormat value must not be null");
-            }
-        }
-        Map<Integer, Class<?>> classSeenStatuses = new LinkedHashMap<>();
-        for (OnError onError : current.getAnnotationsByType(OnError.class)) {
-            for (int status : onError.statuses()) {
-                if (status < 100 || status > 599) {
-                    problems.add(current.getSimpleName() + ": @OnError status must be a valid HTTP status (100..599), was " + status);
-                } else {
-                    Class<?> prev = classSeenStatuses.put(status, onError.errorObject());
-                    if (prev != null && !prev.equals(onError.errorObject())) {
-                        problems.add(current.getSimpleName() + ": @OnError duplicate status " + status
-                                + " mapped to conflicting classes: " + prev.getSimpleName() + " and " + onError.errorObject().getSimpleName());
-                    }
-                }
-            }
-        }
-        for (WithInterceptor withInterceptor : current.getAnnotationsByType(WithInterceptor.class)) {
-            for (Class<?> interceptorClass : withInterceptor.value()) {
-                validateInterceptorClass(interceptorClass, current.getSimpleName(), problems);
-            }
-        }
-        for (WithMetrics withMetrics : current.getAnnotationsByType(WithMetrics.class)) {
-            for (Class<?> metricsClass : withMetrics.value()) {
-                validateMetricsClass(metricsClass, current.getSimpleName(), problems);
-            }
-        }
+        String prefix = current.getSimpleName();
+        AnnotationChecks.declarations(current, prefix, problems);
+        AnnotationChecks.policies(current, prefix, problems);
+        AnnotationChecks.media(current, prefix, problems);
+        AnnotationChecks.interceptorsAndMetrics(current, prefix, problems);
         for (Class<?> parent : current.getInterfaces()) {
             collectClassProblems(parent, problems, visited);
         }
@@ -264,7 +170,31 @@ public final class ControllerValidator {
 
     static List<String> validateMethod(Method method) {
         List<String> problems = new ArrayList<>();
+        if (!validateVerbAnnotation(method, problems)) {
+            return problems;
+        }
 
+        String prefix = method.getName() + "()";
+        validatePathVariableMismatch(method, problems);
+        validatePath(prefix, resolvePath(method), problems);
+        validateParameterNames(method, problems);
+
+        AnnotationChecks.declarations(method, prefix, problems);
+        validateVerbDefaultParams(method, prefix, problems);
+        AnnotationChecks.policies(method, prefix, problems);
+        validateMethodPolicies(method, prefix, problems);
+        AnnotationChecks.media(method, prefix, problems);
+
+        RequestType requestType = resolveRequestType(method);
+        for (Parameter param : method.getParameters()) {
+            AnnotationChecks.parameter(param, requestType, prefix, problems);
+        }
+        AnnotationChecks.parameterCounts(method, requestType, prefix, problems);
+        AnnotationChecks.interceptorsAndMetrics(method, prefix, problems);
+        return problems;
+    }
+
+    private static boolean validateVerbAnnotation(Method method, List<String> problems) {
         List<String> httpAnnotations = new ArrayList<>();
         if (method.isAnnotationPresent(Get.class)) {
             httpAnnotations.add("@Get");
@@ -281,296 +211,40 @@ public final class ControllerValidator {
         if (method.isAnnotationPresent(Delete.class)) {
             httpAnnotations.add("@Delete");
         }
-
-        if (httpAnnotations.size() != 1) {
-            String problem = httpAnnotations.isEmpty()
-                    ? "missing HTTP method annotation, expected one of @Get/@Post/@Put/@Patch/@Delete"
-                    : "multiple HTTP method annotations " + httpAnnotations + ", exactly one is allowed";
-            problems.add(method.getName() + "(): " + problem);
-            return problems;
+        if (httpAnnotations.size() == 1) {
+            return true;
         }
+        String problem = httpAnnotations.isEmpty()
+                ? "missing HTTP method annotation, expected one of @Get/@Post/@Put/@Patch/@Delete"
+                : "multiple HTTP method annotations " + httpAnnotations + ", exactly one is allowed";
+        problems.add(method.getName() + "(): " + problem);
+        return false;
+    }
 
-        validatePathVariableMismatch(method, problems);
-        validatePath(method.getName() + "()", resolvePath(method), problems);
-        validateParameterNames(method, problems);
-
-        for (RequestHeader header : method.getAnnotationsByType(RequestHeader.class)) {
-            if (header.name().isBlank()) {
-                problems.add(method.getName() + "(): @RequestHeader name must not be blank");
-            }
-        }
-
-        for (RequestDefaultParam param : method.getAnnotationsByType(RequestDefaultParam.class)) {
-            if (param.name().isBlank()) {
-                problems.add(method.getName() + "(): @RequestDefaultParam name must not be blank");
-            }
-        }
-
+    private static void validateVerbDefaultParams(Method method, String prefix, List<String> problems) {
         for (RequestDefaultParam param : resolveVerbDefaultParams(method)) {
             if (param.name().isBlank()) {
-                problems.add(method.getName() + "(): @RequestDefaultParam name must not be blank");
+                problems.add(prefix + ": @RequestDefaultParam name must not be blank");
             }
         }
+    }
 
-        if (method.isAnnotationPresent(Timeout.class)) {
-            Timeout timeout = method.getAnnotation(Timeout.class);
-            if (timeout.value() <= 0) {
-                problems.add(method.getName() + "(): @Timeout value must be strictly positive, was " + timeout.value());
-            }
-        }
-
-        if (method.isAnnotationPresent(Compress.class)) {
-            validateCompress(method.getName() + "()", method.getAnnotation(Compress.class), problems);
-        }
-
-        if (method.isAnnotationPresent(Trace.class)) {
-            Trace trace = method.getAnnotation(Trace.class);
-            if (trace.header().isBlank()) {
-                problems.add(method.getName() + "(): @Trace header must not be blank");
-            }
-        }
-
-        if (method.isAnnotationPresent(ru.jrestly.annotation.CircuitBreaker.class)) {
-            validateCircuitBreaker(method.getName() + "()", method.getAnnotation(ru.jrestly.annotation.CircuitBreaker.class), problems);
-        }
-
-        if (method.isAnnotationPresent(ru.jrestly.annotation.RateLimiter.class)) {
-            validateRateLimiter(method.getName() + "()", method.getAnnotation(ru.jrestly.annotation.RateLimiter.class), problems);
-        }
-
+    private static void validateMethodPolicies(Method method, String prefix, List<String> problems) {
         if (method.isAnnotationPresent(Retry.class)) {
-            validateRetry(method.getName() + "()", method.getAnnotation(Retry.class), problems);
+            validateRetry(prefix, method.getAnnotation(Retry.class), problems);
         }
-
         if (method.isAnnotationPresent(SetAuthDetails.class)) {
             SetAuthDetails authDetails = method.getAnnotation(SetAuthDetails.class);
             if (authDetails.headerName().isBlank()) {
-                problems.add(method.getName() + "(): @SetAuthDetails headerName must not be blank");
+                problems.add(prefix + ": @SetAuthDetails headerName must not be blank");
             }
         }
-
         if (method.isAnnotationPresent(ExpectStatus.class)) {
-            validateExpectStatus(method.getName() + "()", method.getAnnotation(ExpectStatus.class), problems);
+            validateExpectStatus(prefix, method.getAnnotation(ExpectStatus.class), problems);
         }
-
         if (method.isAnnotationPresent(FollowRedirects.class)) {
-            validateFollowRedirects(method.getName() + "()", method.getAnnotation(FollowRedirects.class), problems);
+            validateFollowRedirects(prefix, method.getAnnotation(FollowRedirects.class), problems);
         }
-
-        for (Accept accept : method.getAnnotationsByType(Accept.class)) {
-            if (accept.value().length == 0) {
-                problems.add(method.getName() + "(): @Accept value must not be empty");
-            }
-            for (String val : accept.value()) {
-                if (val.isBlank()) {
-                    problems.add(method.getName() + "(): @Accept media type must not be blank");
-                }
-                if (val.contains("\r") || val.contains("\n")) {
-                    problems.add(method.getName() + "(): @Accept media type must not contain CRLF characters");
-                }
-            }
-        }
-        for (ContentType contentType : method.getAnnotationsByType(ContentType.class)) {
-            if (contentType.value().isBlank()) {
-                problems.add(method.getName() + "(): @ContentType must not be blank");
-            }
-            if (contentType.value().contains("\r") || contentType.value().contains("\n")) {
-                problems.add(method.getName() + "(): @ContentType must not contain CRLF characters");
-            }
-        }
-        for (Cookie cookie : method.getAnnotationsByType(Cookie.class)) {
-            if (cookie.name().isBlank()) {
-                problems.add(method.getName() + "(): @Cookie name must not be blank");
-            }
-            if (cookie.name().contains("\r") || cookie.name().contains("\n")) {
-                problems.add(method.getName() + "(): @Cookie name must not contain CRLF characters");
-            }
-            if (cookie.value().contains("\r") || cookie.value().contains("\n")) {
-                problems.add(method.getName() + "(): @Cookie value must not contain CRLF characters");
-            }
-        }
-
-        for (QueryCollectionFormat qcf : method.getAnnotationsByType(QueryCollectionFormat.class)) {
-            if (qcf.value() == null) {
-                problems.add(method.getName() + "(): @QueryCollectionFormat value must not be null");
-            }
-        }
-
-        Map<Integer, Class<?>> methodSeenStatuses = new LinkedHashMap<>();
-        for (OnError onError : method.getAnnotationsByType(OnError.class)) {
-            for (int status : onError.statuses()) {
-                if (status < 100 || status > 599) {
-                    problems.add(method.getName() + "(): @OnError status must be a valid HTTP status (100..599), was " + status);
-                } else {
-                    Class<?> prev = methodSeenStatuses.put(status, onError.errorObject());
-                    if (prev != null && !prev.equals(onError.errorObject())) {
-                        problems.add(method.getName() + "(): @OnError duplicate status " + status
-                                + " mapped to conflicting classes: " + prev.getSimpleName() + " and " + onError.errorObject().getSimpleName());
-                    }
-                }
-            }
-        }
-
-        RequestType requestType = resolveRequestType(method);
-
-        for (java.lang.reflect.Parameter param : method.getParameters()) {
-            if (param.isAnnotationPresent(RequestBody.class)) {
-                if (!RequestType.APPLICATION_JSON.equals(requestType)) {
-                    problems.add(method.getName() + "(): @RequestBody parameter requires requestType = APPLICATION_JSON");
-                }
-                if (param.isAnnotationPresent(RequestParam.class)
-                        || param.isAnnotationPresent(PathVariable.class)
-                        || param.isAnnotationPresent(RequestHeader.class)
-                        || param.isAnnotationPresent(Cookie.class)
-                        || param.isAnnotationPresent(MultipartFormFile.class)) {
-                    problems.add(method.getName() + "(): parameter must not combine @RequestBody with other HTTP parameter annotations");
-                }
-            }
-            if (param.isAnnotationPresent(RequestParam.class)) {
-                RequestParam rp = param.getAnnotation(RequestParam.class);
-                if (rp.format() == null) {
-                    problems.add(method.getName() + "(): @RequestParam format must not be null");
-                }
-            }
-            if (param.isAnnotationPresent(Cookie.class)) {
-                Cookie cookie = param.getAnnotation(Cookie.class);
-                if (cookie.name().contains("\r") || cookie.name().contains("\n")) {
-                    problems.add(method.getName() + "(): @Cookie parameter name must not contain CRLF characters");
-                }
-                if (param.isAnnotationPresent(RequestParam.class)
-                        || param.isAnnotationPresent(PathVariable.class)
-                        || param.isAnnotationPresent(RequestHeader.class)
-                        || param.isAnnotationPresent(RequestBody.class)
-                        || param.isAnnotationPresent(MultipartFormFile.class)) {
-                    problems.add(method.getName() + "(): parameter must not combine @Cookie with other HTTP parameter annotations");
-                }
-            }
-            if (param.isAnnotationPresent(MultipartFormFile.class)) {
-                MultipartFormFile part = param.getAnnotation(MultipartFormFile.class);
-                if (part.partName().isBlank()) {
-                    problems.add(method.getName() + "(): @MultipartFormFile partName must not be blank");
-                }
-                if (!RequestType.MULTIPART_FORM_DATA.equals(requestType)) {
-                    problems.add(method.getName() + "(): @MultipartFormFile parameter requires requestType = MULTIPART_FORM_DATA");
-                }
-                if (param.isAnnotationPresent(RequestParam.class)) {
-                    problems.add(method.getName() + "(): parameter must not combine @MultipartFormFile with @RequestParam"
-                            + " (only the file part is assembled, the @RequestParam binding is silently dropped)");
-                }
-            }
-            if (param.isAnnotationPresent(TargetUrl.class)) {
-                Class<?> type = param.getType();
-                if (!URI.class.isAssignableFrom(type) && !URL.class.isAssignableFrom(type) && !CharSequence.class.isAssignableFrom(type)) {
-                    problems.add(method.getName() + "(): @TargetUrl parameter must be of type java.net.URI, java.net.URL, or CharSequence/String");
-                }
-                if (param.isAnnotationPresent(RequestParam.class)
-                        || param.isAnnotationPresent(PathVariable.class)
-                        || param.isAnnotationPresent(RequestHeader.class)
-                        || param.isAnnotationPresent(Cookie.class)
-                        || param.isAnnotationPresent(RequestBody.class)
-                        || param.isAnnotationPresent(MultipartFormFile.class)) {
-                    problems.add(method.getName() + "(): parameter must not combine @TargetUrl with other HTTP parameter annotations");
-                }
-            }
-            if (ResponseHeaders.class.equals(param.getType())) {
-                if (param.isAnnotationPresent(RequestParam.class)
-                        || param.isAnnotationPresent(PathVariable.class)
-                        || param.isAnnotationPresent(RequestHeader.class)
-                        || param.isAnnotationPresent(Cookie.class)
-                        || param.isAnnotationPresent(RequestBody.class)
-                        || param.isAnnotationPresent(MultipartFormFile.class)
-                        || param.isAnnotationPresent(TargetUrl.class)) {
-                    problems.add(method.getName() + "(): ResponseHeaders parameter must not be annotated with HTTP parameter annotations");
-                }
-            }
-            if (UploadProgressListener.class.equals(param.getType())) {
-                if (param.isAnnotationPresent(RequestParam.class)
-                        || param.isAnnotationPresent(PathVariable.class)
-                        || param.isAnnotationPresent(RequestHeader.class)
-                        || param.isAnnotationPresent(Cookie.class)
-                        || param.isAnnotationPresent(RequestBody.class)
-                        || param.isAnnotationPresent(MultipartFormFile.class)
-                        || param.isAnnotationPresent(TargetUrl.class)) {
-                    problems.add(method.getName() + "(): UploadProgressListener parameter must not be annotated with HTTP parameter annotations");
-                }
-            }
-            if (DownloadProgressListener.class.equals(param.getType())) {
-                if (param.isAnnotationPresent(RequestParam.class)
-                        || param.isAnnotationPresent(PathVariable.class)
-                        || param.isAnnotationPresent(RequestHeader.class)
-                        || param.isAnnotationPresent(Cookie.class)
-                        || param.isAnnotationPresent(RequestBody.class)
-                        || param.isAnnotationPresent(MultipartFormFile.class)
-                        || param.isAnnotationPresent(TargetUrl.class)) {
-                    problems.add(method.getName() + "(): DownloadProgressListener parameter must not be annotated with HTTP parameter annotations");
-                }
-            }
-        }
-
-        long targetUrlCount = Arrays.stream(method.getParameters())
-                .filter(p -> p.isAnnotationPresent(TargetUrl.class))
-                .count();
-        if (targetUrlCount > 1) {
-            problems.add(method.getName() + "(): multiple parameters annotated with @TargetUrl, at most one is allowed");
-        }
-
-        long responseHeadersCount = Arrays.stream(method.getParameters())
-                .filter(p -> ResponseHeaders.class.equals(p.getType()))
-                .count();
-        if (responseHeadersCount > 1) {
-            problems.add(method.getName() + "(): multiple parameters of type ResponseHeaders, at most one is allowed");
-        }
-
-        long uploadProgressCount = Arrays.stream(method.getParameters())
-                .filter(p -> UploadProgressListener.class.equals(p.getType()))
-                .count();
-        if (uploadProgressCount > 1) {
-            problems.add(method.getName() + "(): multiple parameters of type UploadProgressListener, at most one is allowed");
-        }
-
-        long downloadProgressCount = Arrays.stream(method.getParameters())
-                .filter(p -> DownloadProgressListener.class.equals(p.getType()))
-                .count();
-        if (downloadProgressCount > 1) {
-            problems.add(method.getName() + "(): multiple parameters of type DownloadProgressListener, at most one is allowed");
-        }
-
-        long requestBodyCount = Arrays.stream(method.getParameters())
-                .filter(p -> p.isAnnotationPresent(RequestBody.class))
-                .count();
-        if (requestBodyCount > 1) {
-            problems.add(method.getName() + "(): multiple parameters annotated with @RequestBody, at most one is allowed");
-        }
-        if (method.isAnnotationPresent(Get.class) && requestBodyCount > 0) {
-            problems.add(method.getName() + "(): @Get method must not declare @RequestBody parameter");
-        }
-
-        if (requestType == RequestType.MULTIPART_FORM_DATA) {
-            boolean hasMultipartPayload = Arrays.stream(method.getParameters())
-                    .anyMatch(p -> p.isAnnotationPresent(MultipartFormFile.class)
-                            || p.isAnnotationPresent(RequestParam.class));
-            if (!hasMultipartPayload) {
-                problems.add(method.getName() + "(): MULTIPART_FORM_DATA method must have at least one parameter");
-            }
-        } else if (requestType == RequestType.APPLICATION_FORM_URLENCODED) {
-            boolean hasFormPayload = Arrays.stream(method.getParameters())
-                    .anyMatch(p -> p.isAnnotationPresent(RequestParam.class));
-            if (!hasFormPayload) {
-                problems.add(method.getName() + "(): APPLICATION_FORM_URLENCODED method must have at least one parameter");
-            }
-        }
-
-        for (WithInterceptor withInterceptor : method.getAnnotationsByType(WithInterceptor.class)) {
-            for (Class<?> interceptorClass : withInterceptor.value()) {
-                validateInterceptorClass(interceptorClass, method.getName() + "()", problems);
-            }
-        }
-        for (WithMetrics withMetrics : method.getAnnotationsByType(WithMetrics.class)) {
-            for (Class<?> metricsClass : withMetrics.value()) {
-                validateMetricsClass(metricsClass, method.getName() + "()", problems);
-            }
-        }
-        return problems;
     }
 
     static void validateInterceptorClass(Class<?> clazz, String prefix, List<String> problems) {

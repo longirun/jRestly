@@ -1,24 +1,24 @@
-# Last Session: #345 (2026-10-20)
+# Last Session: #346 (2026-10-20)
 
 ## Что сделано
 
-**Сессия #345: структурная волна 2 (ADR-0081), шаг (d) — resilience wiring вынесен из `HttpTemplateBuilder` в `ResilienceComposer` (ADR-0085). Волна 2 закрыта.**
+**Сессия #346: structural follow-up ADR-0081 — общие annotation-правила вынесены из `ControllerValidator` в `AnnotationChecks` (ADR-0086). Последний named C5-red закрыт: `validateMethod` 121 → 3.**
 
-1. *Вход:* HEAD `2cdae9d` (#344), чистое дерево (только счётчик 345), mailbox без новых сообщений с #341.
-2. *Срез:* `retryPolicy(ModuleInfo, MethodMetadata)` — методный `@Retry` заменяет клиентскую политику; `timeout(MethodMetadata)`; `circuitBreaker(...)` и `rateLimiter(...)` — enabled annotation wins, disabled opt-out, client-level fallback; private `circuitBreakerFromAnnotation`/`rateLimiterFromAnnotation` строят config и берут instance из registry.
-3. *Форма:* package-private `final`, private constructor, stateless. Статические default-регистраторы переехали вместе с мапперами. `HttpEngineOptions` сознательно оставлен в builder'е — это transfer уже resolved-значений, не policy.
-4. *Швы перенесены, не продублированы:* `build()` зовёт `ResilienceComposer.*`; шесть старых методов, два поля и шесть импортов удалены. Client-level политики возвращаются теми же инстансами (`assertSame`).
-5. *Инвариант вместо guard'а:* `build()` дереференсит `moduleInfo.getEnvironment()` до resilience-вызовов, поэтому `moduleInfo != null` в circuit-breaker/rate-limiter fallback'ах недостижим — убран (−2 ветки). `methodMetadata != null` сохранён. Static-registry fallback сохранён для кастомных `ModuleInfo` с null-регистраторами (`SimpleModuleInfo` их нормализует).
-6. *TDD:* `ResilienceComposerTest` до класса (compile-red), 13 тестов. Первый прогон упал на `MethodMetadata.parse` — фикстурам нужен HTTP-verb; добавил `@Get` (правка фикстуры, не ожиданий против кода).
-7. *Сьют:* 13 тестов, **22/22 branches, 38/38 lines, 18/18 complexity, 122/122 instructions, 0 missed** (C11-планка).
-8. *Замеры:* builder **850 → 779** (−71) / WMC **205 → 186** (−19) / missed **66 → 56** (−10); `ResilienceComposer` 124 / 18 / **0**. Branch-вселенная 4,458 → 4,450 (−8 net) при +22 слотах. Волна 2: 1,516 → 779 строк (−49%), WMC 407 → 186 (−54%).
-9. *ADR-0085* (`docs/0.13.0/ADR-0085-resilience-composer-extraction.md`, Accepted); navigation map ADR-0081: resilience → `http/ResilienceComposer` + `resilience/*`, wave 2 complete; `package-info` упоминает коллаборатор. Highest ADR **0085**, next free **0086**.
-10. *Гейт:* полный **1,903/1,903** (root **1,739** = 1,726 + 13; субмодули 164), 0 failures/errors; `:javadoc` чисто. JaCoCo: **Branch 92.04% (4,096/4,450) — рекорд**, **Complexity 90.55% (3,372/3,724) — рекорд**, Instruction 98.37%, Line 98.05%, Class/Method 100%.
+1. *Вход:* HEAD `b1eea37` (#345), чистое дерево (только счётчик 346), mailbox без новых сообщений с #341.
+2. *Проблема:* class-pass (`collectClassProblems`) и method-pass (`validateMethod`) дублировали declarations, media, `@OnError`-конфликты, interceptors/metrics, parameter-биндинги и counts. Две копии одной спецификации уже обязывались совпадать byte-for-byte.
+3. *Форма:* package-private `final AnnotationChecks`, stateless, private constructor. Вход — bare prefix (`Api`/`get()`), сообщение `prefix + ": ..."`. Методы: `declarations`, `policies`, `media`, `parameter`, `parameterCounts`, `interceptorsAndMetrics` (+ private `hasHttpBindingAnnotation`).
+4. *Швы:* `ControllerValidator` оставил `validateCompress`/`validateCircuitBreaker`/`validateRateLimiter`/`validateRetry`/`validateExpectStatus`/`validateFollowRedirects` и path/name-проверки; `AnnotationChecks` зовёт их. Старые inline-блоки удалены, не обёрнуты.
+5. *`validateMethod`:* оркестрация + `validateVerbAnnotation` (early exit, 8), `validateVerbDefaultParams` (3), `validateMethodPolicies` (6). Сама метода — **3** (из 121).
+6. *Порядок сообщений сохранён:* declarations → verb defaults → policies → method-only policies → media; parameters → counts → interceptors/metrics. `ControllerValidationTest` прошёл без правок.
+7. *TDD:* `AnnotationChecksTest` до класса (compile-red), 10 тестов. Первые прогоны поправили фикстуры (CRLF в cookie-value, второй `ResponseHeaders`, лишний bad `@OnError`), не ожидания против реализации.
+8. *Замеры:* `ControllerValidator` **871 → 545** строк / WMC **279 → 130** / missed **10 → 3**; `AnnotationChecks` — 326 / 107 / **3**. Пара суммарно: WMC 279 → 237 (−42), branch-вселенная 4,450 → **4,360** (−90), missed 354 → **351**. `validateMethod` 121 → **3**.
+9. *ADR-0086* (`docs/0.13.0/ADR-0086-controller-validator-annotation-checks-extraction.md`, Accepted); navigation map ADR-0081 обновлён, `ru.jrestly/package-info` упоминает пару. Highest ADR **0086**, next free **0087**.
+10. *Гейт:* полный **1,913/1,913** (root **1,749** = 1,739 + 10; субмодули 164), 0 failures/errors; `:javadoc` чисто. JaCoCo: Branch **91.95%** (4,009/4,360), Complexity **90.52%** (3,333/3,682), Instruction 98.37%, Line 98.05%, Class/Method 100%. Ниже рекорда #345 по проценту, потому что 87 covered duplicate-слотов исчезли; missed branches уменьшились.
 
-## Контекст для следующей сессии (#346)
+## Контекст для следующей сессии (#347)
 
-1. **Ветка** `agent-loop`, HEAD — коммит #345.
-2. **Приоритет:** split `ControllerValidator.validateMethod` (C5 ≤ 20) — следующий кандидат ADR-0081. Затем аудит `YamlCodec.deserialize` (закладка #339: 27–60 µs / 22.7 KB/op).
-3. Альтернатива: новая структурная волна по scorecard — `HttpTemplate` (2,221 / WMC 441) или `MethodMetadata` (WMC ~257).
+1. **Ветка** `agent-loop`, HEAD — коммит #346.
+2. **Приоритет:** аудит `YamlCodec.deserialize` (закладка #339: 27–60 µs / 22.7 KB/op на маленьком документе; SnakeYAML event pipeline). Кэш `JavaType`, reuse parser, feature-настройки — искать реальный выигрыш.
+3. **Альтернатива:** новая структурная волна по scorecard ADR-0081 — `HttpTemplate` (2,221 строк / WMC 441) или `MethodMetadata` (WMC ~257).
 4. *Окружение:* `GRADLE_USER_HOME=/tmp/opencode/gradle-home`; полный гейт `./gradlew test` ~2 мин; `:javadoc` отдельной командой. JaCoCo — `build/reports/jacoco/test/jacocoTestReport.xml`; тесты — `**/build/test-results/**/TEST-*.xml`.
-5. *Метрики:* гейт **1,903/1,903**; JaCoCo Branch **92.04%** / Complexity **90.55%** — новые рекорды. Next free ADR **0086**.
+5. *Метрики:* гейт **1,913/1,913**; JaCoCo Branch **91.95%** / Complexity **90.52%**; `validateMethod` **3**; next free ADR **0087**.
