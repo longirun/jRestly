@@ -298,6 +298,23 @@ class JdkHttpEngineTest {
 
         WireResponse resp2 = engine.send(getWithParts, HttpEngineOptions.defaults());
         assertEquals(200, resp2.statusCode());
+
+        WireRequest getWithSupplier = WireRequest.builder()
+                .method(HttpMethod.GET)
+                .uri(URI.create("https://api.example.com/search-pub"))
+                .bodyPublisherSupplier(() -> HttpRequest.BodyPublishers.noBody())
+                .build();
+        WireResponse resp3 = engine.send(getWithSupplier, HttpEngineOptions.defaults());
+        assertEquals(200, resp3.statusCode());
+
+        // notifyZeroUploadIfPending with non-ProgressBodyPublisher
+        HttpRequest nonProgressReq = HttpRequest.newBuilder(URI.create("https://api.example.com/search"))
+                .POST(HttpRequest.BodyPublishers.noBody())
+                .build();
+        HttpEngineOptions listenerOpts = HttpEngineOptions.builder()
+                .uploadProgressListener((bytes, total) -> {})
+                .build();
+        JdkHttpEngine.notifyZeroUploadIfPending(nonProgressReq, listenerOpts);
     }
 
     @Test

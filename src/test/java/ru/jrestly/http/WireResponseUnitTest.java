@@ -359,6 +359,24 @@ class WireResponseUnitTest {
         assertNotEquals(streamResp1, streamResp2);
         assertNotEquals(streamResp1, base);
 
+        WireResponse noStream = WireResponse.builder().statusCode(200).build();
+        assertNotEquals(streamResp1, noStream);
+        assertNotEquals(noStream, streamResp1);
+
+        InputStream equalStream1 = new ByteArrayInputStream(new byte[0]) {
+            @Override
+            public boolean equals(Object o) {
+                return o instanceof ByteArrayInputStream;
+            }
+            @Override
+            public int hashCode() {
+                return 42;
+            }
+        };
+        WireResponse customStream1 = WireResponse.builder().statusCode(200).stream(equalStream1).build();
+        WireResponse customStream2 = WireResponse.builder().statusCode(200).stream(new ByteArrayInputStream(new byte[0])).build();
+        assertEquals(customStream1, customStream2);
+
         // Trailers inequality
         WireResponse trailersResp = WireResponse.builder()
                 .statusCode(200)

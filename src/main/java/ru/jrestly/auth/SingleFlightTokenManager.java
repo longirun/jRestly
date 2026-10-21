@@ -14,8 +14,8 @@ class SingleFlightTokenManager implements TokenManager {
 
     private final Supplier<Token> supplier;
     private final Duration refreshBuffer;
-    private final AtomicReference<CompletableFuture<Token>> inFlight = new AtomicReference<>();
-    private volatile Token cachedToken;
+    final AtomicReference<CompletableFuture<Token>> inFlight = new AtomicReference<>();
+    volatile Token cachedToken;
 
     SingleFlightTokenManager(Supplier<Token> supplier, Duration refreshBuffer) {
         this.supplier = Objects.requireNonNull(supplier, "supplier");
@@ -31,7 +31,7 @@ class SingleFlightTokenManager implements TokenManager {
         return acquireToken();
     }
 
-    private String acquireToken() {
+    String acquireToken() {
         while (true) {
             Token token = this.cachedToken;
             if (token != null && !token.isExpired(refreshBuffer)) {

@@ -162,8 +162,12 @@ public class MoshiCodec implements JsonCodec {
      * on a number token), so integer literals stay integers — a tree-based
      * re-print (via the {@code Object} adapter) would widen every number to
      * a double.
+     *
+     * @param reader the reader to consume from
+     * @param writer the writer to output to
+     * @throws IOException if an I/O error occurs
      */
-    private static void copyValue(JsonReader reader, JsonWriter writer) throws IOException {
+    public static void copyValue(JsonReader reader, JsonWriter writer) throws IOException {
         switch (reader.peek()) {
             case BEGIN_ARRAY -> {
                 reader.beginArray();

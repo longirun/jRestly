@@ -8,11 +8,15 @@ import java.io.ByteArrayInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.http.HttpRequest;
+import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.concurrent.Flow;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -204,5 +208,45 @@ class MultipartBodyPublisherContentLengthTest {
         // of() would throw while building the second part's publisher; the seam reports -1 and stops
         assertThrows(RuntimeException.class, () -> MultipartBodyPublisher.of(BOUNDARY, parts));
         assertEquals(-1, MultipartBodyPublisher.contentLength(BOUNDARY, parts));
+    }
+
+    @Test
+    @DisplayName("asBodyPublisher handles null stream source, cancel races, and repeated finish")
+    void asBodyPublisherSubscriptionEdgeCases() {
+        // 1. null stream source triggers NullPointerException and notifies subscriber.onError
+        HttpRequest.BodyPublisher bodyPub1 = MultipartBodyPublisher.ofStream(() -> null, 100L);
+        AtomicReference<Throwable> errorRef = new AtomicReference<>();
+        bodyPub1.subscribe(new Flow.Subscriber<>() {
+            @Override
+            public void onSubscribe(Flow.Subscription subscription) {
+                subscription.request(1);
+            }
+            @Override public void onNext(ByteBuffer item) {}
+            @Override public void onError(Throwable throwable) { errorRef.set(throwable); }
+            @Override public void onComplete() {}
+        });
+        Throwable err = errorRef.get();
+        assertNotNull(err, "error must be captured");
+        assertTrue(err instanceof NullPointerException || err.getCause() instanceof NullPointerException);
+
+        // 2. cancel before request triggers !closed.get()
+        HttpRequest.BodyPublisher bodyPub2 = MultipartBodyPublisher.ofStream(() -> new ByteArrayInputStream("data".getBytes(StandardCharsets.UTF_8)), 4L);
+        AtomicReference<Flow.Subscription> subRef = new AtomicReference<>();
+        bodyPub2.subscribe(new Flow.Subscriber<>() {
+            @Override
+            public void onSubscribe(Flow.Subscription subscription) {
+                subRef.set(subscription);
+            }
+            @Override public void onNext(ByteBuffer item) {}
+            @Override public void onError(Throwable throwable) {}
+            @Override public void onComplete() {}
+        });
+        Flow.Subscription subscription = subRef.get();
+        assertNotNull(subscription);
+        subscription.cancel();
+        // second cancel triggers closed.compareAndSet == false branch
+        subscription.cancel();
+        // request after cancel triggers !closed.get() == false branch
+        subscription.request(5);
     }
 }

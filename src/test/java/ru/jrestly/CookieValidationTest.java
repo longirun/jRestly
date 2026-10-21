@@ -59,6 +59,9 @@ class CookieValidationTest {
 
         @Get("/param-conflict")
         String conflictParam(@Cookie(name = "auth") @RequestParam(name = "auth") String token);
+
+        @Get("/param-conflict-header")
+        String conflictHeaderParam(@Cookie(name = "auth") @ru.jrestly.annotation.RequestHeader(name = "X-Auth") String token);
     }
 
     interface ValidCookieApi {
@@ -107,6 +110,7 @@ class CookieValidationTest {
         List<String> problems = ControllerValidator.validate(ParameterCookieProblemsApi.class);
         assertTrue(problems.stream().anyMatch(p -> p.contains("crlfParam(): @Cookie parameter name must not contain CRLF characters")));
         assertTrue(problems.stream().anyMatch(p -> p.contains("conflictParam(): parameter must not combine @Cookie with other HTTP parameter annotations")));
+        assertTrue(problems.stream().anyMatch(p -> p.contains("conflictHeaderParam(): parameter must not combine @Cookie with other HTTP parameter annotations")));
     }
 
     @Test

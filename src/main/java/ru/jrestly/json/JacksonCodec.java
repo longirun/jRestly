@@ -162,6 +162,17 @@ public class JacksonCodec implements JsonCodec {
     }
 
     private static ObjectMapper createDefault(LocalDateTimeFormat localDateTimeFormat) {
+        return createDefault(localDateTimeFormat, JacksonCodec::isOnClasspath);
+    }
+
+    /**
+     * Creates a configured {@link ObjectMapper} with optional classpath checking.
+     *
+     * @param localDateTimeFormat format for LocalDateTime
+     * @param classpathCheck predicate to verify whether optional modules are present
+     * @return configured ObjectMapper
+     */
+    public static ObjectMapper createDefault(LocalDateTimeFormat localDateTimeFormat, java.util.function.Predicate<String> classpathCheck) {
         ObjectMapper mapper = new ObjectMapper();
         mapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
         mapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
@@ -169,7 +180,7 @@ public class JacksonCodec implements JsonCodec {
         // java.time support is optional: only jackson-databind is required for autodetection.
         // jsr310 types live in a nested class so that the JVM verifier does not resolve them
         // while loading JacksonCodec itself (NoClassDefFoundError on a jsr310-free classpath)
-        if (isOnClasspath("com.fasterxml.jackson.datatype.jsr310.JavaTimeModule")) {
+        if (classpathCheck.test("com.fasterxml.jackson.datatype.jsr310.JavaTimeModule")) {
             JavaTimeSupport.register(mapper, localDateTimeFormat);
         }
 

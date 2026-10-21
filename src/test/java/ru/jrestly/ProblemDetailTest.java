@@ -1034,6 +1034,12 @@ class ProblemDetailTest {
         assertThrows(IllegalArgumentException.class, () -> ProblemDetail.fromJson("{\"arr\": ["));
         assertThrows(IllegalArgumentException.class, () -> ProblemDetail.fromJson("{\"arr\": [1"));
     }
+
+    @Test
+    @DisplayName("escapeJson handles null input returning empty string")
+    void testEscapeJsonNullInput() {
+        assertEquals("", ProblemDetail.escapeJson(null));
+    }
 }
 
 

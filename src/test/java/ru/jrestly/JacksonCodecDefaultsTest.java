@@ -334,6 +334,13 @@ class JacksonCodecDefaultsTest {
         assertEquals("{\"val\":1}", new String(serializedBytes, java.nio.charset.StandardCharsets.UTF_8));
     }
 
+    @Test
+    @DisplayName("createDefault without JSR-310 module on classpath omits JavaTimeModule")
+    void createDefaultWithoutJsr310OnClasspath() {
+        ObjectMapper mapper = JacksonCodec.createDefault(JacksonCodec.LocalDateTimeFormat.ISO_8601, cls -> false);
+        assertNotNull(mapper);
+    }
+
     private record Person(String firstName, String lastName) {}
 }
 

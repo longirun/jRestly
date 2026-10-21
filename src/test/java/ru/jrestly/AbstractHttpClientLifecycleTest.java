@@ -271,6 +271,10 @@ class AbstractHttpClientLifecycleTest {
                 .baseUrl("https://example.com")
                 .httpEngine(trackingEngine)
                 .build();
+        // Invoke with default non-null logger
+        TestApi defaultApi = client.get(TestApi.class);
+        defaultApi.ping();
+
         client.moduleInfo = nullLoggerModule;
         TestApi api = client.get(TestApi.class);
         api.ping();

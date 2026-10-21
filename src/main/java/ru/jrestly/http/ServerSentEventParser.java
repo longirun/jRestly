@@ -39,16 +39,16 @@ final class ServerSentEventParser {
     }
 
     /**
-     * Parses the given stream of raw text lines into a stream of {@link ServerSentEvent}s.
+     * Creates an iterator of parsed {@link ServerSentEvent}s from the given line stream.
      *
      * @param lines the input line stream (without newline terminators)
-     * @return a lazy stream of parsed events
+     * @return iterator of parsed events
      */
-    static Stream<ServerSentEvent> parse(Stream<String> lines) {
+    static Iterator<ServerSentEvent> iterator(Stream<String> lines) {
         Objects.requireNonNull(lines, "lines must not be null");
         Iterator<String> lineIterator = lines.iterator();
 
-        Iterator<ServerSentEvent> eventIterator = new Iterator<>() {
+        return new Iterator<>() {
             private ServerSentEvent nextEvent = null;
             private boolean finished = false;
 
@@ -173,7 +173,16 @@ final class ServerSentEventParser {
                 return new ServerSentEvent(lastEventId, eventType, data.toString(), retry);
             }
         };
+    }
 
+    /**
+     * Parses the given stream of raw text lines into a stream of {@link ServerSentEvent}s.
+     *
+     * @param lines the input line stream (without newline terminators)
+     * @return a lazy stream of parsed events
+     */
+    static Stream<ServerSentEvent> parse(Stream<String> lines) {
+        Iterator<ServerSentEvent> eventIterator = iterator(lines);
         Spliterator<ServerSentEvent> spliterator = Spliterators.spliteratorUnknownSize(
                 eventIterator,
                 Spliterator.ORDERED | Spliterator.NONNULL

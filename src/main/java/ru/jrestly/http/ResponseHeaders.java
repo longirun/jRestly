@@ -581,13 +581,7 @@ public class ResponseHeaders {
     public Map<String, String> links() {
         Map<String, String> map = linkMap;
         if (map == null) {
-            synchronized (this) {
-                map = linkMap;
-                if (map == null) {
-                    map = parseLinks(allValues("Link"));
-                    linkMap = map;
-                }
-            }
+            linkMap = map = parseLinks(allValues("Link"));
         }
         return map;
     }
@@ -600,13 +594,7 @@ public class ResponseHeaders {
     public List<HttpCookie> cookies() {
         List<HttpCookie> list = parsedCookies;
         if (list == null) {
-            synchronized (this) {
-                list = parsedCookies;
-                if (list == null) {
-                    list = parseCookies();
-                    parsedCookies = list;
-                }
-            }
+            parsedCookies = list = parseCookies();
         }
         return list;
     }

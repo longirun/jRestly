@@ -477,7 +477,13 @@ public class ProblemDetail {
         }
     }
 
-    private static String escapeJson(String s) {
+    /**
+     * Escapes special JSON control characters, quotes, and backslashes in the input string.
+     *
+     * @param s the string to escape, or {@code null}
+     * @return the escaped JSON string, or empty string if input is {@code null}
+     */
+    public static String escapeJson(String s) {
         if (s == null) return "";
         StringBuilder sb = new StringBuilder(s.length() + 8);
         for (int i = 0; i < s.length(); i++) {

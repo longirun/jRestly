@@ -472,12 +472,12 @@ class ServerSentEventTest {
         assertEquals(1, events.size());
         assertNull(events.getFirst().retry());
 
-        // Iterator finished == true in hasNext() and NoSuchElementException in next()
-        Iterator<ServerSentEvent> it = ServerSentEvent.parse(Stream.of("data: payload", "")).iterator();
-        assertTrue(it.hasNext());
-        assertEquals("payload", it.next().data());
-        assertFalse(it.hasNext());
-        assertFalse(it.hasNext()); // triggers finished == true in hasNext()
-        assertThrows(java.util.NoSuchElementException.class, it::next); // triggers !hasNext() in next()
+        // Direct parser iterator contract: finished == true in hasNext() and NoSuchElementException in next()
+        Iterator<ServerSentEvent> rawIt = ServerSentEventParser.iterator(Stream.of("data: payload", ""));
+        assertTrue(rawIt.hasNext());
+        assertEquals("payload", rawIt.next().data());
+        assertFalse(rawIt.hasNext());
+        assertFalse(rawIt.hasNext()); // triggers finished == true in hasNext()
+        assertThrows(java.util.NoSuchElementException.class, rawIt::next); // triggers !hasNext() in next()
     }
 }

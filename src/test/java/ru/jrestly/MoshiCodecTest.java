@@ -280,4 +280,15 @@ class MoshiCodecTest {
             return new Person(parts[0], parts[1]);
         }
     }
+
+    @Test
+    @DisplayName("copyValue throws JsonDataException on unexpected token")
+    void copyValueThrowsOnUnexpectedToken() throws IOException {
+        okio.Buffer buffer = new okio.Buffer().writeUtf8("[]");
+        com.squareup.moshi.JsonReader reader = com.squareup.moshi.JsonReader.of(buffer);
+        reader.beginArray();
+        com.squareup.moshi.JsonWriter writer = com.squareup.moshi.JsonWriter.of(new okio.Buffer());
+
+        assertThrows(com.squareup.moshi.JsonDataException.class, () -> MoshiCodec.copyValue(reader, writer));
+    }
 }

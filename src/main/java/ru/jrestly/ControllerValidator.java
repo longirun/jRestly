@@ -252,7 +252,7 @@ public final class ControllerValidator {
             problems.add(prefix + ": @WithInterceptor class must not be null");
             return;
         }
-        if (clazz.isInterface() || Modifier.isAbstract(clazz.getModifiers())) {
+        if (Modifier.isAbstract(clazz.getModifiers())) {
             problems.add(prefix + ": @WithInterceptor class " + clazz.getSimpleName() + " must not be abstract or an interface");
             return;
         }
@@ -272,7 +272,7 @@ public final class ControllerValidator {
             problems.add(prefix + ": @WithMetrics class must not be null");
             return;
         }
-        if (clazz.isInterface() || Modifier.isAbstract(clazz.getModifiers())) {
+        if (Modifier.isAbstract(clazz.getModifiers())) {
             problems.add(prefix + ": @WithMetrics class " + clazz.getSimpleName() + " must not be abstract or an interface");
             return;
         }

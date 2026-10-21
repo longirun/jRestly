@@ -8,6 +8,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -298,6 +299,66 @@ class TokenManagerTest {
 
             assertEquals("expired-tok", f1.get(5, TimeUnit.SECONDS));
             assertEquals("valid-tok", f2.get(5, TimeUnit.SECONDS));
+        } finally {
+            pool.shutdownNow();
+        }
+    }
+
+    @Test
+    @DisplayName("acquireToken returns cached token when valid inside loop")
+    void acquireTokenReturnsCachedWhenValid() {
+        AtomicInteger count = new AtomicInteger();
+        SingleFlightTokenManager tm = new SingleFlightTokenManager(() -> Token.of("tok-" + count.incrementAndGet()), Duration.ZERO);
+        tm.cachedToken = Token.of("pre-cached", Duration.ofMinutes(5));
+
+        assertEquals("pre-cached", tm.acquireToken());
+        assertEquals(0, count.get());
+    }
+
+    @Test
+    @DisplayName("acquireToken recovers from failed in-flight future and expired in-flight token")
+    void acquireTokenRecoversFromFailedInFlightAndExpired() {
+        AtomicInteger count = new AtomicInteger();
+        SingleFlightTokenManager tm = new SingleFlightTokenManager(() -> Token.of("fresh-" + count.incrementAndGet(), Duration.ofMinutes(5)), Duration.ZERO);
+
+        // 1. in-flight future completed with expired token triggers retry
+        tm.inFlight.set(CompletableFuture.completedFuture(Token.of("expired", Instant.now().minusSeconds(10))));
+        assertEquals("fresh-1", tm.acquireToken());
+
+        // 2. in-flight future completed exceptionally triggers catch and retry
+        tm.invalidate();
+        CompletableFuture<Token> failedFuture = new CompletableFuture<>();
+        failedFuture.completeExceptionally(new RuntimeException("transient network drop"));
+        tm.inFlight.set(failedFuture);
+        assertEquals("fresh-2", tm.acquireToken());
+    }
+
+    @Test
+    @DisplayName("concurrent callers contend on inFlight CAS safely")
+    void concurrentCallersContendOnCas() throws Exception {
+        AtomicInteger count = new AtomicInteger();
+        CountDownLatch latch = new CountDownLatch(1);
+        SingleFlightTokenManager tm = new SingleFlightTokenManager(() -> {
+            try {
+                latch.await(5, TimeUnit.SECONDS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+            return Token.of("val-" + count.incrementAndGet(), Duration.ofMinutes(5));
+        }, Duration.ZERO);
+
+        int threads = 8;
+        ExecutorService pool = Executors.newFixedThreadPool(threads);
+        try {
+            List<Future<String>> futures = new ArrayList<>();
+            for (int i = 0; i < threads; i++) {
+                futures.add(pool.submit(tm::acquireToken));
+            }
+            Thread.sleep(20);
+            latch.countDown();
+            for (Future<String> f : futures) {
+                assertEquals("val-1", f.get(5, TimeUnit.SECONDS));
+            }
         } finally {
             pool.shutdownNow();
         }

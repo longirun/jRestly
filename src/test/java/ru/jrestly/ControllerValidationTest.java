@@ -154,7 +154,7 @@ public class ControllerValidationTest {
         String lowMultiplier();
 
         @ru.jrestly.annotation.Get("/d")
-        @ru.jrestly.annotation.Retry(times = 2, statuses = {999})
+        @ru.jrestly.annotation.Retry(times = 2, statuses = {99, 999})
         String badStatus();
     }
 
@@ -170,11 +170,12 @@ public class ControllerValidationTest {
         // its policy builder: a misconfigured method escaped eager validation and threw
         // a bare IllegalStateException at the first call. It now joins the same channel.
         List<String> problems = ControllerValidator.validate(InvalidRetryController.class);
-        assertEquals(4, problems.size());
+        assertEquals(5, problems.size());
         assertTrue(problems.stream().anyMatch(p -> p.contains("timesZero(): @Retry times must be >= 1")));
         assertTrue(problems.stream().anyMatch(p -> p.contains("invertedBackoff(): @Retry initialBackoffMs must not exceed maxBackoffMs")));
         assertTrue(problems.stream().anyMatch(p -> p.contains("lowMultiplier(): @Retry multiplier must be >= 1.0")));
-        assertTrue(problems.stream().anyMatch(p -> p.contains("badStatus(): @Retry status must be in [100, 599]")));
+        assertTrue(problems.stream().anyMatch(p -> p.contains("badStatus(): @Retry status must be in [100, 599], was 99")));
+        assertTrue(problems.stream().anyMatch(p -> p.contains("badStatus(): @Retry status must be in [100, 599], was 999")));
 
         JRestlyClient client = JRestlyClient.builder().baseUrl("http://localhost:1").build();
         assertThrows(ControllerValidationException.class, () -> client.get(InvalidRetryController.class));

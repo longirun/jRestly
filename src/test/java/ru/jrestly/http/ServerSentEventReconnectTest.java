@@ -513,6 +513,13 @@ class ServerSentEventReconnectTest {
         assertTrue(policy.hasStallTimeout());
         assertTrue(policy.toString().contains("stallTimeout=PT0.25S"));
 
+        ReconnectPolicy policyResetNull = ReconnectPolicy.builder()
+                .stallTimeout(Duration.ofMillis(250))
+                .stallTimeout(null)
+                .build();
+        assertNull(policyResetNull.stallTimeout());
+        assertFalse(policyResetNull.hasStallTimeout());
+
         assertThrows(IllegalStateException.class, () -> ReconnectPolicy.builder().stallTimeout(Duration.ZERO).build());
         assertThrows(IllegalStateException.class, () -> ReconnectPolicy.builder().stallTimeout(Duration.ofMillis(-50)).build());
     }

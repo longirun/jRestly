@@ -132,11 +132,6 @@ final class AnnotationChecks {
                 problems.add(prefix + ": @Cookie value must not contain CRLF characters");
             }
         }
-        for (QueryCollectionFormat qcf : element.getAnnotationsByType(QueryCollectionFormat.class)) {
-            if (qcf.value() == null) {
-                problems.add(prefix + ": @QueryCollectionFormat value must not be null");
-            }
-        }
         Map<Integer, Class<?>> seenStatuses = new LinkedHashMap<>();
         for (OnError onError : element.getAnnotationsByType(OnError.class)) {
             for (int status : onError.statuses()) {
@@ -170,12 +165,6 @@ final class AnnotationChecks {
                     || param.isAnnotationPresent(Cookie.class)
                     || param.isAnnotationPresent(MultipartFormFile.class)) {
                 problems.add(prefix + ": parameter must not combine @RequestBody with other HTTP parameter annotations");
-            }
-        }
-        if (param.isAnnotationPresent(RequestParam.class)) {
-            RequestParam rp = param.getAnnotation(RequestParam.class);
-            if (rp.format() == null) {
-                problems.add(prefix + ": @RequestParam format must not be null");
             }
         }
         if (param.isAnnotationPresent(Cookie.class)) {
