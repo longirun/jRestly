@@ -309,6 +309,100 @@ class ResponseBodyTest {
     }
 
     // ------------------------------------------------------------------
+    // dataStream — wire stream → Stream<T> direct data stream (ADR-0098)
+    // ------------------------------------------------------------------
+
+    @Test
+    @DisplayName("isDataStream: recognizes Stream<T> and raw Stream, rejects String, SSE, and non-streams")
+    void isDataStreamMatrix() throws Exception {
+        assertTrue(ResponseBody.isDataStream(genericReturn("integers")));
+        assertTrue(ResponseBody.isDataStream(genericReturn("streamOfLists")));
+        assertTrue(ResponseBody.isDataStream(genericReturn("rawStream")));
+        assertFalse(ResponseBody.isDataStream(genericReturn("typedEvents")));
+        assertFalse(ResponseBody.isDataStream(genericReturn("rawTypedEvents")));
+        assertFalse(ResponseBody.isDataStream(genericReturn("events")));
+        assertFalse(ResponseBody.isDataStream(genericReturn("lines")));
+        assertFalse(ResponseBody.isDataStream(genericReturn("strings")));
+        assertFalse(ResponseBody.isDataStream(genericReturn("typedEventList")));
+        assertFalse(ResponseBody.isDataStream(String.class));
+        assertFalse(ResponseBody.isDataStream(wrongArity(Stream.class)));
+    }
+
+    @Test
+    @DisplayName("extractStreamElementType: extracts payload type T, falls back to Object.class")
+    void extractStreamElementTypeMatrix() throws Exception {
+        assertEquals(Integer.class, ResponseBody.extractStreamElementType(genericReturn("integers")));
+        assertEquals(Object.class, ResponseBody.extractStreamElementType(genericReturn("rawStream")));
+        assertEquals(Object.class, ResponseBody.extractStreamElementType(genericReturn("strings")));
+        assertEquals(Object.class, ResponseBody.extractStreamElementType(String.class));
+        assertEquals(Object.class, ResponseBody.extractStreamElementType(wrongArity(Stream.class)));
+    }
+
+    @Test
+    @DisplayName("isNdjsonContentType: recognizes ndjson, jsonlines, and stream+json, rejects others and null")
+    void isNdjsonContentTypeMatrix() {
+        assertTrue(ResponseBody.isNdjsonContentType("application/x-ndjson"));
+        assertTrue(ResponseBody.isNdjsonContentType("application/jsonlines; charset=utf-8"));
+        assertTrue(ResponseBody.isNdjsonContentType("application/json-lines"));
+        assertTrue(ResponseBody.isNdjsonContentType("application/stream+json"));
+        assertFalse(ResponseBody.isNdjsonContentType("text/event-stream"));
+        assertFalse(ResponseBody.isNdjsonContentType("application/json"));
+        assertFalse(ResponseBody.isNdjsonContentType(null));
+    }
+
+    @Test
+    @DisplayName("dataStream: parses SSE events, skips keepalive/ping, stops at [DONE], and close propagates to wire")
+    void dataStreamDecodesSseAndStopsOnDone() {
+        AtomicBoolean wireClosed = new AtomicBoolean();
+        String sseData = """
+                :keepalive
+                data: {"value": 1}
+
+                event: ping
+                data:
+
+                data: {"value": 2}
+
+                data: [DONE]
+
+                data: {"value": 3}
+                """;
+        InputStream wire = closingTrack(sseData.getBytes(StandardCharsets.UTF_8), wireClosed);
+        StubPayloadCodec codec = new StubPayloadCodec();
+        codec.result = new Dto();
+
+        Stream<Dto> stream = ResponseBody.dataStream(
+                wire, StandardCharsets.UTF_8, codec, Dto.class, "text/event-stream", null);
+
+        List<Dto> items = stream.toList();
+        assertEquals(2, items.size());
+        assertFalse(wireClosed.get());
+
+        stream.close();
+        assertTrue(wireClosed.get());
+    }
+
+    @Test
+    @DisplayName("dataStream: parses NDJSON lines, ignores blank lines, and close propagates to wire")
+    void dataStreamDecodesNdjson() {
+        AtomicBoolean wireClosed = new AtomicBoolean();
+        String ndjsonData = "{\"value\":1}\n\n{\"value\":2}\n";
+        InputStream wire = closingTrack(ndjsonData.getBytes(StandardCharsets.UTF_8), wireClosed);
+        StubPayloadCodec codec = new StubPayloadCodec();
+        codec.result = new Dto();
+
+        Stream<Dto> stream = ResponseBody.dataStream(
+                wire, StandardCharsets.UTF_8, codec, Dto.class, "application/x-ndjson", null);
+
+        List<Dto> items = stream.toList();
+        assertEquals(2, items.size());
+        assertFalse(wireClosed.get());
+
+        stream.close();
+        assertTrue(wireClosed.get());
+    }
+
+    // ------------------------------------------------------------------
     // wrapForTrailers — terminal hook (ADR-0059)
     // ------------------------------------------------------------------
 
@@ -849,6 +943,9 @@ class ResponseBodyTest {
         List<String> strings();
 
         List<TypedServerSentEvent<Dto>> typedEventList();
+
+        @SuppressWarnings("rawtypes")
+        Stream rawStream();
     }
 
     private static Type genericReturn(String name) throws Exception {

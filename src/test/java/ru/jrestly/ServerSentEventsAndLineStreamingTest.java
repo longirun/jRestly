@@ -65,6 +65,22 @@ class ServerSentEventsAndLineStreamingTest extends BaseWireMockTest {
         @Get("/v1/chat/typed/optional")
         Optional<Stream<TypedServerSentEvent<ChatChunk>>> optionalTypedStream();
 
+        @Post("/v1/chat/direct")
+        Stream<ChatChunk> streamDirectChat(@RequestBody Map<String, Object> request);
+
+        @Post("/v1/chat/direct-async")
+        CompletableFuture<Stream<ChatChunk>> streamDirectChatAsync(@RequestBody Map<String, Object> request);
+
+        @Get("/v1/chat/direct/optional")
+        Optional<Stream<ChatChunk>> optionalDirectStream();
+
+        @Get("/v1/chat/direct/error")
+        @OnError(statuses = {429}, errorObject = TestErrorDto.class)
+        Stream<ChatChunk> rateLimitedDirectStream();
+
+        @Get("/v1/chat/direct-ndjson")
+        Stream<ChatChunk> streamDirectNdjson();
+
         @Get("/v1/chat/error")
         @OnError(statuses = {429}, errorObject = TestErrorDto.class)
         Stream<ServerSentEvent> rateLimitedStream();
@@ -394,5 +410,111 @@ class ServerSentEventsAndLineStreamingTest extends BaseWireMockTest {
         LlmChatApi api = client.get(LlmChatApi.class);
         Optional<Stream<TypedServerSentEvent<ChatChunk>>> optional = api.optionalTypedStream();
         assertTrue(optional.isEmpty());
+    }
+
+    @Test
+    @DisplayName("sync: Direct LLM chat streaming via Stream<ChatChunk> (ADR-0098) decodes DTOs and stops on [DONE]")
+    void syncDirectLlmChatStreaming() {
+        String ssePayload = """
+                event: delta
+                id: 101
+                data: {"content": "Hello"}
+
+                event: delta
+                id: 102
+                data: {"content": " world!"}
+
+                data: [DONE]
+
+                data: {"content": " ignored after done"}
+                """;
+
+        stubFor(post(urlEqualTo("/v1/chat/direct"))
+                .willReturn(aResponse()
+                        .withStatus(200)
+                        .withHeader("Content-Type", "text/event-stream; charset=utf-8")
+                        .withBody(ssePayload)));
+
+        LlmChatApi api = client.get(LlmChatApi.class);
+        try (Stream<ChatChunk> chunkStream = api.streamDirectChat(Map.of("model", "gpt-4"))) {
+            List<ChatChunk> chunks = chunkStream.toList();
+            assertEquals(2, chunks.size());
+            assertEquals("Hello", chunks.get(0).content());
+            assertEquals(" world!", chunks.get(1).content());
+        }
+    }
+
+    @Test
+    @DisplayName("async: Direct LLM chat streaming via CompletableFuture<Stream<ChatChunk>>")
+    void asyncDirectLlmChatStreaming() {
+        String ssePayload = """
+                data: {"content": "Async direct token"}
+
+                data: [DONE]
+                """;
+
+        stubFor(post(urlEqualTo("/v1/chat/direct-async"))
+                .willReturn(aResponse()
+                        .withStatus(200)
+                        .withHeader("Content-Type", "text/event-stream")
+                        .withBody(ssePayload)));
+
+        LlmChatApi api = client.get(LlmChatApi.class);
+        CompletableFuture<Stream<ChatChunk>> future = api.streamDirectChatAsync(Map.of("stream", true));
+        try (Stream<ChatChunk> stream = future.join()) {
+            List<ChatChunk> chunks = stream.toList();
+            assertEquals(1, chunks.size());
+            assertEquals("Async direct token", chunks.get(0).content());
+        }
+    }
+
+    @Test
+    @DisplayName("direct Stream<T> @OnError consumes stream and throws HandledException with decoded DTO")
+    void directStreamOnErrorHandledException() {
+        stubFor(get(urlEqualTo("/v1/chat/direct/error"))
+                .willReturn(aResponse()
+                        .withStatus(429)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody("{\"code\": \"RATE_LIMIT\", \"message\": \"Too Many Requests\"}")));
+
+        LlmChatApi api = client.get(LlmChatApi.class);
+        HandledException ex = assertThrows(HandledException.class, api::rateLimitedDirectStream);
+        assertEquals(429, ex.getStatusCode());
+        TestErrorDto dto = ex.getDetails();
+        assertNotNull(dto);
+        assertEquals("RATE_LIMIT", dto.code());
+    }
+
+    @Test
+    @DisplayName("direct Stream<T> Optional returns empty on 404 missing resource")
+    void directStreamOptionalMissingReturnsEmpty() {
+        stubFor(get(urlEqualTo("/v1/chat/direct/optional"))
+                .willReturn(aResponse()
+                        .withStatus(404)
+                        .withBody("Not Found")));
+
+        LlmChatApi api = client.get(LlmChatApi.class);
+        Optional<Stream<ChatChunk>> optional = api.optionalDirectStream();
+        assertTrue(optional.isEmpty());
+    }
+
+    @Test
+    @DisplayName("sync: Direct NDJSON streaming via Stream<ChatChunk> with Content-Type application/x-ndjson")
+    void directNdjsonStreaming() {
+        String ndjsonPayload = "{\"content\": \"chunk-1\"}\n\n{\"content\": \"chunk-2\"}\n";
+
+        stubFor(get(urlEqualTo("/v1/chat/direct-ndjson"))
+                .willReturn(aResponse()
+                        .withStatus(200)
+                        .withHeader("Content-Type", "application/x-ndjson")
+                        .withBody(ndjsonPayload)));
+
+        LlmChatApi api = client.get(LlmChatApi.class);
+        try (Stream<ChatChunk> stream = api.streamDirectNdjson()) {
+            List<ChatChunk> chunks = stream.toList();
+            assertEquals(2, chunks.size());
+            assertEquals("chunk-1", chunks.get(0).content());
+            assertEquals("chunk-2", chunks.get(1).content());
+        }
     }
 }

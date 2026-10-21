@@ -2560,14 +2560,23 @@ Synthetic microbenchmarks (ping, small JSON DTOs) only measure proxy dispatch an
   - Built-in recognition and safe handling of open-source AI/LLM terminal markers (`[DONE]`) preventing JSON codec parsing errors;
   - Unified `SseEventContract` allowing `TypedServerSentEvent.reconnecting` to leverage full WHATWG `Last-Event-ID` replay, exponential backoff, and the virtual-thread stall guard watchdog (`jrestly-sse-stall-guard`);
   - `TypedServerSentEvent`: 100% instruction, branch, line, and complexity coverage (0 missed branches).
+- **Direct Typed Data Streaming (`Stream<T>` for SSE & NDJSON, ADR-0098) — COMPLETE ✅ (2026-10-21):**
+  - Full realization of the «Return type is the contract» philosophy (ADR-0004 & ADR-0098) for streaming: controller methods can directly declare `Stream<T>` (as well as `CompletableFuture<Stream<T>>` and `Optional<Stream<T>>`), eliminating noisy envelope unwrapping for AI/LLM token streams and real-time event feeds;
+  - Automatic protocol adaptation: EventSource streaming for `text/event-stream` with built-in `data: [DONE]` termination and keep-alive ping filtering, and line-by-line decoding for NDJSON (`application/x-ndjson`, `application/jsonlines`, `application/stream+json`);
+  - Immediate resource release: closing the returned stream in `try-with-resources` cascades directly to the underlying network socket;
+  - Resilience integration: `@OnError` error handling, `@ExpectStatus` validation, and `reconnectingData(...)` utilities in `TypedServerSentEvent` and `ServerSentEvent`;
+  - 1 MB Netty payload benchmark arm added to `ConcurrentLoadNetworkBenchmark` and `BenchmarkHttpServer`;
+  - Comprehensive documentation: created `docs/USER_GUIDE.md`, updated `BENCHMARKS.md` and `README.md`.
 - **Quality Gates & Metrics:**
-  - Total test suite: **2,120 / 2,120** tests green across all 8 modules (root 1,956 + 164 submodules);
-  - JaCoCo Branch Coverage: **93.75%** (all-time peak record in project history!);
-  - Complexity Coverage: **92.59%** (all-time peak record!);
-  - Instruction Coverage: **98.58%**, Line: **98.41%**;
-  - Total missed branches: **287**;
+  - Total test suite: **2,189 / 2,189** tests green across all 8 modules (0 failures, 0 errors, 0 skipped);
+  - JaCoCo Branch Coverage: **97.51%** (4,422 / 4,535 covered — **new all-time historic peak record!**);
+  - Complexity Coverage: **97.01%** (3,767 / 3,883 covered);
+  - Instruction Coverage: **99.23%** (32,806 / 33,059 covered);
+  - Line Coverage: **98.92%** (7,167 / 7,245 covered);
+  - Total missed branches: dropped to **113** (new all-time minimum!);
+  - 100% branch coverage achieved in both `ResponseBody` (176/176, 0 missed) and `ResponseProcessor` (90/90, 0 missed);
   - Class Coverage: **100%** (168 / 168 classes);
-  - Highest ADR: **0097**, next free **0098**.
+  - Highest ADR: **0098**, next free **0099**.
 
 ---
 

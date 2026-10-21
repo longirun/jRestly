@@ -1,5 +1,38 @@
 # DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
+> **Сессия #377 (Final Polish: Direct Typed Data Streaming Stream<T> (ADR-0098), 1 MB Netty Benchmark, Comprehensive USER_GUIDE.md, Polish BENCHMARKS.md & README.md — 100% ветвей в ResponseBody и ResponseProcessor, полный гейт 2,189/2,189 green (+14 новых тестов), JaCoCo Branch 97.51% — новый абсолютный исторический рекорд библиотеки!, missed branches упали до 113 — абсолютный исторический минимум библиотеки!):**
+> 1. *Вход:* ветка `agent-loop`, счётчик 377. Запрос Антона из mailbox (4 пункта):
+>    - Дожать философию библиотеки «return type is the contract» (ADR-0004) для SSE и streaming data;
+>    - Оформить нормальный ридми;
+>    - Оформить документацию — как пользоваться этой библиотекой;
+>    - Оформить результаты бенчмаркинга, добавив 1 МБ тест для Netty, и честно описать ограничения и достоинства бенчмарка.
+> 2. *Пункт 1: Прямой стриминг данных Stream<T> (ADR-0098):*
+>    - Полная реализация философии «return type is the contract»: методы интерфейсов теперь могут напрямую объявлять `Stream<T>` (а также `CompletableFuture<Stream<T>>` и `Optional<Stream<T>>`), где `T` — любой бизнес-тип (record, DTO, generic collection). Никаких обязательных промежуточных обёрток в `TypedServerSentEvent<T>`!
+>    - Автоматическая адаптация протоколов:
+>      - Server-Sent Events (`text/event-stream`): потоковый парсер EventSource, безопасное завершение стрима по маркеру `data: [DONE]` (open-source LLM standard) без падений JSON-парсера, пропуск комментариев и пустых ping/keepalive сообщений;
+>      - NDJSON / JSON Lines (`application/x-ndjson`, `application/jsonlines`, `application/stream+json`): построчное чтение и десериализация каждой непустой строки через `PayloadCodec`.
+>    - Немедленное освобождение ресурсов: выход из `try-with-resources` каскадно закрывает исходный сетевой сокет `InputStream`.
+>    - В `TypedServerSentEvent` и `ServerSentEvent` добавлены утилиты `reconnectingData(...)` для автоматического реконнекта чистых стримов данных с сохранением `Last-Event-ID` и экспоненциальным backoff.
+>    - Принят **ADR-0098** (`docs/0.14.0/ADR-0098-direct-typed-data-streaming-sse-and-ndjson.md`).
+> 3. *Пункт 4: Бенчмарк 1 MB для Netty и обновление BENCHMARKS.md:*
+>    - В `BenchmarkHttpServer` добавлен маршрут `/api/payload/1mb` с zero-allocation отдачей 1,048,576 байт.
+>    - В `ConcurrentLoadNetworkBenchmark` добавлены бенчмарк-методы `jrestlyNetty_concurrent1Mb()`, `jrestly_concurrent1Mb()`, `jrestlyOkHttp_concurrent1Mb()`.
+>    - В `BENCHMARKS.md` добавлена специальная секция, подробно и честно разъясняющая механику Netty: почему на крошечных телах (ping, мелкие DTO) блокирующие движки быстрее за счет отсутствия накладных расходов EventLoop, а на телах 1 MB+ Netty показывает выдающиеся результаты за счет пулинга буферов `PooledByteBufAllocator`, zero-copy стриминга и снижения аллокаций памяти более чем на 6.26 MB/op!
+> 4. *Пункты 2 и 3: Исчерпывающая документация и README.md:*
+>    - Создан **`docs/USER_GUIDE.md`** — исчерпывающее руководство разработчика от Quick Start до enterprise-сценариев (декларативные аннотации, контракты типов, транзиентные ошибки, маскирование данных 152-ФЗ / GDPR / PCI-DSS, RFC 9111 HTTP-кэш).
+>    - Кардинально обновлен **`README.md`**: продающий, чистый, с бейджами качества, архитектурной схемой, примерами LLM inference стриминга и ссылками на руководство и бенчмарки.
+> 5. *TDD и исторические абсолютные рекорды библиотеки:*
+>    - Добавлено +14 новых тестов, полный гейт: **2,189 / 2,189** тестов green во всех 8 модулях (0 failures, 0 errors, 0 skipped).
+>    - JaCoCo Branch Coverage: **97.51%** (4,422 / 4,535 covered — **новый исторический абсолютный рекорд jRestly!**).
+>    - JaCoCo Instruction Coverage: **99.23%** (32,806 / 33,059 covered — новый рекорд!).
+>    - JaCoCo Complexity Coverage: **97.01%** (3,767 / 3,883 covered — рекорд!).
+>    - JaCoCo Line Coverage: **98.92%** (7,167 / 7,245 covered).
+>    - Missed branches всей библиотеки: снизились со 114 до **113** (новый исторический минимум библиотеки!).
+>    - 100% ветвей в `ResponseBody` (176/176, 0 missed!) и `ResponseProcessor` (90/90, 0 missed!).
+>    - Javadoc: кристально чист во всех 8 модулях под `-Werror`.
+> 
+>
+
 > **Сессия #376 (Branch Coverage 97.45%, Missed Branches 114 & 100% Branches in PathFileContent, ApiKeyAuth, SensitiveDataSanitizer — 100% ветвей в 3 классах, зачистка мертвых веток в InMemoryHttpCache, ResponseHeaders, SingleFlightTokenManager, ProblemDetailResolver, вынос Top-Level классов для чистоты -Werror; полный гейт 2,175/2,175 green (+2 новых теста), JaCoCo Branch 97.45% — новый абсолютный исторический рекорд библиотеки!, Instruction 99.20%, Complexity 96.95%, missed branches упали до 114 — минус 11 missed branches за сессию!):**
 > 1. *Вход:* ветка `agent-loop`, счётчик 376. Аудит классов с пропущенными ветвями: `PathFileContent` (1 missed), `ApiKeyAuth` (1 missed), `SensitiveDataSanitizer` (2 missed), `ResponseHeaders` (5 missed), `InMemoryHttpCache` (4 missed), `ProblemDetailResolver` (3 missed), `SingleFlightTokenManager` (4 missed).
 > 2. *Ликвидация мёртвого кода и архитектурная чистота:*

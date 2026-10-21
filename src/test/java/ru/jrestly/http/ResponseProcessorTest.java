@@ -34,6 +34,7 @@ class ResponseProcessorTest {
         Stream<String> streamString();
         Stream<ServerSentEvent> streamSse();
         Stream<TypedServerSentEvent<SimpleDto>> streamTypedSse();
+        Stream<SimpleDto> streamDto();
     }
 
     private static Type typeOf(String methodName) {
@@ -48,6 +49,20 @@ class ResponseProcessorTest {
     void tearDown() {
         ResponseHeaders.CURRENT_CAPTOR.remove();
     }
+
+    private static final System.Logger SILENT_LOGGER = new System.Logger() {
+        @Override public String getName() { return "silent"; }
+        @Override public boolean isLoggable(Level level) { return false; }
+        @Override public void log(Level level, java.util.ResourceBundle bundle, String msg, Throwable thrown) {}
+        @Override public void log(Level level, java.util.ResourceBundle bundle, String format, Object... params) {}
+    };
+
+    private static final System.Logger VERBOSE_LOGGER = new System.Logger() {
+        @Override public String getName() { return "verbose"; }
+        @Override public boolean isLoggable(Level level) { return true; }
+        @Override public void log(Level level, java.util.ResourceBundle bundle, String msg, Throwable thrown) {}
+        @Override public void log(Level level, java.util.ResourceBundle bundle, String format, Object... params) {}
+    };
 
     private static WireResponse wireBuffered(int status, String body, List<Header> headers) {
         byte[] bytes = body != null ? body.getBytes(StandardCharsets.UTF_8) : null;
@@ -568,13 +583,6 @@ class ResponseProcessorTest {
 
     @Test
     void processStreamTypedSseWithSilentLogger() throws IOException {
-        System.Logger silentLogger = new System.Logger() {
-            @Override public String getName() { return "silent"; }
-            @Override public boolean isLoggable(Level level) { return false; }
-            @Override public void log(Level level, java.util.ResourceBundle bundle, String msg, Throwable thrown) {}
-            @Override public void log(Level level, java.util.ResourceBundle bundle, String format, Object... params) {}
-        };
-
         ByteArrayInputStream bais = new ByteArrayInputStream("data: {\"message\":\"hi\"}\n\n".getBytes(StandardCharsets.UTF_8));
         PayloadCodec fakeCodec = new PayloadCodec() {
             @Override public boolean supports(String mediaType) { return true; }
@@ -584,12 +592,87 @@ class ResponseProcessorTest {
         };
 
         ResponseProcessor.ResponseConfig config = new ResponseProcessor.ResponseConfig(
-                typeOf("streamTypedSse"), false, null, null, null, List.of(200), false, headers -> fakeCodec, silentLogger
+                typeOf("streamTypedSse"), false, null, null, null, List.of(200), false, headers -> fakeCodec, SILENT_LOGGER
         );
         ResponseProcessor processor = new ResponseProcessor(config);
 
         Object result = processor.process(wireStream(200, bais, List.of()), System.nanoTime());
         assertTrue(result instanceof Stream);
         ((Stream<?>) result).close();
+
+        // Verbose logger path (isLoggable == true)
+        ResponseProcessor.ResponseConfig verboseConfig = new ResponseProcessor.ResponseConfig(
+                typeOf("streamTypedSse"), false, null, null, null, List.of(200), false, headers -> fakeCodec, VERBOSE_LOGGER
+        );
+        ResponseProcessor verboseProcessor = new ResponseProcessor(verboseConfig);
+        ByteArrayInputStream baisVerbose = new ByteArrayInputStream("data: {\"message\":\"verbose\"}\n\n".getBytes(StandardCharsets.UTF_8));
+        Object verboseResult = verboseProcessor.process(wireStream(200, baisVerbose, List.of()), System.nanoTime());
+        assertTrue(verboseResult instanceof Stream);
+        ((Stream<?>) verboseResult).close();
+    }
+
+    @Test
+    void processStreamDataDirectWithCodecAndOptional() throws IOException {
+        ByteArrayInputStream bais = new ByteArrayInputStream("data: {\"message\":\"data-direct\"}\n\n".getBytes(StandardCharsets.UTF_8));
+        PayloadCodec fakeCodec = new PayloadCodec() {
+            @Override public boolean supports(String mediaType) { return true; }
+            @Override public byte[] serialize(Object value, String contentType) { return new byte[0]; }
+            @SuppressWarnings("unchecked")
+            @Override public <T> T deserialize(byte[] payload, Type targetType, String contentType) { return (T) new SimpleDto("data-direct"); }
+        };
+
+        ResponseProcessor.ResponseConfig config = new ResponseProcessor.ResponseConfig(
+                typeOf("streamDto"), false, null, null, null, List.of(200), false, headers -> fakeCodec, null
+        );
+        ResponseProcessor processor = new ResponseProcessor(config);
+
+        Object result = processor.process(wireStream(200, bais, List.of()), System.nanoTime());
+        assertTrue(result instanceof Stream);
+        @SuppressWarnings("unchecked")
+        List<SimpleDto> list = ((Stream<SimpleDto>) result).toList();
+        assertEquals(1, list.size());
+        assertEquals("data-direct", list.get(0).message());
+
+        // Optional 404 missing resource
+        ResponseProcessor.ResponseConfig optConfig = new ResponseProcessor.ResponseConfig(
+                typeOf("streamDto"), true, null, null, null, List.of(200, 404), false, headers -> fakeCodec, null
+        );
+        ResponseProcessor optProcessor = new ResponseProcessor(optConfig);
+        Optional<?> optResult = optProcessor.process(wireStream(404, new ByteArrayInputStream(new byte[0]), List.of()), System.nanoTime());
+        assertTrue(optResult.isEmpty());
+
+        // Optional 200 present
+        ByteArrayInputStream bais2 = new ByteArrayInputStream("data: {\"message\":\"opt\"}\n\n".getBytes(StandardCharsets.UTF_8));
+        Optional<?> optPresent = optProcessor.process(wireStream(200, bais2, List.of()), System.nanoTime());
+        assertTrue(optPresent.isPresent());
+        ((Stream<?>) optPresent.get()).close();
+
+        // Silent logger path for direct stream
+        ResponseProcessor.ResponseConfig silentConfig = new ResponseProcessor.ResponseConfig(
+                typeOf("streamDto"), false, null, null, null, List.of(200), false, headers -> fakeCodec, SILENT_LOGGER
+        );
+        ResponseProcessor silentProcessor = new ResponseProcessor(silentConfig);
+        ByteArrayInputStream baisSilent = new ByteArrayInputStream("data: {\"message\":\"silent\"}\n\n".getBytes(StandardCharsets.UTF_8));
+        Object silentResult = silentProcessor.process(wireStream(200, baisSilent, List.of()), System.nanoTime());
+        assertTrue(silentResult instanceof Stream);
+        ((Stream<?>) silentResult).close();
+
+        // Verbose logger path for direct stream
+        ResponseProcessor.ResponseConfig verboseDirectConfig = new ResponseProcessor.ResponseConfig(
+                typeOf("streamDto"), false, null, null, null, List.of(200), false, headers -> fakeCodec, VERBOSE_LOGGER
+        );
+        ResponseProcessor verboseDirectProcessor = new ResponseProcessor(verboseDirectConfig);
+        ByteArrayInputStream baisVerboseDirect = new ByteArrayInputStream("data: {\"message\":\"verbose\"}\n\n".getBytes(StandardCharsets.UTF_8));
+        Object verboseDirectResult = verboseDirectProcessor.process(wireStream(200, baisVerboseDirect, List.of()), System.nanoTime());
+        assertTrue(verboseDirectResult instanceof Stream);
+        ((Stream<?>) verboseDirectResult).close();
+
+        // Missing codec throws IllegalStateException
+        ResponseProcessor.ResponseConfig noCodecConfig = new ResponseProcessor.ResponseConfig(
+                typeOf("streamDto"), false, null, null, null, List.of(200), false, headers -> null, null
+        );
+        ResponseProcessor noCodecProcessor = new ResponseProcessor(noCodecConfig);
+        ByteArrayInputStream bais3 = new ByteArrayInputStream("data: hi\n\n".getBytes(StandardCharsets.UTF_8));
+        assertThrows(IllegalStateException.class, () -> noCodecProcessor.process(wireStream(200, bais3, List.of()), System.nanoTime()));
     }
 }

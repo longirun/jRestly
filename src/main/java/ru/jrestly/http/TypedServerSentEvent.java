@@ -167,4 +167,26 @@ public record TypedServerSentEvent<T>(
         Objects.requireNonNull(policy, "policy must not be null");
         return ServerSentEventReconnector.reconnecting(opener, policy);
     }
+
+    /**
+     * Wraps a typed SSE connection factory into a lazy stream of deserialized data payloads
+     * that reconnects per {@link ReconnectPolicy}.
+     *
+     * <p>Termination markers such as {@code [DONE]} terminate the stream cleanly, and
+     * events without data payloads are omitted.
+     *
+     * @param <T> the payload type
+     * @param opener the connection factory receiving the nullable {@code Last-Event-ID}
+     * @param policy the reconnection policy
+     * @return a lazy concatenation of deserialized data payloads
+     * @throws NullPointerException if {@code opener} or {@code policy} is {@code null}
+     */
+    public static <T> Stream<T> reconnectingData(
+            Function<String, Stream<TypedServerSentEvent<T>>> opener,
+            ReconnectPolicy policy) {
+        return reconnecting(opener, policy)
+                .takeWhile(e -> !e.isDone())
+                .map(TypedServerSentEvent::data)
+                .filter(Objects::nonNull);
+    }
 }

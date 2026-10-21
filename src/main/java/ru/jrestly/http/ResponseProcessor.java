@@ -199,6 +199,28 @@ final class ResponseProcessor {
             return eventStream;
         }
 
+        // ADR-0098: Direct typed data streaming (Stream<T> for SSE and NDJSON)
+        if (ResponseBody.isDataStream(config.returnType())) {
+            if (config.logger().isLoggable(System.Logger.Level.INFO)) {
+                config.logger().log(System.Logger.Level.INFO, ResponseBody.streamingPayloadLine("streaming data events", responseHeaders));
+            }
+            if (config.optional() && ResponseBody.isMissingResource(statusCode)) {
+                ResponseBody.closeQuietly(stream, config.logger());
+                return Optional.empty();
+            }
+            Type payloadType = ResponseBody.extractStreamElementType(config.returnType());
+            PayloadCodec codec = resolveCodec(responseHeaders);
+            if (codec == null) {
+                throw new IllegalStateException("PayloadCodec is required to decode " + config.returnType().getTypeName() + " stream, but none was configured");
+            }
+            String contentType = ResponseBody.contentTypeOf(responseHeaders);
+            Stream<?> dataStream = ResponseBody.dataStream(stream, payloadCharset, codec, payloadType, contentType, config.logger());
+            if (config.optional()) {
+                return Optional.of(dataStream);
+            }
+            return dataStream;
+        }
+
         // ADR-0015 Aspect 5: raw stream
         if (config.logger().isLoggable(System.Logger.Level.INFO)) {
             config.logger().log(System.Logger.Level.INFO, ResponseBody.streamingPayloadLine("streaming", responseHeaders));

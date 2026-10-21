@@ -69,6 +69,14 @@ public final class BenchmarkHttpServer implements AutoCloseable {
     private static final String RSS_CONTENT_TYPE = "application/rss+xml; charset=utf-8";
     private static final String ATOM_CONTENT_TYPE = "application/atom+xml; charset=utf-8";
 
+    public static final int ONE_MB = 1024 * 1024;
+    private static final byte[] PAYLOAD_1MB = new byte[ONE_MB];
+    static {
+        java.util.Arrays.fill(PAYLOAD_1MB, (byte) 'X');
+    }
+    private static final byte[] PAYLOAD_1MB_RESPONSE = response(200, "OK", "application/octet-stream", PAYLOAD_1MB, false);
+    private static final byte[] PAYLOAD_1MB_RESPONSE_CLOSE = response(200, "OK", "application/octet-stream", PAYLOAD_1MB, true);
+
     private static final byte[] PING_RESPONSE = response(200, "OK", TEXT_CONTENT_TYPE, "pong".getBytes(StandardCharsets.UTF_8), false);
     private static final byte[] PING_RESPONSE_CLOSE = response(200, "OK", TEXT_CONTENT_TYPE, "pong".getBytes(StandardCharsets.UTF_8), true);
     private static final byte[] USER_RESPONSE = response(200, "OK", JSON_CONTENT_TYPE, SAMPLE_USER_JSON.getBytes(StandardCharsets.UTF_8), false);
@@ -238,6 +246,12 @@ public final class BenchmarkHttpServer implements AutoCloseable {
         if ("/api/ping".equals(path)) {
             if ("GET".equals(method)) {
                 return close ? PING_RESPONSE_CLOSE : PING_RESPONSE;
+            }
+            return close ? METHOD_NOT_ALLOWED_RESPONSE_CLOSE : METHOD_NOT_ALLOWED_RESPONSE;
+        }
+        if ("/api/payload/1mb".equals(path)) {
+            if ("GET".equals(method)) {
+                return close ? PAYLOAD_1MB_RESPONSE_CLOSE : PAYLOAD_1MB_RESPONSE;
             }
             return close ? METHOD_NOT_ALLOWED_RESPONSE_CLOSE : METHOD_NOT_ALLOWED_RESPONSE;
         }

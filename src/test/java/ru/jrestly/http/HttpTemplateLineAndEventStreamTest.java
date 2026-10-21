@@ -74,10 +74,15 @@ class HttpTemplateLineAndEventStreamTest {
     }
 
     @Test
-    @DisplayName("builder: unsupported stream types or non-stream types leave streamBody off")
+    @DisplayName("builder: Stream<T> direct typed data stream turns streamBody on")
+    void builderDetectsDataStreamAndAsyncTwin() throws Exception {
+        assertTrue(detectsStream(StreamingTestController.class.getMethod("streamIntegers")));
+        assertTrue(detectsStream(StreamingTestController.class.getMethod("streamRaw")));
+    }
+
+    @Test
+    @DisplayName("builder: non-stream types leave streamBody off")
     void builderLeavesStreamBodyOffForOtherTypes() throws Exception {
-        assertFalse(detectsStream(StreamingTestController.class.getMethod("streamIntegers")));
-        assertFalse(detectsStream(StreamingTestController.class.getMethod("streamRaw")));
         assertFalse(detectsStream(StreamingTestController.class.getMethod("listStrings")));
         assertFalse(detectsStream(StreamingTestController.class.getMethod("stringResponse")));
     }

@@ -2,18 +2,25 @@ package ru.jrestly.http;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import ru.jrestly.codec.PayloadCodec;
 
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.lang.reflect.Type;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Function;
 import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -390,5 +397,69 @@ class ServerSentEventTest {
 
         eventStream.close();
         assertTrue(closed.get());
+    }
+
+    @Test
+    @DisplayName("ServerSentEvent.reconnectingData yields deserialized items and stops on [DONE]")
+    void reconnectingDataYieldsDeserializedPayloadsAndStopsOnDone() {
+        AtomicInteger attempts = new AtomicInteger(0);
+
+        PayloadCodec fakeCodec = new PayloadCodec() {
+            @Override
+            public boolean supports(String mediaType) {
+                return true;
+            }
+
+            @Override
+            public byte[] serialize(Object object, String mediaType) {
+                return String.valueOf(object).getBytes(StandardCharsets.UTF_8);
+            }
+
+            @SuppressWarnings("unchecked")
+            @Override
+            public <T> T deserialize(byte[] payload, Type targetType, String mediaType) {
+                if (payload == null || payload.length == 0) return null;
+                return (T) new String(payload, StandardCharsets.UTF_8);
+            }
+        };
+
+        Function<String, Stream<ServerSentEvent>> opener = lastId -> {
+            int attempt = attempts.incrementAndGet();
+            if (attempt == 1) {
+                assertNull(lastId);
+                return Stream.concat(
+                        Stream.of(new ServerSentEvent("id-1", null, "item-1", null)),
+                        Stream.generate(() -> {
+                            throw new UncheckedIOException(new IOException("simulated dropped stream"));
+                        })
+                );
+            } else {
+                assertEquals("id-1", lastId);
+                return Stream.of(
+                        new ServerSentEvent("id-2", null, "item-2", null),
+                        ServerSentEvent.ofData("[DONE]")
+                );
+            }
+        };
+
+        ReconnectPolicy policy = ReconnectPolicy.builder()
+                .maxAttempts(3)
+                .initialBackoff(java.time.Duration.ofMillis(5))
+                .build();
+
+        try (Stream<String> stream = ServerSentEvent.reconnectingData(opener, policy, String.class, fakeCodec)) {
+            List<String> list = stream.toList();
+            assertEquals(List.of("item-1", "item-2"), list);
+        }
+
+        assertEquals(2, attempts.get());
+
+        // Parameter validation
+        assertThrows(NullPointerException.class, () -> ServerSentEvent.reconnectingData(null, policy, String.class, fakeCodec));
+        assertThrows(NullPointerException.class, () -> ServerSentEvent.reconnectingData(opener, null, String.class, fakeCodec));
+        assertThrows(NullPointerException.class, () -> ServerSentEvent.reconnectingData(opener, policy, (Class<String>) null, fakeCodec));
+        assertThrows(NullPointerException.class, () -> ServerSentEvent.reconnectingData(opener, policy, (Type) null, fakeCodec));
+        assertThrows(NullPointerException.class, () -> ServerSentEvent.reconnectingData(opener, policy, String.class, null));
+        assertThrows(NullPointerException.class, () -> ServerSentEvent.reconnectingData(opener, policy, (Type) String.class, null));
     }
 }

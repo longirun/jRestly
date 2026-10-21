@@ -269,4 +269,45 @@ class TypedServerSentEventTest {
         assertThrows(NullPointerException.class, () -> TypedServerSentEvent.reconnecting(null, policy));
         assertThrows(NullPointerException.class, () -> TypedServerSentEvent.reconnecting(opener, null));
     }
+
+    @Test
+    @DisplayName("TypedServerSentEvent.reconnectingData yields deserialized items and stops on [DONE]")
+    void typedReconnectingData() {
+        AtomicInteger attempts = new AtomicInteger(0);
+
+        Function<String, Stream<TypedServerSentEvent<SamplePayload>>> opener = lastId -> {
+            int attempt = attempts.incrementAndGet();
+            if (attempt == 1) {
+                assertNull(lastId);
+                TypedServerSentEvent<SamplePayload> e1 = new TypedServerSentEvent<>("id-1", null, new SamplePayload("Alice", 1), null, "raw-1");
+                return Stream.concat(
+                        Stream.of(e1),
+                        Stream.generate(() -> {
+                            throw new UncheckedIOException(new IOException("simulated connection reset"));
+                        })
+                );
+            } else {
+                assertEquals("id-1", lastId);
+                TypedServerSentEvent<SamplePayload> e2 = new TypedServerSentEvent<>("id-2", null, new SamplePayload("Bob", 2), null, "raw-2");
+                TypedServerSentEvent<SamplePayload> done = TypedServerSentEvent.ofData(null, "[DONE]");
+                return Stream.of(e2, done);
+            }
+        };
+
+        ReconnectPolicy policy = ReconnectPolicy.builder()
+                .maxAttempts(3)
+                .initialBackoff(java.time.Duration.ofMillis(5))
+                .build();
+
+        try (Stream<SamplePayload> stream = TypedServerSentEvent.reconnectingData(opener, policy)) {
+            List<SamplePayload> list = stream.toList();
+            assertEquals(2, list.size());
+            assertEquals("Alice", list.get(0).name());
+            assertEquals("Bob", list.get(1).name());
+        }
+
+        assertEquals(2, attempts.get());
+        assertThrows(NullPointerException.class, () -> TypedServerSentEvent.reconnectingData(null, policy));
+        assertThrows(NullPointerException.class, () -> TypedServerSentEvent.reconnectingData(opener, null));
+    }
 }

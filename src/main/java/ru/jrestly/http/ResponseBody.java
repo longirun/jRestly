@@ -9,6 +9,7 @@ import java.lang.reflect.Type;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
@@ -96,6 +97,27 @@ final class ResponseBody {
             System.Logger logger) {
         return eventStream(stream, charset, logger)
                 .map(raw -> raw.toTyped(targetType, codec));
+    }
+
+    // ADR-0098: Stream<T> returns a typed data stream (SSE or NDJSON) chained
+    // over the event or line stream with payload deserialized via PayloadCodec.
+    @SuppressWarnings("unchecked")
+    static <T> Stream<T> dataStream(
+            InputStream stream,
+            Charset charset,
+            PayloadCodec codec,
+            Type targetType,
+            String contentType,
+            System.Logger logger) {
+        if (isNdjsonContentType(contentType)) {
+            return lineStream(stream, charset, logger)
+                    .filter(line -> !line.isBlank())
+                    .map(line -> (T) codec.deserialize(line.getBytes(charset), targetType, contentType));
+        }
+        return eventStream(stream, charset, logger)
+                .takeWhile(raw -> !raw.isDone())
+                .map(raw -> (T) raw.dataAs(targetType, codec))
+                .filter(Objects::nonNull);
     }
 
     // ADR-0059: terminal streaming hook — late-arriving trailers are
@@ -197,6 +219,44 @@ final class ResponseBody {
             }
         }
         return Object.class;
+    }
+
+    static boolean isDataStream(Type type) {
+        if (type instanceof ParameterizedType pt && Stream.class.equals(pt.getRawType())) {
+            Type[] args = pt.getActualTypeArguments();
+            if (args.length == 1) {
+                Type element = args[0];
+                if (String.class.equals(element) || ServerSentEvent.class.equals(element)) {
+                    return false;
+                }
+                if (element instanceof ParameterizedType elemPt && TypedServerSentEvent.class.equals(elemPt.getRawType())) {
+                    return false;
+                }
+                return !TypedServerSentEvent.class.equals(element);
+            }
+        }
+        return Stream.class.equals(type);
+    }
+
+    static Type extractStreamElementType(Type type) {
+        if (type instanceof ParameterizedType pt && Stream.class.equals(pt.getRawType())) {
+            Type[] args = pt.getActualTypeArguments();
+            if (args.length == 1) {
+                return args[0];
+            }
+        }
+        return Object.class;
+    }
+
+    static boolean isNdjsonContentType(String contentType) {
+        if (contentType == null) {
+            return false;
+        }
+        String lower = contentType.toLowerCase();
+        return lower.contains("ndjson")
+                || lower.contains("jsonlines")
+                || lower.contains("json-lines")
+                || lower.contains("stream+json");
     }
 
     // RFC 9110 §8.3.2: the declared Content-Type charset is authoritative for

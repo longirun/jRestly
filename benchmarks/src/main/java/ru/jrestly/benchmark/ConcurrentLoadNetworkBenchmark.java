@@ -209,4 +209,21 @@ public class ConcurrentLoadNetworkBenchmark {
     public String feign_concurrentPing() {
         return feignClient.ping();
     }
+
+    // --- Concurrent 1MB Payload Transfer (high throughput) ---
+
+    @Benchmark
+    public byte[] jrestlyNetty_concurrent1Mb() {
+        return jrestlyNettyClient.getPayload1Mb();
+    }
+
+    @Benchmark
+    public byte[] jrestly_concurrent1Mb() {
+        return jrestlyClient.getPayload1Mb();
+    }
+
+    @Benchmark
+    public byte[] jrestlyOkHttp_concurrent1Mb() {
+        return jrestlyOkHttpClient.getPayload1Mb();
+    }
 }

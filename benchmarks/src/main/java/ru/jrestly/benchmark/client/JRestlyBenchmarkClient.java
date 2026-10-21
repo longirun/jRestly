@@ -34,6 +34,9 @@ public final class JRestlyBenchmarkClient implements AutoCloseable {
 
         @Post("/api/users")
         UserDto createUser(@RequestBody UserDto user);
+
+        @Get("/api/payload/1mb")
+        byte[] getPayload1Mb();
     }
 
     /**
@@ -115,6 +118,10 @@ public final class JRestlyBenchmarkClient implements AutoCloseable {
 
     public UserDto createUser(UserDto user) {
         return api.createUser(user);
+    }
+
+    public byte[] getPayload1Mb() {
+        return api.getPayload1Mb();
     }
 
     /**

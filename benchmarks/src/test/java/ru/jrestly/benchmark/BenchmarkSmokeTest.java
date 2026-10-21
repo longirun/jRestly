@@ -266,6 +266,10 @@ class BenchmarkSmokeTest {
             assertEquals("pong", benchmark.apacheHttpClient_concurrentPing());
             assertEquals("pong", benchmark.retrofit_concurrentPing());
             assertEquals("pong", benchmark.feign_concurrentPing());
+
+            assertEquals(BenchmarkHttpServer.ONE_MB, benchmark.jrestlyNetty_concurrent1Mb().length);
+            assertEquals(BenchmarkHttpServer.ONE_MB, benchmark.jrestly_concurrent1Mb().length);
+            assertEquals(BenchmarkHttpServer.ONE_MB, benchmark.jrestlyOkHttp_concurrent1Mb().length);
         } finally {
             benchmark.tearDown();
         }

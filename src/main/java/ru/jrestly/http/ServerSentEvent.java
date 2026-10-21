@@ -173,4 +173,57 @@ public record ServerSentEvent(String id, String event, String data, Long retry) 
         Objects.requireNonNull(policy, "policy must not be null");
         return ServerSentEventReconnector.reconnecting(opener, policy);
     }
+
+    /**
+     * Wraps an SSE connection factory into a lazy stream of deserialized data payloads
+     * that reconnects per {@link ReconnectPolicy}.
+     *
+     * <p>Termination markers such as {@code [DONE]} terminate the stream cleanly, and
+     * events without data payloads are omitted.
+     *
+     * @param <T> the payload type
+     * @param opener the connection factory receiving the nullable {@code Last-Event-ID}
+     * @param policy the reconnection policy
+     * @param targetType the target payload class
+     * @param codec the codec for payload deserialization
+     * @return a lazy concatenation of deserialized data payloads
+     * @throws NullPointerException if any argument is {@code null}
+     */
+    public static <T> Stream<T> reconnectingData(
+            Function<String, Stream<ServerSentEvent>> opener,
+            ReconnectPolicy policy,
+            Class<T> targetType,
+            PayloadCodec codec) {
+        return reconnectingData(opener, policy, (Type) targetType, codec);
+    }
+
+    /**
+     * Wraps an SSE connection factory into a lazy stream of deserialized data payloads
+     * that reconnects per {@link ReconnectPolicy}.
+     *
+     * <p>Termination markers such as {@code [DONE]} terminate the stream cleanly, and
+     * events without data payloads are omitted.
+     *
+     * @param <T> the payload type
+     * @param opener the connection factory receiving the nullable {@code Last-Event-ID}
+     * @param policy the reconnection policy
+     * @param targetType the target payload generic type
+     * @param codec the codec for payload deserialization
+     * @return a lazy concatenation of deserialized data payloads
+     * @throws NullPointerException if any argument is {@code null}
+     */
+    public static <T> Stream<T> reconnectingData(
+            Function<String, Stream<ServerSentEvent>> opener,
+            ReconnectPolicy policy,
+            Type targetType,
+            PayloadCodec codec) {
+        Objects.requireNonNull(opener, "opener must not be null");
+        Objects.requireNonNull(policy, "policy must not be null");
+        Objects.requireNonNull(targetType, "targetType must not be null");
+        Objects.requireNonNull(codec, "codec must not be null");
+        return reconnecting(opener, policy)
+                .takeWhile(e -> !e.isDone())
+                .map(e -> e.<T>dataAs(targetType, codec))
+                .filter(Objects::nonNull);
+    }
 }
