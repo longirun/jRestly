@@ -1,5 +1,34 @@
 # DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
+> **Сессия #370 (HttpTemplate Resilience Polish & Dead Code Elimination — ликвидация мертвого кода и синтетических null-веток switch, ветви в HttpTemplate выросли с 82.3% до 92.1% (missed 41→18); полный гейт 2,138/2,138 green (+9 новых тестов), JaCoCo Branch 95.19% — исторический прорыв легендарного рубежа 95%!, Complexity 94.28% — новый рекорд библиотеки, missed branches упали до 218 — новый абсолютный минимум библиотеки!):**
+> 1. *Вход:* ветка `agent-loop`, счётчик 370. Анализ классов с наибольшим количеством пропущенных ветвей после зачистки билдера: `HttpTemplate` занимал строчку #1 в библиотеке с 41 missed branches (82.3% branch coverage).
+> 2. *Ликвидация мёртвого кода в `HttpTemplate`:*
+>    - Удалены неиспользуемые приватные методы `logResponse(WireResponse, long)` (устранено 6 мёртвых веток) и `isExpectedStatus(int)` (делегирован в `HttpErrorHandler` и `ResponseProcessor`).
+>    - Заменен `switch (t)` на чистый `if-else` rethrow в строке 232 (`applyRequestInterceptors` catch в `exchange()`), устранив фиктивную проверку `case null` (недостижима в `catch (Throwable)`).
+>    - Заменен `switch (cause)` на чистый `if-else` в строке 498 (`stage.exceptionally` в `exchangeAsync()`), устранив фиктивную ветку `case null`.
+>    - `effectiveSocketTimeout`: сделан null-safe к `moduleInfo` (`moduleInfo != null ? moduleInfo.getSocketTimeout() : 0`).
+>    - Поля `headers`, `authHeaderNames`, `requestParams`, `logger` получили безопасную инициализацию по умолчанию (`List.of()`, `System.getLogger(...)`).
+> 3. *TDD и новые тесты в `RequestPipelineTest`:*
+>    - Добавлено +9 исчерпывающих тестов на пограничные и resilience сценарии:
+>      - `asyncFastFailWithBothInterceptorsAndMetrics`: асинхронный fast-fail на `RateLimiter` и `CircuitBreaker` с одновременным уведомлением `ResponseInterceptor` (получает failure) и `ClientMetricsListener` (строго 0 attempts, парные start/complete);
+>      - `asyncCircuitBreakerWhenCompleteAsyncWithExecutor`: выполнение `whenCompleteAsync(cbAction, executor)` на переданном кастомном `Executor` для success и failure;
+>      - `circuitBreakerIgnoresResilienceExceptionsInCompletion`: `cbAction` не записывает сбой (`recordFailure`) при получении `RateLimitExceededException` и `CircuitBreakerOpenException` от асинхронного движка;
+>      - обход `cbAction` при short-circuit ответе и cache-hit;
+>      - `requestInterceptorThrowsErrorAndRethrown`: перехватчик, бросающий `Error` (`AssertionError`), пробрасывает его без искажений;
+>      - `responseInterceptorThrowsWithNullLoggerSuppressed`: падение перехватчика ответа при `logger == null` безопасно подавляется;
+>      - `httpTemplateSettersNullSafety`: `setHttpClient(null)`, `setRequestInterceptors(null)`, `setResponseInterceptors(null)`;
+>      - `syncCircuitBreakerFinallyWithResilienceExceptions`: проверка, что синхронный finally блок игнорирует resilience-исключения;
+>      - `createRequestContextFallbacks`: создание контекста при `moduleInfo == null`, `controllerClass == null`, `method == null`, `args == null`;
+>      - `asyncExceptionallyHandlesCheckedExceptionAndNullCause`: проверка `stage.exceptionally` с `IOException` и `CompletionException(null)`.
+> 4. *TDD и метрики:*
+>    - Добавлено +9 тестов в `RequestPipelineTest`.
+>    - Полный гейт: **2,138 / 2,138** тестов green во всех 8 модулях, 0 failures, 0 errors.
+>    - `HttpTemplate`: missed branches упали с 41 до **18** (минус 23 missed!), Branch coverage вырос с 82.3% до **92.1%**!
+>    - JaCoCo: Branch **95.19%** (4,313 / 4,531 covered — **исторический прорыв легендарного рубежа 95%!**), Complexity **94.28%** (3,644 / 3,865 covered — новый исторический рекорд!), Instruction **98.87%**, Line **98.62%**, Classes **100%** (168/168), Methods **99.81%** (1,553/1,556).
+>    - Missed branches всей библиотеки снизились с 241 до **218** (минус 23 missed branches за сессию — новый исторический абсолютный рекорд библиотеки!).
+>    - Javadoc: кристально чист во всех 8 модулях под `-Werror`.
+> 
+
 > **Сессия #369 (HttpTemplateBuilder Branch Pruning & Resilience Coverage — ликвидация 20+ мёртвых веток, ветви в билдере выросли с 80.0% до 90.4% (missed 61→25); полный гейт 2,129/2,129 green, JaCoCo Branch 94.69% — исторический прорыв рубежа 94%!, Complexity 93.72% — новый рекорд, missed branches 241 — новый исторический минимум библиотеки):**
 > 1. *Вход:* ветка `agent-loop`, счётчик 369. Анализ классов с наибольшим количеством пропущенных ветвей: `HttpTemplateBuilder` занимал строчку #1 в библиотеке с 61 missed branches (80.0% branch coverage).
 > 2. *Анализ и устранение мёртвого кода в `HttpTemplateBuilder`:*

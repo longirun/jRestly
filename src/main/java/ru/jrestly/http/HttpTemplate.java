@@ -71,7 +71,7 @@ import java.util.stream.Stream;
  */
 class HttpTemplate {
 
-    private System.Logger logger;
+    private System.Logger logger = System.getLogger(HttpTemplate.class.getName());
 
     private ru.jrestly.engine.HttpEngine httpEngine;
     private ModuleInfo moduleInfo;
@@ -81,10 +81,10 @@ class HttpTemplate {
     private String url;
     private HttpMethod httpMethod;
     private String contentType;
-    private List<Header> headers;
-    private List<String> authHeaderNames;
+    private List<Header> headers = List.of();
+    private List<String> authHeaderNames = List.of();
     private Consumer<List<Header>> authDetailsConsumer;
-    private List<Param> requestParams;
+    private List<Param> requestParams = List.of();
     private byte[] body;
     private Supplier<? extends HttpRequest.BodyPublisher> bodyPublisherSupplier;
     private Long knownBodySize;
@@ -229,11 +229,12 @@ class HttpTemplate {
                     failed.completeExceptionally(t);
                     return (T) failed;
                 }
-                switch (t) {
-                    case RuntimeException re -> throw re;
-                    case Error err -> throw err;
-                    case null -> throw new NullPointerException("t is null");
-                    default -> throw new RuntimeException(t);
+                if (t instanceof RuntimeException re) {
+                    throw re;
+                } else if (t instanceof Error err) {
+                    throw err;
+                } else {
+                    throw new RuntimeException(t);
                 }
             }
         }
@@ -498,15 +499,14 @@ class HttpTemplate {
             if (cause instanceof InterruptedException) {
                 Thread.currentThread().interrupt();
             }
-            switch (cause) {
-                case RuntimeException re when !(re instanceof CompletionException) -> throw re;
-                case Error err -> throw err;
-                case null -> throw new NullPointerException("cause is null");
-                default -> {
-                    logger.log(System.Logger.Level.ERROR,
-                            "Request failed: " + activeRequestRef.get().method() + " " + activeRequestRef.get().uri(), cause);
-                    throw new RuntimeException(cause);
-                }
+            if (cause instanceof RuntimeException re && !(re instanceof CompletionException)) {
+                throw re;
+            } else if (cause instanceof Error err) {
+                throw err;
+            } else {
+                logger.log(System.Logger.Level.ERROR,
+                        "Request failed: " + activeRequestRef.get().method() + " " + activeRequestRef.get().uri(), cause);
+                throw new RuntimeException(cause);
             }
         });
 
@@ -724,7 +724,7 @@ class HttpTemplate {
         if (methodTimeout != null) {
             return methodTimeout;
         }
-        int millis = moduleInfo.getSocketTimeout();
+        int millis = moduleInfo != null ? moduleInfo.getSocketTimeout() : 0;
         return millis == 0 ? null : Duration.ofMillis(millis);
     }
 
@@ -786,18 +786,6 @@ class HttpTemplate {
     protected void logRequest(WireRequest request) {
         String traceId = resolveTraceId(request);
         HttpDiagnosticLogger.logRequest(logger, request, traceId, isSanitizeLogs());
-    }
-
-    private void logResponse(WireResponse response, long elapsedMs) {
-        String traceId = ru.jrestly.tracing.TraceIdExtractor.extract(response);
-        if (traceId == null && moduleInfo != null && moduleInfo.getTraceIdSupplier() != null) {
-            traceId = moduleInfo.getTraceIdSupplier().get();
-        }
-        HttpDiagnosticLogger.logResponse(logger, response, elapsedMs, traceId, isSanitizeLogs());
-    }
-
-    private boolean isExpectedStatus(int statusCode) {
-        return HttpErrorHandler.isExpectedStatus(expectStatuses, conditional, optional, statusCode);
     }
 
     /**

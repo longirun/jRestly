@@ -41,6 +41,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
@@ -48,6 +49,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
@@ -578,6 +580,295 @@ class RequestPipelineTest {
         assertEquals("zero-cost", result);
     }
 
+    @Test
+    @DisplayName("async fast-fail on RateLimiter and CircuitBreaker notifies response interceptors and paired metrics with 0 attempts")
+    void asyncFastFailWithBothInterceptorsAndMetrics() throws Exception {
+        AtomicReference<ResponseContext> capturedContext = new AtomicReference<>();
+        RecordingMetrics metrics = new RecordingMetrics();
+
+        // 1. RateLimiter fast fail
+        HttpTemplate t1 = createTemplate("helloAsync", new Object[]{"RL"}, String.class);
+        t1.setHttpClient(new StubHttpClient(new ArrayDeque<>(), new AtomicReference<>()));
+        t1.setResponseInterceptors(List.of(capturedContext::set));
+        t1.setMetricsListener(metrics);
+        t1.setRateLimiter(RejectionRateLimiter.INSTANCE);
+
+        CompletableFuture<String> future1 = t1.exchange();
+        RateLimitExceededException rle = causeOf(future1::join);
+        assertNotNull(rle);
+        assertNotNull(capturedContext.get());
+        assertTrue(capturedContext.get().failure().isPresent());
+        assertInstanceOf(RateLimitExceededException.class, capturedContext.get().failure().get());
+        assertEquals(List.of("start", "complete"), metrics.events);
+        assertEquals(List.of(0), metrics.attempts);
+
+        // 2. CircuitBreaker fast fail
+        capturedContext.set(null);
+        metrics.events.clear();
+        metrics.attempts.clear();
+
+        HttpTemplate t2 = createTemplate("helloAsync", new Object[]{"CB"}, String.class);
+        t2.setHttpClient(new StubHttpClient(new ArrayDeque<>(), new AtomicReference<>()));
+        t2.setResponseInterceptors(List.of(capturedContext::set));
+        t2.setMetricsListener(metrics);
+        t2.setCircuitBreaker(OpenCircuitBreaker.INSTANCE);
+
+        CompletableFuture<String> future2 = t2.exchange();
+        CircuitBreakerOpenException cbe = causeOf(future2::join);
+        assertNotNull(cbe);
+        assertNotNull(capturedContext.get());
+        assertTrue(capturedContext.get().failure().isPresent());
+        assertInstanceOf(CircuitBreakerOpenException.class, capturedContext.get().failure().get());
+        assertEquals(List.of("start", "complete"), metrics.events);
+        assertEquals(List.of(0), metrics.attempts);
+    }
+
+    @Test
+    @DisplayName("async circuit breaker executes whenCompleteAsync on custom executor")
+    void asyncCircuitBreakerWhenCompleteAsyncWithExecutor() throws Exception {
+        AtomicBoolean executorUsed = new AtomicBoolean(false);
+        java.util.concurrent.Executor customExecutor = r -> {
+            executorUsed.set(true);
+            r.run();
+        };
+
+        AtomicBoolean cbSuccessRecorded = new AtomicBoolean(false);
+        AtomicBoolean cbFailureRecorded = new AtomicBoolean(false);
+        CircuitBreaker testCb = new CircuitBreaker() {
+            @Override public String name() { return "test-cb"; }
+            @Override public State getState() { return State.CLOSED; }
+            @Override public boolean tryAcquirePermission() { return true; }
+            @Override public void recordSuccess(long d) { cbSuccessRecorded.set(true); }
+            @Override public void recordFailure(long d, Throwable t) { cbFailureRecorded.set(true); }
+            @Override public Duration remainingWaitDuration() { return Duration.ZERO; }
+            @Override public CircuitBreakerConfig config() { return CircuitBreakerConfig.ofDefaults(); }
+            @Override public CircuitBreakerMetrics metrics() { throw new UnsupportedOperationException(); }
+            @Override public void transitionToClosedState() {}
+            @Override public void transitionToOpenState() {}
+            @Override public void transitionToHalfOpenState() {}
+        };
+
+        HttpTemplate t = createTemplate("helloAsync", new Object[]{"exec"}, String.class);
+        t.setHttpClient(new StubHttpClient(new ArrayDeque<>(List.of(
+                stubResponse(200, Map.of(), "ok".getBytes(StandardCharsets.UTF_8))
+        )), new AtomicReference<>()));
+        t.setExecutor(customExecutor);
+        t.setCircuitBreaker(testCb);
+
+        CompletableFuture<String> future = t.exchange();
+        assertEquals("ok", future.join());
+        assertTrue(executorUsed.get(), "Custom executor must be used");
+        assertTrue(cbSuccessRecorded.get(), "Circuit breaker recordSuccess must be called");
+
+        // Failure path with custom executor
+        executorUsed.set(false);
+        HttpTemplate tFail = createTemplate("helloAsync", new Object[]{"exec-fail"}, String.class);
+        tFail.setHttpClient(new StubHttpClient(new ArrayDeque<>(List.of(
+                stubResponse(500, Map.of(), "err".getBytes(StandardCharsets.UTF_8))
+        )), new AtomicReference<>()));
+        tFail.setExecutor(customExecutor);
+        tFail.setCircuitBreaker(testCb);
+
+        CompletableFuture<String> failFuture = tFail.exchange();
+        assertThrows(Exception.class, failFuture::join);
+        assertTrue(executorUsed.get(), "Custom executor must be used on failure");
+        assertTrue(cbFailureRecorded.get(), "Circuit breaker recordFailure must be called");
+    }
+
+    @Test
+    @DisplayName("circuit breaker ignores RateLimitExceededException and CircuitBreakerOpenException in completion callback")
+    void circuitBreakerIgnoresResilienceExceptionsInCompletion() throws Exception {
+        AtomicBoolean cbFailureRecorded = new AtomicBoolean(false);
+        CircuitBreaker testCb = new CircuitBreaker() {
+            @Override public String name() { return "test-cb"; }
+            @Override public State getState() { return State.CLOSED; }
+            @Override public boolean tryAcquirePermission() { return true; }
+            @Override public void recordSuccess(long d) {}
+            @Override public void recordFailure(long d, Throwable t) { cbFailureRecorded.set(true); }
+            @Override public Duration remainingWaitDuration() { return Duration.ZERO; }
+            @Override public CircuitBreakerConfig config() { return CircuitBreakerConfig.ofDefaults(); }
+            @Override public CircuitBreakerMetrics metrics() { throw new UnsupportedOperationException(); }
+            @Override public void transitionToClosedState() {}
+            @Override public void transitionToOpenState() {}
+            @Override public void transitionToHalfOpenState() {}
+        };
+
+        // Inject RateLimitExceededException via async engine failure
+        HttpTemplate t = createTemplate("helloAsync", new Object[]{"ignore"}, String.class);
+        t.setHttpEngine(new FailingAsyncEngine(new RateLimitExceededException("simulated-rl")));
+        t.setCircuitBreaker(testCb);
+
+        CompletableFuture<String> future = t.exchange();
+        RateLimitExceededException ex = causeOf(future::join);
+        assertNotNull(ex);
+        assertFalse(cbFailureRecorded.get(), "recordFailure must NOT be called for RateLimitExceededException");
+
+        // Inject CircuitBreakerOpenException via async engine failure
+        HttpTemplate t2 = createTemplate("helloAsync", new Object[]{"ignore-cb"}, String.class);
+        t2.setHttpEngine(new FailingAsyncEngine(new CircuitBreakerOpenException("simulated-cb", Duration.ZERO)));
+        t2.setCircuitBreaker(testCb);
+
+        CompletableFuture<String> future2 = t2.exchange();
+        CircuitBreakerOpenException ex2 = causeOf(future2::join);
+        assertNotNull(ex2);
+        assertFalse(cbFailureRecorded.get(), "recordFailure must NOT be called for CircuitBreakerOpenException");
+
+        // Short-circuit with circuit breaker configured: cbAction must be bypassed
+        HttpTemplate tShortCircuit = createTemplate("helloAsync", new Object[]{"sc"}, String.class);
+        tShortCircuit.setHttpClient(new StubHttpClient(new ArrayDeque<>(), new AtomicReference<>()));
+        tShortCircuit.setCircuitBreaker(testCb);
+        tShortCircuit.setRequestInterceptors(List.of((req, ctx) -> {
+            ctx.shortCircuit(new WireResponse(200, List.of(), "ok".getBytes(StandardCharsets.UTF_8), null, HttpClient.Version.HTTP_1_1, List.of()));
+            return req;
+        }));
+        CompletableFuture<String> scFuture = tShortCircuit.exchange();
+        assertEquals("ok", scFuture.join());
+
+        // Cache hit with circuit breaker configured: cbAction must be bypassed
+        HttpTemplate tCache = createTemplate("helloAsync", new Object[]{"ch"}, String.class);
+        tCache.setCircuitBreaker(testCb);
+        ru.jrestly.cache.HttpCache dummyCache = ru.jrestly.cache.HttpCaches.inMemory(10);
+        WireRequest cachedReq = new WireRequest(HttpMethod.GET, URI.create("http://localhost:1/api/hello-async?name=ch"), List.of(), null, null);
+        WireResponse cachedResp = WireResponse.builder()
+                .statusCode(200)
+                .header("Cache-Control", "public, max-age=3600")
+                .body("cached")
+                .build();
+        dummyCache.put(cachedReq, cachedResp);
+        tCache.setHttpCache(dummyCache);
+        CompletableFuture<String> cacheFuture = tCache.exchange();
+        assertEquals("cached", cacheFuture.join());
+    }
+
+    @Test
+    @DisplayName("createRequestContext fallback when metadata and args are null")
+    void createRequestContextFallbacks() throws Exception {
+        HttpTemplate t = new HttpTemplate();
+        t.setUrl("http://localhost:1/test");
+        t.setHttpMethod(HttpMethod.GET);
+        t.setReturnType(String.class);
+        t.setHttpClient(new StubHttpClient(new ArrayDeque<>(List.of(
+                stubResponse(200, Map.of(), "ok".getBytes(StandardCharsets.UTF_8))
+        )), new AtomicReference<>()));
+        t.setJsonCodec(new StubCodec());
+
+        AtomicReference<RequestContext> capturedCtx = new AtomicReference<>();
+        t.setRequestInterceptors(List.of((req, ctx) -> {
+            capturedCtx.set(ctx);
+            return req;
+        }));
+
+        String res = t.exchange();
+        assertEquals("ok", res);
+        assertNotNull(capturedCtx.get());
+        assertEquals("default", capturedCtx.get().moduleName());
+        assertEquals(HttpTemplate.class, capturedCtx.get().controllerClass());
+        assertEquals("exchange", capturedCtx.get().method().getName());
+        assertEquals(0, capturedCtx.get().args().length);
+    }
+
+    @Test
+    @DisplayName("async exceptionally handles IOException and unwrapCause handles CompletionException with null cause")
+    void asyncExceptionallyHandlesCheckedExceptionAndNullCause() throws Exception {
+        HttpTemplate t = createTemplate("helloAsync", new Object[]{"ex"}, String.class);
+        t.setHttpEngine(new FailingAsyncEngine(new RuntimeException("runtime-failure")) {
+            @Override
+            public CompletableFuture<WireResponse> sendAsync(WireRequest request, ru.jrestly.engine.HttpEngineOptions options) {
+                return CompletableFuture.failedFuture(new IOException("network-boom"));
+            }
+        });
+
+        CompletableFuture<String> future = t.exchange();
+        java.util.concurrent.ExecutionException ex = assertThrows(java.util.concurrent.ExecutionException.class, future::get);
+        assertInstanceOf(RuntimeException.class, ex.getCause());
+        assertInstanceOf(IOException.class, ex.getCause().getCause());
+
+        // Test CompletionException with null cause
+        HttpTemplate tNullCause = createTemplate("helloAsync", new Object[]{"null-cause"}, String.class);
+        tNullCause.setHttpEngine(new FailingAsyncEngine(new RuntimeException("runtime-failure")) {
+            @Override
+            public CompletableFuture<WireResponse> sendAsync(WireRequest request, ru.jrestly.engine.HttpEngineOptions options) {
+                CompletableFuture<WireResponse> f = new CompletableFuture<>();
+                f.completeExceptionally(new CompletionException((Throwable) null));
+                return f;
+            }
+        });
+        CompletableFuture<String> futureNull = tNullCause.exchange();
+        assertThrows(java.util.concurrent.ExecutionException.class, futureNull::get);
+    }
+
+    @Test
+    @DisplayName("request interceptor throwing Error or checked exception rethrows accurately")
+    void requestInterceptorThrowsErrorAndRethrown() throws Exception {
+        HttpTemplate t = createTemplate("hello", new Object[]{"err"}, String.class);
+        t.setHttpClient(new StubHttpClient(new ArrayDeque<>(), new AtomicReference<>()));
+        t.setRequestInterceptors(List.of((req, ctx) -> {
+            throw new AssertionError("assertion-failed");
+        }));
+
+        assertThrows(AssertionError.class, t::exchange);
+    }
+
+    @Test
+    @DisplayName("response interceptor throwing exception with null logger does not crash")
+    void responseInterceptorThrowsWithNullLoggerSuppressed() throws Exception {
+        HttpTemplate t = createTemplate("hello", new Object[]{"null-logger"}, String.class);
+        t.setHttpClient(new StubHttpClient(new ArrayDeque<>(List.of(
+                stubResponse(200, Map.of(), "ok".getBytes(StandardCharsets.UTF_8))
+        )), new AtomicReference<>()));
+        t.setLogger(null);
+        t.setResponseInterceptors(List.of(ctx -> {
+            throw new RuntimeException("interceptor-crash");
+        }));
+
+        String res = t.exchange();
+        assertEquals("ok", res);
+    }
+
+    @Test
+    @DisplayName("HttpTemplate setters null safety and defaulting")
+    void httpTemplateSettersNullSafety() throws Exception {
+        HttpTemplate t = createTemplate("hello", new Object[]{"nulls"}, String.class);
+        t.setHttpClient(null);
+        assertNull(t.getHttpClient());
+        assertNull(t.getHttpEngine());
+
+        t.setRequestInterceptors(null);
+        assertEquals(List.of(), t.getRequestInterceptors());
+
+        t.setResponseInterceptors(null);
+        assertEquals(List.of(), t.getResponseInterceptors());
+    }
+
+    @Test
+    @DisplayName("sync circuit breaker finally block does not record failure for resilience exceptions")
+    void syncCircuitBreakerFinallyWithResilienceExceptions() throws Exception {
+        AtomicBoolean cbFailureRecorded = new AtomicBoolean(false);
+        CircuitBreaker testCb = new CircuitBreaker() {
+            @Override public String name() { return "test-cb"; }
+            @Override public State getState() { return State.CLOSED; }
+            @Override public boolean tryAcquirePermission() { return true; }
+            @Override public void recordSuccess(long d) {}
+            @Override public void recordFailure(long d, Throwable t) { cbFailureRecorded.set(true); }
+            @Override public Duration remainingWaitDuration() { return Duration.ZERO; }
+            @Override public CircuitBreakerConfig config() { return CircuitBreakerConfig.ofDefaults(); }
+            @Override public CircuitBreakerMetrics metrics() { throw new UnsupportedOperationException(); }
+            @Override public void transitionToClosedState() {}
+            @Override public void transitionToOpenState() {}
+            @Override public void transitionToHalfOpenState() {}
+        };
+
+        HttpTemplate t = createTemplate("hello", new Object[]{"sync-cb-rl"}, String.class);
+        t.setHttpClient(new StubHttpClient(new ArrayDeque<>(), new AtomicReference<>()));
+        t.setCircuitBreaker(testCb);
+        t.setRequestInterceptors(List.of((req, ctx) -> {
+            throw new RateLimitExceededException("simulated-rl");
+        }));
+
+        assertThrows(RateLimitExceededException.class, t::exchange);
+        assertFalse(cbFailureRecorded.get(), "recordFailure must NOT be called for RateLimitExceededException");
+    }
+
     // ------------------------------------------------------------------
     // Helpers and stubs
     // ------------------------------------------------------------------
@@ -767,6 +1058,27 @@ class RequestPipelineTest {
         public String prettyPrint(String payload) {
             return payload;
         }
+    }
+
+    private static class FailingAsyncEngine implements ru.jrestly.engine.HttpEngine {
+        private final RuntimeException exception;
+
+        FailingAsyncEngine(RuntimeException exception) {
+            this.exception = exception;
+        }
+
+        @Override
+        public WireResponse send(WireRequest request, ru.jrestly.engine.HttpEngineOptions options) {
+            throw exception;
+        }
+
+        @Override
+        public CompletableFuture<WireResponse> sendAsync(WireRequest request, ru.jrestly.engine.HttpEngineOptions options) {
+            return CompletableFuture.failedFuture(exception);
+        }
+
+        @Override
+        public void close() {}
     }
 
     private static class StubHttpClient extends HttpClient {
