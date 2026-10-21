@@ -186,4 +186,31 @@ class ProgressBodySubscriberTest {
             return HttpClient.Version.HTTP_1_1;
         }
     }
+
+    @Test
+    @DisplayName("Edge cases: onNext with null elements, empty buffers, and onComplete with totalBytes > 0")
+    void edgeCasesNullAndEmptyBuffers() {
+        java.util.concurrent.atomic.AtomicInteger callCount = new java.util.concurrent.atomic.AtomicInteger(0);
+        HttpResponse.BodySubscriber<byte[]> stubDelegate = new HttpResponse.BodySubscriber<>() {
+            @Override public java.util.concurrent.CompletionStage<byte[]> getBody() { return java.util.concurrent.CompletableFuture.completedFuture(new byte[0]); }
+            @Override public void onSubscribe(Flow.Subscription subscription) {}
+            @Override public void onNext(List<ByteBuffer> item) {}
+            @Override public void onError(Throwable throwable) {}
+            @Override public void onComplete() {}
+        };
+        ProgressBodyHandler.ProgressBodySubscriber<byte[]> sub =
+                new ProgressBodyHandler.ProgressBodySubscriber<>(stubDelegate, (read, total) -> callCount.incrementAndGet(), 100);
+
+        java.util.List<ByteBuffer> listWithNull = new java.util.ArrayList<>();
+        listWithNull.add(null);
+        listWithNull.add(ByteBuffer.allocate(0));
+        sub.onNext(listWithNull);
+
+        assertEquals(0, callCount.get());
+        assertEquals(0, sub.bytesRead());
+
+        // onComplete when bytesRead == 0 but totalBytes == 100 should not trigger onProgress(0, 0)
+        sub.onComplete();
+        assertEquals(0, callCount.get());
+    }
 }

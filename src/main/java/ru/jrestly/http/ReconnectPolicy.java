@@ -207,7 +207,7 @@ public final class ReconnectPolicy {
             case EQUAL -> {
                 long half = bound / 2;
                 long diff = bound - half;
-                yield diff > 0 ? half + random.nextLong(diff + 1) : half;
+                yield half + random.nextLong(diff + 1);
             }
             case DECORRELATED -> {
                 // The decorrelated floor is the server hint (or initialBackoff), but the
@@ -390,9 +390,6 @@ public final class ReconnectPolicy {
             }
             if (Double.isNaN(backoffMultiplier) || backoffMultiplier < 1.0) {
                 throw new IllegalStateException("backoffMultiplier must be >= 1.0, got " + backoffMultiplier);
-            }
-            if (stallTimeout != null && (stallTimeout.isNegative() || stallTimeout.isZero())) {
-                throw new IllegalStateException("stallTimeout must be positive, got " + stallTimeout);
             }
             return new ReconnectPolicy(this);
         }

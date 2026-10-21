@@ -12,6 +12,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Unit tests for the immutable {@code WireRequest} model: header withers
@@ -267,5 +268,21 @@ class WireRequestTest {
 
         WireRequest resized = initial.toBuilder().knownBodySize(7L).build();
         assertEquals(7L, resized.knownBodySize());
+    }
+
+    @Test
+    @DisplayName("Edge cases: withBodyPublisher(null) and Builder headers(null) / bodyPublisher(null)")
+    void edgeCasesNullPublishersAndHeaders() {
+        WireRequest initial = WireRequest.builder()
+                .method(HttpMethod.GET)
+                .uri(URI_A)
+                .headers(null)
+                .bodyPublisher(null)
+                .build();
+        assertNull(initial.headers());
+        assertNull(initial.bodyPublisherSupplier());
+
+        WireRequest afterNullPublisher = initial.withBodyPublisher(null);
+        assertNull(afterNullPublisher.bodyPublisherSupplier());
     }
 }

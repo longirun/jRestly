@@ -650,5 +650,28 @@ class ResponseHeadersTest {
                 headers.allValues("X-A").getClass().getName(),
                 "single-value header lists must be the compact immutable List.of entry");
     }
+
+    @Test
+    @DisplayName("Edge cases: null header names, null trailer lookups, and blank Link / Set-Cookie")
+    void edgeCasesNullHeadersAndTrailers() {
+        // Headers with null and null name: map.isEmpty() branch returns emptyMap()
+        ResponseHeaders onlyNullName = new ResponseHeaders(200, List.of(new Header(null, "val")), Duration.ZERO);
+        assertTrue(onlyNullName.map().isEmpty());
+
+        // Null trailer query
+        ResponseHeaders resp = new ResponseHeaders(200, List.of(
+                new Header("Link", ""),
+                new Header("Link", "   "),
+                new Header("Link", "invalid-link-without-brackets; rel=next"),
+                new Header("Set-Cookie", "   "),
+                new Header("Set-Cookie2", "   ")
+        ), Duration.ZERO);
+
+        assertTrue(resp.firstTrailer(null).isEmpty());
+        assertEquals(List.of(), resp.trailerValues(null));
+        assertTrue(resp.link(null).isEmpty());
+        assertTrue(resp.link("   ").isEmpty());
+        assertTrue(resp.cookies().isEmpty());
+    }
 }
 

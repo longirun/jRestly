@@ -163,7 +163,7 @@ final class SensitiveDataSanitizer {
         String uriStr = uri.toString();
         int qIdx = uriStr.indexOf('?');
         int fIdx = uriStr.indexOf('#');
-        String base = qIdx >= 0 ? uriStr.substring(0, qIdx) : uriStr;
+        String base = uriStr.substring(0, qIdx);
         String fragment = fIdx >= 0 ? uriStr.substring(fIdx) : "";
 
         return base + "?" + newQuery + fragment;

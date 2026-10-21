@@ -126,4 +126,20 @@ class RetryAfterTest {
         assertEquals(42_000L, RetryAfter.delayMillis(
                 withRetryAfter("RETRY-AFTER", "42")));
     }
+
+    @Test
+    @DisplayName("Edge cases: null header name, null header value, invalid RFC 850 weekday or no comma")
+    void edgeCasesNullHeadersAndInvalidRfc850() {
+        // Null header name in list
+        WireResponse respWithNullHeaderName = new WireResponse(429, List.of(new Header(null, "val")), new byte[0]);
+        assertNull(RetryAfter.delayMillis(respWithNullHeaderName));
+
+        // Null header value
+        WireResponse respWithNullVal = new WireResponse(429, List.of(new Header("Retry-After", null)), new byte[0]);
+        assertNull(RetryAfter.delayMillis(respWithNullVal));
+
+        // RFC 850 with unknown weekday or no comma
+        assertNull(RetryAfter.delayMillis(withRetryAfter("Retry-After", "BadDay, 06-Nov-94 08:49:37 GMT")));
+        assertNull(RetryAfter.delayMillis(withRetryAfter("Retry-After", ", 06-Nov-94 08:49:37 GMT")));
+    }
 }

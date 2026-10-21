@@ -211,4 +211,37 @@ class ProgressBodyPublisherTest {
         assertNotNull(errorRef.get());
         assertEquals("test-error", errorRef.get().getMessage());
     }
+
+    @Test
+    @DisplayName("Edge cases: null and empty byte buffers on onNext, onComplete when totalBytes != 0, and notifyZero idempotence")
+    void edgeCasesNullAndEmptyBuffers() {
+        java.util.concurrent.atomic.AtomicInteger callCount = new java.util.concurrent.atomic.AtomicInteger(0);
+        HttpRequest.BodyPublisher raw = new HttpRequest.BodyPublisher() {
+            @Override public long contentLength() { return 100; }
+            @Override
+            public void subscribe(Flow.Subscriber<? super ByteBuffer> subscriber) {
+                subscriber.onSubscribe(new Flow.Subscription() {
+                    @Override public void request(long n) {
+                        subscriber.onNext(null);
+                        subscriber.onNext(ByteBuffer.allocate(0));
+                        subscriber.onComplete();
+                    }
+                    @Override public void cancel() {}
+                });
+            }
+        };
+
+        ProgressBodyPublisher publisher = new ProgressBodyPublisher(raw, (sent, total) -> callCount.incrementAndGet());
+        publisher.subscribe(new SimpleSubscriber());
+        assertEquals(0, callCount.get());
+
+        // Zero-length notify idempotence
+        ProgressBodyPublisher emptyPub = new ProgressBodyPublisher(HttpRequest.BodyPublishers.noBody(), (sent, total) -> callCount.incrementAndGet());
+        emptyPub.notifyZeroLengthIfPending();
+        assertEquals(1, callCount.get());
+        emptyPub.notifyZeroLengthIfPending(); // second call is no-op
+        assertEquals(1, callCount.get());
+        emptyPub.subscribe(new SimpleSubscriber()); // onComplete detects already notified
+        assertEquals(1, callCount.get());
+    }
 }

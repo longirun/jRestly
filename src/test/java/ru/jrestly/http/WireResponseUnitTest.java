@@ -322,4 +322,38 @@ class WireResponseUnitTest {
         assertEquals("X-Trailer", trailers.get(0).name());
         assertEquals("value", trailers.get(0).value());
     }
+
+    @Test
+    @DisplayName("WireResponse equals edge cases: distinct body, stream, and trailers")
+    void testWireResponseEqualsEdgeCases() {
+        WireResponse base = WireResponse.builder()
+                .statusCode(200)
+                .body("data")
+                .build();
+
+        // Null string body in builder
+        WireResponse nullStringBody = WireResponse.builder().statusCode(200).body((String) null).build();
+        assertNull(nullStringBody.body());
+
+        // Body inequality
+        WireResponse differentBody = WireResponse.builder().statusCode(200).body("other").build();
+        assertNotEquals(base, differentBody);
+        assertNotEquals(base, nullStringBody);
+
+        // Stream inequality
+        InputStream stream1 = new ByteArrayInputStream(new byte[0]);
+        InputStream stream2 = new ByteArrayInputStream(new byte[0]);
+        WireResponse streamResp1 = WireResponse.builder().statusCode(200).stream(stream1).build();
+        WireResponse streamResp2 = WireResponse.builder().statusCode(200).stream(stream2).build();
+        assertNotEquals(streamResp1, streamResp2);
+        assertNotEquals(streamResp1, base);
+
+        // Trailers inequality
+        WireResponse trailersResp = WireResponse.builder()
+                .statusCode(200)
+                .body("data")
+                .trailers(List.of(new Header("A", "1")))
+                .build();
+        assertNotEquals(base, trailersResp);
+    }
 }

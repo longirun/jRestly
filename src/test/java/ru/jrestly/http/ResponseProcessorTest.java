@@ -525,4 +525,71 @@ class ResponseProcessorTest {
         Object result = processor.process(wireStream(200, bais, List.of()), System.nanoTime());
         assertEquals(bais, result);
     }
+
+    @Test
+    void processOnErrorParserDoesNotMatchStatusCode() throws IOException {
+        OnErrorParser parser = new OnErrorParser();
+        parser.register(400, CustomErrorEx.class);
+
+        ResponseProcessor.ResponseConfig config = new ResponseProcessor.ResponseConfig(
+                String.class, false, null, null, parser, List.of(200), false, null, null
+        );
+        ResponseProcessor processor = new ResponseProcessor(config);
+
+        // Status 500 is not 400 (onErrorParser doesn't match) and not expected (200), throws UnexpectedStatusException
+        assertThrows(UnexpectedStatusException.class, () ->
+                processor.process(wireBuffered(500, "server error", List.of()), System.nanoTime()));
+
+        ByteArrayInputStream bais = new ByteArrayInputStream("server error".getBytes(StandardCharsets.UTF_8));
+        assertThrows(UnexpectedStatusException.class, () ->
+                processor.process(wireStream(500, bais, List.of()), System.nanoTime()));
+    }
+
+    @Test
+    void processBufferedOnErrorParserWithEmptyAndNullPayload() {
+        OnErrorParser parser = new OnErrorParser();
+        parser.register(400, CustomErrorEx.class);
+
+        ResponseProcessor.ResponseConfig config = new ResponseProcessor.ResponseConfig(
+                String.class, false, null, null, parser, List.of(200), false, null, null
+        );
+        ResponseProcessor processor = new ResponseProcessor(config);
+
+        // Empty bytes
+        WireResponse emptyBody = new WireResponse(400, List.of(), new byte[0]);
+        CustomErrorEx ex1 = assertThrows(CustomErrorEx.class, () -> processor.process(emptyBody, System.nanoTime()));
+        assertNotNull(ex1);
+
+        // Null bytes
+        WireResponse nullBody = new WireResponse(400, List.of(), (byte[]) null);
+        CustomErrorEx ex2 = assertThrows(CustomErrorEx.class, () -> processor.process(nullBody, System.nanoTime()));
+        assertNotNull(ex2);
+    }
+
+    @Test
+    void processStreamTypedSseWithSilentLogger() throws IOException {
+        System.Logger silentLogger = new System.Logger() {
+            @Override public String getName() { return "silent"; }
+            @Override public boolean isLoggable(Level level) { return false; }
+            @Override public void log(Level level, java.util.ResourceBundle bundle, String msg, Throwable thrown) {}
+            @Override public void log(Level level, java.util.ResourceBundle bundle, String format, Object... params) {}
+        };
+
+        ByteArrayInputStream bais = new ByteArrayInputStream("data: {\"message\":\"hi\"}\n\n".getBytes(StandardCharsets.UTF_8));
+        PayloadCodec fakeCodec = new PayloadCodec() {
+            @Override public boolean supports(String mediaType) { return true; }
+            @Override public byte[] serialize(Object value, String contentType) { return new byte[0]; }
+            @SuppressWarnings("unchecked")
+            @Override public <T> T deserialize(byte[] payload, Type targetType, String contentType) { return (T) new SimpleDto("hi"); }
+        };
+
+        ResponseProcessor.ResponseConfig config = new ResponseProcessor.ResponseConfig(
+                typeOf("streamTypedSse"), false, null, null, null, List.of(200), false, headers -> fakeCodec, silentLogger
+        );
+        ResponseProcessor processor = new ResponseProcessor(config);
+
+        Object result = processor.process(wireStream(200, bais, List.of()), System.nanoTime());
+        assertTrue(result instanceof Stream);
+        ((Stream<?>) result).close();
+    }
 }
