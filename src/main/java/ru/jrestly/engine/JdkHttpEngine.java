@@ -188,7 +188,15 @@ public class JdkHttpEngine implements HttpEngine {
         }
     }
 
-    private HttpRequest toHttpRequest(WireRequest request, HttpEngineOptions options) {
+    /**
+     * Maps an internal {@link WireRequest} and optional {@link HttpEngineOptions} to a JDK {@link HttpRequest}.
+     * Subclasses may override this method to customize request creation (e.g. inject custom JDK-level headers).
+     *
+     * @param request the wire request, must not be {@code null}
+     * @param options the execution options, may be {@code null}
+     * @return the constructed JDK HTTP request
+     */
+    protected HttpRequest toHttpRequest(WireRequest request, HttpEngineOptions options) {
         HttpRequest.Builder builder = HttpRequest.newBuilder(request.uri());
 
         if (options != null && options.timeout() != null) {
@@ -218,7 +226,15 @@ public class JdkHttpEngine implements HttpEngine {
         return builder.build();
     }
 
-    private HttpRequest.BodyPublisher createBodyPublisher(WireRequest request, UploadProgressListener uploadListener) {
+    /**
+     * Creates a {@link HttpRequest.BodyPublisher} for the specified wire request and upload listener.
+     * Subclasses may override this method to customize body streaming behavior.
+     *
+     * @param request the wire request
+     * @param uploadListener the optional upload progress listener
+     * @return the JDK body publisher
+     */
+    protected HttpRequest.BodyPublisher createBodyPublisher(WireRequest request, UploadProgressListener uploadListener) {
         HttpRequest.BodyPublisher publisher;
         if (request.parts() != null) {
             publisher = MultipartBodyPublisher.of(request.boundary(), request.parts());
@@ -239,8 +255,14 @@ public class JdkHttpEngine implements HttpEngine {
         return publisher;
     }
 
+    /**
+     * Converts a JDK {@link HttpResponse} into a jRestly {@link WireResponse}.
+     *
+     * @param response the JDK HTTP response
+     * @return the wire response
+     */
     @SuppressWarnings("unchecked")
-    private static WireResponse toWireResponse(HttpResponse<?> response) {
+    protected static WireResponse toWireResponse(HttpResponse<?> response) {
         Object body = response.body();
         List<Header> headers = toHeaders(response.headers());
         HttpClient.Version version = response.version();
@@ -251,7 +273,13 @@ public class JdkHttpEngine implements HttpEngine {
         return new WireResponse(response.statusCode(), headers, (byte[]) body, null, version, trailers);
     }
 
-    private static List<Header> toHeaders(HttpHeaders headers) {
+    /**
+     * Extracts a list of {@link Header} records from JDK {@link HttpHeaders}.
+     *
+     * @param headers the JDK headers, may be {@code null}
+     * @return an immutable list of headers
+     */
+    protected static List<Header> toHeaders(HttpHeaders headers) {
         if (headers == null) {
             return List.of();
         }
@@ -270,8 +298,14 @@ public class JdkHttpEngine implements HttpEngine {
         return List.copyOf(list);
     }
 
-    private static void notifyZeroUploadIfPending(HttpRequest httpRequest, HttpEngineOptions options) {
-        if (options != null && options.uploadProgressListener() != null && httpRequest != null) {
+    /**
+     * Notifies the upload progress listener of zero bytes if the request has empty body publisher.
+     *
+     * @param httpRequest the JDK HTTP request
+     * @param options the execution options
+     */
+    protected static void notifyZeroUploadIfPending(HttpRequest httpRequest, HttpEngineOptions options) {
+        if (options != null && options.uploadProgressListener() != null) {
             httpRequest.bodyPublisher().ifPresent(bp -> {
                 if (bp instanceof ProgressBodyPublisher pbp) {
                     pbp.notifyZeroLengthIfPending();

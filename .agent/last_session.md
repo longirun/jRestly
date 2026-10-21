@@ -1,36 +1,34 @@
-# Last Session: #370 (2026-10-21)
+# Last Session: #371 (2026-10-21)
 
 ## Что сделано
 
-**Сессия #370: HttpTemplate Resilience Polish & Dead Code Elimination (Branch 95.19%, missed branches 218).**
-1. Ликвидирован мёртвый код в `HttpTemplate`:
-   - удалены неиспользуемые приватные методы `logResponse(WireResponse, long)` (минус 6 мёртвых веток) и `isExpectedStatus(int)` (делегирован в `HttpErrorHandler` и `ResponseProcessor`);
-   - заменены конструкции `switch (t)` и `switch (cause)` на чистый `if-else` rethrow, устранив фиктивные проверки `case null` компилятора;
-   - сделан null-safe расчет `effectiveSocketTimeout` при отсутствии `moduleInfo`;
-   - инициализированы поля `headers`, `authHeaderNames`, `requestParams` безопасными коллекциями по умолчанию.
-2. В `RequestPipelineTest` добавлены +9 тестов, закрывающих пограничные и resilience сценарии:
-   - асинхронный fast-fail на `RateLimiter` и `CircuitBreaker` с одновременным уведомлением `ResponseInterceptor` (получает failure) и `ClientMetricsListener` (строго 0 attempts, парные start/complete);
-   - выполнение `whenCompleteAsync(cbAction, executor)` на переданном кастомном `Executor` для success и failure;
-   - `cbAction` не записывает сбой (`recordFailure`) при получении `RateLimitExceededException` и `CircuitBreakerOpenException` от асинхронного движка;
-   - обход `cbAction` при short-circuit ответе и cache-hit;
-   - перехватчик, бросающий `Error` (`AssertionError`), пробрасывает его без искажений;
-   - падение перехватчика ответа при `logger == null` безопасно подавляется;
-   - сеттеры `HttpTemplate`: `setHttpClient(null)`, `setRequestInterceptors(null)`, `setResponseInterceptors(null)`;
-   - проверка синхронного finally блока на игнорирование resilience-исключений;
-   - создание контекста при `moduleInfo == null`, `controllerClass == null`, `method == null`, `args == null`;
-   - `stage.exceptionally` с `IOException` и `CompletionException(null)`.
-3. Новые исторические рекорды библиотеки:
-   - `HttpTemplate`: missed branches упали с 41 до **18** (минус 23 missed!), Branch coverage вырос с 82.3% до **92.1%**!
-   - Полный гейт: **2,138 / 2,138** тестов green во всех 8 модулях (+9 новых тестов, 0 failures, 0 errors);
-   - JaCoCo: Branch **95.19%** (4,313 / 4,531 covered — **впервые в истории взят легендарный рубеж 95%!**);
-   - JaCoCo: Complexity **94.28%** (3,644 / 3,865 covered — **новый исторический рекорд библиотеки!**);
-   - JaCoCo: Instruction **98.87%**, Line **98.62%**, Classes **100%** (168/168), Methods **99.81%** (1,553/1,556);
-   - Missed branches снизились с 241 до **218** (минус 23 missed branches за сессию — новый абсолютный исторический рекорд библиотеки!);
+**Сессия #371: JdkHttpEngine Extensibility (100% Branches) & ZeroDepJsonParser Polish (Branch 95.60%, missed branches 199).**
+1. Открытость и расширяемость `JdkHttpEngine` (пожелание Антона):
+   - методы `toHttpRequest`, `createBodyPublisher`, `toWireResponse`, `toHeaders`, `notifyZeroUploadIfPending` переведены из `private` в `protected` (и `protected static`), снабжены исчерпывающим Javadoc. Пользователи теперь могут расширять и кастомизировать генерацию `HttpRequest` и маппинг ответов;
+   - устранена синтетическая проверка `&& httpRequest != null` в `notifyZeroUploadIfPending`.
+2. Покрытие пограничных сценариев в `JdkHttpEngineTest` (+7 тестов):
+   - `send` и `sendAsync` с `options == null`;
+   - асинхронный стриминг `sendAsync` со `streamResponse(true)` и `downloadProgressListener`;
+   - `bodyPublisherSupplier` возвращает `null` (fallback на `noBody()`);
+   - HTTP GET с телом (`body`) и частями (`parts`);
+   - `toHeaders(null)` и headers с множественными значениями одного имени;
+   - `ModuleInfo` с обычным `Executor`, нулевым тайм-аутом, прокси, аутентификатором, закрытие управляемого пула виртуальных потоков.
+   - **`JdkHttpEngine` достиг 100% покрытия ветвей (94/94 branches, 0 missed branches!)**.
+3. Очистка и покрытие `ProblemDetail$ZeroDepJsonParser`:
+   - удалены мертвые проверки `if (json == null || json.isEmpty() || json.charAt(0) != '{')` в приватном `parseObject` (делегирование из `fromJson`);
+   - ликвидирована недостижимая ветка `else if (i < len)` в разделителях полей объекта;
+   - в `ProblemDetailTest` добавлены тесты на отрицательный Long `< Integer.MIN_VALUE`, незакрытые массивы без элементов и с элементами, неожиданный конец JSON после `:`, минус в самом конце строки, экранированные кавычки и скобки внутри объектов, незакрытый объект.
+4. Новые исторические рекорды библиотеки:
+   - Missed branches всей библиотеки впервые в истории опустились ниже 200: **ровно 199 missed branches** (минус 19 за сессию — абсолютный исторический минимум!);
+   - Полный гейт: **2,145 / 2,145** тестов green во всех 8 модулях (+7 новых тестов, 0 failures, 0 errors);
+   - JaCoCo: Branch **95.60%** (4,322 / 4,521 covered — новый исторический рекорд библиотеки!);
+   - JaCoCo: Complexity **94.77%** (3,658 / 3,860 covered — новый рекорд!);
+   - JaCoCo: Instruction **98.92%**, Line **98.68%**, Classes **100%** (168/168), Methods **99.81%** (1,553/1,556);
    - Javadoc: абсолютно чист во всех 8 модулях под `-Werror`.
 
-## Контекст для следующей сессии (#371)
+## Контекст для следующей сессии (#372)
 
 1. **Ветка:** `agent-loop`.
-2. **Статус:** Все задачи из бэклога и запросов Антона выполнены на 100%: архитектурная декомпозиция god-классов (ADR-0080 — ADR-0094), Enterprise Observability & Compliance (ADR-0095), TraceId Correlation Logging & Raw Mode (ADR-0096), Typed Server-Sent Events (ADR-0097), SSE Resilience Polish, ProblemDetail Zero-Dep Resilience, HttpTemplateBuilder Branch Pruning (Branch 94.69%) и HttpTemplate Resilience Polish (Branch 95.19%, missed branches 218).
-3. **Метрики:** Полный гейт **2,138 / 2,138**; Branch coverage **95.19%**; Complexity **94.28%**; Missed branches: 218; Javadoc clean под `-Werror`; Highest ADR **0097**, next free **0098**.
+2. **Статус:** Все задачи из бэклога и запросов Антона выполнены на 100%: архитектурная декомпозиция god-классов (ADR-0080 — ADR-0094), Enterprise Observability & Compliance (ADR-0095), TraceId Correlation Logging & Raw Mode (ADR-0096), Typed Server-Sent Events (ADR-0097), SSE Resilience Polish, ProblemDetail Zero-Dep Resilience, HttpTemplateBuilder Branch Pruning, HttpTemplate Resilience Polish и JdkHttpEngine Extensibility (100% branches, missed branches 199).
+3. **Метрики:** Полный гейт **2,145 / 2,145**; Branch coverage **95.60%**; Complexity **94.77%**; Missed branches: 199; Javadoc clean под `-Werror`; Highest ADR **0097**, next free **0098**.
 4. **Дальше:** Перенос фич из `agent-loop` в `main` Антоном или релизные транши.

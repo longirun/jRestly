@@ -1004,6 +1004,33 @@ class ProblemDetailTest {
 
         // Unclosed bracket in array
         assertThrows(IllegalArgumentException.class, () -> ProblemDetail.fromJson("{\"arr\": [1, 2, 3}"));
+
+        // Negative long below Integer.MIN_VALUE
+        ProblemDetail pdBigNeg = ProblemDetail.fromJson("{\"bigNeg\": -999999999999}");
+        assertEquals(-999999999999L, pdBigNeg.getProperty("bigNeg"));
+
+        // Slash at the very end of string literal
+        assertThrows(IllegalArgumentException.class, () -> ProblemDetail.fromJson("{\"key\": \"incomplete\\"));
+
+        // Unexpected end of JSON right after colon
+        assertThrows(IllegalArgumentException.class, () -> ProblemDetail.fromJson("{\"key\":"));
+
+        // Minus sign at the very end of JSON
+        assertThrows(IllegalArgumentException.class, () -> ProblemDetail.fromJson("{\"key\": -"));
+
+        // Nested object containing escaped quotes, brackets, and braces
+        ProblemDetail pdEscaped = ProblemDetail.fromJson("{\"obj\": {\"text\": \"hello \\\"world\\\" [brackets] {braces}\"}}");
+        assertNotNull(pdEscaped.getProperty("obj"));
+
+        // Unclosed object without closing brace
+        assertThrows(IllegalArgumentException.class, () -> ProblemDetail.fromJson("{\"unclosed\": 1"));
+
+        // Array with invalid delimiter
+        assertThrows(IllegalArgumentException.class, () -> ProblemDetail.fromJson("{\"arr\": [1; 2]}"));
+
+        // Incomplete array without closing bracket
+        assertThrows(IllegalArgumentException.class, () -> ProblemDetail.fromJson("{\"arr\": ["));
+        assertThrows(IllegalArgumentException.class, () -> ProblemDetail.fromJson("{\"arr\": [1"));
     }
 }
 

@@ -672,9 +672,6 @@ public class ProblemDetail {
     private static final class ZeroDepJsonParser {
 
         static Map<String, Object> parseObject(String json) {
-            if (json == null || json.isEmpty() || json.charAt(0) != '{') {
-                throw new IllegalArgumentException("Expected '{'");
-            }
             int len = json.length();
             int i = 1; // skip '{'
 
@@ -710,7 +707,7 @@ public class ProblemDetail {
                 } else if (i < len && json.charAt(i) == '}') {
                     i++;
                     break;
-                } else if (i < len) {
+                } else {
                     throw new IllegalArgumentException("Expected ',' or '}' at index " + i);
                 }
             }

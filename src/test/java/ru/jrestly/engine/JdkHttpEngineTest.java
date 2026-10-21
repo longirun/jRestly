@@ -209,6 +209,155 @@ class JdkHttpEngineTest {
         assertEquals(200, response.statusCode());
     }
 
+    @Test
+    @DisplayName("JdkHttpEngine send and sendAsync work safely with null options")
+    void sendAndSendAsyncWithNullOptions() throws Exception {
+        byte[] dummy = "ok-null-options".getBytes(StandardCharsets.UTF_8);
+        HttpClient mockClient = new StubHttpClient(200, Map.of(), dummy);
+        JdkHttpEngine engine = JdkHttpEngine.from(mockClient);
+
+        WireRequest request = WireRequest.builder()
+                .method(HttpMethod.GET)
+                .uri(URI.create("https://api.example.com/null-opt"))
+                .build();
+
+        WireResponse syncResp = engine.send(request, null);
+        assertEquals(200, syncResp.statusCode());
+        assertArrayEquals(dummy, syncResp.body());
+
+        WireResponse asyncResp = engine.sendAsync(request, null).join();
+        assertEquals(200, asyncResp.statusCode());
+        assertArrayEquals(dummy, asyncResp.body());
+    }
+
+    @Test
+    @DisplayName("JdkHttpEngine sendAsync supports streaming response with download progress")
+    void sendAsyncStreamingWithDownloadProgress() throws Exception {
+        byte[] dummy = "stream-progress-data".getBytes(StandardCharsets.UTF_8);
+        HttpClient mockClient = new StubHttpClient(200, Map.of(), dummy);
+        JdkHttpEngine engine = JdkHttpEngine.from(mockClient);
+
+        List<Long> readBytes = new ArrayList<>();
+        DownloadProgressListener downloadListener = (read, total) -> readBytes.add(read);
+
+        WireRequest request = WireRequest.builder()
+                .method(HttpMethod.GET)
+                .uri(URI.create("https://api.example.com/async-stream"))
+                .build();
+
+        HttpEngineOptions options = HttpEngineOptions.builder()
+                .streamResponse(true)
+                .downloadProgressListener(downloadListener)
+                .build();
+
+        WireResponse asyncResp = engine.sendAsync(request, options).join();
+        assertEquals(200, asyncResp.statusCode());
+        assertNotNull(asyncResp.stream());
+    }
+
+    @Test
+    @DisplayName("JdkHttpEngine handles null-returning bodyPublisherSupplier and empty body publisher")
+    void sendWithNullBodyPublisherSupplierFallback() throws Exception {
+        byte[] dummy = "empty-pub-ok".getBytes(StandardCharsets.UTF_8);
+        HttpClient mockClient = new StubHttpClient(200, Map.of(), dummy);
+        JdkHttpEngine engine = JdkHttpEngine.from(mockClient);
+
+        WireRequest request = WireRequest.builder()
+                .method(HttpMethod.POST)
+                .uri(URI.create("https://api.example.com/null-supplier"))
+                .bodyPublisherSupplier(() -> null)
+                .build();
+
+        WireResponse response = engine.send(request, HttpEngineOptions.defaults());
+        assertEquals(200, response.statusCode());
+    }
+
+    @Test
+    @DisplayName("JdkHttpEngine handles GET with payload body and GET with multipart parts")
+    void sendGetMethodWithBodyAndWithParts() throws Exception {
+        byte[] dummy = "get-with-body".getBytes(StandardCharsets.UTF_8);
+        HttpClient mockClient = new StubHttpClient(200, Map.of(), dummy);
+        JdkHttpEngine engine = JdkHttpEngine.from(mockClient);
+
+        WireRequest getWithBody = WireRequest.builder()
+                .method(HttpMethod.GET)
+                .uri(URI.create("https://api.example.com/search"))
+                .body("{\"query\":\"term\"}".getBytes(StandardCharsets.UTF_8))
+                .contentType("application/json")
+                .build();
+
+        WireResponse resp1 = engine.send(getWithBody, HttpEngineOptions.defaults());
+        assertEquals(200, resp1.statusCode());
+
+        WireRequest getWithParts = WireRequest.builder()
+                .method(HttpMethod.GET)
+                .uri(URI.create("https://api.example.com/search-multi"))
+                .parts(List.of(MultipartPart.text("field", "val")))
+                .boundary("bound1")
+                .build();
+
+        WireResponse resp2 = engine.send(getWithParts, HttpEngineOptions.defaults());
+        assertEquals(200, resp2.statusCode());
+    }
+
+    @Test
+    @DisplayName("JdkHttpEngine toHeaders safely handles null and empty map")
+    void toHeadersEdgeCases() {
+        List<Header> nullHeaders = JdkHttpEngine.toHeaders(null);
+        assertTrue(nullHeaders.isEmpty());
+
+        HttpHeaders multiValued = HttpHeaders.of(
+                Map.of("X-Multi", List.of("v1", "v2")),
+                (k, v) -> true
+        );
+        List<Header> parsed = JdkHttpEngine.toHeaders(multiValued);
+        assertEquals(2, parsed.size());
+        assertEquals("X-Multi", parsed.get(0).name());
+        assertEquals("v1", parsed.get(0).value());
+        assertEquals("X-Multi", parsed.get(1).name());
+        assertEquals("v2", parsed.get(1).value());
+    }
+
+    @Test
+    @DisplayName("JdkHttpEngine.create configures all ModuleInfo options including custom executor and zero timeout")
+    void createConfiguresCustomExecutorAndSslOptions() {
+        java.util.concurrent.ExecutorService directExecutor = java.util.concurrent.Executors.newSingleThreadExecutor();
+        try {
+            java.net.CookieManager cookieManager = new java.net.CookieManager();
+            java.net.ProxySelector proxySelector = java.net.ProxySelector.getDefault();
+            java.net.Authenticator authenticator = new java.net.Authenticator() {};
+
+            SimpleModuleInfo moduleInfo = SimpleModuleInfo.builder()
+                    .baseUrl("https://example.com")
+                    .connectTimeout(Duration.ZERO) // zero timeout means no timeout in JDK HttpClient
+                    .executor(directExecutor)
+                    .cookieHandler(cookieManager)
+                    .proxy(proxySelector)
+                    .authenticator(authenticator)
+                    .virtualThreads(false)
+                    .build();
+
+            JdkHttpEngine engine = JdkHttpEngine.create(moduleInfo);
+            assertNotNull(engine.getHttpClient());
+            engine.close();
+        } finally {
+            directExecutor.shutdown();
+        }
+    }
+
+    @Test
+    @DisplayName("JdkHttpEngine with managed virtual thread executor closes executor on close()")
+    void managedEngineClosesVirtualThreadExecutor() {
+        SimpleModuleInfo moduleInfo = SimpleModuleInfo.builder()
+                .baseUrl("https://example.com")
+                .virtualThreads(true)
+                .build();
+
+        JdkHttpEngine engine = JdkHttpEngine.create(moduleInfo);
+        assertNotNull(engine.getHttpClient());
+        engine.close(); // shuts down both client and managedExecutor
+    }
+
     /**
      * Minimal stub of JDK HttpClient for unit testing JdkHttpEngine without network sockets.
      */
