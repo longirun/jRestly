@@ -358,7 +358,7 @@ public final class ReconnectPolicy {
          * @return this builder, for chaining
          */
         public Builder stallTimeout(Duration stallTimeout) {
-            if (stallTimeout != null && (stallTimeout.isNegative() || stallTimeout.isZero())) {
+            if (stallTimeout != null && stallTimeout.compareTo(Duration.ZERO) <= 0) {
                 throw new IllegalStateException("stallTimeout must be positive, got " + stallTimeout);
             }
             this.stallTimeout = stallTimeout;

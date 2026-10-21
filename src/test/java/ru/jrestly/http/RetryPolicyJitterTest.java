@@ -155,6 +155,14 @@ class RetryPolicyJitterTest {
             assertTrue(wait >= 100 && wait <= 1000, "Decorrelated wait outside [100, 1000]: " + wait);
             prev = wait;
         }
+
+        // When initialBackoff == maxBackoff, range is zero -> draw is 0, delay is exactly the cap
+        RetryPolicy flatDecorrelated = RetryPolicy.builder()
+                .initialBackoff(Duration.ofMillis(100))
+                .maxBackoff(Duration.ofMillis(100))
+                .jitter(Jitter.DECORRELATED)
+                .build();
+        assertEquals(100, flatDecorrelated.nextDelayMillis(1, 100L, null, new Random(42)));
     }
 
     @Test

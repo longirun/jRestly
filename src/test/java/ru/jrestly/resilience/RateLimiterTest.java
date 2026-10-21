@@ -255,6 +255,25 @@ class RateLimiterTest {
         assertFalse(worker.isAlive());
     }
 
+    @Test
+    @DisplayName("refillAt with zero or negative elapsed nanos is safe no-op")
+    void refillAtNonPositiveElapsedIsNoOp() {
+        RateLimiter limiter = RateLimiter.of("zero-elapsed-test", 2, Duration.ofSeconds(1));
+        long now = System.nanoTime();
+        // Invoke with past timestamp (elapsed <= 0)
+        RateLimiters.refillAt(limiter, now - 1_000_000L);
+        assertEquals(2, limiter.metrics().availablePermissions());
+
+        // Invoke with dummy custom limiter
+        RateLimiter custom = new RateLimiter() {
+            @Override public String name() { return "custom"; }
+            @Override public boolean tryAcquire(Duration timeout) { return true; }
+            @Override public RateLimiterConfig config() { return RateLimiterConfig.ofDefaults(); }
+            @Override public RateLimiterMetrics metrics() { return new RateLimiterMetrics(1, 0); }
+        };
+        RateLimiters.refillAt(custom, now);
+    }
+
     private record AcquireOutcome(boolean acquired, long elapsedMillis) {}
 }
 

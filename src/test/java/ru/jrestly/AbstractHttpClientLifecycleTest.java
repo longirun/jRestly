@@ -240,4 +240,40 @@ class AbstractHttpClientLifecycleTest {
         assertTrue(customCookieClient.getCookieStore().isEmpty());
         customCookieClient.close();
     }
+
+    @Test
+    @DisplayName("getHttpClient returns JdkHttpEngine's client when httpClient field is null")
+    void testGetHttpClientFromJdkHttpEngineWhenFieldNull() {
+        HttpClient raw = HttpClient.newHttpClient();
+        AbstractHttpClient client = new AbstractHttpClient(SimpleModuleInfo.builder().baseUrl("https://example.com").build()) {
+            @Override
+            protected void createConnection() {
+                this.httpClient = null;
+                this.httpEngine = new JdkHttpEngine(raw, false);
+            }
+        };
+        assertSame(raw, client.getHttpClient());
+        client.close();
+    }
+
+    @Test
+    @DisplayName("createClient operates when moduleInfo.getLogger() returns null")
+    void testCreateClientWithNullLogger() {
+        ModuleInfo baseModule = SimpleModuleInfo.builder().baseUrl("https://example.com").build();
+        ModuleInfo nullLoggerModule = new ModuleInfo() {
+            @Override public String getName() { return baseModule.getName(); }
+            @Override public <T> Environment<T> getEnvironment() { return baseModule.getEnvironment(); }
+            @Override public AuthProvider getAuthProvider() { return baseModule.getAuthProvider(); }
+            @Override public System.Logger getLogger() { return null; }
+        };
+        CloseTrackingHttpEngine trackingEngine = new CloseTrackingHttpEngine();
+        JRestlyClient client = JRestlyClient.builder()
+                .baseUrl("https://example.com")
+                .httpEngine(trackingEngine)
+                .build();
+        client.moduleInfo = nullLoggerModule;
+        TestApi api = client.get(TestApi.class);
+        api.ping();
+        client.close();
+    }
 }

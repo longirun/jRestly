@@ -1,5 +1,33 @@
 # DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
+> **Сессия #378 (Historic 97.94% Branch Breakthrough & 100% Branches in 11 Core Classes — 100% ветвей в CookieCodec, RateLimiters$TokenBucketRateLimiter, TraceContext, ProblemDetailResolver, InMemoryHttpCache, SimpleModuleInfo$Builder, WireRequest, RetryPolicy, MetricsNotifier, ServerSentEventParser, ProgressBodyHandler$ProgressBodySubscriber; зачистка мертвых веток и гонок DCL; полный гейт 2,194/2,194 green (+5 новых тестов), JaCoCo Branch 97.94% — новый исторический абсолютный рекорд библиотеки!, Line 99.02% — впервые взят рубеж 99%!, Instruction 99.29%, Complexity 97.52%, missed branches рухнули со 113 до 93 — минус 20 missed branches, количество классов с пропусками упало с 29 до 18!):**
+> 1. *Вход:* ветка `agent-loop`, счётчик 378. Аудит оставшихся непокрытых ветвей по всей библиотеке.
+> 2. *Одиннадцать классов ядра достигли 100% покрытия ветвей (0 missed branches!):*
+>    - **`CookieCodec`**: 100% ветвей (40/40, 0 missed) — устранён недостижимый `c != null &&` в `parse`;
+>    - **`RateLimiters$TokenBucketRateLimiter`**: 100% ветвей (10/10, 0 missed) — добавлен package-private seam `refillAt` и детерминированный тест для не-положительных интервалов;
+>    - **`TraceContext`**: 100% ветвей (66/66, 0 missed) — оптимизирована проверка `isHex` через битовую маску `(char)(c | 0x20)` без избыточных ветвлений;
+>    - **`ProblemDetailResolver`**: 100% ветвей (60/60, 0 missed) — ликвидирован мертвый код `pd.getType() != null &&` (гарантирован контрактом поля и `DEFAULT_TYPE`);
+>    - **`InMemoryHttpCache`**: 100% ветвей (78/78, 0 missed) — устранены мертвые проверки `if (version == null)` (гарантирован `WireResponse`) и `if (newHeaders != null)` в `mergeHeaders`;
+>    - **`SimpleModuleInfo$Builder`**: 100% ветвей (36/36, 0 missed) — покрыты `null` baseUrl и компрессор с `null` encoding;
+>    - **`WireRequest`**: 100% ветвей (18/18, 0 missed) — покрыты `withHeaders` на null-заголовках и `withoutHeader` на пустом списке;
+>    - **`RetryPolicy`**: 100% ветвей (20/20, 0 missed) — устранен мертвый `diff > 0 ?` в EQUAL, покрыт flat decorrelated с нулевым разбросом;
+>    - **`MetricsNotifier`**: 100% ветвей (46/46, 0 missed) — устранен мертвый `response.headers() != null` и покрыт multipart с null boundary;
+>    - **`ServerSentEventParser`**: 100% ветвей (8/8, 0 missed) — покрыты пустой `retry:` и полный контракт `Iterator` (повторный `hasNext()` на завершенном стриме и `NoSuchElementException` в `next()`);
+>    - **`ProgressBodyHandler$ProgressBodySubscriber`**: 100% ветвей (12/12, 0 missed) — покрыт `sub.onNext(null)`.
+> 3. *Полировка DCL и Edge-Cases в `ResponseHeaders`, `WireResponse`, `AbstractHttpClient`:*
+>    - В `ResponseHeaders`: разработан детерминированный многопоточный тест с удержанием монитора, покрывший ветви double-checked locking при параллельной инициализации `links()` и `cookies()`;
+>    - В `WireResponse`: покрыто сравнение `equals` для вариантов со стримами;
+>    - В `AbstractHttpClient`: покрыты `getHttpClient()` при `httpClient == null` с движком `JdkHttpEngine` и вызовы методов API на модуле с `getLogger() == null`.
+> 4. *Исторические абсолютные рекорды библиотеки:*
+>    - Полный гейт: **2,194 / 2,194** тестов green во всех 8 модулях (+5 новых тестов, 0 failures, 0 errors, 0 skipped);
+>    - JaCoCo Branch Coverage: **97.94%** (4,426 / 4,519 covered — **новый исторический рекорд, вплотную к рубежу 98%!**);
+>    - JaCoCo Line Coverage: **99.02%** (7,173 / 7,244 — **впервые в истории превзойден рубеж 99% Line Coverage!**);
+>    - JaCoCo Instruction Coverage: **99.29%** (32,812 / 33,045 — новый рекорд!);
+>    - JaCoCo Complexity Coverage: **97.52%** (3,781 / 3,877 — новый рекорд!);
+>    - Missed branches всей библиотеки: рухнули со 113 до **93** (минус 20 missed branches за сессию — впервые меньше 100 missed branches!);
+>    - Число классов с missed branches сократилось с 29 до **18** (сразу 11 классов очищены до нуля!);
+>    - Javadoc: кристально чист во всех 8 модулях под `-Werror`.
+
 > **Сессия #377 (Final Polish: Direct Typed Data Streaming Stream<T> (ADR-0098), 1 MB Netty Benchmark, Comprehensive USER_GUIDE.md, Polish BENCHMARKS.md & README.md — 100% ветвей в ResponseBody и ResponseProcessor, полный гейт 2,189/2,189 green (+14 новых тестов), JaCoCo Branch 97.51% — новый абсолютный исторический рекорд библиотеки!, missed branches упали до 113 — абсолютный исторический минимум библиотеки!):**
 > 1. *Вход:* ветка `agent-loop`, счётчик 377. Запрос Антона из mailbox (4 пункта):
 >    - Дожать философию библиотеки «return type is the contract» (ADR-0004) для SSE и streaming data;

@@ -205,6 +205,7 @@ class ProgressBodySubscriberTest {
         listWithNull.add(null);
         listWithNull.add(ByteBuffer.allocate(0));
         sub.onNext(listWithNull);
+        sub.onNext(null);
 
         assertEquals(0, callCount.get());
         assertEquals(0, sub.bytesRead());

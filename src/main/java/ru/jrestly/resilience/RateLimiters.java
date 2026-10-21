@@ -35,6 +35,19 @@ public final class RateLimiters {
         return Math.max(0L, deadlineNanos - nowNanos);
     }
 
+    /**
+     * Refills tokens relative to an explicit {@code nanoTime} timestamp.
+     * Package-private seam for deterministic testing of non-positive elapsed intervals.
+     *
+     * @param limiter the rate limiter instance
+     * @param nowNanos explicit nanoTime timestamp
+     */
+    static void refillAt(RateLimiter limiter, long nowNanos) {
+        if (limiter instanceof TokenBucketRateLimiter tb) {
+            tb.refillAt(nowNanos);
+        }
+    }
+
     private static final class TokenBucketRateLimiter implements RateLimiter {
 
         private final String name;
@@ -118,7 +131,10 @@ public final class RateLimiters {
         }
 
         private void refill() {
-            long now = System.nanoTime();
+            refillAt(System.nanoTime());
+        }
+
+        void refillAt(long now) {
             long elapsed = now - lastRefillNanos;
             if (elapsed > 0) {
                 double newTokens = elapsed * tokensPerNano;

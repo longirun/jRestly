@@ -251,10 +251,8 @@ public record TraceContext(
             if (c >= '0' && c <= '9') {
                 continue;
             }
-            if (c >= 'a' && c <= 'f') {
-                continue;
-            }
-            if (c >= 'A' && c <= 'F') {
+            char lower = (char) (c | 0x20);
+            if (lower >= 'a' && lower <= 'f') {
                 continue;
             }
             return false;

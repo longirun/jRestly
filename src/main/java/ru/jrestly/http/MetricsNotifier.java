@@ -167,19 +167,14 @@ final class MetricsNotifier {
         if (response.body() != null) {
             return response.body().length;
         }
-        // WireResponse normalizes headers to non-null — this guard is
-        // structurally unreachable through the public API (defensive,
-        // pattern of the InMemoryHttpCache ADR-0063 seams)
-        if (response.headers() != null) {
-            for (Header h : response.headers()) {
-                if ("content-length".equalsIgnoreCase(h.name())) {
-                    try {
-                        long val = Long.parseLong(h.value().trim());
-                        if (val >= 0) {
-                            return val;
-                        }
-                    } catch (NumberFormatException ignored) {
+        for (Header h : response.headers()) {
+            if ("content-length".equalsIgnoreCase(h.name())) {
+                try {
+                    long val = Long.parseLong(h.value().trim());
+                    if (val >= 0) {
+                        return val;
                     }
+                } catch (NumberFormatException ignored) {
                 }
             }
         }

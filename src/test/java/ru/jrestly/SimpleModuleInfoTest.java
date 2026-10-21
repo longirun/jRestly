@@ -86,7 +86,7 @@ class SimpleModuleInfoTest {
     }
 
     @Test
-    @DisplayName("builder.contentCompressor rejects blank encoding")
+    @DisplayName("builder.contentCompressor rejects blank or null encoding")
     void builderContentCompressorRejectsBlank() {
         ContentCompressor blankCompressor = new ContentCompressor() {
             @Override public String encoding() { return "   "; }
@@ -96,13 +96,23 @@ class SimpleModuleInfoTest {
         IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () ->
                 SimpleModuleInfo.builder().contentCompressor(blankCompressor));
         assertTrue(ex.getMessage().contains("must not be blank"));
+
+        ContentCompressor nullEncodingCompressor = new ContentCompressor() {
+            @Override public String encoding() { return null; }
+            @Override public byte[] compress(byte[] uncompressed) { return uncompressed; }
+        };
+        assertThrows(IllegalArgumentException.class, () ->
+                SimpleModuleInfo.builder().contentCompressor(nullEncodingCompressor));
     }
 
     @Test
-    @DisplayName("builder.baseUrl rejects blank string")
+    @DisplayName("builder.baseUrl rejects blank or null string")
     void builderBaseUrlRejectsBlank() {
         SimpleModuleInfo.Builder builder = SimpleModuleInfo.builder().baseUrl("   ");
         IllegalStateException ex = assertThrows(IllegalStateException.class, builder::build);
         assertTrue(ex.getMessage().contains("baseUrl is required"));
+
+        assertThrows(IllegalStateException.class, () -> SimpleModuleInfo.builder().build());
+        assertThrows(IllegalStateException.class, () -> SimpleModuleInfo.builder().baseUrl(null).build());
     }
 }

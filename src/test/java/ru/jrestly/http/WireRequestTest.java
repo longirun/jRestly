@@ -64,6 +64,12 @@ class WireRequestTest {
                 new Header("C", "3"),
                 new Header("D", "4")
         ), step2.headers());
+
+        // withHeaders on null initial headers
+        WireRequest nullHeadersReq = new WireRequest(HttpMethod.GET, URI_A, null, null, null, null, null);
+        WireRequest fromNullHeaders = nullHeadersReq.withHeaders(List.of(new Header("Z", "9")));
+        assertEquals(1, fromNullHeaders.headers().size());
+        assertEquals("Z", fromNullHeaders.headers().getFirst().name());
     }
 
     @Test
@@ -87,6 +93,9 @@ class WireRequestTest {
     void withoutHeaderNoOpReturnsSame() {
         WireRequest withNull = new WireRequest(HttpMethod.GET, URI_A, null, null, null, null, null);
         assertSame(withNull, withNull.withoutHeader("X-Any"));
+
+        WireRequest withEmpty = new WireRequest(HttpMethod.GET, URI_A, List.of(), null, null, null, null);
+        assertSame(withEmpty, withEmpty.withoutHeader("X-Any"));
 
         WireRequest withHeaders = new WireRequest(HttpMethod.GET, URI_A, List.of(new Header("A", "1")), null, null, null, null);
         WireRequest unchanged = withHeaders.withoutHeader("B");

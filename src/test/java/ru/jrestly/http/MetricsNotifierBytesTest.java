@@ -148,6 +148,23 @@ class MetricsNotifierBytesTest {
     }
 
     @Test
+    @DisplayName("Multipart request with non-null parts but null boundary returns -1")
+    void multipartWithPartsNullBoundaryIsUnknown() {
+        WireRequest req = new WireRequest(
+                HttpMethod.POST,
+                URI.create("https://example.com/multipart"),
+                List.of(),
+                null,
+                null,
+                List.of(MultipartPart.text("a", "b")),
+                null,
+                null,
+                null
+        );
+        assertEquals(-1, MetricsNotifier.requestBytes(req));
+    }
+
+    @Test
     @DisplayName("Response bytes come from the buffered body when present")
     void responseBytesFromBufferedBody() {
         byte[] body = "response-body".getBytes(StandardCharsets.UTF_8);

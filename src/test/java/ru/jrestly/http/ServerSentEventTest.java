@@ -462,4 +462,22 @@ class ServerSentEventTest {
         assertThrows(NullPointerException.class, () -> ServerSentEvent.reconnectingData(opener, policy, String.class, null));
         assertThrows(NullPointerException.class, () -> ServerSentEvent.reconnectingData(opener, policy, (Type) String.class, null));
     }
+
+    @Test
+    @DisplayName("parser edge cases: empty retry field and exhausted iterator contract")
+    void parserEdgeCases() {
+        // empty retry: field value triggers isAsciiDigits empty string branch
+        Stream<String> linesWithEmptyRetry = Stream.of("retry:", "data: content", "");
+        List<ServerSentEvent> events = ServerSentEvent.parse(linesWithEmptyRetry).toList();
+        assertEquals(1, events.size());
+        assertNull(events.getFirst().retry());
+
+        // Iterator finished == true in hasNext() and NoSuchElementException in next()
+        Iterator<ServerSentEvent> it = ServerSentEvent.parse(Stream.of("data: payload", "")).iterator();
+        assertTrue(it.hasNext());
+        assertEquals("payload", it.next().data());
+        assertFalse(it.hasNext());
+        assertFalse(it.hasNext()); // triggers finished == true in hasNext()
+        assertThrows(java.util.NoSuchElementException.class, it::next); // triggers !hasNext() in next()
+    }
 }

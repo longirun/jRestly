@@ -236,6 +236,17 @@ class WireResponseUnitTest {
         assertNotEquals(r1, WireResponse.builder().statusCode(200).body("different").build());
         assertNotEquals(r1, WireResponse.builder().statusCode(200).body("payload").version(HttpClient.Version.HTTP_2).build());
 
+        // Stream differences
+        java.io.ByteArrayInputStream s1 = new java.io.ByteArrayInputStream(new byte[]{1});
+        java.io.ByteArrayInputStream s2 = new java.io.ByteArrayInputStream(new byte[]{2});
+        WireResponse rStream1 = WireResponse.builder().statusCode(200).header("X-A", "1").body("payload").version(HttpClient.Version.HTTP_1_1).trailer("X-T", "val").stream(s1).build();
+        WireResponse rStream1Twin = WireResponse.builder().statusCode(200).header("X-A", "1").body("payload").version(HttpClient.Version.HTTP_1_1).trailer("X-T", "val").stream(s1).build();
+        WireResponse rStream2 = WireResponse.builder().statusCode(200).header("X-A", "1").body("payload").version(HttpClient.Version.HTTP_1_1).trailer("X-T", "val").stream(s2).build();
+        assertEquals(rStream1, rStream1Twin);
+        assertNotEquals(r1, rStream1);
+        assertNotEquals(rStream1, r1);
+        assertNotEquals(rStream1, rStream2);
+
         // toString formatting with body length and null body
         String strWithBody = r1.toString();
         assertTrue(strWithBody.contains("statusCode=200"));

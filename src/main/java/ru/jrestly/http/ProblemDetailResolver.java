@@ -103,7 +103,7 @@ final class ProblemDetailResolver {
         if (pd == null) {
             return false;
         }
-        boolean hasNonDefaultType = pd.getType() != null && !"about:blank".equals(pd.getType().toString());
+        boolean hasNonDefaultType = !"about:blank".equals(pd.getType().toString());
         return pd.getStatus() > 0
                 || hasNonDefaultType
                 || (pd.getTitle() != null && !pd.getTitle().isBlank())

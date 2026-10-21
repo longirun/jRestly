@@ -688,6 +688,40 @@ class ResponseHeadersTest {
 
         assertEquals("secret123", resp.cookieValue("sid").orElseThrow());
         assertEquals("secret123", resp.cookieValue("sid").orElseThrow());
+
+        // Concurrent DCL branch coverage: holding monitor while another thread enters synchronized
+        ResponseHeaders dclResp = new ResponseHeaders(200, List.of(
+                new Header("Link", "<https://api.example.com/items?page=3>; rel=\"next\""),
+                new Header("Set-Cookie", "dcl=token456; Path=/")
+        ), Duration.ZERO);
+
+        java.util.concurrent.CountDownLatch threadReady = new java.util.concurrent.CountDownLatch(1);
+        java.util.concurrent.CountDownLatch holdLock = new java.util.concurrent.CountDownLatch(1);
+
+        Thread linksThread = new Thread(() -> {
+            threadReady.countDown();
+            try {
+                holdLock.await();
+            } catch (InterruptedException ignored) {}
+            // Second thread enters after main thread already populated linkMap/parsedCookies
+            assertEquals("https://api.example.com/items?page=3", dclResp.links().get("next"));
+            assertEquals("token456", dclResp.cookieValue("dcl").orElseThrow());
+        });
+
+        synchronized (dclResp) {
+            linksThread.start();
+            try {
+                threadReady.await();
+                // Initialize while holding the lock
+                dclResp.links();
+                dclResp.cookies();
+            } catch (InterruptedException ignored) {}
+            holdLock.countDown();
+        }
+
+        try {
+            linksThread.join(2000);
+        } catch (InterruptedException ignored) {}
     }
 }
 

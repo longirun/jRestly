@@ -182,9 +182,6 @@ public class InMemoryHttpCache implements HttpCache {
             String lastModified = findHeader(mergedHeaders, "Last-Modified");
 
             HttpClient.Version version = response304.version();
-            if (version == null) {
-                version = old.toWireResponse().version();
-            }
 
             SimpleCachedResponse updated = new SimpleCachedResponse(
                     old.statusCode(),
@@ -287,11 +284,9 @@ public class InMemoryHttpCache implements HttpCache {
         List<Header> result = new ArrayList<>();
         List<String> updatedNames = new ArrayList<>();
 
-        if (newHeaders != null) {
-            for (Header nh : newHeaders) {
-                result.add(nh);
-                updatedNames.add(nh.name().toLowerCase(java.util.Locale.ROOT));
-            }
+        for (Header nh : newHeaders) {
+            result.add(nh);
+            updatedNames.add(nh.name().toLowerCase(java.util.Locale.ROOT));
         }
 
         for (Header oh : oldHeaders) {

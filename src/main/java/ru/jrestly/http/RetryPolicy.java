@@ -344,7 +344,7 @@ public final class RetryPolicy {
             case EQUAL -> {
                 long half = bound / 2;
                 long diff = bound - half;
-                yield half + (diff > 0 ? random.nextLong(diff + 1) : 0);
+                yield half + random.nextLong(diff + 1);
             }
             case DECORRELATED -> {
                 long min = initialBackoff.toMillis();

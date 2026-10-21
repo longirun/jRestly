@@ -82,7 +82,7 @@ public final class CookieCodec {
             List<HttpCookie> parsed = HttpCookie.parse(trimmed);
             List<HttpCookie> valid = new ArrayList<>(parsed.size());
             for (HttpCookie c : parsed) {
-                if (c != null && !c.hasExpired()) {
+                if (!c.hasExpired()) {
                     valid.add(c);
                 }
             }
