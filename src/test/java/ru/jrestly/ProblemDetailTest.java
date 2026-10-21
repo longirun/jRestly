@@ -1033,6 +1033,33 @@ class ProblemDetailTest {
         // Incomplete array without closing bracket
         assertThrows(IllegalArgumentException.class, () -> ProblemDetail.fromJson("{\"arr\": ["));
         assertThrows(IllegalArgumentException.class, () -> ProblemDetail.fromJson("{\"arr\": [1"));
+
+        // Exponents with + and - signs, capital E, and trailing whitespace
+        ProblemDetail pdExponentVariants = ProblemDetail.fromJson("  {\"ePlus\": 1e+2, \"eMinus\": 1e-2, \"eCapPlus\": 2E+3, \"eCap\": 3E4}   ");
+        assertEquals(100.0, pdExponentVariants.getProperty("ePlus"));
+        assertEquals(0.01, pdExponentVariants.getProperty("eMinus"));
+        assertEquals(2000.0, pdExponentVariants.getProperty("eCapPlus"));
+        assertEquals(30000.0, pdExponentVariants.getProperty("eCap"));
+
+        // Nested object containing escaped backslash inside quotes
+        ProblemDetail pdBackslash = ProblemDetail.fromJson("{\"nested\": {\"path\": \"C:\\\\temp\\\\file.txt\"}}");
+        assertNotNull(pdBackslash.getProperty("nested"));
+
+        // Incomplete unicode escape sequence (less than 4 chars until EOF)
+        assertThrows(IllegalArgumentException.class, () -> ProblemDetail.fromJson("{\"badU\": \"\\u12"));
+
+        // Unclosed key string without closing quote
+        assertThrows(IllegalArgumentException.class, () -> ProblemDetail.fromJson("{\"unclosedKey"));
+
+        // Incomplete key ending immediately at EOF before colon (key closed with quote, space, then EOF)
+        assertThrows(IllegalArgumentException.class, () -> ProblemDetail.fromJson("{\"key\" "));
+
+        // Array with whitespace until EOF
+        assertThrows(IllegalArgumentException.class, () -> ProblemDetail.fromJson("{\"arr\": [1 "));
+
+        // Trailing whitespace in skipWhitespace
+        ProblemDetail pdWhitespace = ProblemDetail.fromJson("{\"a\": 1}    \t\n   ");
+        assertEquals(1, pdWhitespace.getProperty("a"));
     }
 
     @Test

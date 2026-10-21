@@ -384,5 +384,10 @@ class WireResponseUnitTest {
                 .trailers(List.of(new Header("A", "1")))
                 .build();
         assertNotEquals(base, trailersResp);
+
+        // Version inequality
+        WireResponse v1 = WireResponse.builder().statusCode(200).version(java.net.http.HttpClient.Version.HTTP_1_1).build();
+        WireResponse v2 = WireResponse.builder().statusCode(200).version(java.net.http.HttpClient.Version.HTTP_2).build();
+        assertNotEquals(v1, v2);
     }
 }

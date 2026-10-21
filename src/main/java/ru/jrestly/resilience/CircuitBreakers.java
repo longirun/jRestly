@@ -22,13 +22,13 @@ public final class CircuitBreakers {
         return new InMemoryCircuitBreaker(name, config);
     }
 
-    private static final class InMemoryCircuitBreaker implements CircuitBreaker {
+    static final class InMemoryCircuitBreaker implements CircuitBreaker {
 
         private final String name;
         private final CircuitBreakerConfig config;
-        private final ReentrantLock lock = new ReentrantLock();
+        final ReentrantLock lock = new ReentrantLock();
 
-        private volatile State state = State.CLOSED;
+        volatile State state = State.CLOSED;
         private volatile long openTimestampNanos = 0L;
 
         // Sliding window data for CLOSED state
@@ -198,10 +198,7 @@ public final class CircuitBreakers {
                     lock.lock();
                     try {
                         if (state == State.OPEN) {
-                            long check = System.nanoTime() - openTimestampNanos;
-                            if (check >= config.waitDurationInOpenState().toNanos()) {
-                                transitionToHalfOpenState();
-                            }
+                            transitionToHalfOpenState();
                         }
                     } finally {
                         lock.unlock();

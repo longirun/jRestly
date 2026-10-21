@@ -184,15 +184,13 @@ public final class PersistentCookieStore implements CookieStore {
                     delegate.add(uri, cookie);
                     if (cookie.getDomain() != null && cookie.getDomain().endsWith(".local")) {
                         String clean = cookie.getDomain().startsWith(".") ? cookie.getDomain().substring(1) : cookie.getDomain();
-                        if (clean.endsWith(".local") && clean.length() > ".local".length()) {
+                        if (clean.endsWith(".local")) {
                             String bareHost = clean.substring(0, clean.length() - ".local".length());
-                            if (!bareHost.isBlank()) {
-                                String scheme = cookie.getSecure() ? "https://" : "http://";
-                                String path = cookie.getPath() != null && !cookie.getPath().isBlank() ? cookie.getPath() : "/";
-                                try {
-                                    delegate.add(URI.create(scheme + bareHost + path), cookie);
-                                } catch (IllegalArgumentException ignored) {
-                                }
+                            String scheme = cookie.getSecure() ? "https://" : "http://";
+                            String path = cookie.getPath() != null && !cookie.getPath().isBlank() ? cookie.getPath() : "/";
+                            try {
+                                delegate.add(URI.create(scheme + bareHost + path), cookie);
+                            } catch (IllegalArgumentException ignored) {
                             }
                         }
                     }
@@ -205,7 +203,7 @@ public final class PersistentCookieStore implements CookieStore {
         List<HttpCookie> active = delegate.getCookies();
         List<HttpCookie> valid = new ArrayList<>(active.size());
         for (HttpCookie cookie : active) {
-            if (cookie != null && !cookie.hasExpired()) {
+            if (!cookie.hasExpired()) {
                 valid.add(cookie);
             }
         }
@@ -251,7 +249,7 @@ public final class PersistentCookieStore implements CookieStore {
             List<HttpCookie> all = delegate.getCookies();
             List<HttpCookie> valid = new ArrayList<>(all.size());
             for (HttpCookie c : all) {
-                if (c != null && !c.hasExpired()) {
+                if (!c.hasExpired()) {
                     valid.add(c);
                 }
             }

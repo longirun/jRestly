@@ -675,14 +675,17 @@ public class ProblemDetail {
     /**
      * Minimal, zero-dependency JSON parser for Problem Details.
      */
-    private static final class ZeroDepJsonParser {
+    static final class ZeroDepJsonParser {
+
+        private record ParseResult(Object value, int nextIndex) {
+        }
 
         static Map<String, Object> parseObject(String json) {
             int len = json.length();
             int i = 1; // skip '{'
 
             Map<String, Object> map = new LinkedHashMap<>();
-            while (i < len) {
+            while (true) {
                 i = skipWhitespace(json, i);
                 if (i >= len) break;
                 if (json.charAt(i) == '}') {
@@ -693,8 +696,9 @@ public class ProblemDetail {
                 if (json.charAt(i) != '"') {
                     throw new IllegalArgumentException("Expected string key at index " + i);
                 }
-                String key = parseString(json, i);
-                i = skipQuotedString(json, i);
+                ParseResult keyResult = parseString(json, i);
+                String key = (String) keyResult.value;
+                i = keyResult.nextIndex;
 
                 i = skipWhitespace(json, i);
                 if (i >= len || json.charAt(i) != ':') {
@@ -708,9 +712,13 @@ public class ProblemDetail {
                 i = valResult.nextIndex;
 
                 i = skipWhitespace(json, i);
-                if (i < len && json.charAt(i) == ',') {
+                if (i >= len) {
+                    throw new IllegalArgumentException("Expected ',' or '}' at index " + i);
+                }
+                char sep = json.charAt(i);
+                if (sep == ',') {
                     i++;
-                } else if (i < len && json.charAt(i) == '}') {
+                } else if (sep == '}') {
                     i++;
                     break;
                 } else {
@@ -728,23 +736,7 @@ public class ProblemDetail {
             return i;
         }
 
-        private static int skipQuotedString(String s, int start) {
-            int len = s.length();
-            int i = start + 1;
-            while (i < len) {
-                char c = s.charAt(i);
-                if (c == '\\') {
-                    i += 2;
-                } else if (c == '"') {
-                    return i + 1;
-                } else {
-                    i++;
-                }
-            }
-            throw new IllegalArgumentException("Unclosed quote starting at index " + start);
-        }
-
-        private static String parseString(String s, int start) {
+        private static ParseResult parseString(String s, int start) {
             StringBuilder sb = new StringBuilder();
             int len = s.length();
             int i = start + 1;
@@ -778,16 +770,13 @@ public class ProblemDetail {
                         default -> sb.append(esc);
                     }
                 } else if (c == '"') {
-                    return sb.toString();
+                    return new ParseResult(sb.toString(), i + 1);
                 } else {
                     sb.append(c);
                 }
                 i++;
             }
             throw new IllegalArgumentException("Unclosed string literal starting at index " + start);
-        }
-
-        private record ParseResult(Object value, int nextIndex) {
         }
 
         private static ParseResult parseValue(String s, int i) {
@@ -798,9 +787,7 @@ public class ProblemDetail {
             char c = s.charAt(i);
 
             if (c == '"') {
-                String str = parseString(s, i);
-                int next = skipQuotedString(s, i);
-                return new ParseResult(str, next);
+                return parseString(s, i);
             }
             if (c == '{') {
                 int end = findMatchingBracket(s, i, '{', '}');
@@ -856,13 +843,9 @@ public class ProblemDetail {
 
         private static List<Object> parseArray(String s, int start) {
             List<Object> list = new ArrayList<>();
-            int len = s.length();
             int i = start + 1; // skip '['
-            while (i < len) {
+            while (true) {
                 i = skipWhitespace(s, i);
-                if (i >= len) {
-                    throw new IllegalArgumentException("Unclosed array starting at index " + start);
-                }
                 if (s.charAt(i) == ']') {
                     break;
                 }
@@ -872,9 +855,10 @@ public class ProblemDetail {
                 i = res.nextIndex;
 
                 i = skipWhitespace(s, i);
-                if (i < len && s.charAt(i) == ',') {
+                char sep = s.charAt(i);
+                if (sep == ',') {
                     i++;
-                } else if (i < len && s.charAt(i) == ']') {
+                } else if (sep == ']') {
                     break;
                 } else {
                     throw new IllegalArgumentException("Expected ',' or ']' at index " + i);

@@ -33,6 +33,11 @@ class AbstractHttpClientLifecycleTest {
         String ping();
     }
 
+    interface NullLoggerApi {
+        @Get("/pong")
+        String pong();
+    }
+
     private static class CloseTrackingHttpClient extends HttpClient {
         final AtomicBoolean closed = new AtomicBoolean(false);
 
@@ -257,7 +262,7 @@ class AbstractHttpClientLifecycleTest {
     }
 
     @Test
-    @DisplayName("createClient operates when moduleInfo.getLogger() returns null")
+    @DisplayName("createClient operates with custom logger, null logger, and executor")
     void testCreateClientWithNullLogger() {
         ModuleInfo baseModule = SimpleModuleInfo.builder().baseUrl("https://example.com").build();
         ModuleInfo nullLoggerModule = new ModuleInfo() {
@@ -269,15 +274,20 @@ class AbstractHttpClientLifecycleTest {
         CloseTrackingHttpEngine trackingEngine = new CloseTrackingHttpEngine();
         JRestlyClient client = JRestlyClient.builder()
                 .baseUrl("https://example.com")
+                .logger(System.getLogger("test-client"))
+                .executor(Runnable::run)
                 .httpEngine(trackingEngine)
                 .build();
-        // Invoke with default non-null logger
+
+        // Invoke with configured non-null logger and executor
         TestApi defaultApi = client.get(TestApi.class);
         defaultApi.ping();
 
+        // Invoke with null logger and null executor
+        client.executor = null;
         client.moduleInfo = nullLoggerModule;
-        TestApi api = client.get(TestApi.class);
-        api.ping();
+        NullLoggerApi api = client.get(NullLoggerApi.class);
+        api.pong();
         client.close();
     }
 }

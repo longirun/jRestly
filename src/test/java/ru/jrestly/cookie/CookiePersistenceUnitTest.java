@@ -439,6 +439,12 @@ class CookiePersistenceUnitTest {
         localCookie2.setPath("");
         localCookie2.setSecure(false);
 
+        // 2b. Cookie with .local domain and null path
+        HttpCookie localCookieNullPath = new HttpCookie("cNullPath", "vNull");
+        localCookieNullPath.setDomain("nullpath.local");
+        localCookieNullPath.setPath(null);
+        localCookieNullPath.setSecure(true);
+
         // 3. Cookie with null domain and blank path
         HttpCookie noDomainCookie = new HttpCookie("c3", "v3");
         noDomainCookie.setDomain(null);
@@ -453,10 +459,10 @@ class CookiePersistenceUnitTest {
         expiredCookie.setDomain("expired.com");
         expiredCookie.setMaxAge(0);
 
-        persister.preloaded.addAll(List.of(localCookie1, localCookie2, noDomainCookie, emptyDomainCookie, expiredCookie));
+        persister.preloaded.addAll(List.of(localCookie1, localCookie2, localCookieNullPath, noDomainCookie, emptyDomainCookie, expiredCookie));
 
         PersistentCookieStore store = PersistentCookieStore.of(persister);
-        assertEquals(4, store.size());
+        assertEquals(5, store.size());
 
         // Verifying cookies for bare host (without .local)
         List<HttpCookie> forBareHost1 = store.get(URI.create("https://myservice/app"));
@@ -544,21 +550,32 @@ class CookiePersistenceUnitTest {
 
         // 4. syncInternal and getCookies filter out expired cookies from delegate
         persister.preloaded.clear();
-        CookieStore customDelegate = new java.net.CookieManager().getCookieStore();
-        HttpCookie exp = new HttpCookie("exp", "val");
-        exp.setDomain("exp.com");
-        exp.setMaxAge(0);
-        customDelegate.add(URI.create("https://exp.com/"), exp);
+        CookieStore stubDelegate = new CookieStore() {
+            @Override public void add(URI uri, HttpCookie cookie) {}
+            @Override public List<HttpCookie> get(URI uri) { return List.of(); }
+            @Override public List<HttpCookie> getCookies() {
+                HttpCookie expired = new HttpCookie("expired", "1");
+                expired.setMaxAge(0);
+                HttpCookie active = new HttpCookie("active", "2");
+                active.setMaxAge(3600);
+                return List.of(expired, active);
+            }
+            @Override public List<URI> getURIs() { return List.of(); }
+            @Override public boolean remove(URI uri, HttpCookie cookie) { return false; }
+            @Override public boolean removeAll() { return false; }
+        };
 
         PersistentCookieStore storeWithExpiredInDelegate = PersistentCookieStore.builder()
-                .delegate(customDelegate)
+                .delegate(stubDelegate)
                 .persister(persister)
                 .build();
-        // getCookies() must filter out expired cookie
-        assertTrue(storeWithExpiredInDelegate.getCookies().isEmpty());
+        // getCookies() must filter out expired cookie and retain active
+        assertEquals(1, storeWithExpiredInDelegate.getCookies().size());
+        assertEquals("active", storeWithExpiredInDelegate.getCookies().get(0).getName());
         // sync() must save only non-expired cookies
         storeWithExpiredInDelegate.sync();
-        assertTrue(persister.lastSaved.isEmpty());
+        assertEquals(1, persister.lastSaved.size());
+        assertEquals("active", persister.lastSaved.get(0).getName());
     }
 
     @Test

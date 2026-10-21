@@ -8,6 +8,8 @@ import ru.jrestly.http.UnexpectedStatusException;
 
 import java.io.IOException;
 import java.time.Duration;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -458,13 +460,56 @@ class CircuitBreakerTest {
                 .failureRateThreshold(60.0f)
                 .build();
         CircuitBreaker cbUnder = CircuitBreaker.of("under-threshold-cb", cfgUnder);
-        // Call 1: failure (1 call < min 2)
+        // Call 1: success (1 call < min 2)
+        cbUnder.recordSuccess(10);
+        // Call 2: failure (2 calls >= min 2, failure rate = 50% < 60% threshold) -> remains CLOSED (tests rate < threshold in recordFailure)
         cbUnder.recordFailure(10, new IOException("err1"));
         assertEquals(CircuitBreaker.State.CLOSED, cbUnder.getState());
-        // Call 2: success (2 calls >= min 2, failure rate = 50% < 60% threshold) -> remains CLOSED
-        cbUnder.recordSuccess(10);
-        assertEquals(CircuitBreaker.State.CLOSED, cbUnder.getState());
         assertEquals(50.0f, cbUnder.metrics().failureRate());
+
+        // 5. Eviction in full ring buffer: evicting failure (failureCount--) vs evicting success
+        CircuitBreakerConfig cfgRing = CircuitBreakerConfig.builder()
+                .minimumNumberOfCalls(2)
+                .slidingWindowSize(2)
+                .failureRateThreshold(80.0f)
+                .build();
+        CircuitBreaker cbRing = CircuitBreaker.of("ring-cb", cfgRing);
+        cbRing.recordFailure(10, new IOException()); // index 0: false
+        cbRing.recordSuccess(10);                   // index 1: true, buffer full
+        cbRing.recordSuccess(10);                   // evicts index 0 (false): !previousOutcome is true, failureCount decrements
+        cbRing.recordSuccess(10);                   // evicts index 1 (true): !previousOutcome is false
+        assertEquals(0.0f, cbRing.metrics().failureRate());
+    }
+
+    @Test
+    @DisplayName("InMemoryCircuitBreaker handles race conditions in tryAcquirePermission and checkAutoHalfOpenTransition")
+    void testConcurrentStateTransitionsUnderLock() throws Exception {
+        CircuitBreakerConfig cfg = CircuitBreakerConfig.builder()
+                .minimumNumberOfCalls(2)
+                .waitDurationInOpenState(Duration.ofMillis(10))
+                .permittedNumberOfCallsInHalfOpenState(2)
+                .build();
+        CircuitBreakers.InMemoryCircuitBreaker breaker =
+                (CircuitBreakers.InMemoryCircuitBreaker) CircuitBreaker.of("race-cb", cfg);
+
+        // 1. Race in tryAcquirePermission: state changed away from HALF_OPEN before acquiring lock
+        breaker.transitionToHalfOpenState();
+        breaker.lock.lock();
+        CompletableFuture<Boolean> acquireFuture = CompletableFuture.supplyAsync(() -> breaker.tryAcquirePermission());
+        Thread.sleep(50);
+        breaker.state = CircuitBreaker.State.OPEN;
+        breaker.lock.unlock();
+        assertFalse(acquireFuture.get(2, TimeUnit.SECONDS));
+
+        // 2. Race in checkAutoHalfOpenTransition: state changed away from OPEN before acquiring lock
+        breaker.transitionToOpenState();
+        Thread.sleep(25); // wait past waitDuration
+        breaker.lock.lock();
+        CompletableFuture<CircuitBreaker.State> stateFuture = CompletableFuture.supplyAsync(() -> breaker.getState());
+        Thread.sleep(50);
+        breaker.state = CircuitBreaker.State.HALF_OPEN;
+        breaker.lock.unlock();
+        assertEquals(CircuitBreaker.State.HALF_OPEN, stateFuture.get(2, TimeUnit.SECONDS));
     }
 }
 
