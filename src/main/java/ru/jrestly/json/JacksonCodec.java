@@ -176,7 +176,13 @@ public class JacksonCodec implements JsonCodec {
         return mapper;
     }
 
-    private static boolean isOnClasspath(String fqn) {
+    /**
+     * Checks whether the specified class name is available on the classpath.
+     *
+     * @param fqn the fully-qualified class name
+     * @return {@code true} if present, {@code false} otherwise
+     */
+    public static boolean isOnClasspath(String fqn) {
         try {
             Class.forName(fqn, false, JacksonCodec.class.getClassLoader());
             return true;

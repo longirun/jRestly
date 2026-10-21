@@ -564,6 +564,12 @@ class InMemoryHttpCacheTest {
         assertEquals(0L, cached.freshnessLifetimeSeconds());
         assertEquals("\"tag2\"", cached.etag().orElse(null));
         assertTrue(cached.lastModified().isPresent());
+
+        // Update with 304 response having null headers and null HTTP version
+        WireResponse res304Nulls = new WireResponse(304, null, null, null, null, null);
+        WireResponse updatedNulls = cache.update(req, res304Nulls);
+        assertNotNull(updatedNulls);
+        assertEquals(java.net.http.HttpClient.Version.HTTP_1_1, updatedNulls.version());
     }
 
     @Test

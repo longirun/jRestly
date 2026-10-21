@@ -277,6 +277,61 @@ class JacksonCodecDefaultsTest {
 
         assertThrows(UncheckedIOException.class, () -> codec.serialize(new FailingDto()));
         assertThrows(UncheckedIOException.class, () -> codec.serializeToBytes(new FailingDto()));
+
+        ObjectMapper failingMapper = new ObjectMapper() {
+            @Override
+            public String writeValueAsString(Object value) throws com.fasterxml.jackson.core.JsonProcessingException {
+                throw new com.fasterxml.jackson.databind.JsonMappingException(null, "forced json failure");
+            }
+            @Override
+            public byte[] writeValueAsBytes(Object value) throws com.fasterxml.jackson.core.JsonProcessingException {
+                throw new com.fasterxml.jackson.databind.JsonMappingException(null, "forced json failure");
+            }
+        };
+        JacksonCodec failingCodec = new JacksonCodec(failingMapper);
+        UncheckedIOException ex1 = assertThrows(UncheckedIOException.class, () -> failingCodec.serialize(null));
+        assertTrue(ex1.getMessage().contains("null"));
+        UncheckedIOException ex2 = assertThrows(UncheckedIOException.class, () -> failingCodec.serializeToBytes(null));
+        assertTrue(ex2.getMessage().contains("null"));
+    }
+
+    @Test
+    @DisplayName("JacksonCodec.isOnClasspath detects present and missing classes safely")
+    void isOnClasspathDetection() {
+        assertTrue(ru.jrestly.json.JacksonCodec.isOnClasspath("com.fasterxml.jackson.databind.ObjectMapper"));
+        assertFalse(ru.jrestly.json.JacksonCodec.isOnClasspath("non.existent.FakeClass"));
+    }
+
+    @Test
+    @DisplayName("JsonCodec default methods handle null, empty bytes, and empty byte array serialization fallback")
+    void jsonCodecDefaultMethodsContract() {
+        ru.jrestly.json.JsonCodec custom = new ru.jrestly.json.JsonCodec() {
+            @Override
+            public <T> T deserialize(String payload, java.lang.reflect.Type type) {
+                return null;
+            }
+
+            @Override
+            public String serialize(Object value) {
+                return value == null ? null : "{\"val\":1}";
+            }
+
+            @Override
+            public String prettyPrint(String payload) {
+                return payload;
+            }
+        };
+
+        assertNull(custom.deserializeBytes(null, String.class));
+        assertNull(custom.deserializeBytes(new byte[0], String.class));
+        assertNull(custom.deserializeBytes("hello".getBytes(java.nio.charset.StandardCharsets.UTF_8), String.class));
+
+        byte[] emptyBytes = custom.serializeToBytes(null);
+        assertNotNull(emptyBytes);
+        assertEquals(0, emptyBytes.length);
+
+        byte[] serializedBytes = custom.serializeToBytes(new Object());
+        assertEquals("{\"val\":1}", new String(serializedBytes, java.nio.charset.StandardCharsets.UTF_8));
     }
 
     private record Person(String firstName, String lastName) {}

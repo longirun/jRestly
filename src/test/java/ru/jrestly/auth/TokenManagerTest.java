@@ -265,6 +265,44 @@ class TokenManagerTest {
         assertEquals("checked failure", ex.getCause().getMessage());
     }
 
+    @Test
+    @DisplayName("SingleFlightTokenManager handles joining an in-flight future that yields expired token")
+    void inFlightYieldingExpiredTokenForcesRefresh() throws Exception {
+        AtomicInteger counter = new AtomicInteger();
+        CountDownLatch inFlightStarted = new CountDownLatch(1);
+        CountDownLatch completeInFlight = new CountDownLatch(1);
+
+        TokenManager tm = TokenManager.of(() -> {
+            int attempt = counter.incrementAndGet();
+            if (attempt == 1) {
+                inFlightStarted.countDown();
+                try {
+                    completeInFlight.await();
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+                return Token.of("expired-tok", Duration.ofSeconds(-10));
+            }
+            return Token.of("valid-tok", Duration.ofMinutes(10));
+        });
+
+        ExecutorService pool = Executors.newFixedThreadPool(2);
+        try {
+            Future<String> f1 = pool.submit(tm::getToken);
+            assertTrue(inFlightStarted.await(5, TimeUnit.SECONDS));
+
+            // f2 will join f1's in-flight future
+            Future<String> f2 = pool.submit(tm::getToken);
+
+            completeInFlight.countDown();
+
+            assertEquals("expired-tok", f1.get(5, TimeUnit.SECONDS));
+            assertEquals("valid-tok", f2.get(5, TimeUnit.SECONDS));
+        } finally {
+            pool.shutdownNow();
+        }
+    }
+
     @SuppressWarnings("unchecked")
     private static <E extends Throwable> void sneakyThrow(Throwable t) throws E {
         throw (E) t;

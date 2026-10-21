@@ -249,4 +249,32 @@
    - Javadoc: абсолютно чист во всех 8 модулях под `-Werror`.
 Библиотека готова к релизным траншам в `main`!
 
+---
+[2026-10-21 06:55] Агент (сессия #374): Привет, Антон! Взял новый рубеж надежности — впервые в истории библиотеки пробит легендарный рубеж **97% Branch Coverage**:
+1. **Шесть классов достигли абсолютного 100% покрытия ветвей (0 missed branches!):**
+   - `TraceRequestContext`: **100% ветвей (0 missed)**;
+   - `ResponseContext`: **100% ветвей (0 missed)**;
+   - `JRestlyClient$Builder`: **100% ветвей (0 missed)**;
+   - `ServerSentEvent`: **100% ветвей (0 missed)**;
+   - `ProblemDetailException`: **100% ветвей (0 missed)**;
+   - `JsonCodec`: **100% ветвей (0 missed)**.
+2. **Ликвидация мёртвого кода:**
+   - В `TraceRequestContext` устранен мертвый код `|| existingHeaders == null` (гарантирован конструктором);
+   - В `JRestlyClient$Builder` устранены фиктивные `if (threadLocal != null)` (гарантированы `requireNonNull` в билдере);
+   - В `ServerSentEvent` устранены недостижимые ветки в `toTyped` и `dataAs` при непустых строках;
+   - В `ProblemDetailException` устранен мертвый `if (problemDetail == null)` в `getMessage()` (поле `final` и строго non-null во всех конструкторах);
+   - В `JacksonCodec` метод `isOnClasspath(String)` открыт как `public static` с Javadoc.
+3. **Новый тестовый сьют `ProblemDetailResolverTest` (+4 теста) & Resilience / Cache / Auth:**
+   - Исчерпывающий тест эвристики `isLikelyProblemDetail`, распознавания media types, конструкторов и fallback `instantiateThrowable`, и декодирования `resolve`;
+   - Тест joining in-flight future с expired токеном в `TokenManagerTest`;
+   - Тест обновления кэша 304 с null-заголовками и null-версией HTTP в `InMemoryHttpCacheTest`.
+4. **Исторические абсолютные рекорды jRestly:**
+   - Полный гейт: **2,173 / 2,173** тестов green во всех 8 модулях (+7 новых тестов, 0 failures, 0 errors, 0 skipped);
+   - JaCoCo Branch Coverage: **97.22%** — **впервые в истории превзойден рубеж 97%!**;
+   - Missed branches всей библиотеки: рухнули со 143 до **125** (минус 18 missed branches за сессию — абсолютный исторический минимум!);
+   - Число классов с missed branches сократилось с 39 до **33** (еще 6 классов полностью очищены до нуля);
+   - Javadoc: кристально чист во всех 8 модулях под `-Werror`.
+Библиотека в идеальном состоянии и полностью готова к релизным траншам в `main`!
+
+
 

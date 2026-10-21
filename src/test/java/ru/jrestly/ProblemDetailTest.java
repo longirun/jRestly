@@ -408,6 +408,8 @@ class ProblemDetailTest {
         assertNotNull(exNull.problemDetail());
         assertEquals(500, exNull.problemDetail().getStatus());
 
+        assertThrows(NullPointerException.class, () -> new ProblemDetailException((ProblemDetail) null, List.of()));
+
         // Constructor with String details
         ProblemDetailException exStr = new ProblemDetailException("Something failed", 400, List.of());
         assertEquals(400, exStr.getStatusCode());

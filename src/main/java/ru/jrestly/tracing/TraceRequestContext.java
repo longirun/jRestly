@@ -40,7 +40,7 @@ public record TraceRequestContext(
      * @return {@code true} if present, {@code false} otherwise
      */
     public boolean hasHeader(String name) {
-        if (name == null || existingHeaders == null) {
+        if (name == null) {
             return false;
         }
         for (Header h : existingHeaders) {
@@ -58,7 +58,7 @@ public record TraceRequestContext(
      * @return the header value or {@code null}
      */
     public String firstHeader(String name) {
-        if (name == null || existingHeaders == null) {
+        if (name == null) {
             return null;
         }
         for (Header h : existingHeaders) {

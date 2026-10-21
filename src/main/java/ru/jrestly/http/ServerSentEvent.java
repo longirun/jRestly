@@ -87,7 +87,7 @@ public record ServerSentEvent(String id, String event, String data, Long retry) 
             return new TypedServerSentEvent<>(id, event, null, retry, data);
         }
         byte[] bytes = (data != null && !data.isEmpty()) ? data.getBytes(StandardCharsets.UTF_8) : null;
-        T parsed = (bytes != null && bytes.length > 0) ? codec.deserialize(bytes, type, "application/json") : null;
+        T parsed = bytes != null ? codec.deserialize(bytes, type, "application/json") : null;
         return new TypedServerSentEvent<>(id, event, parsed, retry, data);
     }
 
@@ -118,7 +118,7 @@ public record ServerSentEvent(String id, String event, String data, Long retry) 
             return null;
         }
         byte[] bytes = data.getBytes(StandardCharsets.UTF_8);
-        return (bytes.length > 0) ? codec.deserialize(bytes, type, "application/json") : null;
+        return codec.deserialize(bytes, type, "application/json");
     }
 
     /**

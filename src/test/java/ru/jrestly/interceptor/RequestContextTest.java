@@ -202,6 +202,16 @@ class RequestContextTest {
         ResponseContext netErrCtx = new SimpleResponseContext(reqCtx, wireReq, null, ioErr, Duration.ofMillis(10));
         assertEquals(-1, netErrCtx.statusCode());
         assertFalse(netErrCtx.isSuccess());
+
+        // 6. Both response and failure absent - status is -1 and isSuccess is false
+        ResponseContext emptyCtx = new SimpleResponseContext(reqCtx, wireReq, null, null, Duration.ofMillis(5));
+        assertEquals(-1, emptyCtx.statusCode());
+        assertFalse(emptyCtx.isSuccess());
+
+        // 7. Non-2xx response without failure (302 redirect)
+        ResponseContext redirectCtx = new SimpleResponseContext(reqCtx, wireReq, new WireResponse(302, List.of(), null), null, Duration.ofMillis(10));
+        assertEquals(302, redirectCtx.statusCode());
+        assertFalse(redirectCtx.isSuccess());
     }
 
     @Test

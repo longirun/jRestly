@@ -32,8 +32,8 @@ public class ProblemDetailException extends HandledException {
      * @param responseHeaders the response headers, or {@code null} for none
      */
     public ProblemDetailException(ProblemDetail problemDetail, List<Header> responseHeaders) {
-        super(problemDetail, problemDetail != null ? problemDetail.getStatus() : 0, responseHeaders);
-        this.problemDetail = Objects.requireNonNull(problemDetail, "problemDetail must not be null");
+        super(problemDetail, Objects.requireNonNull(problemDetail, "problemDetail must not be null").getStatus(), responseHeaders);
+        this.problemDetail = problemDetail;
     }
 
     /**
@@ -76,9 +76,6 @@ public class ProblemDetailException extends HandledException {
 
     @Override
     public String getMessage() {
-        if (problemDetail == null) {
-            return super.getMessage();
-        }
         StringBuilder sb = new StringBuilder("HTTP ").append(problemDetail.getStatus());
         if (problemDetail.getTitle() != null && !problemDetail.getTitle().isEmpty()) {
             sb.append(" [").append(problemDetail.getTitle()).append("]");

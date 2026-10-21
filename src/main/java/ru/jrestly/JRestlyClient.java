@@ -611,9 +611,7 @@ public class JRestlyClient extends AbstractHttpClient {
          */
         public Builder correlationId(ThreadLocal<String> threadLocal) {
             moduleInfoBuilder.correlationId(threadLocal);
-            if (threadLocal != null) {
-                moduleInfoBuilder.traceIdSupplier(threadLocal::get);
-            }
+            moduleInfoBuilder.traceIdSupplier(threadLocal::get);
             return this;
         }
 
@@ -627,9 +625,7 @@ public class JRestlyClient extends AbstractHttpClient {
          */
         public Builder correlationId(String headerName, ThreadLocal<String> threadLocal, boolean generateIfMissing) {
             moduleInfoBuilder.correlationId(headerName, threadLocal, generateIfMissing);
-            if (threadLocal != null) {
-                moduleInfoBuilder.traceIdSupplier(threadLocal::get);
-            }
+            moduleInfoBuilder.traceIdSupplier(threadLocal::get);
             return this;
         }
 

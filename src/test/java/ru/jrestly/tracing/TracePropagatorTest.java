@@ -69,6 +69,12 @@ class TracePropagatorTest {
         assertEquals("application/json", ctx.firstHeader("content-type"));
         assertNull(ctx.firstHeader("traceparent"));
         assertNull(ctx.firstHeader(null));
+
+        TraceRequestContext ctxNullHeaders = new TraceRequestContext(Object.class, null, "https://api.example.com", HttpMethod.GET, null);
+        assertNotNull(ctxNullHeaders.existingHeaders());
+        assertTrue(ctxNullHeaders.existingHeaders().isEmpty());
+        assertFalse(ctxNullHeaders.hasHeader("X-Test"));
+        assertNull(ctxNullHeaders.firstHeader("X-Test"));
     }
 
     @Test
