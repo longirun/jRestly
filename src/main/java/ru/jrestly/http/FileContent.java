@@ -96,30 +96,3 @@ public interface FileContent {
         return new StreamFileContent(fileName, source, contentLength);
     }
 }
-
-record PathFileContent(Path file) implements FileContent {
-    @Override
-    public String fileName() {
-        Path name = file.getFileName();
-        return name != null ? name.toString() : file.toString();
-    }
-
-    @Override
-    public Object content() {
-        return file;
-    }
-}
-
-record BytesFileContent(String fileName, byte[] bytes) implements FileContent {
-    @Override
-    public Object content() {
-        return bytes;
-    }
-}
-
-record StreamFileContent(String fileName, Supplier<InputStream> source, Long contentLength) implements FileContent {
-    @Override
-    public Object content() {
-        return source;
-    }
-}

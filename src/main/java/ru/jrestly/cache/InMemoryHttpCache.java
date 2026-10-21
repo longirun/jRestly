@@ -6,6 +6,7 @@ import ru.jrestly.http.WireRequest;
 import ru.jrestly.http.WireResponse;
 
 import java.net.URI;
+import java.net.http.HttpClient;
 import java.time.Instant;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
@@ -180,6 +181,11 @@ public class InMemoryHttpCache implements HttpCache {
             String etag = findHeader(mergedHeaders, "ETag");
             String lastModified = findHeader(mergedHeaders, "Last-Modified");
 
+            HttpClient.Version version = response304.version();
+            if (version == null) {
+                version = old.toWireResponse().version();
+            }
+
             SimpleCachedResponse updated = new SimpleCachedResponse(
                     old.statusCode(),
                     mergedHeaders,
@@ -190,7 +196,7 @@ public class InMemoryHttpCache implements HttpCache {
                     resCc.mustRevalidate(),
                     etag,
                     lastModified,
-                    response304.version() != null ? response304.version() : old.toWireResponse().version()
+                    version
             );
 
             cache.put(key, updated);
@@ -248,7 +254,6 @@ public class InMemoryHttpCache implements HttpCache {
     }
 
     private static String findHeader(List<Header> headers, String name) {
-        if (headers == null) return null;
         for (Header h : headers) {
             if (h.name().equalsIgnoreCase(name)) {
                 return h.value();
@@ -289,13 +294,11 @@ public class InMemoryHttpCache implements HttpCache {
             }
         }
 
-        if (oldHeaders != null) {
-            for (Header oh : oldHeaders) {
-                String lower = oh.name().toLowerCase(java.util.Locale.ROOT);
-                // Retain representation headers (content-type, content-length) unless explicitly updated in 304
-                if (!updatedNames.contains(lower)) {
-                    result.add(oh);
-                }
+        for (Header oh : oldHeaders) {
+            String lower = oh.name().toLowerCase(java.util.Locale.ROOT);
+            // Retain representation headers (content-type, content-length) unless explicitly updated in 304
+            if (!updatedNames.contains(lower)) {
+                result.add(oh);
             }
         }
 

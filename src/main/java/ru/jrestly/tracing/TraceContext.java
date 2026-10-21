@@ -248,12 +248,16 @@ public record TraceContext(
     private static boolean isHex(String s) {
         for (int i = 0; i < s.length(); i++) {
             char c = s.charAt(i);
-            boolean valid = (c >= '0' && c <= '9')
-                    || (c >= 'a' && c <= 'f')
-                    || (c >= 'A' && c <= 'F');
-            if (!valid) {
-                return false;
+            if (c >= '0' && c <= '9') {
+                continue;
             }
+            if (c >= 'a' && c <= 'f') {
+                continue;
+            }
+            if (c >= 'A' && c <= 'F') {
+                continue;
+            }
+            return false;
         }
         return true;
     }

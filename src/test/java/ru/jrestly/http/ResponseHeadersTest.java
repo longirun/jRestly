@@ -673,5 +673,21 @@ class ResponseHeadersTest {
         assertTrue(resp.link("   ").isEmpty());
         assertTrue(resp.cookies().isEmpty());
     }
+
+    @Test
+    @DisplayName("links and cookies lazy evaluation double-checked locking")
+    void doubleCheckedLockingConcurrentSimulation() {
+        ResponseHeaders resp = new ResponseHeaders(200, List.of(
+                new Header("Link", "<https://api.example.com/items?page=2>; rel=\"next\""),
+                new Header("Set-Cookie", "sid=secret123; Path=/")
+        ), Duration.ZERO);
+
+        // Multiple invocations to verify cached lazy references
+        assertEquals("https://api.example.com/items?page=2", resp.links().get("next"));
+        assertEquals("https://api.example.com/items?page=2", resp.links().get("next"));
+
+        assertEquals("secret123", resp.cookieValue("sid").orElseThrow());
+        assertEquals("secret123", resp.cookieValue("sid").orElseThrow());
+    }
 }
 

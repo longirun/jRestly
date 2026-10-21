@@ -120,6 +120,7 @@ class SensitiveDataSanitizerTest {
         assertTrue(SensitiveDataSanitizer.isSensitiveParam("passport"));
         assertTrue(SensitiveDataSanitizer.isSensitiveParam("code"));
         assertTrue(SensitiveDataSanitizer.isSensitiveParam("client_secret"));
+        assertTrue(SensitiveDataSanitizer.isSensitiveParam("app_secret"));
         assertTrue(SensitiveDataSanitizer.isSensitiveParam("user_password"));
         assertTrue(SensitiveDataSanitizer.isSensitiveParam("api_token_custom"));
     }
@@ -131,6 +132,9 @@ class SensitiveDataSanitizerTest {
 
         URI noQuery = URI.create("https://example.com/api/v1/users");
         assertEquals("https://example.com/api/v1/users", SensitiveDataSanitizer.sanitizeUri(noQuery));
+
+        URI emptyQuery = URI.create("https://example.com/api?");
+        assertEquals("https://example.com/api?", SensitiveDataSanitizer.sanitizeUri(emptyQuery));
 
         URI harmless = URI.create("https://example.com/search?page=1&limit=20&sort=asc");
         assertEquals("https://example.com/search?page=1&limit=20&sort=asc", SensitiveDataSanitizer.sanitizeUri(harmless));

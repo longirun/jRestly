@@ -257,4 +257,13 @@ class MultipartPartFlexibilityTest {
         }
         assertEquals(1, calls.get());
     }
+
+    @Test
+    @DisplayName("PathFileContent falls back to file toString when getFileName() is null")
+    void pathFileContentFallbackToToString() {
+        Path root = Path.of("/");
+        FileContent fc = new PathFileContent(root);
+        assertEquals(root.toString(), fc.fileName());
+        assertEquals(root, fc.content());
+    }
 }

@@ -187,7 +187,7 @@ public class ResponseHeaders {
         }
         Map<String, List<String>> map = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
         for (Header h : headers) {
-            if (h != null && h.name() != null) {
+            if (h.name() != null) {
                 map.computeIfAbsent(h.name(), k -> new ArrayList<>())
                         .add(h.value() != null ? h.value() : "");
             }
@@ -646,7 +646,7 @@ public class ResponseHeaders {
     public Optional<HttpCookie> cookie(String name) {
         Objects.requireNonNull(name, "cookie name must not be null");
         return cookies().stream()
-                .filter(c -> c.getName() != null && c.getName().equalsIgnoreCase(name))
+                .filter(c -> c.getName().equalsIgnoreCase(name))
                 .findFirst();
     }
 
@@ -778,7 +778,7 @@ public class ResponseHeaders {
         }
         Map<String, String> relations = new LinkedHashMap<>();
         for (String header : linkHeaders) {
-            if (header == null || header.isBlank()) {
+            if (header.isBlank()) {
                 continue;
             }
             // Split entries by comma that are outside angle brackets

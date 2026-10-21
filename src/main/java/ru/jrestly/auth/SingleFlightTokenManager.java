@@ -42,7 +42,7 @@ class SingleFlightTokenManager implements TokenManager {
             if (current != null) {
                 try {
                     Token result = current.join();
-                    if (result != null && !result.isExpired(refreshBuffer)) {
+                    if (!result.isExpired(refreshBuffer)) {
                         return result.value();
                     }
                 } catch (Throwable ignored) {

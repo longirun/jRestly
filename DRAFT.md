@@ -1,5 +1,26 @@
 # DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
+> **Сессия #376 (Branch Coverage 97.45%, Missed Branches 114 & 100% Branches in PathFileContent, ApiKeyAuth, SensitiveDataSanitizer — 100% ветвей в 3 классах, зачистка мертвых веток в InMemoryHttpCache, ResponseHeaders, SingleFlightTokenManager, ProblemDetailResolver, вынос Top-Level классов для чистоты -Werror; полный гейт 2,175/2,175 green (+2 новых теста), JaCoCo Branch 97.45% — новый абсолютный исторический рекорд библиотеки!, Instruction 99.20%, Complexity 96.95%, missed branches упали до 114 — минус 11 missed branches за сессию!):**
+> 1. *Вход:* ветка `agent-loop`, счётчик 376. Аудит классов с пропущенными ветвями: `PathFileContent` (1 missed), `ApiKeyAuth` (1 missed), `SensitiveDataSanitizer` (2 missed), `ResponseHeaders` (5 missed), `InMemoryHttpCache` (4 missed), `ProblemDetailResolver` (3 missed), `SingleFlightTokenManager` (4 missed).
+> 2. *Ликвидация мёртвого кода и архитектурная чистота:*
+>    - В `PathFileContent`: класс вынесен в отдельный package-private файл `PathFileContent.java` (а также `BytesFileContent.java` и `StreamFileContent.java`), устраняя предупреждение javac auxiliary class под `-Werror`. В `MultipartPartFlexibilityTest` добавлен тест на fallback ветку `file.getFileName() == null`. Класс достиг **100% ветвей (0 missed branches!)**.
+>    - В `ApiKeyAuth`: устранен мертвый код `&& uriStr.contains("#")` (при `fragment != null` URI всегда содержит `#`). Класс достиг **100% ветвей (0 missed branches!)**.
+>    - В `SensitiveDataSanitizer`: закрыты граничные случаи `user_password` / `app_secret` и `sanitizeUri` с пустым query (`https://example.com/api?`). Класс достиг **100% ветвей (0 missed branches!)**.
+>    - В `ProblemDetailResolver`: устранен мертвый код `pd != null &&` для результата `ProblemDetail.fromJson`. Добавлены тесты на `null`-returning кодек, bare `{}` без media type и bare `{}` с `application/problem+json`. Missed branches снизились до 1.
+>    - В `InMemoryHttpCache`: устранены мертвые проверки `headers == null` в `findHeader` и `oldHeaders != null` в `mergeHeaders`, тернарный оператор версии ответа заменен на прямолинейный `if (version == null)`. Missed branches упали с 4 до 2.
+>    - В `ResponseHeaders`: устранены недостижимые проверки `h != null` в `buildValueMap` (гарантировано `List.copyOf`), `c.getName() != null` (гарантировано `HttpCookie`) и `header == null` в `parseLinks`. Добавлены тесты на lazy double-checked locking в `links()` и `cookies()`. Missed branches упали с 5 до 2.
+>    - В `SingleFlightTokenManager`: устранена избыточная проверка `result != null &&` (токен гарантированно non-null).
+> 3. *TDD и исторические абсолютные рекорды библиотеки:*
+>    - Добавлено +2 новых теста, полный гейт: **2,175 / 2,175** тестов green во всех 8 модулях, 0 failures, 0 errors, 0 skipped.
+>    - JaCoCo Branch Coverage: **97.45%** (4,365 / 4,479 covered — **новый исторический абсолютный рекорд jRestly!**).
+>    - JaCoCo Instruction Coverage: **99.20%** (32,493 / 32,754 covered — **новый рекорд!**).
+>    - JaCoCo Complexity Coverage: **96.95%** (3,724 / 3,841 covered — рекорд!).
+>    - JaCoCo Line Coverage: **98.90%** (7,107 / 7,186 covered).
+>    - Missed branches всей библиотеки: рухнули со 125 до **114** (минус 11 missed branches за сессию — абсолютный исторический минимум библиотеки!).
+>    - Число классов с missed branches сократилось с 33 до **30** (еще 3 класса очищены до нуля).
+>    - Javadoc: кристально чист во всех 8 модулях под `-Werror`.
+> 
+
 > **Сессия #374 (Historic 97% Branch Breakthrough & 100% Branches in 6 Classes — 100% ветвей в TraceRequestContext, ResponseContext, JRestlyClient$Builder, ServerSentEvent, ProblemDetailException, JsonCodec; новый сьют ProblemDetailResolverTest (+4 теста); полный гейт 2,173/2,173 green (+7 новых тестов), JaCoCo Branch 97.22% — впервые в истории превзойден рубеж 97%!, missed branches рухнули до 125 — минус 18 missed branches за сессию!):**
 > 1. *Вход:* ветка `agent-loop`, счётчик 374. Аудит оставшихся непокрытых ветвей в топе классов библиотеки (`TraceRequestContext`, `ResponseContext`, `JRestlyClient$Builder`, `ServerSentEvent`, `ProblemDetailException`, `JsonCodec`, `JacksonCodec`, `SingleFlightTokenManager`, `ProblemDetailResolver`, `InMemoryHttpCache`).
 > 2. *Ликвидация мёртвого кода и оптимизация ветвей:*

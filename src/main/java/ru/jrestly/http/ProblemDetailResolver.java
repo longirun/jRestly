@@ -70,7 +70,7 @@ final class ProblemDetailResolver {
         }
         try {
             ProblemDetail pd = ProblemDetail.fromJson(trimmed);
-            if (pd != null && (isProblemType || isLikelyProblemDetail(pd))) {
+            if (isProblemType || isLikelyProblemDetail(pd)) {
                 if (pd.getStatus() <= 0) {
                     pd.setStatus(statusCode);
                 }

@@ -175,6 +175,26 @@ class ProblemDetailResolverTest {
         assertNotNull(pd2);
         assertEquals(409, pd2.getStatus(), "Explicit document status is preserved");
         assertEquals("Conflict", pd2.getTitle());
+
+        // Null returning codec falls back to fromJson
+        PayloadCodec nullReturningCodec = new PayloadCodec() {
+            @Override public <T> T deserialize(byte[] payload, Type type, String mediaType) { return null; }
+            @Override public byte[] serialize(Object value, String mediaType) { return new byte[0]; }
+            @Override public boolean supports(String mediaType) { return true; }
+        };
+        ProblemDetail pdFallback = ProblemDetailResolver.resolve(400, body, List.of(), "application/json", nullReturningCodec);
+        assertNotNull(pdFallback);
+        assertEquals("Bad Request", pdFallback.getTitle());
+
+        // Bare {} is rejected unless Content-Type indicates problem
+        ProblemDetail pdBare = ProblemDetailResolver.resolve(500, "{}", List.of(), "application/json", null);
+        assertNull(pdBare);
+
+        // Bare {} accepted when header is application/problem+json
+        ProblemDetail pdBareWithHeader = ProblemDetailResolver.resolve(422, "{}",
+                List.of(new Header("Content-Type", "application/problem+json")), "application/problem+json", null);
+        assertNotNull(pdBareWithHeader);
+        assertEquals(422, pdBareWithHeader.getStatus());
     }
 
     public static class ThreeArgException extends RuntimeException {

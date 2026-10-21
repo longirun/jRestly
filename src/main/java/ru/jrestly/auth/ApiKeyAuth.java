@@ -124,7 +124,7 @@ public class ApiKeyAuth implements RequestInterceptor {
         String encodedParam = encodeQueryComponent(paramName) + "=" + encodeQueryComponent(paramValue);
 
         String fragment = originalUri.getRawFragment();
-        String base = (fragment != null && uriStr.contains("#"))
+        String base = fragment != null
                 ? uriStr.substring(0, uriStr.indexOf('#'))
                 : uriStr;
 
