@@ -56,6 +56,15 @@ class CookiePersistenceUnitTest {
         assertTrue(formatted.contains("; Secure"));
         assertTrue(formatted.contains("; HttpOnly"));
         assertTrue(formatted.contains("; Version=1"));
+
+        // Edge-cases: null value, blank domain, blank path, negative maxAge
+        HttpCookie edgeCookie = new HttpCookie("empty-attr", null);
+        edgeCookie.setDomain("   ");
+        edgeCookie.setPath("   ");
+        edgeCookie.setMaxAge(-1);
+        edgeCookie.setVersion(0);
+        String edgeFormatted = CookieCodec.format(edgeCookie);
+        assertEquals("empty-attr=", edgeFormatted);
     }
 
     @Test
@@ -461,19 +470,95 @@ class CookiePersistenceUnitTest {
 
     @Test
     @DisplayName("FileCookiePersister handles path without parent directory")
-    void fileCookiePersisterWithoutParentPath(@TempDir Path tempDir) throws IOException {
-        Path originalUserDir = Path.of(".").toAbsolutePath();
-        Path tempFile = tempDir.resolve("direct-cookies.txt");
-        // Using file directly with its parent or relative representation
-        FileCookiePersister persister = FileCookiePersister.of(tempFile);
-        HttpCookie c = new HttpCookie("k", "v");
-        c.setDomain("test.local");
-        persister.saveAll(List.of(c));
+    void fileCookiePersisterWithoutParentPath() throws IOException {
+        Path directFile = Path.of("direct-cookies-" + System.nanoTime() + ".txt");
+        assertNull(directFile.getParent(), "Path without parent must have null getParent()");
+        try {
+            FileCookiePersister persister = FileCookiePersister.of(directFile);
+            HttpCookie c = new HttpCookie("k", "v");
+            c.setDomain("test.local");
+            persister.saveAll(List.of(c));
 
-        assertTrue(Files.exists(tempFile));
-        assertEquals(1, persister.loadAll().size());
-        persister.clear();
-        assertFalse(Files.exists(tempFile));
+            assertTrue(Files.exists(directFile));
+            assertEquals(1, persister.loadAll().size());
+            persister.clear();
+            assertFalse(Files.exists(directFile));
+        } finally {
+            Files.deleteIfExists(directFile);
+        }
+    }
+
+    @Test
+    @DisplayName("CookieCodec write handles null and expired cookies in collection")
+    void cookieCodecWriteWithNullsAndExpired() throws IOException {
+        StringWriter writer = new StringWriter();
+        HttpCookie valid = new HttpCookie("valid", "ok");
+        HttpCookie expired = new HttpCookie("expired", "old");
+        expired.setMaxAge(0);
+
+        List<HttpCookie> mixed = new ArrayList<>();
+        mixed.add(null);
+        mixed.add(expired);
+        mixed.add(valid);
+
+        CookieCodec.write(writer, mixed);
+        String output = writer.toString();
+        assertTrue(output.contains("valid=ok"));
+        assertFalse(output.contains("expired=old"));
+    }
+
+    @Test
+    @DisplayName("PersistentCookieStore handles null persister load, expired cookies in delegate and auto-remove missed")
+    void persistentCookieStoreEdgeCasesAndNullSafety() {
+        // 1. Persister returning null from loadAll()
+        CookiePersister nullPersister = new CookiePersister() {
+            @Override public List<HttpCookie> loadAll() { return null; }
+            @Override public void saveAll(java.util.Collection<HttpCookie> cookies) {}
+            @Override public void clear() {}
+        };
+        PersistentCookieStore storeWithNullPersister = PersistentCookieStore.of(nullPersister);
+        assertEquals(0, storeWithNullPersister.size());
+
+        // 2. Persister returning list with null and domain without bareHost (e.g. ".local")
+        TestCookiePersister persister = new TestCookiePersister();
+        HttpCookie bareLocal = new HttpCookie("bl", "v");
+        bareLocal.setDomain(".local"); // bareHost becomes empty string ""
+        bareLocal.setPath(null); // secure path fallback
+        bareLocal.setSecure(true);
+
+        List<HttpCookie> loadedList = new ArrayList<>();
+        loadedList.add(null);
+        loadedList.add(bareLocal);
+        persister.preloaded.addAll(loadedList);
+
+        PersistentCookieStore storeWithBareLocal = PersistentCookieStore.of(persister);
+        assertEquals(1, storeWithBareLocal.size());
+
+        // 3. remove in AUTO mode when cookie does not exist in store (removed == false)
+        HttpCookie nonExistent = new HttpCookie("ghost", "boo");
+        nonExistent.setDomain("app.com");
+        int saveCountBefore = persister.saveCount.get();
+        boolean removed = storeWithBareLocal.remove(URI.create("https://app.com/"), nonExistent);
+        assertFalse(removed);
+        assertEquals(saveCountBefore, persister.saveCount.get(), "syncInternal must not be called when remove returns false");
+
+        // 4. syncInternal and getCookies filter out expired cookies from delegate
+        persister.preloaded.clear();
+        CookieStore customDelegate = new java.net.CookieManager().getCookieStore();
+        HttpCookie exp = new HttpCookie("exp", "val");
+        exp.setDomain("exp.com");
+        exp.setMaxAge(0);
+        customDelegate.add(URI.create("https://exp.com/"), exp);
+
+        PersistentCookieStore storeWithExpiredInDelegate = PersistentCookieStore.builder()
+                .delegate(customDelegate)
+                .persister(persister)
+                .build();
+        // getCookies() must filter out expired cookie
+        assertTrue(storeWithExpiredInDelegate.getCookies().isEmpty());
+        // sync() must save only non-expired cookies
+        storeWithExpiredInDelegate.sync();
+        assertTrue(persister.lastSaved.isEmpty());
     }
 
     @Test

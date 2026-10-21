@@ -151,6 +151,51 @@ class TraceContextTest {
     }
 
     @Test
+    @DisplayName("TraceContext random and child zero guards with deterministic RandomGenerator")
+    void randomAndChildZeroGuards() {
+        // Generator that fills byte arrays with zeroes to exercise the zero-guard branches
+        java.util.random.RandomGenerator zeroRandom = new java.util.random.RandomGenerator() {
+            @Override
+            public long nextLong() {
+                return 0L;
+            }
+
+            @Override
+            public void nextBytes(byte[] bytes) {
+                java.util.Arrays.fill(bytes, (byte) 0);
+            }
+        };
+
+        TraceContext ctx = TraceContext.random(zeroRandom);
+        assertEquals("00000000000000000000000000000001", ctx.traceId());
+        assertEquals("0000000000000001", ctx.spanId());
+
+        TraceContext child = ctx.child(zeroRandom);
+        assertEquals("00000000000000000000000000000001", child.traceId());
+        assertEquals("0000000000000001", child.spanId());
+
+        assertThrows(NullPointerException.class, () -> TraceContext.random(null));
+        assertThrows(NullPointerException.class, () -> ctx.child(null));
+    }
+
+    @Test
+    @DisplayName("isHex evaluates boundary characters around 0-9, a-f and A-F")
+    void isHexBoundaryCharacters() {
+        // Non-hex chars adjacent to boundaries: '/' (before '0'), ':' (after '9'), '@' (before 'A'), 'G' (after 'F'), '`' (before 'a'), 'g' (after 'f')
+        char[] invalidChars = {'/', ':', '@', 'G', '`', 'g', '-', ' '};
+        for (char ch : invalidChars) {
+            String badTraceId = "4bf92f3577b34da6a3ce929d0e0e473" + ch;
+            assertThrows(IllegalArgumentException.class, () -> TraceContext.of(badTraceId, VALID_SPAN_ID));
+        }
+
+        // Uppercase hex A-F must be accepted and normalized
+        TraceContext upper = TraceContext.of("4BF92F3577B34DA6A3CE929D0E0E473F", "00F067AA0BA902BF", "1F");
+        assertEquals("4bf92f3577b34da6a3ce929d0e0e473f", upper.traceId());
+        assertEquals("00f067aa0ba902bf", upper.spanId());
+        assertEquals("1f", upper.traceFlags());
+    }
+
+    @Test
     @DisplayName("isSampled checks least significant bit of trace flags")
     void isSampledFlags() {
         assertFalse(TraceContext.of(VALID_TRACE_ID, VALID_SPAN_ID, "00").isSampled());

@@ -99,15 +99,28 @@ public record TraceContext(
     }
 
     /**
-     * Generates a new random {@link TraceContext} with sampled flag ({@code "01"}).
+     * Generates a new random {@link TraceContext} with sampled flag ({@code "01"})
+     * using the default secure random generator.
      *
      * @return a newly generated random trace context
      */
     public static TraceContext random() {
+        return random(RANDOM);
+    }
+
+    /**
+     * Generates a new random {@link TraceContext} with sampled flag ({@code "01"})
+     * using the specified {@link RandomGenerator}.
+     *
+     * @param random the random generator to use, not null
+     * @return a newly generated random trace context
+     */
+    public static TraceContext random(RandomGenerator random) {
+        Objects.requireNonNull(random, "random must not be null");
         byte[] traceBytes = new byte[16];
         byte[] spanBytes = new byte[8];
-        RANDOM.nextBytes(traceBytes);
-        RANDOM.nextBytes(spanBytes);
+        random.nextBytes(traceBytes);
+        random.nextBytes(spanBytes);
 
         String traceId = HEX.formatHex(traceBytes);
         String spanId = HEX.formatHex(spanBytes);
@@ -123,13 +136,25 @@ public record TraceContext(
 
     /**
      * Generates a child {@link TraceContext} sharing the same trace ID and trace flags,
-     * but with a newly generated random span ID.
+     * but with a newly generated random span ID using the default secure random generator.
      *
      * @return a child trace context
      */
     public TraceContext child() {
+        return child(RANDOM);
+    }
+
+    /**
+     * Generates a child {@link TraceContext} sharing the same trace ID and trace flags,
+     * but with a newly generated random span ID using the specified {@link RandomGenerator}.
+     *
+     * @param random the random generator to use, not null
+     * @return a child trace context
+     */
+    public TraceContext child(RandomGenerator random) {
+        Objects.requireNonNull(random, "random must not be null");
         byte[] spanBytes = new byte[8];
-        RANDOM.nextBytes(spanBytes);
+        random.nextBytes(spanBytes);
         String newSpanId = HEX.formatHex(spanBytes);
         if (ALL_ZERO_SPAN_ID.equals(newSpanId)) {
             newSpanId = "0000000000000001";

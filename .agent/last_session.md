@@ -1,34 +1,32 @@
-# Last Session: #371 (2026-10-21)
+# Last Session: #372 (2026-10-21)
 
 ## Что сделано
 
-**Сессия #371: JdkHttpEngine Extensibility (100% Branches) & ZeroDepJsonParser Polish (Branch 95.60%, missed branches 199).**
-1. Открытость и расширяемость `JdkHttpEngine` (пожелание Антона):
-   - методы `toHttpRequest`, `createBodyPublisher`, `toWireResponse`, `toHeaders`, `notifyZeroUploadIfPending` переведены из `private` в `protected` (и `protected static`), снабжены исчерпывающим Javadoc. Пользователи теперь могут расширять и кастомизировать генерацию `HttpRequest` и маппинг ответов;
-   - устранена синтетическая проверка `&& httpRequest != null` в `notifyZeroUploadIfPending`.
-2. Покрытие пограничных сценариев в `JdkHttpEngineTest` (+7 тестов):
-   - `send` и `sendAsync` с `options == null`;
-   - асинхронный стриминг `sendAsync` со `streamResponse(true)` и `downloadProgressListener`;
-   - `bodyPublisherSupplier` возвращает `null` (fallback на `noBody()`);
-   - HTTP GET с телом (`body`) и частями (`parts`);
-   - `toHeaders(null)` и headers с множественными значениями одного имени;
-   - `ModuleInfo` с обычным `Executor`, нулевым тайм-аутом, прокси, аутентификатором, закрытие управляемого пула виртуальных потоков.
-   - **`JdkHttpEngine` достиг 100% покрытия ветвей (94/94 branches, 0 missed branches!)**.
-3. Очистка и покрытие `ProblemDetail$ZeroDepJsonParser`:
-   - удалены мертвые проверки `if (json == null || json.isEmpty() || json.charAt(0) != '{')` в приватном `parseObject` (делегирование из `fromJson`);
-   - ликвидирована недостижимая ветка `else if (i < len)` в разделителях полей объекта;
-   - в `ProblemDetailTest` добавлены тесты на отрицательный Long `< Integer.MIN_VALUE`, незакрытые массивы без элементов и с элементами, неожиданный конец JSON после `:`, минус в самом конце строки, экранированные кавычки и скобки внутри объектов, незакрытый объект.
-4. Новые исторические рекорды библиотеки:
-   - Missed branches всей библиотеки впервые в истории опустились ниже 200: **ровно 199 missed branches** (минус 19 за сессию — абсолютный исторический минимум!);
-   - Полный гейт: **2,145 / 2,145** тестов green во всех 8 модулях (+7 новых тестов, 0 failures, 0 errors);
-   - JaCoCo: Branch **95.60%** (4,322 / 4,521 covered — новый исторический рекорд библиотеки!);
-   - JaCoCo: Complexity **94.77%** (3,658 / 3,860 covered — новый рекорд!);
-   - JaCoCo: Instruction **98.92%**, Line **98.68%**, Classes **100%** (168/168), Methods **99.81%** (1,553/1,556);
-   - Javadoc: абсолютно чист во всех 8 модулях под `-Werror`.
+**Сессия #372: Resilience, Tracing & Cookie Storage Polish (Branch 96.18%, Complexity 95.45%, Missed Branches 173).**
+1. Открытость и расширяемость `TraceContext`:
+   - добавлены перегрузки `public static TraceContext random(RandomGenerator random)` и `public TraceContext child(RandomGenerator random)` с подробным Javadoc. Теперь разработчики могут инжектировать детерминированные псевдослучайные генераторы для воспроизводимого тестирования трассировки;
+   - в `TraceContextTest` через детерминированный генератор проверены защитные zero-guards (`ALL_ZERO_TRACE_ID` и `ALL_ZERO_SPAN_ID`), а также граничные символы `isHex`. `TraceContext` достиг **98.6%** (71/72 branches, 1 missed).
+2. Покрытие `TracePropagators`:
+   - закрыты все редкие сценарии: `correlationId` с пустым/пробельным id, `w3c` при уже существующем traceparent/tracestate, `composite` с провайдером, возвращающим `null` или Map с `null`-ключами/значениями/существующими заголовками;
+   - **`TracePropagators` достиг 100% покрытия ветвей (44 / 44 covered, 0 missed branches!)**.
+3. Устранение скрытого бага в `PersistentCookieStore` & 100% покрытие `FileCookiePersister`:
+   - обнаружен и устранён критический скрытый баг: при наличии куки с доменом `".local"` метод `clean.substring(1)` возвращал `"local"`, после чего вычитание длины `".local"` (6 символов) приводило к `StringIndexOutOfBoundsException: Range [0, -1)`. Добавлена строгая проверка `clean.endsWith(".local") && clean.length() > ".local".length()`;
+   - в `FileCookiePersisterTest` проверено сохранение кук по прямому пути без родительской директории (`path.getParent() == null`). **`FileCookiePersister` достиг 100% покрытия ветвей (6/6, 0 missed branches!)**;
+   - в `CookieCodecTest` покрыты пограничные случаи: `getValue() == null`, пустые домены/пути, отрицательный `maxAge`, `write` со списком, содержащим `null` и expired куки;
+   - в `PersistentCookieStoreTest` покрыты: persister с `loadAll() == null`, загрузка `null`-элементов, удаление отсутствующих кук в AUTO режиме, фильтрация expired кук в `getCookies()` и `syncInternal()`.
+4. Покрытие `CircuitBreakers$InMemoryCircuitBreaker`:
+   - в `CircuitBreakerTest` покрыты: `recordFailure(10, null)`, вызовы `recordSuccess`/`recordFailure` в состоянии `OPEN`, исчерпание разрешенных вызовов в состоянии `HALF_OPEN` (`halfOpenCallsPermitted == 0`), и сохранение состояния `CLOSED` при `minimumNumberOfCalls` достигнутом, но `rate < failureRateThreshold`.
+5. Исторические абсолютные рекорды библиотеки:
+   - Полный гейт: **2,151 / 2,151** тестов green во всех 8 модулях (+6 новых тестов, 0 failures, 0 errors);
+   - JaCoCo Branch Coverage: **96.18%** (4,352 / 4,525 covered — **исторический прорыв легендарного рубежа 96%!**);
+   - JaCoCo Complexity Coverage: **95.45%** (3,688 / 3,864 covered — **исторический прорыв легендарного рубежа 95%!**);
+   - Missed branches всей библиотеки: рухнули со 199 до **173** (минус 26 missed branches за сессию — новый абсолютный минимум библиотеки!);
+   - JaCoCo Instruction Coverage: **98.96%**, Line: **98.73%**, Classes: **100%** (168 / 168), Methods: **99.81%** (1,555 / 1,558);
+   - Javadoc: кристально чист во всех 8 модулях под `-Werror`.
 
-## Контекст для следующей сессии (#372)
+## Контекст для следующей сессии (#373)
 
 1. **Ветка:** `agent-loop`.
-2. **Статус:** Все задачи из бэклога и запросов Антона выполнены на 100%: архитектурная декомпозиция god-классов (ADR-0080 — ADR-0094), Enterprise Observability & Compliance (ADR-0095), TraceId Correlation Logging & Raw Mode (ADR-0096), Typed Server-Sent Events (ADR-0097), SSE Resilience Polish, ProblemDetail Zero-Dep Resilience, HttpTemplateBuilder Branch Pruning, HttpTemplate Resilience Polish и JdkHttpEngine Extensibility (100% branches, missed branches 199).
-3. **Метрики:** Полный гейт **2,145 / 2,145**; Branch coverage **95.60%**; Complexity **94.77%**; Missed branches: 199; Javadoc clean под `-Werror`; Highest ADR **0097**, next free **0098**.
+2. **Статус:** Все задачи из бэклога и запросов Антона выполнены на 100%: архитектурная декомпозиция god-классов (ADR-0080 — ADR-0094), Enterprise Observability & Compliance (ADR-0095), TraceId Correlation Logging & Raw Mode (ADR-0096), Typed Server-Sent Events (ADR-0097), SSE Resilience Polish, ProblemDetail Zero-Dep Resilience, HttpTemplateBuilder Branch Pruning, HttpTemplate Resilience Polish, JdkHttpEngine Extensibility (100% branches), Tracing & Cookie Storage Polish (100% branches в TracePropagators и FileCookiePersister, Branch 96.18%, Complexity 95.45%, missed branches 173).
+3. **Метрики:** Полный гейт **2,151 / 2,151**; Branch coverage **96.18%**; Complexity **95.45%**; Missed branches: 173; Javadoc clean под `-Werror`; Highest ADR **0097**, next free **0098**.
 4. **Дальше:** Перенос фич из `agent-loop` в `main` Антоном или релизные транши.

@@ -418,6 +418,54 @@ class CircuitBreakerTest {
         assertEquals(Duration.ZERO, ex.remainingWaitDuration());
         assertTrue(ex.getMessage().contains("CircuitBreaker 'null-duration-cb' is OPEN (remaining wait: 0 ms)"));
     }
+
+    @Test
+    @DisplayName("CircuitBreaker edge-cases: null throwable in recordFailure, outcomes while OPEN, half-open call limits and rate under threshold")
+    void circuitBreakerEdgeCases() {
+        // 1. recordFailure with null throwable is treated as failure
+        CircuitBreakerConfig cfg = CircuitBreakerConfig.builder()
+                .minimumNumberOfCalls(2)
+                .slidingWindowSize(2)
+                .failureRateThreshold(50.0f)
+                .waitDurationInOpenState(Duration.ofSeconds(10))
+                .permittedNumberOfCallsInHalfOpenState(1)
+                .build();
+        CircuitBreaker cb = CircuitBreaker.of("edge-cb", cfg);
+
+        // Call 1: success, Call 2: failure with null throwable -> trips to OPEN
+        cb.recordSuccess(10);
+        cb.recordFailure(10, null);
+        assertEquals(CircuitBreaker.State.OPEN, cb.getState());
+
+        // 2. recordSuccess and recordFailure while in OPEN state do not crash and do not change state
+        cb.recordSuccess(10);
+        cb.recordFailure(10, new IOException("ignored in open"));
+        assertEquals(CircuitBreaker.State.OPEN, cb.getState());
+
+        // 3. Manual transition to HALF_OPEN to test halfOpenCallsPermitted exhaustion
+        cb.transitionToHalfOpenState();
+        assertEquals(CircuitBreaker.State.HALF_OPEN, cb.getState());
+
+        // Permitted 1 call:
+        assertTrue(cb.tryAcquirePermission());
+        // Second call while half-open call is pending must be rejected (halfOpenCallsPermitted == 0)
+        assertFalse(cb.tryAcquirePermission());
+
+        // 4. Rate under threshold when currentSize >= minimumNumberOfCalls
+        CircuitBreakerConfig cfgUnder = CircuitBreakerConfig.builder()
+                .minimumNumberOfCalls(2)
+                .slidingWindowSize(4)
+                .failureRateThreshold(60.0f)
+                .build();
+        CircuitBreaker cbUnder = CircuitBreaker.of("under-threshold-cb", cfgUnder);
+        // Call 1: failure (1 call < min 2)
+        cbUnder.recordFailure(10, new IOException("err1"));
+        assertEquals(CircuitBreaker.State.CLOSED, cbUnder.getState());
+        // Call 2: success (2 calls >= min 2, failure rate = 50% < 60% threshold) -> remains CLOSED
+        cbUnder.recordSuccess(10);
+        assertEquals(CircuitBreaker.State.CLOSED, cbUnder.getState());
+        assertEquals(50.0f, cbUnder.metrics().failureRate());
+    }
 }
 
 

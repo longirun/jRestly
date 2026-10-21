@@ -1,5 +1,31 @@
 # DRAFT: активная зона после закрытия Zero-Garbage Dispatch Pipeline & Hot-Path Allocation Pruning (ADR-0055)
 
+> **Сессия #372 (Resilience, Tracing & Cookie Storage Polish — 100% покрытие ветвей в TracePropagators и FileCookiePersister, устранение скрытого бага в PersistentCookieStore, открытие детерминированных генераторов TraceContext; полный гейт 2,151/2,151 green (+6 новых тестов), JaCoCo Branch 96.18% — исторический прорыв легендарного рубежа 96%!, Complexity 95.45% — исторический прорыв рубежа 95%!, missed branches упали до 173 — новый абсолютный рекорд библиотеки!):**
+> 1. *Вход:* ветка `agent-loop`, счётчик 372. Анализ открытости и классов с наибольшим количеством пропущенных ветвей: `PersistentCookieStore` (10 missed), `TraceContext` (7 missed), `CircuitBreakers$InMemoryCircuitBreaker` (7 missed), `TracePropagators` (7 missed), `CookieCodec` (6 missed).
+> 2. *Открытость и расширяемость `TraceContext`:*
+>    - Добавлены перегрузки `public static TraceContext random(RandomGenerator random)` и `public TraceContext child(RandomGenerator random)` с подробным Javadoc. Теперь разработчики могут инжектировать детерминированные псевдослучайные генераторы в интеграционных тестах.
+>    - В `TraceContextTest` с помощью детерминированного генератора покрыты zero-guard случаи (`ALL_ZERO_TRACE_ID` и `ALL_ZERO_SPAN_ID`), а также символы на границах диапазонов hex (`isHex`).
+>    - `TraceContext`: ветви выросли до **98.6% (71/72, осталась 1 ветвь)**.
+> 3. *Покрытие `TracePropagators`:*
+>    - Покрыты все редкие сценарии: `correlationId` с пустым/пробельным id, `w3c` когда в context уже есть `traceparent`, `w3c` с пустым `tracestate`, `composite` с провайдером, возвращающим `null` или Map с `null`-ключами/значениями/существующими заголовками.
+>    - **`TracePropagators` достиг 100% покрытия ветвей (44 / 44 covered, 0 missed branches!)**.
+> 4. *Устранение скрытого бага и покрытие `PersistentCookieStore`, `CookieCodec` и `FileCookiePersister`:*
+>    - Выявлен и устранён критический скрытый баг: при наличии куки с доменом `".local"` метод `clean.substring(1)` возвращал `"local"`, после чего вычитание длины `".local"` (6 символов) приводило к `StringIndexOutOfBoundsException: Range [0, -1)`. Добавлена строгая проверка `clean.endsWith(".local") && clean.length() > ".local".length()`.
+>    - В `FileCookiePersisterTest` проверено сохранение кук по прямому пути без родительской директории (`path.getParent() == null`). **`FileCookiePersister` достиг 100% покрытия ветвей (6/6, 0 missed branches!)**.
+>    - В `CookieCodecTest` покрыты пограничные случаи: `getValue() == null`, пустые домены/пути, отрицательный `maxAge`, `write` со списком, содержащим `null` и expired куки.
+>    - В `PersistentCookieStoreTest` покрыты: persister с `loadAll() == null`, загрузка `null`-элементов, удаление отсутствующих кук в AUTO режиме, фильтрация expired кук в `getCookies()` и `syncInternal()`.
+> 5. *Покрытие `CircuitBreakers$InMemoryCircuitBreaker`:*
+>    - В `CircuitBreakerTest` покрыты: `recordFailure(10, null)`, вызовы `recordSuccess`/`recordFailure` в состоянии `OPEN`, исчерпание разрешенных вызовов в состоянии `HALF_OPEN` (`halfOpenCallsPermitted == 0`), и сохранение состояния `CLOSED` при `minimumNumberOfCalls` достигнутом, но `rate < failureRateThreshold`.
+> 6. *TDD и исторические рекорды библиотеки:*
+>    - Добавлено +6 исчерпывающих тестов в `TraceContextTest`, `TracePropagatorTest`, `CircuitBreakerTest` и `CookiePersistenceUnitTest`.
+>    - Полный гейт: **2,151 / 2,151** тестов green во всех 8 модулях (root 1,987 + submodules 164), 0 failures, 0 errors.
+>    - JaCoCo: Branch **96.18%** (4,352 / 4,525 covered — **исторический прорыв легендарного рубежа 96%!**).
+>    - JaCoCo: Complexity **95.45%** (3,688 / 3,864 covered — **исторический прорыв легендарного рубежа 95%!**).
+>    - Missed branches всей библиотеки упали со 199 до **173** (минус 26 missed branches за сессию — новый абсолютный исторический минимум библиотеки!).
+>    - JaCoCo: Instruction **98.96%**, Line **98.73%**, Classes **100%** (168/168), Methods **99.81%** (1,555/1,558).
+>    - Javadoc: абсолютно чист во всех 8 модулях под `-Werror`.
+> 
+
 > **Сессия #371 (JdkHttpEngine Extensibility (100% Branches) & ZeroDepJsonParser Polish — открытие protected методов транспорта, ликвидация мертвых веток, 0 missed branches в JdkHttpEngine; полный гейт 2,145/2,145 green (+7 новых тестов), JaCoCo Branch 95.60% — новый исторический рекорд библиотеки, Complexity 94.77% — новый рекорд, missed branches впервые в истории упали ниже 200: ровно 199 missed branches!):**
 > 1. *Вход:* ветка `agent-loop`, счётчик 371. Анализ открытости API и классов с пропущенными ветвями: дефолтный транспорт ядра `JdkHttpEngine` содержал 16 missed branches и скрытые `private` вспомогательные методы; парсер `ProblemDetail.ZeroDepJsonParser` содержал 23 missed branches.
 > 2. *Открытость и расширяемость `JdkHttpEngine`:*

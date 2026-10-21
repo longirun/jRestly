@@ -184,13 +184,15 @@ public final class PersistentCookieStore implements CookieStore {
                     delegate.add(uri, cookie);
                     if (cookie.getDomain() != null && cookie.getDomain().endsWith(".local")) {
                         String clean = cookie.getDomain().startsWith(".") ? cookie.getDomain().substring(1) : cookie.getDomain();
-                        String bareHost = clean.substring(0, clean.length() - ".local".length());
-                        if (!bareHost.isBlank()) {
-                            String scheme = cookie.getSecure() ? "https://" : "http://";
-                            String path = cookie.getPath() != null && !cookie.getPath().isBlank() ? cookie.getPath() : "/";
-                            try {
-                                delegate.add(URI.create(scheme + bareHost + path), cookie);
-                            } catch (IllegalArgumentException ignored) {
+                        if (clean.endsWith(".local") && clean.length() > ".local".length()) {
+                            String bareHost = clean.substring(0, clean.length() - ".local".length());
+                            if (!bareHost.isBlank()) {
+                                String scheme = cookie.getSecure() ? "https://" : "http://";
+                                String path = cookie.getPath() != null && !cookie.getPath().isBlank() ? cookie.getPath() : "/";
+                                try {
+                                    delegate.add(URI.create(scheme + bareHost + path), cookie);
+                                } catch (IllegalArgumentException ignored) {
+                                }
                             }
                         }
                     }

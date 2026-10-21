@@ -206,5 +206,52 @@ class TracePropagatorTest {
         assertThrows(IllegalArgumentException.class, () -> TracePropagators.threadLocal("  ", emptyTl, false));
         assertThrows(NullPointerException.class, () -> TracePropagators.threadLocal("X-Req", null, false));
     }
+
+    @Test
+    @DisplayName("TracePropagators edge-cases: blank generated ID, existing headers in w3c and composite with nulls")
+    void testTracePropagatorsEdgeCases() {
+        // 1. correlationId generator returns null or blank -> returns empty map
+        TracePropagator blankGenProp = TracePropagators.correlationId("X-Blank-ID", () -> "   ");
+        TraceRequestContext ctx = new TraceRequestContext(Object.class, null, "https://api.example.com", HttpMethod.GET, List.of());
+        assertTrue(blankGenProp.inject(ctx).isEmpty());
+
+        TracePropagator nullGenProp = TracePropagators.correlationId("X-Null-ID", () -> null);
+        assertTrue(nullGenProp.inject(ctx).isEmpty());
+
+        // 2. w3c with supplier when context already has traceparent
+        TraceContext tc = TraceContext.of("4bf92f3577b34da6a3ce929d0e0e4736", "00f067aa0ba902b7", "01");
+        TracePropagator w3cProp = TracePropagators.w3c(() -> tc, true);
+        TraceRequestContext ctxWithTraceparent = new TraceRequestContext(Object.class, null, "https://api.example.com", HttpMethod.GET,
+                List.of(new Header("traceparent", "00-11111111111111111111111111111111-2222222222222222-01")));
+        assertTrue(w3cProp.inject(ctxWithTraceparent).isEmpty());
+
+        // 3. w3c with supplier returning context with blank traceState -> does not inject tracestate
+        TraceContext tcBlankState = TraceContext.of("4bf92f3577b34da6a3ce929d0e0e4736", "00f067aa0ba902b7", "01", "   ");
+        TracePropagator w3cBlankState = TracePropagators.w3c(() -> tcBlankState, false);
+        Map<String, String> injectedBlankState = w3cBlankState.inject(ctx);
+        assertEquals(1, injectedBlankState.size());
+        assertTrue(injectedBlankState.containsKey("traceparent"));
+        assertFalse(injectedBlankState.containsKey("tracestate"));
+
+        // 4. composite with null-returning propagator and map with null keys/values or existing context headers
+        TracePropagator nullReturningProp = c -> null;
+        TracePropagator mapWithNullsProp = c -> {
+            java.util.Map<String, String> m = new java.util.HashMap<>();
+            m.put(null, "val");
+            m.put("k-null-val", null);
+            m.put("Existing-Header", "injected-val");
+            m.put("Valid-Key", "valid-val");
+            return m;
+        };
+        TraceRequestContext ctxWithExistingHeader = new TraceRequestContext(Object.class, null, "https://api.example.com", HttpMethod.GET,
+                List.of(new Header("Existing-Header", "original-val")));
+
+        TracePropagator compositeWithEdgeCases = TracePropagators.composite(nullReturningProp, mapWithNullsProp);
+        Map<String, String> compositeResult = compositeWithEdgeCases.inject(ctxWithExistingHeader);
+
+        assertEquals(1, compositeResult.size());
+        assertEquals("valid-val", compositeResult.get("Valid-Key"));
+        assertFalse(compositeResult.containsKey("Existing-Header"));
+    }
 }
 
