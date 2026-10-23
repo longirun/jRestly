@@ -1,0 +1,132 @@
+package ru.jrestly.http;
+
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+
+import java.net.URI;
+import java.nio.charset.StandardCharsets;
+import java.util.List;
+import java.util.ResourceBundle;
+import java.util.concurrent.CopyOnWriteArrayList;
+
+import static org.junit.jupiter.api.Assertions.*;
+
+class HttpTemplateLoggingTest {
+
+    private static final URI TARGET = URI.create("http://example.com/api/items/7");
+
+    private final CapturingLogger logger = new CapturingLogger();
+    private final HttpTemplate template;
+
+    HttpTemplateLoggingTest() {
+        template = new HttpTemplate();
+        template.setLogger(logger);
+    }
+
+    @Test
+    @DisplayName("PUT with a body logs the body")
+    void putWithBodyLogsTheBody() {
+        String body = "{\"id\":7,\"name\":\"replaced\"}";
+
+        logRequest(HttpMethod.PUT, "application/json", body);
+
+        String log = logger.last();
+        assertTrue(log.startsWith("Request: PUT http://example.com/api/items/7"), log);
+        assertTrue(log.contains(body), log);
+    }
+
+    @Test
+    @DisplayName("PUT without a body logs the 'No request body' fallback")
+    void putWithoutBodyLogsTheFallback() {
+        logRequest(HttpMethod.PUT, null, null);
+
+        assertTrue(logger.last().contains("No request body"), logger.last());
+    }
+
+    @Test
+    @DisplayName("PUT multipart logs the parts listing and the send size")
+    void putMultipartLogsPartsAndSize() {
+        WireRequest request = new WireRequest(HttpMethod.PUT, TARGET, List.of(),
+                "multipart/form-data; boundary=BOUNDARY", null,
+                List.of(MultipartPart.text("file", "content")), "BOUNDARY");
+
+        template.logRequest(request);
+
+        String log = logger.last();
+        assertTrue(log.contains("name=file"), log);
+        assertTrue(log.contains("Sending size:"), log);
+    }
+
+    @Test
+    @DisplayName("GET with a body keeps the scope: no body section at all")
+    void getWithBodyHasNoBodySection() {
+        String body = "{\"unexpected\":\"a get body\"}";
+
+        logRequest(HttpMethod.GET, "application/json", body);
+
+        String log = logger.last();
+        assertTrue(log.startsWith("Request: GET http://example.com/api/items/7"), log);
+        assertFalse(log.contains(body), log);
+        assertFalse(log.contains("No request body"), log);
+    }
+
+    @Test
+    @DisplayName("POST with a body logs the body")
+    void postWithBodyLogsTheBody() {
+        assertBodyLogged(HttpMethod.POST, "{\"id\":7}");
+    }
+
+    @Test
+    @DisplayName("PATCH with a body logs the body")
+    void patchWithBodyLogsTheBody() {
+        assertBodyLogged(HttpMethod.PATCH, "{\"name\":\"patched\"}");
+    }
+
+    @Test
+    @DisplayName("DELETE with a body logs the body")
+    void deleteWithBodyLogsTheBody() {
+        assertBodyLogged(HttpMethod.DELETE, "{\"id\":7}");
+    }
+
+    private void assertBodyLogged(HttpMethod method, String body) {
+        logRequest(method, "application/json", body);
+
+        String log = logger.last();
+        assertTrue(log.startsWith("Request: " + method + " http://example.com/api/items/7"), log);
+        assertTrue(log.contains(body), log);
+    }
+
+    private void logRequest(HttpMethod method, String contentType, String body) {
+        template.logRequest(new WireRequest(method, TARGET, List.of(), contentType,
+                body == null ? null : body.getBytes(StandardCharsets.UTF_8), null, null));
+    }
+
+    static final class CapturingLogger implements System.Logger {
+        private final List<String> messages = new CopyOnWriteArrayList<>();
+
+        @Override
+        public String getName() {
+            return "jrestly-capture";
+        }
+
+        @Override
+        public boolean isLoggable(Level level) {
+            return true;
+        }
+
+        @Override
+        public void log(Level level, ResourceBundle bundle, String format, Object... params) {
+            messages.add(params == null || params.length == 0 ? format : String.format(format, params));
+        }
+
+        @Override
+        public void log(Level level, ResourceBundle bundle, String format, Throwable thrown) {
+            messages.add(format + (thrown == null ? "" : " cause=" + thrown));
+        }
+
+        String last() {
+            assertFalse(messages.isEmpty(), "no log records captured");
+            return messages.get(messages.size() - 1);
+        }
+    }
+}

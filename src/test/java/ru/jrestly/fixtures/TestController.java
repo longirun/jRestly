@@ -32,6 +32,9 @@ public interface TestController {
     @Get(path = "/api/nothing")
     void getNothing();
 
+    @Get(path = "/api/nothing")
+    Void getNothingBoxed();
+
     @Post(path = "/api/items")
     TestDto createItem(@RequestBody TestDto item);
 

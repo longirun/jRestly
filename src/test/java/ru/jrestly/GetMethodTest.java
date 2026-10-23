@@ -98,6 +98,30 @@ class GetMethodTest extends BaseWireMockTest {
     }
 
     @Test
+    @DisplayName("GET with void return and a non-empty body completes (body discarded)")
+    void getReturnsVoidWithNonEmptyBody() {
+        stubFor(get(urlEqualTo("/api/nothing"))
+                .willReturn(aResponse()
+                        .withStatus(200)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody("{\"name\":\"a body a void method never decodes\"}")));
+
+        controller.getNothing();
+    }
+
+    @Test
+    @DisplayName("GET with Void return and a non-empty body returns null (body discarded)")
+    void getReturnsVoidBoxedWithNonEmptyBody() {
+        stubFor(get(urlEqualTo("/api/nothing"))
+                .willReturn(aResponse()
+                        .withStatus(200)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody("{\"name\":\"a body a Void method never decodes\"}")));
+
+        assertNull(controller.getNothingBoxed());
+    }
+
+    @Test
     @DisplayName("GET with collection in @RequestParam creates multiple parameters with the same name")
     void getWithCollectionParam() {
         stubFor(get(urlEqualTo("/api/collection?ids=1&ids=2&ids=3"))

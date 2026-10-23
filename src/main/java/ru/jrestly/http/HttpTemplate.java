@@ -12,12 +12,15 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
-import java.util.Arrays;
 import java.util.List;
+import java.util.Set;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
 public class HttpTemplate {
+    private static final Set<HttpMethod> BODY_LOGGING_METHODS =
+            Set.of(HttpMethod.POST, HttpMethod.PATCH, HttpMethod.DELETE, HttpMethod.PUT);
+
     private System.Logger logger;
 
     private HttpClient httpClient;
@@ -86,7 +89,7 @@ public class HttpTemplate {
             }
 
             logger.log(System.Logger.Level.INFO, "Response size: " + payload.length() + " bytes\n" + jsonCodec.prettyPrint(payload));
-            if (Void.class.equals(returnType)) {
+            if (Void.class.equals(returnType) || void.class.equals(returnType)) {
                 return null;
             }
 
@@ -273,7 +276,7 @@ public class HttpTemplate {
             sb.append(headers);
         }
 
-        if (Arrays.asList(HttpMethod.POST, HttpMethod.PATCH, HttpMethod.DELETE).contains(request.method())) {
+        if (BODY_LOGGING_METHODS.contains(request.method())) {
             sb.append("\n");
 
             if (request.contentType() != null && request.contentType().contains("multipart/form-data")) {

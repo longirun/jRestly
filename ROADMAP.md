@@ -30,7 +30,7 @@ Gates for every step: full WireMock test suite green (`./gradlew test`), IDE ins
 
 ### Steps:
 - [x] Step 1 — Standard `java.time` ISO-8601 support via `JavaTimeModule` (`JacksonCodec`)
-- [ ] Step 2 — 0.5.0 quirk fixes (PUT logging gate, `void.class` handling in `HttpTemplate`)
+- [x] Step 2 — 0.5.0 quirk fixes (PUT logging gate, `void.class` handling in `HttpTemplate`)
 - [ ] Step 3 — Nullable `@RequestParam` / `@RequestHeader` omission in query and headers
 - [ ] Step 4 — Release 0.6.1 finalize (bump version in `build.gradle`, tag `v0.6.1`, update README coordinates)
 
