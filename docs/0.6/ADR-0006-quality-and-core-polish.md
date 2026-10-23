@@ -1,6 +1,6 @@
 # ADR-0006: Quality & Core Polish (0.6.1 cycle)
 
-- **Status:** proposed
+- **Status:** accepted
 - **Date:** 2026-10-23
 - **Scope:** release cycle 0.6.1 (minor bug fixes & developer experience polish)
 - **Provenance:** ported from `jrestly-infinite` Tier 1 and field issue recorded in `../../TODO.md`
