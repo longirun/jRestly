@@ -1,8 +1,43 @@
 # jRestly Roadmap
 
+The project's architectural execution log. Active release cycles live here with verification gates and steps; completed cycles are preserved below. The unassigned backlog of feature candidates lives in [TODO.md](TODO.md).
+
+## Engineering Method: Atomic Porting & Controlled Convergence
+
+All architectural features are ported from the research branch `jrestly-infinite` (`ba68f1f`) into `main` according to an atomic migration protocol:
+
+1. **Reference Target:** `jrestly-infinite` (`ba68f1f`) serves as the architectural reference and code quarry, not an immutable dogma.
+2. **Controlled Divergence Permitted:** If defects, API ergonomics flaws, or optimization opportunities are identified during review, they should be fixed directly in `main`. Intentional deviations from `infinite` are documented in the corresponding ADR.
+3. **Atomic Commits (`1 feature = 1 commit`):** Rather than replicating the historical ~380 exploratory commits of `infinite`, each feature lands as an atomic, bisectable commit (`feat(<scope>): ... (ADR-xxxx)`) accompanied by its tests and ADR.
+4. **Extraction from Canonical Target:**
+   - **New Files (classes, submodules, tests):** Checked out directly from `infinite`'s final state (`git checkout infinite -- <path>`) as the starting baseline.
+   - **Shared Files (`HttpTemplate`, `HttpTemplateBuilder`, etc.):** Isolated hunks belonging to the active feature are extracted from `git diff main..infinite` to prevent accidental formatting drift.
+5. **Topological Order:** Features are ported strictly along their dependency graph as defined in [TODO.md](TODO.md), guaranteeing a green test suite (`./gradlew test`) at every single commit.
+
+---
+
+## 0.6.1 — Quality & Core Polish (In Progress)
+
+Source of truth: [`docs/0.6/ADR-0006-quality-and-core-polish.md`](docs/0.6/ADR-0006-quality-and-core-polish.md).
+
+Scope: 3 high-impact, zero-risk developer experience improvements ported from `jrestly-infinite` Tier 1:
+1. `JacksonCodec` flexible `LocalDateTime` support (lenient ISO-8601 & fractional seconds).
+2. 0.5.0 quirk fixes (PUT request body logging & primitive `void.class` return handling).
+3. Nullable `@RequestParam` and `@RequestHeader` graceful omission.
+
+Gates for every step: full WireMock test suite green (`./gradlew test`), IDE inspections clean, generated POM has zero runtime `<dependency>`.
+
+### Steps:
+- [ ] Step 1 — `LocalDateTime` lenient parsing & ISO-8601 wire format option (`JacksonCodec`)
+- [ ] Step 2 — 0.5.0 quirk fixes (PUT logging gate, `void.class` handling in `HttpTemplate`)
+- [ ] Step 3 — Nullable `@RequestParam` / `@RequestHeader` omission in query and headers
+- [ ] Step 4 — Release 0.6.1 finalize (bump version in `build.gradle`, tag `v0.6.1`, update README coordinates)
+
+---
+
 ## 0.5.0 — zero-dependency core
 
-Plan derived from ADR-0001..0004 (`docs/0.5.0/`). The 0.4.0 improvement plan is complete; its history lives in git.
+Plan derived from ADR-0001..0004 (`docs/0.5/`). The 0.4.0 improvement plan is complete; its history lives in git.
 
 Gates for every step: WireMock suite green (`./gradlew test`), IDE inspections clean.
 
@@ -64,7 +99,7 @@ Known carry-over quirks (accepted, non-blocking): `logRequest` body logging skip
 
 ## Cycle 0.6.0 — multipart authoring & streaming — COMPLETE ✅ (2026-10-11)
 
-> Source of truth (decisions, stages, verification gates, deviations, status): [`docs/0.6.0/ADR-0005-multipart-authoring-streaming.md`](docs/0.6.0/ADR-0005-multipart-authoring-streaming.md).
+> Source of truth (decisions, stages, verification gates, deviations, status): [`docs/0.6/ADR-0005-multipart-authoring-streaming.md`](docs/0.6/ADR-0005-multipart-authoring-streaming.md).
 
 Provenance: field findings from a real consumer (2026-10) — N files per request, in-memory parts, part Content-Type.
 Diagnosis correction (2026-10-08): file parts DO carry a Content-Type today — always `application/octet-stream`
@@ -83,8 +118,6 @@ Key decisions (ADR-0005):
 > Implemented, verified by code inspection + IDE inspections (clean) + full WireMock suite green (2026-10-11), tag `v0.6.0`.
 > `MultipartBodyPublisher` over `BodyPublishers.concat` (per-part `[headers, content, CRLF]` + closing delimiter; exact Content-Length when every length is known — including a custom `ofStream(supplier, length)` filling the JDK gap; chunked otherwise; a fresh publisher per send, so a 307/308 re-send gets a live stream and keeps the boundary). `FileContent` — open SPI with four factories (`of(Path)`, `of(name, byte[])`, `of(name, supplier)`, `of(name, supplier, length)`); accepted on collections/arrays/varargs (one part per element, `byte[]` counts as one in-memory file, null argument/elements yield no parts, order = parameter then element). Part Content-Type: 20-entry mime map (lowercase `Locale.ROOT` match, unknown → `application/octet-stream`) + `contentType()` override per parameter. Framing hardened (tester finding, pre-existing since 0.5.0): RFC 2045 quoted-string escaping of `name`/`filename` (`\` → `\\`, `"` → `\"`), CR/LF rejected in the `MultipartPart` compact constructor. Deviations (2, recorded in ADR-0005): `FileContent` is an open SPI instead of sealed — pluggability over shape hiding; quoted-string escaping — landed with this cycle instead of a Known Gap. Tests: `MultipartTest` (wire byte-identical regression vs the pre-streaming writer, 4 MiB stream with exact Content-Length, chunked, escaping, CR/LF) + tester's `MultipartIndependentTest` (SPI contract, boundary format/uniqueness, mixed lengths, empty content, failing supplier, lazy disk reads, UTF-8 names, mime spot checks, ordering, null elements, empty varargs, redirect re-send).
 
-## Post-0.5.0 shortlist (not scheduled — see ADR-0003)
+## Future Backlog
 
-- Retry with backoff (integrates with `@OnError` semantics)
-- `CompletableFuture` return type
-- Gson / Moshi codec adapters (classpath probe chain extension)
+Feature quarry and candidates for subsequent releases live in [TODO.md](TODO.md).
