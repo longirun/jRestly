@@ -62,7 +62,7 @@ class JsonCodecWireTest extends BaseWireMockTest {
     }
 
     @Test
-    @DisplayName("LocalDateTime round-trip uses yyyy-MM-dd HH:mm:ss pattern on the wire")
+    @DisplayName("LocalDateTime round-trip uses standard ISO-8601 pattern on the wire")
     void localDateTimeRoundTripUsesConfiguredPattern() {
         LocalDateTime createdAt = LocalDateTime.of(2026, 8, 24, 12, 34, 56);
 
@@ -70,19 +70,17 @@ class JsonCodecWireTest extends BaseWireMockTest {
                 .willReturn(aResponse()
                         .withStatus(200)
                         .withHeader("Content-Type", "application/json")
-                        .withBody("{\"id\":7,\"createdAt\":\"2026-08-24 12:34:56\"}")));
+                        .withBody("{\"id\":7,\"createdAt\":\"2026-08-24T12:34:56\"}")));
 
         DateTimeController dateTimeController = client.get(DateTimeController.class);
         EventDto result = dateTimeController.createEvent(new EventDto(7L, createdAt));
 
-        // Response direction: the pattern is deserialized back into the original value
         assertNotNull(result);
         assertEquals(7L, result.id());
         assertEquals(createdAt, result.createdAt());
 
-        // Request direction: exact match proves the yyyy-MM-dd HH:mm:ss pattern on the wire
         verify(postRequestedFor(urlEqualTo("/api/events"))
-                .withRequestBody(equalTo("{\"id\":7,\"createdAt\":\"2026-08-24 12:34:56\"}")));
+                .withRequestBody(equalTo("{\"id\":7,\"createdAt\":\"2026-08-24T12:34:56\"}")));
     }
 
     @Test

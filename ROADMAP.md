@@ -13,6 +13,7 @@ All architectural features are ported from the research branch `jrestly-infinite
    - **New Files (classes, submodules, tests):** Checked out directly from `infinite`'s final state (`git checkout infinite -- <path>`) as the starting baseline.
    - **Shared Files (`HttpTemplate`, `HttpTemplateBuilder`, etc.):** Isolated hunks belonging to the active feature are extracted from `git diff main..infinite` to prevent accidental formatting drift.
 5. **Topological Order:** Features are ported strictly along their dependency graph as defined in [TODO.md](TODO.md), guaranteeing a green test suite (`./gradlew test`) at every single commit.
+6. **Code Conciseness & No LLM Fluff:** Code must be self-documenting through crisp naming and types. Strip autonomous agent Javadoc bloat and redundant commentary (`@param`, `@return` merely restating method signatures). Javadoc is reserved strictly for public API contracts, non-obvious invariants, and RFC/ADR citations.
 
 ---
 
@@ -21,14 +22,14 @@ All architectural features are ported from the research branch `jrestly-infinite
 Source of truth: [`docs/0.6/ADR-0006-quality-and-core-polish.md`](docs/0.6/ADR-0006-quality-and-core-polish.md).
 
 Scope: 3 high-impact, zero-risk developer experience improvements ported from `jrestly-infinite` Tier 1:
-1. `JacksonCodec` flexible `LocalDateTime` support (lenient ISO-8601 & fractional seconds).
+1. `JacksonCodec` standard `java.time` support via `JavaTimeModule` (ISO-8601 across all temporal types).
 2. 0.5.0 quirk fixes (PUT request body logging & primitive `void.class` return handling).
 3. Nullable `@RequestParam` and `@RequestHeader` graceful omission.
 
 Gates for every step: full WireMock test suite green (`./gradlew test`), IDE inspections clean, generated POM has zero runtime `<dependency>`.
 
 ### Steps:
-- [ ] Step 1 — `LocalDateTime` lenient parsing & ISO-8601 wire format option (`JacksonCodec`)
+- [x] Step 1 — Standard `java.time` ISO-8601 support via `JavaTimeModule` (`JacksonCodec`)
 - [ ] Step 2 — 0.5.0 quirk fixes (PUT logging gate, `void.class` handling in `HttpTemplate`)
 - [ ] Step 3 — Nullable `@RequestParam` / `@RequestHeader` omission in query and headers
 - [ ] Step 4 — Release 0.6.1 finalize (bump version in `build.gradle`, tag `v0.6.1`, update README coordinates)

@@ -22,9 +22,8 @@ class JsonCodecResolverTest {
         assertInstanceOf(JacksonCodec.class, codec,
                 "Jackson is on the test classpath, the probe must find it");
 
-        // Functional pin: the resolved codec is JacksonCodec.defaults() with the
-        // jsr310 pattern, not a bare mapper wrapper
-        assertEquals("\"2026-08-24 12:34:56\"",
+        // Functional pin: the resolved codec is JacksonCodec.defaults() with JavaTimeModule
+        assertEquals("\"2026-08-24T12:34:56\"",
                 codec.serialize(LocalDateTime.of(2026, 8, 24, 12, 34, 56)));
     }
 

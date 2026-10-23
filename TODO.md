@@ -11,7 +11,7 @@ Canonical feature inventory for porting from `jrestly-infinite` (`ba68f1f`) into
 ---
 
 ## 1. Core DX & Reliability Fixes
-- [ ] **FEAT-01: LocalDateTime lenient parsing & ISO-8601** (`JacksonCodec.java`, commit `6c5702e`) — Lenient deserialization of 'T'/space and 0–9 fractional digits; opt-in `LocalDateTimeFormat.ISO_8601`.
+- [x] **FEAT-01: Standard ISO-8601 `java.time` Support** (`JacksonCodec.java`, commit `6c5702e`) — Registration of `JavaTimeModule` with ISO-8601 defaults across all `java.time` types; custom formatting via user-supplied `ObjectMapper`.
 - [ ] **FEAT-02: 0.5.0 Quirk Fixes** ([ADR-0009](file:///home/sinyagovsky/Projects/jrestly-infinite/docs/0.7.0/ADR-0009-0x-polish-carry-over-quirks-and-accepted-known-gaps.md), commit `7b822d8`) — Static `BODY_LOGGING_METHODS` with PUT body logging; discard payloads on primitive `void.class` return.
 - [ ] **FEAT-03: Nullable `@RequestParam` & `@RequestHeader`** ([ADR-0017](file:///home/sinyagovsky/Projects/jrestly-infinite/docs/0.9.0/ADR-0017-request-parameter-flexibility.md)) — Omit null query parameters and headers gracefully; retain fail-fast on null `@PathVariable`.
 - [ ] **FEAT-04: Dynamic `Map<?, ?>` Parameter Expansion** ([ADR-0017](file:///home/sinyagovsky/Projects/jrestly-infinite/docs/0.9.0/ADR-0017-request-parameter-flexibility.md)) — Expand `@RequestParam Map` and `@RequestHeader Map` dynamically, including nested `key[nested]` keys.

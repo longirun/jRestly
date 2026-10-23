@@ -5,14 +5,10 @@ import com.fasterxml.jackson.databind.JavaType;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
-import com.fasterxml.jackson.datatype.jsr310.deser.LocalDateTimeDeserializer;
-import com.fasterxml.jackson.datatype.jsr310.ser.LocalDateTimeSerializer;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.lang.reflect.Type;
-import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
 
 public class JacksonCodec implements JsonCodec {
 
@@ -41,7 +37,7 @@ public class JacksonCodec implements JsonCodec {
         try {
             return mapper.writeValueAsString(value);
         } catch (IOException e) {
-            throw new UncheckedIOException("Failed to serialize " + value.getClass().getName() + " to JSON", e);
+            throw new UncheckedIOException("Failed to serialize " + (value != null ? value.getClass().getName() : "null") + " to JSON", e);
         }
     }
 
@@ -60,9 +56,6 @@ public class JacksonCodec implements JsonCodec {
         mapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
         mapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
 
-        // java.time support is optional: only jackson-databind is required for autodetection.
-        // jsr310 types live in a nested class so that the JVM verifier does not resolve them
-        // while loading JacksonCodec itself (NoClassDefFoundError on a jsr310-free classpath)
         if (isOnClasspath("com.fasterxml.jackson.datatype.jsr310.JavaTimeModule")) {
             JavaTimeSupport.register(mapper);
         }
@@ -80,17 +73,11 @@ public class JacksonCodec implements JsonCodec {
     }
 
     private static final class JavaTimeSupport {
-
         private JavaTimeSupport() {
         }
 
         static void register(ObjectMapper mapper) {
-            DateTimeFormatter dateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
-
-            JavaTimeModule module = new JavaTimeModule();
-            module.addSerializer(LocalDateTime.class, new LocalDateTimeSerializer(dateTimeFormatter));
-            module.addDeserializer(LocalDateTime.class, new LocalDateTimeDeserializer(dateTimeFormatter));
-            mapper.registerModule(module);
+            mapper.registerModule(new JavaTimeModule());
         }
     }
 }

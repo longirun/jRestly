@@ -21,11 +21,11 @@ Following the release of `v0.6.0`, three concrete developer experience gaps and 
 
 ## Decisions
 
-### 1. `JacksonCodec` Flexible `LocalDateTime` Support
+### 1. `JacksonCodec` Standard `java.time` Support
 
-- Introduce `JacksonCodec.LocalDateTimeFormat` enum: `SPACE` (`yyyy-MM-dd HH:mm:ss`) and `ISO_8601` (`yyyy-MM-dd'T'HH:mm:ss`).
-- Provide `JacksonCodec.defaults(LocalDateTimeFormat)` factory to allow opt-in to standard ISO-8601 formatting for serialization while maintaining `SPACE` as default for binary backward compatibility.
-- Replace the strict single-pattern deserializer with a `LENIENT` deserializer accepting both `'T'` and `' '` separators and optional fractional seconds (0 to 9 digits: `[.SSSSSSSSS][.SSSSSS][.SSS]`).
+- Standardize default JSON temporal handling across all `java.time` types (`LocalDateTime`, `LocalDate`, `Instant`, `OffsetDateTime`, etc.) by registering `com.fasterxml.jackson.datatype.jsr310.JavaTimeModule` when present on the classpath.
+- Disable `SerializationFeature.WRITE_DATES_AS_TIMESTAMPS` by default to produce standard ISO-8601 wire strings.
+- Reject custom formatting mini-frameworks or single-type enums in the library core: temporal customization belongs strictly in the user's domain via `new JacksonCodec(customObjectMapper)`.
 
 ### 2. 0.5.0 Quirk Fixes
 

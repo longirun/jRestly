@@ -3,6 +3,9 @@ package ru.jrestly;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
+import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import com.fasterxml.jackson.datatype.jsr310.ser.LocalDateTimeSerializer;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import ru.jrestly.fixtures.EventDto;
@@ -10,69 +13,80 @@ import ru.jrestly.fixtures.TestDto;
 import ru.jrestly.json.JacksonCodec;
 
 import java.io.UncheckedIOException;
+import java.time.Instant;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/**
- * Unit tests for {@link JacksonCodec#defaults()} and the explicit-mapper constructor.
- * <p>
- * The jsr310-free classpath scenario (jsr310 types isolated in the nested
- * JavaTimeSupport class) is verified separately via an isolated smoke test and
- * cannot be reproduced here: the test classpath always carries jackson-datatype-jsr310.
- */
 class JacksonCodecDefaultsTest {
 
     private final JacksonCodec codec = JacksonCodec.defaults();
 
     @Test
-    @DisplayName("defaults() serializes LocalDateTime as yyyy-MM-dd HH:mm:ss: no ISO 'T', no nanos")
-    void defaultsSerializeLocalDateTimeWithConfiguredPattern() {
-        LocalDateTime value = LocalDateTime.of(2026, 8, 24, 12, 34, 56);
+    @DisplayName("defaults() serializes java.time types according to ISO-8601 standard")
+    void defaultsSerializeIso8601() {
+        LocalDateTime ldt = LocalDateTime.of(2026, 8, 24, 12, 34, 56);
+        assertEquals("\"2026-08-24T12:34:56\"", codec.serialize(ldt));
 
-        String json = codec.serialize(value);
+        LocalDate ld = LocalDate.of(2026, 8, 24);
+        assertEquals("\"2026-08-24\"", codec.serialize(ld));
 
-        assertEquals("\"2026-08-24 12:34:56\"", json);
-        assertFalse(json.contains("T"), "the pattern must not use the ISO 'T' separator");
+        Instant instant = Instant.parse("2026-08-24T12:34:56Z");
+        assertEquals("\"2026-08-24T12:34:56Z\"", codec.serialize(instant));
     }
 
     @Test
-    @DisplayName("defaults() truncates nanoseconds: the pattern has second precision in both directions")
-    void defaultsTruncateNanoseconds() {
+    @DisplayName("defaults() preserves sub-second fractional precision on serialization and deserialization")
+    void defaultsPreserveSubSecondPrecision() {
         LocalDateTime withNanos = LocalDateTime.of(2026, 8, 24, 12, 34, 56, 987_654_321);
 
         String json = codec.serialize(withNanos);
-        assertEquals("\"2026-08-24 12:34:56\"", json,
-                "nanos must not be emitted by the yyyy-MM-dd HH:mm:ss pattern");
+        assertEquals("\"2026-08-24T12:34:56.987654321\"", json);
 
         LocalDateTime back = codec.deserialize(json, LocalDateTime.class);
-        assertEquals(LocalDateTime.of(2026, 8, 24, 12, 34, 56), back,
-                "nanos are lost by design: second precision");
+        assertEquals(withNanos, back);
     }
 
     @Test
-    @DisplayName("defaults() round-trips a DTO with LocalDateTime; ISO 'T' input is rejected")
-    void defaultsRoundTripDtoAndRejectIsoSeparator() {
-        EventDto event = new EventDto(7L, LocalDateTime.of(2026, 8, 24, 12, 34, 56));
+    @DisplayName("defaults() deserializes standard ISO-8601 with fractional seconds (TODO.md field bug)")
+    void defaultsDeserializeIsoFractionalTimestamp() {
+        LocalDateTime expected = LocalDateTime.of(2026, 10, 8, 9, 25, 53, 123_456_000);
 
-        String json = codec.serialize(event);
-        assertEquals("{\"id\":7,\"createdAt\":\"2026-08-24 12:34:56\"}", json);
+        assertEquals(expected, codec.deserialize("\"2026-10-08T09:25:53.123456\"", LocalDateTime.class));
+        assertEquals(LocalDateTime.of(2026, 10, 8, 9, 25, 53),
+                codec.deserialize("\"2026-10-08T09:25:53\"", LocalDateTime.class));
 
-        EventDto back = codec.deserialize(json, EventDto.class);
-        assertEquals(event, back);
+        EventDto back = codec.deserialize(
+                "{\"id\":7,\"createdAt\":\"2026-10-08T09:25:53.123456\"}", EventDto.class);
+        assertEquals(7L, back.id());
+        assertEquals(expected, back.createdAt());
+    }
 
-        // The custom pattern is really wired in (not the ISO default of JavaTimeModule):
-        // the ISO 'T' separator must not parse
-        assertThrows(UncheckedIOException.class,
-                () -> codec.deserialize("{\"id\":7,\"createdAt\":\"2026-08-24T12:34:56\"}", EventDto.class));
+    @Test
+    @DisplayName("custom date format is configured via custom ObjectMapper passed to JacksonCodec")
+    void customDateFormatViaCustomObjectMapper() {
+        DateTimeFormatter customFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+        JavaTimeModule customTimeModule = new JavaTimeModule();
+        customTimeModule.addSerializer(LocalDateTime.class, new LocalDateTimeSerializer(customFormatter));
+
+        ObjectMapper customMapper = new ObjectMapper()
+                .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
+                .registerModule(customTimeModule);
+
+        JacksonCodec customCodec = new JacksonCodec(customMapper);
+
+        LocalDateTime value = LocalDateTime.of(2026, 8, 24, 12, 34, 56);
+        assertEquals("\"2026-08-24 12:34:56\"", customCodec.serialize(value));
     }
 
     @Test
     @DisplayName("defaults() ignores unknown JSON properties (FAIL_ON_UNKNOWN_PROPERTIES disabled)")
     void defaultsIgnoreUnknownProperties() {
         EventDto back = codec.deserialize(
-                "{\"id\":7,\"createdAt\":\"2026-08-24 12:34:56\",\"extraField\":\"ignored\"}",
+                "{\"id\":7,\"createdAt\":\"2026-08-24T12:34:56\",\"extraField\":\"ignored\"}",
                 EventDto.class);
 
         assertEquals(7L, back.id());
@@ -80,7 +94,7 @@ class JacksonCodecDefaultsTest {
     }
 
     @Test
-    @DisplayName("explicit ObjectMapper is used as is: snake_case round-trip via the constructor")
+    @DisplayName("explicit ObjectMapper is used as is: snake_case round-trip via constructor")
     void explicitMapperUsedAsIs() {
         ObjectMapper snakeCase = new ObjectMapper()
                 .setPropertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE);
@@ -96,8 +110,6 @@ class JacksonCodecDefaultsTest {
     @Test
     @DisplayName("explicit ObjectMapper is not reconfigured: strict unknown-property handling is preserved")
     void explicitMapperIsNotReconfigured() {
-        // A plain ObjectMapper fails on unknown properties, while defaults() disables that.
-        // If the codec reconfigured the provided mapper, this deserialization would succeed.
         JacksonCodec customCodec = new JacksonCodec(new ObjectMapper());
 
         assertThrows(UncheckedIOException.class, () -> customCodec.deserialize(
@@ -106,7 +118,7 @@ class JacksonCodecDefaultsTest {
     }
 
     @Test
-    @DisplayName("malformed JSON fails with UncheckedIOException naming the target type")
+    @DisplayName("malformed JSON fails with UncheckedIOException naming target type")
     void malformedJsonFailsWithTypeInMessage() {
         UncheckedIOException ex = assertThrows(UncheckedIOException.class,
                 () -> codec.deserialize("{not json", EventDto.class));
@@ -118,8 +130,8 @@ class JacksonCodecDefaultsTest {
     @Test
     @DisplayName("deserialize(Type) supports parameterized types (controller List<T> return path)")
     void deserializeSupportsParameterizedTypes() {
-        String json = "[{\"id\":1,\"createdAt\":\"2026-08-24 12:34:56\"},"
-                + "{\"id\":2,\"createdAt\":\"2026-08-24 12:35:56\"}]";
+        String json = "[{\"id\":1,\"createdAt\":\"2026-08-24T12:34:56\"},"
+                + "{\"id\":2,\"createdAt\":\"2026-08-24T12:35:56\"}]";
 
         List<EventDto> events = codec.deserialize(json, new TypeReference<List<EventDto>>() {}.getType());
 
