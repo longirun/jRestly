@@ -12,6 +12,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Random;
 
@@ -143,6 +144,38 @@ class MultipartTest extends BaseWireMockTest {
                 .withRequestBodyPart(aMultipart()
                         .withName("file")
                         .withFileName("report.txt")
+                        .withBody(equalTo("multipart payload"))
+                        .build())
+                .withRequestBodyPart(aMultipart()
+                        .withName("tags")
+                        .withBody(equalTo("alpha"))
+                        .build())
+                .withRequestBodyPart(aMultipart()
+                        .withName("tags")
+                        .withBody(equalTo("beta"))
+                        .build()));
+    }
+
+    @Test
+    @DisplayName("A Collection @RequestParam with null elements skips nulls in multipart text parts")
+    void uploadFileWithCollectionTextPartsContainingNullsSkipsNullElements() throws IOException {
+        stubFor(post(urlEqualTo("/api/upload"))
+                .willReturn(aResponse()
+                        .withStatus(200)
+                        .withBody("uploaded")));
+
+        Path file = tempDir.resolve("report2.txt");
+        Files.writeString(file, "multipart payload");
+
+        String response = controller.uploadFileWithTextParts(
+                file.toAbsolutePath().toString(), Arrays.asList("alpha", null, "beta"));
+
+        assertEquals("uploaded", response);
+        verify(postRequestedFor(urlEqualTo("/api/upload"))
+                .withHeader("Content-Type", containing("multipart/form-data"))
+                .withRequestBodyPart(aMultipart()
+                        .withName("file")
+                        .withFileName("report2.txt")
                         .withBody(equalTo("multipart payload"))
                         .build())
                 .withRequestBodyPart(aMultipart()

@@ -114,6 +114,10 @@ public class HttpTemplateBuilder {
                         ? parameters[i].getName()
                         : pathAnnotation.name();
 
+                if (args[i] == null) {
+                    throw new IllegalArgumentException("Path variable '" + name + "' value cannot be null");
+                }
+
                 String encodedValue = URLEncoder.encode(args[i].toString(), StandardCharsets.UTF_8).replace("+", "%20");
                 path = path.replace("${" + name + "}", encodedValue);
             }
@@ -131,8 +135,25 @@ public class HttpTemplateBuilder {
             Parameter[] parameters = method.getParameters();
             for (int i = 0; i < parameters.length; i++) {
                 if (parameters[i].isAnnotationPresent(RequestHeader.class)) {
+                    Object arg = args[i];
+                    if (arg == null) {
+                        continue;
+                    }
+
                     RequestHeader headerAnnotation = parameters[i].getAnnotation(RequestHeader.class);
-                    result.add(new Header(headerAnnotation.name(), args[i].toString()));
+                    String name = headerAnnotation.name().isEmpty()
+                            ? parameters[i].getName()
+                            : headerAnnotation.name();
+
+                    if (arg instanceof Collection<?> collection) {
+                        for (Object o : collection) {
+                            if (o != null) {
+                                result.add(new Header(name, o.toString()));
+                            }
+                        }
+                    } else {
+                        result.add(new Header(name, arg.toString()));
+                    }
                 }
             }
         }
@@ -193,9 +214,11 @@ public class HttpTemplateBuilder {
                         ? parameter.getName()
                         : annotation.name();
 
-                if (args[i] instanceof Collection) {
-                    for (Object o : (Collection<?>) args[i]) {
-                        result.add(new Param(name, o.toString()));
+                if (args[i] instanceof Collection<?> collection) {
+                    for (Object o : collection) {
+                        if (o != null) {
+                            result.add(new Param(name, o.toString()));
+                        }
                     }
                 } else {
                     result.add(new Param(name, args[i].toString()));
@@ -275,9 +298,11 @@ public class HttpTemplateBuilder {
                         ? parameter.getName()
                         : annotation.name();
 
-                if (args[i] instanceof Collection) {
-                    for (Object o : (Collection<?>) args[i]) {
-                        parts.add(MultipartPart.text(name, o.toString()));
+                if (args[i] instanceof Collection<?> collection) {
+                    for (Object o : collection) {
+                        if (o != null) {
+                            parts.add(MultipartPart.text(name, o.toString()));
+                        }
                     }
                 } else {
                     parts.add(MultipartPart.text(name, args[i].toString()));
