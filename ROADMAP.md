@@ -17,14 +17,18 @@ All architectural features are ported from the research branch `jrestly-infinite
 
 ---
 
-## 0.7.0 — Request Parameter Flexibility (FEAT-04, FEAT-05) — IN PROGRESS
+## 0.7.0 — Request Parameter Flexibility (FEAT-04, FEAT-05) ✅ COMPLETE (2026-10-26)
 
 Source of truth: `jrestly-infinite` ADR-0017 — Aspect 2 + Amendments #296/#305 (FEAT-04); Aspects 3–5 + Amendment #212 (FEAT-05). Local ADR: `docs/0.7/ADR-0007-request-parameter-flexibility.md`.
 Gates: WireMock suite green (`./gradlew test`), IDE inspections clean, zero `<dependency>` in generated POM.
 
 - [x] FEAT-04 — dynamic `Map<?, ?>` expansion (`@RequestParam` query / form / multipart text parts; `@RequestHeader`), `key[nested]` prefix semantics (Amendment #296), `byte[]` fail-fast in header/param positions (Amendment #305) — [ADR-0007](docs/0.7/ADR-0007-request-parameter-flexibility-map.md)
 - [x] FEAT-05 — repeatable static `@RequestHeader` & `@RequestDefaultParam` (class/method targets, inheritance, precedence merge), `-parameters` fallback validation (Amendment #212) — [ADR-0008](docs/0.7/ADR-0008-static-headers-and-default-params.md)
-- [ ] Docs — README section "Request parameter & header flexibility" (Map params, static headers/defaults; adapt from `infinite` README), release finalize (version bump, tag, README coordinates)
+- [x] Docs — README section "Request parameter & header flexibility" (Map params, static headers/defaults; adapt from `infinite` README), release finalize (version bump, tag, README coordinates)
+
+> Cycle closed by the FEAT-04 / FEAT-05 commits + release finalize, tag `v0.7.0`. Verification: full WireMock suite 180 tests green (14 new for FEAT-04, 12 for FEAT-05), IDE inspections clean, generated POM with zero `<dependency>`.
+> Documented deviations are recorded per-feature in [ADR-0007](docs/0.7/ADR-0007-request-parameter-flexibility-map.md) (unconditional `byte[]` multipart fail-fast until FEAT-06 brings declarative part Content-Types) and [ADR-0008](docs/0.7/ADR-0008-static-headers-and-default-params.md) (merge computed per `build()` until FEAT-34; `@Cookie` variant of Amendment #212 deferred to FEAT-31).
+> Epic ADR-0017 is now fully absorbed: Aspect 1 → 0.6.1, Aspects 2–5 → 0.7.0.
 
 ---
 

@@ -4,13 +4,13 @@
 
 A declarative HTTP client for Java. Define an interface, get a working client — no code generation, just a dynamic proxy over `java.net.http.HttpClient` with a zero-dependency core.
 
-> **Status:** early development, current release v0.6.1 — quality & core polish (JSR-310 java.time support, 0.5.0 quirk fixes, nullable request headers/params). See `ROADMAP.md`.
+> **Status:** early development, current release v0.7.0 — request parameter & header flexibility (dynamic `Map` parameters and headers, static repeatable `@RequestHeader` / `@RequestDefaultParam`). See `ROADMAP.md`.
 
 ## Features
 
 - Declarative interface-based API via `java.lang.reflect.Proxy`
 - HTTP methods: `@Get`, `@Post`, `@Put`, `@Patch`, `@Delete`
-- Path variables (`@PathVariable` + `${var}`), query params (`@RequestParam`, `@RequestDefaultParam`), headers (`@RequestHeader`), request body (`@RequestBody`)
+- Path variables (`@PathVariable` + `${var}`), query params (`@RequestParam`, `@RequestDefaultParam`), headers (`@RequestHeader`), dynamic `Map<?, ?>` parameters and headers, static repeatable `@RequestHeader` / `@RequestDefaultParam` on interfaces and methods, request body (`@RequestBody`)
 - Content types: `application/json` (default), `application/x-www-form-urlencoded`, `multipart/form-data`
 - Multipart uploads via `@MultipartFormFile(partName = …)`: any number of files from disk, memory, or arbitrary streams (`FileContent`), streamed with bounded buffering; per-part `Content-Type` derived from the file extension, overridable per parameter
 - Per-method typed error mapping: `@OnError(statuses = {…}, errorObject = X.class)` throws `HandledException` with the deserialized body
@@ -31,7 +31,7 @@ repositories {
 }
 
 dependencies {
-    implementation("com.github.longirun:jRestly:v0.6.1")
+    implementation("com.github.longirun:jRestly:v0.7.0")
     // JSON codec is not bundled — bring your own; Jackson 2 is autodetected
     implementation("com.fasterxml.jackson.core:jackson-databind:2.18.2")
 }
@@ -46,7 +46,7 @@ repositories {
 }
 
 dependencies {
-    implementation 'com.github.longirun:jRestly:v0.6.1'
+    implementation 'com.github.longirun:jRestly:v0.7.0'
     // JSON codec is not bundled — bring your own; Jackson 2 is autodetected
     implementation 'com.fasterxml.jackson.core:jackson-databind:2.18.2'
 }
@@ -121,6 +121,34 @@ Item created = api.createItem(new Item("widget", 42));
 Item fetched = api.getItem(created.id());
 List<Item> page = api.listItems(1);
 ```
+
+## Request parameter & header flexibility
+
+jRestly handles real-world parameter patterns declaratively, across interface hierarchies:
+
+```java
+@RequestHeader(name = "User-Agent", value = "my-service/1.0")
+@RequestDefaultParam(name = "api_version", value = "2026-10-14")
+public interface BaseApi {
+}
+
+@RequestHeader(name = "Accept", value = "application/json")
+public interface SearchApi extends BaseApi {
+
+    @Get(path = "/api/items")
+    List<Item> search(
+            @RequestParam(name = "filter") Map<String, Object> filters,
+            @RequestHeader(name = "Accept") String acceptOverride,
+            @RequestHeader Map<String, String> dynamicHeaders
+    );
+}
+```
+
+- **Nullable parameters & headers:** passing `null` as a `@RequestHeader` or `@RequestParam` argument omits it from the wire request; `null` collection elements are skipped; `null` in a `@PathVariable` fails fast with an actionable `IllegalArgumentException`.
+- **Dynamic `Map<?, ?>` parameters:** `@RequestParam Map` expands entries into query parameters (or urlencoded form fields / multipart text parts) with the map keys as parameter names (`status=active`). With an explicit `name()`, keys are namespaced as `name[key]` (`filter[status]=active`). Unlike scalar parameters, a blank `name()` on a `Map` does not fall back to the Java parameter name — it means "no prefix". A collection value expands into repeated parameters.
+- **Dynamic `Map<?, ?>` headers:** `@RequestHeader Map` binds arbitrary headers from the entries; entries with `null` keys or values are omitted.
+- **Static declarations on interfaces and methods:** repeatable `@RequestHeader` / `@RequestDefaultParam` directly on a controller interface or method apply to every call; inheritance applies parent declarations first, letting a sub-interface specialize headers and defaults.
+- **Override precedence:** a non-null runtime argument replaces a same-named default parameter (query keys match exactly) or static header (case-insensitive per RFC 9110) — no duplicate keys on the wire; a `null` argument falls back to the static/default declaration.
 
 ## Multipart uploads
 
