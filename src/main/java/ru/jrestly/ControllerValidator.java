@@ -3,12 +3,17 @@ package ru.jrestly;
 import ru.jrestly.annotation.Delete;
 import ru.jrestly.annotation.Get;
 import ru.jrestly.annotation.Patch;
+import ru.jrestly.annotation.PathVariable;
 import ru.jrestly.annotation.Post;
 import ru.jrestly.annotation.Put;
+import ru.jrestly.annotation.RequestDefaultParam;
+import ru.jrestly.annotation.RequestHeader;
+import ru.jrestly.annotation.RequestParam;
 import ru.jrestly.http.RequestType;
 
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
+import java.lang.reflect.Parameter;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
@@ -25,10 +30,41 @@ public final class ControllerValidator {
         collectMethods(controller, methods);
 
         List<String> problems = new ArrayList<>();
+        problems.addAll(validateStaticDeclarations(controller));
         for (Method method : methods.values()) {
             problems.addAll(validateMethod(method));
         }
         return problems;
+    }
+
+    private static List<String> validateStaticDeclarations(Class<?> controller) {
+        List<String> problems = new ArrayList<>();
+        List<Class<?>> hierarchy = new ArrayList<>();
+        collectInterfaces(controller, hierarchy);
+
+        for (Class<?> iface : hierarchy) {
+            for (RequestHeader header : iface.getAnnotationsByType(RequestHeader.class)) {
+                if (header.name().isBlank()) {
+                    problems.add(iface.getSimpleName() + ": @RequestHeader name must not be blank");
+                }
+            }
+            for (RequestDefaultParam param : iface.getAnnotationsByType(RequestDefaultParam.class)) {
+                if (param.name().isBlank()) {
+                    problems.add(iface.getSimpleName() + ": @RequestDefaultParam name must not be blank");
+                }
+            }
+        }
+        return problems;
+    }
+
+    private static void collectInterfaces(Class<?> current, List<Class<?>> result) {
+        if (current == null || result.contains(current)) {
+            return;
+        }
+        for (Class<?> parent : current.getInterfaces()) {
+            collectInterfaces(parent, result);
+        }
+        result.add(current);
     }
 
     private static void collectMethods(Class<?> current, Map<String, Method> methods) {
@@ -80,6 +116,18 @@ public final class ControllerValidator {
             return problems;
         }
 
+        for (RequestHeader header : method.getAnnotationsByType(RequestHeader.class)) {
+            if (header.name().isBlank()) {
+                problems.add(method.getName() + "(): @RequestHeader name must not be blank");
+            }
+        }
+        for (RequestDefaultParam param : method.getAnnotationsByType(RequestDefaultParam.class)) {
+            if (param.name().isBlank()) {
+                problems.add(method.getName() + "(): @RequestDefaultParam name must not be blank");
+            }
+        }
+        validateParameterNames(method, problems);
+
         if (method.getParameters().length == 0) {
             RequestType requestType = resolveRequestType(method);
             if (requestType == RequestType.MULTIPART_FORM_DATA) {
@@ -105,5 +153,37 @@ public final class ControllerValidator {
             return method.getAnnotation(Patch.class).requestType();
         }
         return method.getAnnotation(Delete.class).requestType();
+    }
+
+    // A blank name() falls back to the Java parameter name, which the compiler only
+    // retains under -parameters; without the flag the request silently goes out as
+    // "arg0". A Map parameter takes its names from the entries and is legitimately blank.
+    private static void validateParameterNames(Method method, List<String> problems) {
+        for (Parameter parameter : method.getParameters()) {
+            String annotation = fallbackNameAnnotation(parameter);
+            if (annotation != null && !parameter.isNamePresent()) {
+                problems.add(method.getName() + "(): @" + annotation
+                        + " requires an explicit name() when the controller is compiled without '-parameters'"
+                        + " (parameter names are not retained at runtime)");
+            }
+        }
+    }
+
+    private static String fallbackNameAnnotation(Parameter parameter) {
+        if (parameter.isAnnotationPresent(PathVariable.class)
+                && parameter.getAnnotation(PathVariable.class).name().isEmpty()) {
+            return "PathVariable";
+        }
+        if (parameter.isAnnotationPresent(RequestParam.class)
+                && parameter.getAnnotation(RequestParam.class).name().isEmpty()
+                && !Map.class.isAssignableFrom(parameter.getType())) {
+            return "RequestParam";
+        }
+        if (parameter.isAnnotationPresent(RequestHeader.class)
+                && parameter.getAnnotation(RequestHeader.class).name().isEmpty()
+                && !Map.class.isAssignableFrom(parameter.getType())) {
+            return "RequestHeader";
+        }
+        return null;
     }
 }

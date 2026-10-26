@@ -30,6 +30,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -46,6 +47,7 @@ public class HttpTemplateBuilder {
     private final Class<?> controller;
 
     private RequestMeta requestMeta;
+    private List<Class<?>> controllerHierarchy;
 
     public HttpTemplateBuilder(ModuleInfo moduleInfo, HttpClient httpClient, Method method, Object[] args, Class<?> controller) {
         this.moduleInfo = moduleInfo;
@@ -57,6 +59,7 @@ public class HttpTemplateBuilder {
 
     public HttpTemplate build() {
         requestMeta = resolveRequestMeta(method);
+        controllerHierarchy = collectInterfaceHierarchy(controller);
 
         HttpTemplate result = new HttpTemplate();
         RequestType requestType = requestMeta.requestType();
@@ -133,6 +136,22 @@ public class HttpTemplateBuilder {
     private List<Header> createHeaders() {
         List<Header> result = new ArrayList<>(moduleInfo.getAuthProvider().getAuthHeaders());
 
+        Map<String, Header> staticHeaders = new LinkedHashMap<>();
+        for (Class<?> iface : controllerHierarchy) {
+            for (RequestHeader header : iface.getAnnotationsByType(RequestHeader.class)) {
+                staticHeaders.keySet().removeIf(k -> k.equalsIgnoreCase(header.name()));
+                staticHeaders.put(header.name(), new Header(header.name(), header.value()));
+            }
+        }
+        for (RequestHeader header : method.getAnnotationsByType(RequestHeader.class)) {
+            staticHeaders.keySet().removeIf(k -> k.equalsIgnoreCase(header.name()));
+            staticHeaders.put(header.name(), new Header(header.name(), header.value()));
+        }
+        for (Header staticHeader : staticHeaders.values()) {
+            removeHeaderByName(result, staticHeader.name());
+            result.add(staticHeader);
+        }
+
         if (method != null) {
             Parameter[] parameters = method.getParameters();
             for (int i = 0; i < parameters.length; i++) {
@@ -152,9 +171,12 @@ public class HttpTemplateBuilder {
                             if (entry.getKey() == null || entry.getValue() == null) {
                                 continue;
                             }
-                            appendHeaderValues(result, String.valueOf(entry.getKey()), entry.getValue());
+                            String headerName = String.valueOf(entry.getKey());
+                            removeHeaderByName(result, headerName);
+                            appendHeaderValues(result, headerName, entry.getValue());
                         }
                     } else {
+                        removeHeaderByName(result, name);
                         appendHeaderValues(result, name, arg);
                     }
                 }
@@ -162,6 +184,10 @@ public class HttpTemplateBuilder {
         }
 
         return result;
+    }
+
+    private static void removeHeaderByName(List<Header> headers, String name) {
+        headers.removeIf(h -> h.name().equalsIgnoreCase(name));
     }
 
     private static void appendHeaderValues(List<Header> result, String name, Object value) {
@@ -221,7 +247,7 @@ public class HttpTemplateBuilder {
     }
 
     private List<Param> createRequestParams() {
-        List<Param> result = new ArrayList<>(createRequestDefaultParams(requestMeta.defaultParams()));
+        List<Param> result = new ArrayList<>(staticDefaultParams());
 
         Parameter[] parameters = method.getParameters();
         for (int i = 0; i < parameters.length; i++) {
@@ -244,12 +270,14 @@ public class HttpTemplateBuilder {
                         String name = prefix.isEmpty()
                                 ? String.valueOf(entry.getKey())
                                 : prefix + "[" + entry.getKey() + "]";
+                        result.removeIf(existing -> existing.name().equals(name));
                         appendParamValues(result, name, entry.getValue());
                     }
                 } else {
                     String name = annotation.name().isEmpty()
                             ? parameter.getName()
                             : annotation.name();
+                    result.removeIf(existing -> existing.name().equals(name));
                     appendParamValues(result, name, args[i]);
                 }
             }
@@ -278,14 +306,38 @@ public class HttpTemplateBuilder {
         }
     }
 
-    private List<Param> createRequestDefaultParams(RequestDefaultParam[] params) {
-        List<Param> result = new ArrayList<>();
-
-        for (RequestDefaultParam param : params) {
-            result.add(new Param(param.name(), param.value()));
+    private List<Param> staticDefaultParams() {
+        Map<String, Param> defaults = new LinkedHashMap<>();
+        for (Class<?> iface : controllerHierarchy) {
+            for (RequestDefaultParam param : iface.getAnnotationsByType(RequestDefaultParam.class)) {
+                defaults.put(param.name(), new Param(param.name(), param.value()));
+            }
         }
+        for (RequestDefaultParam param : requestMeta.defaultParams()) {
+            defaults.put(param.name(), new Param(param.name(), param.value()));
+        }
+        for (RequestDefaultParam param : method.getAnnotationsByType(RequestDefaultParam.class)) {
+            defaults.put(param.name(), new Param(param.name(), param.value()));
+        }
+        return new ArrayList<>(defaults.values());
+    }
 
+    // Parents first, the controller interface itself last: a sub-interface
+    // declaration overrides the parent one for the same header/parameter name.
+    private static List<Class<?>> collectInterfaceHierarchy(Class<?> controller) {
+        List<Class<?>> result = new ArrayList<>();
+        collectInterfaces(controller, result);
         return result;
+    }
+
+    private static void collectInterfaces(Class<?> current, List<Class<?>> result) {
+        if (current == null || result.contains(current)) {
+            return;
+        }
+        for (Class<?> parent : current.getInterfaces()) {
+            collectInterfaces(parent, result);
+        }
+        result.add(current);
     }
 
     private byte[] createJsonBody() {
