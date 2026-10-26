@@ -20,6 +20,7 @@ import ru.jrestly.annotation.RequestParam;
 import ru.jrestly.annotation.SetAuthDetails;
 
 import java.io.File;
+import java.lang.reflect.Array;
 import java.lang.reflect.Method;
 import java.lang.reflect.Parameter;
 import java.net.URLEncoder;
@@ -30,6 +31,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 import java.util.function.Consumer;
@@ -145,20 +147,41 @@ public class HttpTemplateBuilder {
                             ? parameters[i].getName()
                             : headerAnnotation.name();
 
-                    if (arg instanceof Collection<?> collection) {
-                        for (Object o : collection) {
-                            if (o != null) {
-                                result.add(new Header(name, o.toString()));
+                    if (arg instanceof Map<?, ?> map) {
+                        for (Map.Entry<?, ?> entry : map.entrySet()) {
+                            if (entry.getKey() == null || entry.getValue() == null) {
+                                continue;
                             }
+                            appendHeaderValues(result, String.valueOf(entry.getKey()), entry.getValue());
                         }
                     } else {
-                        result.add(new Header(name, arg.toString()));
+                        appendHeaderValues(result, name, arg);
                     }
                 }
             }
         }
 
         return result;
+    }
+
+    private static void appendHeaderValues(List<Header> result, String name, Object value) {
+        if (value instanceof Collection<?> collection) {
+            for (Object o : collection) {
+                if (o != null) {
+                    result.add(new Header(name, textValue(o, "header")));
+                }
+            }
+        } else if (value.getClass().isArray() && !byte[].class.equals(value.getClass())) {
+            int length = Array.getLength(value);
+            for (int i = 0; i < length; i++) {
+                Object o = Array.get(value, i);
+                if (o != null) {
+                    result.add(new Header(name, textValue(o, "header")));
+                }
+            }
+        } else {
+            result.add(new Header(name, textValue(value, "header")));
+        }
     }
 
     private RequestMeta resolveRequestMeta(Method method) {
@@ -210,23 +233,49 @@ public class HttpTemplateBuilder {
                 Parameter parameter = parameters[i];
                 RequestParam annotation = parameter.getAnnotation(RequestParam.class);
 
-                String name = annotation.name().isEmpty()
-                        ? parameter.getName()
-                        : annotation.name();
-
-                if (args[i] instanceof Collection<?> collection) {
-                    for (Object o : collection) {
-                        if (o != null) {
-                            result.add(new Param(name, o.toString()));
+                if (args[i] instanceof Map<?, ?> map) {
+                    // Raw annotation name, deliberately not the parameter-name fallback:
+                    // for a Map, name() is an optional namespace prefix — blank sends keys as-is.
+                    String prefix = annotation.name();
+                    for (Map.Entry<?, ?> entry : map.entrySet()) {
+                        if (entry.getKey() == null || entry.getValue() == null) {
+                            continue;
                         }
+                        String name = prefix.isEmpty()
+                                ? String.valueOf(entry.getKey())
+                                : prefix + "[" + entry.getKey() + "]";
+                        appendParamValues(result, name, entry.getValue());
                     }
                 } else {
-                    result.add(new Param(name, args[i].toString()));
+                    String name = annotation.name().isEmpty()
+                            ? parameter.getName()
+                            : annotation.name();
+                    appendParamValues(result, name, args[i]);
                 }
             }
         }
 
         return result;
+    }
+
+    private static void appendParamValues(List<Param> result, String name, Object value) {
+        if (value instanceof Collection<?> collection) {
+            for (Object o : collection) {
+                if (o != null) {
+                    result.add(new Param(name, textValue(o, "parameter")));
+                }
+            }
+        } else if (value.getClass().isArray() && !byte[].class.equals(value.getClass())) {
+            int length = Array.getLength(value);
+            for (int i = 0; i < length; i++) {
+                Object o = Array.get(value, i);
+                if (o != null) {
+                    result.add(new Param(name, textValue(o, "parameter")));
+                }
+            }
+        } else {
+            result.add(new Param(name, textValue(value, "parameter")));
+        }
     }
 
     private List<Param> createRequestDefaultParams(RequestDefaultParam[] params) {
@@ -294,23 +343,71 @@ public class HttpTemplateBuilder {
                 Parameter parameter = parameters[i];
                 RequestParam annotation = parameter.getAnnotation(RequestParam.class);
 
-                String name = annotation.name().isEmpty()
-                        ? parameter.getName()
-                        : annotation.name();
-
-                if (args[i] instanceof Collection<?> collection) {
-                    for (Object o : collection) {
-                        if (o != null) {
-                            parts.add(MultipartPart.text(name, o.toString()));
+                if (args[i] instanceof Map<?, ?> map) {
+                    // Raw annotation name, deliberately not the parameter-name fallback:
+                    // for a Map, name() is an optional namespace prefix — blank sends keys as-is.
+                    String prefix = annotation.name();
+                    for (Map.Entry<?, ?> entry : map.entrySet()) {
+                        if (entry.getKey() == null || entry.getValue() == null) {
+                            continue;
                         }
+                        String name = prefix.isEmpty()
+                                ? String.valueOf(entry.getKey())
+                                : prefix + "[" + entry.getKey() + "]";
+                        appendTextParts(parts, name, entry.getValue());
                     }
                 } else {
-                    parts.add(MultipartPart.text(name, args[i].toString()));
+                    String name = annotation.name().isEmpty()
+                            ? parameter.getName()
+                            : annotation.name();
+                    appendTextParts(parts, name, args[i]);
                 }
             }
         }
 
         return parts;
+    }
+
+    private static void appendTextParts(List<MultipartPart> parts, String name, Object value) {
+        if (value instanceof Collection<?> collection) {
+            for (Object o : collection) {
+                if (o != null) {
+                    parts.add(textPart(name, o));
+                }
+            }
+        } else if (value.getClass().isArray() && !byte[].class.equals(value.getClass())) {
+            int length = Array.getLength(value);
+            for (int i = 0; i < length; i++) {
+                Object o = Array.get(value, i);
+                if (o != null) {
+                    parts.add(textPart(name, o));
+                }
+            }
+        } else {
+            parts.add(textPart(name, value));
+        }
+    }
+
+    private static MultipartPart textPart(String name, Object value) {
+        if (value instanceof byte[]) {
+            throw new IllegalArgumentException(
+                    "A byte[] cannot be a multipart text part: send binary data as @MultipartFormFile "
+                            + "with FileContent.of(fileName, bytes), or encode the bytes to text explicitly (e.g. Base64).");
+        }
+        return MultipartPart.text(name, value.toString());
+    }
+
+    // Header and parameter values are text on the wire; a byte[] has no text rendering,
+    // so it fails fast instead of silently sending "[B@..." garbage.
+    private static String textValue(Object value, String position) {
+        return switch (value) {
+            case null -> "null";
+            case byte[] ignored -> throw new IllegalArgumentException(
+                    "A byte[] cannot be a " + position + " value: header and parameter values are text on the wire. "
+                            + "Send raw bytes as @RequestBody, or encode the bytes to text explicitly "
+                            + "(e.g. Base64) before passing.");
+            default -> value.toString();
+        };
     }
 
     private MultipartPart createFilePart(String partName, Object arg, String explicitContentType) {

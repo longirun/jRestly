@@ -17,6 +17,17 @@ All architectural features are ported from the research branch `jrestly-infinite
 
 ---
 
+## 0.7.0 — Request Parameter Flexibility (FEAT-04, FEAT-05) — IN PROGRESS
+
+Source of truth: `jrestly-infinite` ADR-0017 — Aspect 2 + Amendments #296/#305 (FEAT-04); Aspects 3–5 + Amendment #212 (FEAT-05). Local ADR: `docs/0.7/ADR-0007-request-parameter-flexibility.md`.
+Gates: WireMock suite green (`./gradlew test`), IDE inspections clean, zero `<dependency>` in generated POM.
+
+- [x] FEAT-04 — dynamic `Map<?, ?>` expansion (`@RequestParam` query / form / multipart text parts; `@RequestHeader`), `key[nested]` prefix semantics (Amendment #296), `byte[]` fail-fast in header/param positions (Amendment #305) — [ADR-0007](docs/0.7/ADR-0007-request-parameter-flexibility-map.md)
+- [ ] FEAT-05 — repeatable static `@RequestHeader` & `@RequestDefaultParam` (class/method targets, inheritance, precedence merge), `-parameters` fallback validation (Amendment #212)
+- [ ] Docs — README section "Request parameter & header flexibility" (Map params, static headers/defaults; adapt from `infinite` README), release finalize (version bump, tag, README coordinates)
+
+---
+
 ## 0.6.1 — Quality & Core Polish ✅ COMPLETE (2026-10-23)
 
 Source of truth: [`docs/0.6/ADR-0006-quality-and-core-polish.md`](docs/0.6/ADR-0006-quality-and-core-polish.md).
