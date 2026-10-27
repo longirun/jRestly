@@ -11,7 +11,6 @@ import java.lang.annotation.Target;
 @Target(ElementType.METHOD)
 @Retention(RetentionPolicy.RUNTIME)
 public @interface OnError {
-    /** HTTP status codes that trigger error handling. */
     int[] statuses() default {};
 
     /** Target class for deserializing the error response body. */

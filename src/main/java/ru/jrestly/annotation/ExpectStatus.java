@@ -11,6 +11,5 @@ import java.lang.annotation.Target;
 @Target(ElementType.METHOD)
 @Retention(RetentionPolicy.RUNTIME)
 public @interface ExpectStatus {
-    /** Expected successful HTTP status codes. */
     int[] statuses();
 }

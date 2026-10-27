@@ -170,7 +170,7 @@ public class HttpTemplate {
             }
         }
         if (request.contentType() != null) {
-            builder.header("Content-Type", request.contentType());
+            builder.setHeader("Content-Type", request.contentType());
         }
 
         if (request.method() == HttpMethod.GET && request.body() == null) {

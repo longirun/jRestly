@@ -2,6 +2,8 @@ package ru.jrestly.http;
 
 import ru.jrestly.AuthProvider;
 import ru.jrestly.ModuleInfo;
+import ru.jrestly.annotation.Accept;
+import ru.jrestly.annotation.ContentType;
 import ru.jrestly.annotation.Delete;
 import ru.jrestly.annotation.ExpectStatus;
 import ru.jrestly.annotation.FollowRedirects;
@@ -25,13 +27,16 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Parameter;
 import java.net.URLEncoder;
 import java.net.http.HttpClient;
+import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
@@ -71,8 +76,10 @@ public class HttpTemplateBuilder {
         result.setHttpClient(httpClient);
         result.setUrl(createUrl());
         result.setHttpMethod(requestMeta.httpMethod());
-        result.setContentType(requestType.mime());
-        result.setHeaders(createHeaders());
+        List<Header> headers = createHeaders();
+        String effectiveContentType = resolveContentType(headers, requestType);
+        result.setContentType(effectiveContentType);
+        result.setHeaders(headers);
         // Header names to drop on cross-origin redirects
         result.setAuthHeaderNames(moduleInfo.getAuthProvider().getAuthHeaders().stream()
                 .map(Header::name)
@@ -85,14 +92,22 @@ public class HttpTemplateBuilder {
         byte[] body = null;
         List<MultipartPart> parts = null;
         if (RequestType.APPLICATION_JSON.equals(requestType)) {
-            body = createJsonBody();
+            body = createJsonBody(effectiveContentType);
         } else if (RequestType.APPLICATION_FORM_URLENCODED.equals(requestType)) {
             body = createUrlEncodedBody();
         } else if (RequestType.MULTIPART_FORM_DATA.equals(requestType)) {
             parts = createMultipartParts();
 
             String boundary = "jrestly-" + UUID.randomUUID().toString().replace("-", "");
-            result.setContentType("multipart/form-data; boundary=" + boundary);
+            // A declared multipart/* subtype keeps its name and gains the boundary.
+            if (effectiveContentType.toLowerCase(Locale.ROOT).contains("multipart/")) {
+                if (!effectiveContentType.toLowerCase(Locale.ROOT).contains("boundary=")) {
+                    effectiveContentType = effectiveContentType + "; boundary=" + boundary;
+                }
+            } else {
+                effectiveContentType = "multipart/form-data; boundary=" + boundary;
+            }
+            result.setContentType(effectiveContentType);
             result.setMultipartBoundary(boundary);
         }
 
@@ -134,7 +149,22 @@ public class HttpTemplateBuilder {
     }
 
     private List<Header> createHeaders() {
-        List<Header> result = new ArrayList<>(moduleInfo.getAuthProvider().getAuthHeaders());
+        List<Header> result = new ArrayList<>();
+        for (Header h : moduleInfo.getDefaultHeaders()) {
+            if (!"Content-Type".equalsIgnoreCase(h.name())) {
+                result.add(h);
+            }
+        }
+        for (Header authHeader : moduleInfo.getAuthProvider().getAuthHeaders()) {
+            removeHeaderByName(result, authHeader.name());
+            result.add(authHeader);
+        }
+
+        String accept = resolveAccept();
+        if (accept != null) {
+            removeHeaderByName(result, "Accept");
+            result.add(new Header("Accept", accept));
+        }
 
         Map<String, Header> staticHeaders = new LinkedHashMap<>();
         for (Class<?> iface : controllerHierarchy) {
@@ -208,6 +238,66 @@ public class HttpTemplateBuilder {
         } else {
             result.add(new Header(name, textValue(value, "header")));
         }
+    }
+
+    // Resolution order: method @Accept, interface hierarchy, client defaultHeader.
+    // The result is the base layer of the header merge: a static/runtime @RequestHeader("Accept") replaces it by name.
+    private String resolveAccept() {
+        Accept accept = method.getAnnotation(Accept.class);
+        if (accept == null) {
+            for (Class<?> iface : controllerHierarchy) {
+                if (iface.isAnnotationPresent(Accept.class)) {
+                    accept = iface.getAnnotation(Accept.class);
+                }
+            }
+        }
+        return accept != null ? String.join(", ", accept.value()) : null;
+    }
+
+    // Precedence: static/runtime @RequestHeader, then @ContentType (method, interface),
+    // then the client defaultHeader, then the requestType default. The client layer is
+    // JSON-only: it must not corrupt the body semantics of form and multipart requests.
+    // The header entry is removed — Content-Type travels in its own template slot and would duplicate on the wire.
+    private String resolveContentType(List<Header> headers, RequestType requestType) {
+        String fromHeader = extractContentTypeHeader(headers);
+        if (fromHeader != null) {
+            return fromHeader;
+        }
+
+        ContentType contentType = method.getAnnotation(ContentType.class);
+        if (contentType == null) {
+            for (Class<?> iface : controllerHierarchy) {
+                if (iface.isAnnotationPresent(ContentType.class)) {
+                    contentType = iface.getAnnotation(ContentType.class);
+                }
+            }
+        }
+        if (contentType != null) {
+            return contentType.value();
+        }
+        if (RequestType.APPLICATION_JSON.equals(requestType)) {
+            for (Header h : moduleInfo.getDefaultHeaders()) {
+                if ("Content-Type".equalsIgnoreCase(h.name())) {
+                    return h.value();
+                }
+            }
+        }
+        return requestType.mime();
+    }
+
+    private static String extractContentTypeHeader(List<Header> headers) {
+        String value = null;
+        Iterator<Header> iterator = headers.iterator();
+        while (iterator.hasNext()) {
+            Header header = iterator.next();
+            if ("Content-Type".equalsIgnoreCase(header.name())) {
+                if (value == null) {
+                    value = header.value();
+                }
+                iterator.remove();
+            }
+        }
+        return value;
     }
 
     private RequestMeta resolveRequestMeta(Method method) {
@@ -340,17 +430,44 @@ public class HttpTemplateBuilder {
         result.add(current);
     }
 
-    private byte[] createJsonBody() {
+    private byte[] createJsonBody(String contentType) {
         Object body = createBody(method, args);
         if (body == null) {
             return null;
         }
+        if (body instanceof byte[] rawBytes) {
+            // raw passthrough: the bytes are the payload even under the JSON request type
+            return rawBytes;
+        }
+        if (body instanceof String stringBody) {
+            return stringBody.getBytes(parseCharset(contentType, StandardCharsets.UTF_8));
+        }
 
-        String stringifiedBody = body instanceof String
-                ? (String) body
-                : moduleInfo.getJsonCodec().serialize(body);
+        return moduleInfo.getJsonCodec().serialize(body).getBytes(StandardCharsets.UTF_8);
+    }
 
-        return stringifiedBody.getBytes(StandardCharsets.UTF_8);
+    // An absent or unknown charset name falls back to the default instead of failing the request.
+    private static Charset parseCharset(String contentType, Charset defaultCharset) {
+        if (contentType == null || contentType.isEmpty()) {
+            return defaultCharset;
+        }
+        int idx = contentType.toLowerCase(Locale.ROOT).indexOf("charset=");
+        if (idx < 0) {
+            return defaultCharset;
+        }
+        String charsetName = contentType.substring(idx + 8).trim();
+        int semi = charsetName.indexOf(';');
+        if (semi >= 0) {
+            charsetName = charsetName.substring(0, semi).trim();
+        }
+        if (charsetName.length() >= 2 && charsetName.startsWith("\"") && charsetName.endsWith("\"")) {
+            charsetName = charsetName.substring(1, charsetName.length() - 1);
+        }
+        try {
+            return Charset.forName(charsetName);
+        } catch (Exception ignored) {
+            return defaultCharset;
+        }
     }
 
     private Object createBody(Method method, Object[] args){

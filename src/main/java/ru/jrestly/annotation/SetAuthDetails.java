@@ -11,6 +11,5 @@ import java.lang.annotation.Target;
 @Target(ElementType.METHOD)
 @Retention(RetentionPolicy.RUNTIME)
 public @interface SetAuthDetails {
-    /** Name of the response header to capture. */
     String headerName();
 }

@@ -3,6 +3,7 @@ package ru.jrestly;
 import ru.jrestly.json.JsonCodec;
 
 import java.net.http.HttpClient;
+import java.util.Map;
 
 /**
  * Factory for declarative HTTP API proxies.
@@ -69,6 +70,16 @@ public class JRestlyClient extends AbstractHttpClient {
 
         public Builder httpVersion(HttpClient.Version httpVersion) {
             moduleInfoBuilder.httpVersion(httpVersion);
+            return this;
+        }
+
+        public Builder defaultHeader(String name, String value) {
+            moduleInfoBuilder.defaultHeader(name, value);
+            return this;
+        }
+
+        public Builder defaultHeaders(Map<String, String> headers) {
+            moduleInfoBuilder.defaultHeaders(headers);
             return this;
         }
 

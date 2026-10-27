@@ -1,5 +1,7 @@
 package ru.jrestly;
 
+import ru.jrestly.annotation.Accept;
+import ru.jrestly.annotation.ContentType;
 import ru.jrestly.annotation.Delete;
 import ru.jrestly.annotation.Get;
 import ru.jrestly.annotation.Patch;
@@ -11,6 +13,7 @@ import ru.jrestly.annotation.RequestHeader;
 import ru.jrestly.annotation.RequestParam;
 import ru.jrestly.http.RequestType;
 
+import java.lang.reflect.AnnotatedElement;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.lang.reflect.Parameter;
@@ -53,8 +56,34 @@ public final class ControllerValidator {
                     problems.add(iface.getSimpleName() + ": @RequestDefaultParam name must not be blank");
                 }
             }
+            validateMediaTypes(iface, iface.getSimpleName(), problems);
         }
         return problems;
+    }
+
+    // Blank media types are typos; CRLF sequences are header injection.
+    private static void validateMediaTypes(AnnotatedElement element, String prefix, List<String> problems) {
+        for (Accept accept : element.getAnnotationsByType(Accept.class)) {
+            if (accept.value().length == 0) {
+                problems.add(prefix + ": @Accept value must not be empty");
+            }
+            for (String mediaType : accept.value()) {
+                if (mediaType.isBlank()) {
+                    problems.add(prefix + ": @Accept media type must not be blank");
+                }
+                if (mediaType.contains("\r") || mediaType.contains("\n")) {
+                    problems.add(prefix + ": @Accept media type must not contain CRLF characters");
+                }
+            }
+        }
+        for (ContentType contentType : element.getAnnotationsByType(ContentType.class)) {
+            if (contentType.value().isBlank()) {
+                problems.add(prefix + ": @ContentType must not be blank");
+            }
+            if (contentType.value().contains("\r") || contentType.value().contains("\n")) {
+                problems.add(prefix + ": @ContentType must not contain CRLF characters");
+            }
+        }
     }
 
     private static void collectInterfaces(Class<?> current, List<Class<?>> result) {
@@ -126,6 +155,7 @@ public final class ControllerValidator {
                 problems.add(method.getName() + "(): @RequestDefaultParam name must not be blank");
             }
         }
+        validateMediaTypes(method, method.getName() + "()", problems);
         validateParameterNames(method, problems);
 
         if (method.getParameters().length == 0) {
