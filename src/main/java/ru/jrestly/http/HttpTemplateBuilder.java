@@ -511,6 +511,9 @@ public class HttpTemplateBuilder {
 
                 Parameter parameter = parameters[i];
                 RequestParam annotation = parameter.getAnnotation(RequestParam.class);
+                String explicitContentType = annotation.contentType().isEmpty()
+                        ? null
+                        : annotation.contentType();
 
                 if (args[i] instanceof Map<?, ?> map) {
                     // Raw annotation name, deliberately not the parameter-name fallback:
@@ -523,13 +526,13 @@ public class HttpTemplateBuilder {
                         String name = prefix.isEmpty()
                                 ? String.valueOf(entry.getKey())
                                 : prefix + "[" + entry.getKey() + "]";
-                        appendTextParts(parts, name, entry.getValue());
+                        appendParts(parts, name, entry.getValue(), explicitContentType);
                     }
                 } else {
                     String name = annotation.name().isEmpty()
                             ? parameter.getName()
                             : annotation.name();
-                    appendTextParts(parts, name, args[i]);
+                    appendParts(parts, name, args[i], explicitContentType);
                 }
             }
         }
@@ -537,11 +540,11 @@ public class HttpTemplateBuilder {
         return parts;
     }
 
-    private static void appendTextParts(List<MultipartPart> parts, String name, Object value) {
+    private void appendParts(List<MultipartPart> parts, String name, Object value, String explicitContentType) {
         if (value instanceof Collection<?> collection) {
             for (Object o : collection) {
                 if (o != null) {
-                    parts.add(textPart(name, o));
+                    parts.add(createPartFromValue(name, o, explicitContentType));
                 }
             }
         } else if (value.getClass().isArray() && !byte[].class.equals(value.getClass())) {
@@ -549,21 +552,39 @@ public class HttpTemplateBuilder {
             for (int i = 0; i < length; i++) {
                 Object o = Array.get(value, i);
                 if (o != null) {
-                    parts.add(textPart(name, o));
+                    parts.add(createPartFromValue(name, o, explicitContentType));
                 }
             }
         } else {
-            parts.add(textPart(name, value));
+            parts.add(createPartFromValue(name, value, explicitContentType));
         }
     }
 
-    private static MultipartPart textPart(String name, Object value) {
-        if (value instanceof byte[]) {
-            throw new IllegalArgumentException(
-                    "A byte[] cannot be a multipart text part: send binary data as @MultipartFormFile "
-                            + "with FileContent.of(fileName, bytes), or encode the bytes to text explicitly (e.g. Base64).");
+    private MultipartPart createPartFromValue(String partName, Object value, String explicitContentType) {
+        if (explicitContentType == null) {
+            if (value instanceof byte[]) {
+                throw new IllegalArgumentException(
+                        "A byte[] cannot be a multipart text part: send binary data as @MultipartFormFile "
+                                + "with FileContent.of(fileName, bytes), declare @RequestParam(contentType = \"...\") "
+                                + "to send raw bytes, or encode the bytes to text explicitly (e.g. Base64).");
+            }
+            return MultipartPart.text(partName, value.toString());
         }
-        return MultipartPart.text(name, value.toString());
+        Charset charset = parseCharset(explicitContentType, StandardCharsets.UTF_8);
+        if (value instanceof byte[] bytes) {
+            return MultipartPart.part(partName, explicitContentType, bytes);
+        }
+        if (explicitContentType.toLowerCase(Locale.ROOT).contains("json")) {
+            if (value instanceof String str) {
+                return MultipartPart.part(partName, explicitContentType, str.getBytes(charset));
+            }
+            String json = moduleInfo.getJsonCodec().serialize(value);
+            return MultipartPart.part(partName, explicitContentType, json.getBytes(charset));
+        }
+        if (value instanceof String str) {
+            return MultipartPart.part(partName, explicitContentType, str.getBytes(charset));
+        }
+        return MultipartPart.part(partName, explicitContentType, value.toString().getBytes(charset));
     }
 
     // Header and parameter values are text on the wire; a byte[] has no text rendering,

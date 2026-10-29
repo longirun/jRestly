@@ -119,6 +119,105 @@ public class ControllerValidationTest {
                 """, false)).isEmpty());
     }
 
+    interface BlankMultipartPartNameController {
+        @ru.jrestly.annotation.Post(path = "/upload", requestType = ru.jrestly.http.RequestType.MULTIPART_FORM_DATA)
+        String upload(@ru.jrestly.annotation.MultipartFormFile(partName = "  ") java.io.File file);
+    }
+
+    interface ValidMultipartPartNameController {
+        @ru.jrestly.annotation.Post(path = "/upload", requestType = ru.jrestly.http.RequestType.MULTIPART_FORM_DATA)
+        String upload(@ru.jrestly.annotation.MultipartFormFile(partName = "file") java.io.File file);
+    }
+
+    @Test
+    void rejectsBlankMultipartFormFilePartNameEagerly() {
+        List<String> problems = ControllerValidator.validate(BlankMultipartPartNameController.class);
+        assertEquals(1, problems.size());
+        assertTrue(problems.getFirst().contains("upload(): @MultipartFormFile partName must not be blank"));
+
+        JRestlyClient client = JRestlyClient.builder().baseUrl("http://localhost:1").build();
+        assertThrows(ControllerValidationException.class, () -> client.get(BlankMultipartPartNameController.class));
+        assertTrue(ControllerValidator.validate(ValidMultipartPartNameController.class).isEmpty());
+    }
+
+    interface FileParamOnJsonController {
+        @ru.jrestly.annotation.Post(path = "/upload")
+        String upload(@ru.jrestly.annotation.MultipartFormFile(partName = "file") java.io.File file);
+    }
+
+    @Test
+    void rejectsMultipartFormFileWithoutMultipartRequestTypeEagerly() {
+        List<String> problems = ControllerValidator.validate(FileParamOnJsonController.class);
+        assertEquals(1, problems.size());
+        assertTrue(problems.getFirst().contains("upload(): @MultipartFormFile parameter requires requestType = MULTIPART_FORM_DATA"));
+
+        JRestlyClient client = JRestlyClient.builder().baseUrl("http://localhost:1").build();
+        assertThrows(ControllerValidationException.class, () -> client.get(FileParamOnJsonController.class));
+    }
+
+    interface FileAndRequestParamOnSameParamController {
+        @ru.jrestly.annotation.Post(path = "/upload", requestType = ru.jrestly.http.RequestType.MULTIPART_FORM_DATA)
+        String upload(@ru.jrestly.annotation.MultipartFormFile(partName = "file")
+                      @ru.jrestly.annotation.RequestParam(name = "file") java.io.File file);
+    }
+
+    interface ValidMultipartFieldAndFileController {
+        @ru.jrestly.annotation.Post(path = "/upload", requestType = ru.jrestly.http.RequestType.MULTIPART_FORM_DATA)
+        String upload(@ru.jrestly.annotation.RequestParam(name = "desc") String description,
+                      @ru.jrestly.annotation.MultipartFormFile(partName = "file") java.io.File file);
+    }
+
+    @Test
+    void rejectsMultipartFormFileCombinedWithRequestParamEagerly() {
+        List<String> problems = ControllerValidator.validate(FileAndRequestParamOnSameParamController.class);
+        assertEquals(1, problems.size());
+        assertTrue(problems.getFirst().contains("upload(): parameter must not combine @MultipartFormFile with @RequestParam"));
+
+        JRestlyClient client = JRestlyClient.builder().baseUrl("http://localhost:1").build();
+        assertThrows(ControllerValidationException.class, () -> client.get(FileAndRequestParamOnSameParamController.class));
+        assertTrue(ControllerValidator.validate(ValidMultipartFieldAndFileController.class).isEmpty());
+    }
+
+    interface PathOnlyFormController {
+        @ru.jrestly.annotation.Post(path = "/users/{id}", requestType = ru.jrestly.http.RequestType.APPLICATION_FORM_URLENCODED)
+        String postForm(@ru.jrestly.annotation.PathVariable(name = "id") String id);
+    }
+
+    interface PathOnlyMultipartController {
+        @ru.jrestly.annotation.Post(path = "/users/{id}", requestType = ru.jrestly.http.RequestType.MULTIPART_FORM_DATA)
+        String postMultipart(@ru.jrestly.annotation.PathVariable(name = "id") String id);
+    }
+
+    interface PathAndFormParamController {
+        @ru.jrestly.annotation.Post(path = "/users/{id}", requestType = ru.jrestly.http.RequestType.APPLICATION_FORM_URLENCODED)
+        String postForm(@ru.jrestly.annotation.PathVariable(name = "id") String id,
+                        @ru.jrestly.annotation.RequestParam(name = "name") String name);
+    }
+
+    interface PathAndMultipartParamController {
+        @ru.jrestly.annotation.Post(path = "/users/{id}", requestType = ru.jrestly.http.RequestType.MULTIPART_FORM_DATA)
+        String postMultipart(@ru.jrestly.annotation.PathVariable(name = "id") String id,
+                             @ru.jrestly.annotation.MultipartFormFile(partName = "file") java.io.File file);
+    }
+
+    @Test
+    void rejectsFormOrMultipartWithoutBodyParametersEagerly() {
+        List<String> formProblems = ControllerValidator.validate(PathOnlyFormController.class);
+        assertEquals(1, formProblems.size());
+        assertTrue(formProblems.getFirst().contains("postForm(): APPLICATION_FORM_URLENCODED method must have at least one parameter"));
+
+        List<String> multipartProblems = ControllerValidator.validate(PathOnlyMultipartController.class);
+        assertEquals(1, multipartProblems.size());
+        assertTrue(multipartProblems.getFirst().contains("postMultipart(): MULTIPART_FORM_DATA method must have at least one parameter"));
+
+        JRestlyClient client = JRestlyClient.builder().baseUrl("http://localhost:1").build();
+        assertThrows(ControllerValidationException.class, () -> client.get(PathOnlyFormController.class));
+        assertThrows(ControllerValidationException.class, () -> client.get(PathOnlyMultipartController.class));
+
+        assertTrue(ControllerValidator.validate(PathAndFormParamController.class).isEmpty());
+        assertTrue(ControllerValidator.validate(PathAndMultipartParamController.class).isEmpty());
+    }
+
     // The test classpath is built with -parameters, so a class lacking the
     // MethodParameters attribute must be produced at runtime. The loader stays
     // open so the proxy can be built on the returned class.

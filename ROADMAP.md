@@ -11,7 +11,7 @@ All architectural features are ported from the research branch `jrestly-infinite
 3. **Atomic Commits (`1 feature = 1 commit`):** Rather than replicating the historical ~380 exploratory commits of `infinite`, each feature lands as an atomic, bisectable commit starting with an imperative verb (`add`, `fix`, `refactor`, `optimize`, `introduce`, etc.), accompanied by its tests and ADR (e.g. `add declarative @Accept, @ContentType & MediaType (ADR-0009)`).
 4. **Extraction from Canonical Target:**
    - **New Files (classes, submodules, tests):** Checked out directly from `infinite`'s final state (`git checkout infinite -- <path>`) as the starting baseline.
-   - **Shared Files (`HttpTemplate`, `HttpTemplateBuilder`, etc.):** Isolated hunks belonging to the active feature are extracted from `git diff main..infinite` to prevent accidental formatting drift.
+   - **Shared Files (`HttpTemplate`, `HttpTemplateBuilder`, etc.):** Isolated hunks belonging to the active feature are extracted from `git diff main..infinite` to prevent accidental formatting drift. Extraction defines the baseline, not a constraint — defects and dead code found during review are fixed directly in `main` per §2, with the divergence documented in the corresponding ADR.
 5. **Topological Order:** Features are ported strictly along their dependency graph as defined in [TODO.md](TODO.md), guaranteeing a green test suite (`./gradlew test`) at every single commit.
 6. **Code Conciseness & No LLM Fluff:** Code must be self-documenting through crisp naming and types. Strip autonomous agent Javadoc bloat and redundant commentary (`@param`, `@return` merely restating method signatures). Javadoc is reserved strictly for public API contracts, non-obvious invariants, and RFC/ADR citations.
 
@@ -22,8 +22,8 @@ All architectural features are ported from the research branch `jrestly-infinite
 Source of truth: `jrestly-infinite` ADR-0031 (declarative `@Accept` / `@ContentType` / `MediaType` constants) and ADR-0024 (form-data & URL-encoded `@FormParam`).
 Gates: WireMock suite green (`./gradlew test`), IDE inspections clean, zero `<dependency>` in generated POM.
 
-- [x] FEAT-06 — declarative `@Accept`, `@ContentType` & `MediaType` constants; client-level default headers (`defaultHeader`/`defaultHeaders`); byte[]/String payload passthrough; fail-fast validation
-- [ ] FEAT-07 — `@FormParam` for `application/x-www-form-urlencoded` payloads alongside multipart (ADR-0024)
+- [x] FEAT-06 — declarative `@Accept`, `@ContentType` & `MediaType` constants; client-level default headers (`defaultHeader`/`defaultHeaders`); byte[]/String payload passthrough; fail-fast validation — [ADR-0009](docs/0.8/ADR-0009-declarative-accept-and-content-type.md)
+- [x] FEAT-07 — `@RequestParam(contentType)` for form-data & multipart flexibility, explicit charsets, JSON DTO parts, null-safety (ADR-0024 Amendments #209, #214, #216, #233) — [ADR-0010](docs/0.8/ADR-0010-form-data-and-multipart-flexibility.md)
 - [ ] Docs — README section, release finalize (version bump, tag, README coordinates)
 
 ---

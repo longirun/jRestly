@@ -55,7 +55,21 @@ public record MultipartPart(String name, String filename, String contentType, Ob
             Map.entry("xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"));
 
     public static MultipartPart text(String name, String value) {
-        return new MultipartPart(name, null, "text/plain; charset=UTF-8", value.getBytes(StandardCharsets.UTF_8), null);
+        return text(name, value, StandardCharsets.UTF_8);
+    }
+
+    public static MultipartPart text(String name, String value, java.nio.charset.Charset charset) {
+        java.util.Objects.requireNonNull(charset, "charset");
+        byte[] bytes = value != null ? value.getBytes(charset) : new byte[0];
+        return new MultipartPart(name, null, "text/plain; charset=" + charset.name(), bytes, null);
+    }
+
+    public static MultipartPart part(String name, String contentType, byte[] content) {
+        return new MultipartPart(name, null, contentType, content != null ? content : new byte[0], null);
+    }
+
+    public static MultipartPart part(String name, String filename, String contentType, byte[] content) {
+        return new MultipartPart(name, filename, contentType, content != null ? content : new byte[0], null);
     }
 
     public static MultipartPart file(String name, Path file) {

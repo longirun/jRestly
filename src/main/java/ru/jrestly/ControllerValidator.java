@@ -4,6 +4,7 @@ import ru.jrestly.annotation.Accept;
 import ru.jrestly.annotation.ContentType;
 import ru.jrestly.annotation.Delete;
 import ru.jrestly.annotation.Get;
+import ru.jrestly.annotation.MultipartFormFile;
 import ru.jrestly.annotation.Patch;
 import ru.jrestly.annotation.PathVariable;
 import ru.jrestly.annotation.Post;
@@ -158,11 +159,35 @@ public final class ControllerValidator {
         validateMediaTypes(method, method.getName() + "()", problems);
         validateParameterNames(method, problems);
 
-        if (method.getParameters().length == 0) {
-            RequestType requestType = resolveRequestType(method);
-            if (requestType == RequestType.MULTIPART_FORM_DATA) {
+        RequestType requestType = resolveRequestType(method);
+
+        for (Parameter param : method.getParameters()) {
+            if (param.isAnnotationPresent(MultipartFormFile.class)) {
+                MultipartFormFile part = param.getAnnotation(MultipartFormFile.class);
+                if (part.partName().isBlank()) {
+                    problems.add(method.getName() + "(): @MultipartFormFile partName must not be blank");
+                }
+                if (!RequestType.MULTIPART_FORM_DATA.equals(requestType)) {
+                    problems.add(method.getName() + "(): @MultipartFormFile parameter requires requestType = MULTIPART_FORM_DATA");
+                }
+                if (param.isAnnotationPresent(RequestParam.class)) {
+                    problems.add(method.getName() + "(): parameter must not combine @MultipartFormFile with @RequestParam"
+                            + " (only the file part is assembled, the @RequestParam binding is silently dropped)");
+                }
+            }
+        }
+
+        if (requestType == RequestType.MULTIPART_FORM_DATA) {
+            boolean hasMultipartPayload = Arrays.stream(method.getParameters())
+                    .anyMatch(p -> p.isAnnotationPresent(MultipartFormFile.class)
+                            || p.isAnnotationPresent(RequestParam.class));
+            if (!hasMultipartPayload) {
                 problems.add(method.getName() + "(): MULTIPART_FORM_DATA method must have at least one parameter");
-            } else if (requestType == RequestType.APPLICATION_FORM_URLENCODED) {
+            }
+        } else if (requestType == RequestType.APPLICATION_FORM_URLENCODED) {
+            boolean hasFormPayload = Arrays.stream(method.getParameters())
+                    .anyMatch(p -> p.isAnnotationPresent(RequestParam.class));
+            if (!hasFormPayload) {
                 problems.add(method.getName() + "(): APPLICATION_FORM_URLENCODED method must have at least one parameter");
             }
         }
