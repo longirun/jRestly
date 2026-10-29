@@ -4,7 +4,7 @@
 
 A declarative HTTP client for Java. Define an interface, get a working client — no code generation, just a dynamic proxy over `java.net.http.HttpClient` with a zero-dependency core.
 
-> **Status:** early development, current release v0.7.0 — request parameter & header flexibility (dynamic `Map` parameters and headers, static repeatable `@RequestHeader` / `@RequestDefaultParam`). See `ROADMAP.md`.
+> **Status:** early development, current release v0.8.0 — declarative media types & form-data flexibility (@Accept, @ContentType, MediaType constants, client default headers, multipart JSON DTO / raw byte parts and custom charsets). See `ROADMAP.md`.
 
 ## Features
 
@@ -31,7 +31,7 @@ repositories {
 }
 
 dependencies {
-    implementation("com.github.longirun:jRestly:v0.7.0")
+    implementation("com.github.longirun:jRestly:v0.8.0")
     // JSON codec is not bundled — bring your own; Jackson 2 is autodetected
     implementation("com.fasterxml.jackson.core:jackson-databind:2.18.2")
 }
@@ -46,7 +46,7 @@ repositories {
 }
 
 dependencies {
-    implementation 'com.github.longirun:jRestly:v0.7.0'
+    implementation 'com.github.longirun:jRestly:v0.8.0'
     // JSON codec is not bundled — bring your own; Jackson 2 is autodetected
     implementation 'com.fasterxml.jackson.core:jackson-databind:2.18.2'
 }
@@ -65,7 +65,7 @@ dependencies {
 <dependency>
     <groupId>com.github.longirun</groupId>
     <artifactId>jRestly</artifactId>
-    <version>v0.6.1</version>
+    <version>v0.8.0</version>
 </dependency>
 <dependency>
     <groupId>com.fasterxml.jackson.core</groupId>
@@ -150,6 +150,33 @@ public interface SearchApi extends BaseApi {
 - **Static declarations on interfaces and methods:** repeatable `@RequestHeader` / `@RequestDefaultParam` directly on a controller interface or method apply to every call; inheritance applies parent declarations first, letting a sub-interface specialize headers and defaults.
 - **Override precedence:** a non-null runtime argument replaces a same-named default parameter (query keys match exactly) or static header (case-insensitive per RFC 9110) — no duplicate keys on the wire; a `null` argument falls back to the static/default declaration.
 
+## Declarative media types & client defaults
+
+jRestly supports declarative media-type negotiation and universal client-level defaults:
+
+```java
+@Accept(MediaType.APPLICATION_JSON)
+@ContentType(MediaType.APPLICATION_JSON)
+public interface InventoryApi {
+
+    @Get(path = "/api/items/${id}")
+    Item getItem(@PathVariable(name = "id") long id);
+
+    @Post(path = "/api/items/raw")
+    @ContentType(MediaType.APPLICATION_OCTET_STREAM)
+    void uploadRawPayload(@RequestBody byte[] data);
+
+    @Get(path = "/api/items/export")
+    @Accept({MediaType.APPLICATION_JSON, MediaType.TEXT_PLAIN})
+    String exportItems();
+}
+```
+
+- **`@Accept` & `@ContentType`:** declared on interface or method level with hierarchy inheritance (method wins over interface, child interface wins over parent). Multiple `@Accept` values join into a comma-separated `Accept` header per RFC 9110 §12.5.1.
+- **`MediaType` constants:** standard MIME type constants in `ru.jrestly.http.MediaType` (`APPLICATION_JSON`, `APPLICATION_OCTET_STREAM`, `APPLICATION_FORM_URLENCODED`, `MULTIPART_FORM_DATA`, etc.).
+- **Client default headers:** configure universal ambient headers via `JRestlyClient.builder().defaultHeader(name, value)` or `.defaultHeaders(map)`. Default `Accept` serves as the fallback baseline; default `Content-Type` acts as a client fallback without overriding method declarations or breaking form/multipart encodings.
+- **Payload handling:** `@RequestBody byte[]` passes through verbatim without JSON conversion. `@RequestBody String` encodes using the charset declared in the effective Content-Type (falling back to UTF-8).
+
 ## Multipart uploads
 
 `@MultipartFormFile(partName = …)` names the **part**, never the file — the file's name on the wire comes from its value. Parameter types fall into two buckets:
@@ -181,6 +208,30 @@ The part `Content-Type` is derived from the file-name extension (~20 common type
 The body is composed from per-part publishers — buffering is bounded to a single chunk no matter how large the files are. When every part has a known length (disk files, byte arrays, streams with an explicit `contentLength`), the request carries an exact `Content-Length`; otherwise it falls back to `Transfer-Encoding: chunked`.
 
 > **Chunked caveat:** some servers mishandle length-less multipart bodies — over h2c an unknown-length upload can be torn down with `RST_STREAM`. Prefer `FileContent.of(name, source, contentLength)` to force exact framing, or pin the method to `@HttpVersion(HttpClient.Version.HTTP_1_1)` where chunked encoding is well-defined.
+
+### Mixed multipart payloads & JSON DTO parts
+
+Multipart requests can combine binary files, text fields, and serialized domain DTOs:
+
+```java
+public interface DocumentApi {
+
+    @Post(path = "/api/documents", requestType = RequestType.MULTIPART_FORM_DATA)
+    void uploadDocument(
+            @RequestParam(name = "metadata", contentType = MediaType.APPLICATION_JSON) MetadataDto metadata,
+            @RequestParam(name = "note", contentType = "text/plain; charset=windows-1251") String localizedNote,
+            @RequestParam(name = "signature", contentType = MediaType.APPLICATION_OCTET_STREAM) byte[] rawBytes,
+            @MultipartFormFile(partName = "file") FileContent file
+    );
+}
+```
+
+- **`@RequestParam(contentType = …)`:** when specified on a multipart parameter:
+  - Complex DTO objects are serialized to JSON via the client's `JsonCodec`.
+  - Strings are encoded using the declared `charset` (e.g. `charset=windows-1251` or `charset="ISO-8859-1"`), falling back to UTF-8.
+  - Raw `byte[]` arrays are passed directly with the declared `Content-Type`. (Without `contentType`, `byte[]` fails fast to prevent accidental class-string leakage).
+  - Collections and arrays serialize each element with the specified content type.
+- **Eager validation:** `@MultipartFormFile` validates part names eagerly, forbids combination with `@RequestParam` on the same parameter, and requires `RequestType.MULTIPART_FORM_DATA`. Form and multipart methods require at least one body parameter.
 
 ### Migrating from `MultipartWriter`
 

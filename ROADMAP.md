@@ -17,14 +17,17 @@ All architectural features are ported from the research branch `jrestly-infinite
 
 ---
 
-## 0.8.0 — Media Types & Form Data (FEAT-06, FEAT-07)
+## 0.8.0 — Media Types & Form Data (FEAT-06, FEAT-07) ✅ COMPLETE (2026-10-29)
 
-Source of truth: `jrestly-infinite` ADR-0031 (declarative `@Accept` / `@ContentType` / `MediaType` constants) and ADR-0024 (form-data & URL-encoded `@FormParam`).
+Source of truth: `jrestly-infinite` ADR-0031 (declarative `@Accept` / `@ContentType` / `MediaType` constants) and ADR-0024 (form-data & URL-encoded `@FormParam`). Local ADRs: [ADR-0009](docs/0.8/ADR-0009-declarative-accept-and-content-type.md), [ADR-0010](docs/0.8/ADR-0010-form-data-and-multipart-flexibility.md).
 Gates: WireMock suite green (`./gradlew test`), IDE inspections clean, zero `<dependency>` in generated POM.
 
 - [x] FEAT-06 — declarative `@Accept`, `@ContentType` & `MediaType` constants; client-level default headers (`defaultHeader`/`defaultHeaders`); byte[]/String payload passthrough; fail-fast validation — [ADR-0009](docs/0.8/ADR-0009-declarative-accept-and-content-type.md)
 - [x] FEAT-07 — `@RequestParam(contentType)` for form-data & multipart flexibility, explicit charsets, JSON DTO parts, null-safety (ADR-0024 Amendments #209, #214, #216, #233) — [ADR-0010](docs/0.8/ADR-0010-form-data-and-multipart-flexibility.md)
-- [ ] Docs — README section, release finalize (version bump, tag, README coordinates)
+- [x] Docs — README section, release finalize (version bump, tag, README coordinates)
+
+> Cycle closed by the FEAT-06 / FEAT-07 commits + release finalize, tag `v0.8.0`. Verification: full WireMock suite 245 tests green, IDE inspections clean, generated POM with zero `<dependency>`.
+> Documented deviations are recorded per-feature in [ADR-0009](docs/0.8/ADR-0009-declarative-accept-and-content-type.md) (universal builder defaultHeaders instead of specialized setters) and [ADR-0010](docs/0.8/ADR-0010-form-data-and-multipart-flexibility.md) (JSON detection heuristic until FEAT-41; dead urlencoded guards stripped).
 
 ---
 
