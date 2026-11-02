@@ -17,6 +17,19 @@ All architectural features are ported from the research branch `jrestly-infinite
 
 ---
 
+## 0.9.0 — Async Controller Returns (FEAT-08) ✅ COMPLETE (2026-11-02)
+
+Source of truth: `jrestly-infinite` ADR-0003 / commit `f1a9dbe`. Local ADR: [ADR-0011](docs/0.9/ADR-0011-completable-future-return-types.md).
+Gates: WireMock suite green (`./gradlew test`), IDE inspections clean, zero `<dependency>` in generated POM.
+
+- [x] FEAT-08 — `CompletableFuture<T>` controller return types (non-blocking dispatch via `HttpClient.sendAsync`, unwrapping `T`, unified error mapping, async redirects) — [ADR-0011](docs/0.9/ADR-0011-completable-future-return-types.md)
+- [x] Docs — README section, release finalize (version bump, tag, README coordinates)
+
+> Cycle closed by the FEAT-08 commit + release finalize, tag `v0.9.0`. Verification: full WireMock suite 256 tests green, IDE inspections clean, generated POM with zero `<dependency>`.
+> Documented deviations are recorded in [ADR-0011](docs/0.9/ADR-0011-completable-future-return-types.md) (clean recursion termination without redundant log lines; modern pattern matching exception unwrapping).
+
+---
+
 ## 0.8.0 — Media Types & Form Data (FEAT-06, FEAT-07) ✅ COMPLETE (2026-10-29)
 
 Source of truth: `jrestly-infinite` ADR-0031 (declarative `@Accept` / `@ContentType` / `MediaType` constants) and ADR-0024 (form-data & URL-encoded `@FormParam`). Local ADRs: [ADR-0009](docs/0.8/ADR-0009-declarative-accept-and-content-type.md), [ADR-0010](docs/0.8/ADR-0010-form-data-and-multipart-flexibility.md).

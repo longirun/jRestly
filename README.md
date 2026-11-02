@@ -4,7 +4,7 @@
 
 A declarative HTTP client for Java. Define an interface, get a working client — no code generation, just a dynamic proxy over `java.net.http.HttpClient` with a zero-dependency core.
 
-> **Status:** early development, current release v0.8.0 — declarative media types & form-data flexibility (@Accept, @ContentType, MediaType constants, client default headers, multipart JSON DTO / raw byte parts and custom charsets). See `ROADMAP.md`.
+> **Status:** early development, current release v0.9.0 — asynchronous controller returns (non-blocking CompletableFuture<T> dispatch, unified exception mapping). See `ROADMAP.md`.
 
 ## Features
 
@@ -17,6 +17,7 @@ A declarative HTTP client for Java. Define an interface, get a working client �
 - Strict status validation: any status not in `@OnError` and not in `@ExpectStatus` (or not 2xx when `@ExpectStatus` is absent) throws `UnexpectedStatusException` with the raw body. Use `@ExpectStatus(statuses = {202})` for strict 2xx contracts
 - Per-method redirect chasing: `@FollowRedirects(count = N)`
 - HTTP version pinning: client-wide `httpVersion(HttpClient.Version.HTTP_1_1)` on the builder, per-method override `@HttpVersion(HttpClient.Version.HTTP_1_1)` (default is `HTTP_2`)
+- Asynchronous controller methods returning `CompletableFuture<T>` via non-blocking `HttpClient.sendAsync` with unified exception mapping
 - Auth state machine: `@Anonymous` (skip auth refresh), `@Authorization` (this is the login call), `@SetAuthDetails(headerName = …)` (capture token from response, reuse on subsequent calls)
 - Zero-dependency core on `java.net.http.HttpClient` (`System.Logger`, no runtime dependencies); bring your own JSON codec — Jackson 2 is autodetected from the classpath
 
@@ -31,7 +32,7 @@ repositories {
 }
 
 dependencies {
-    implementation("com.github.longirun:jRestly:v0.8.0")
+    implementation("com.github.longirun:jRestly:v0.9.0")
     // JSON codec is not bundled — bring your own; Jackson 2 is autodetected
     implementation("com.fasterxml.jackson.core:jackson-databind:2.18.2")
 }
@@ -46,7 +47,7 @@ repositories {
 }
 
 dependencies {
-    implementation 'com.github.longirun:jRestly:v0.8.0'
+    implementation 'com.github.longirun:jRestly:v0.9.0'
     // JSON codec is not bundled — bring your own; Jackson 2 is autodetected
     implementation 'com.fasterxml.jackson.core:jackson-databind:2.18.2'
 }
@@ -65,7 +66,7 @@ dependencies {
 <dependency>
     <groupId>com.github.longirun</groupId>
     <artifactId>jRestly</artifactId>
-    <version>v0.8.0</version>
+    <version>v0.9.0</version>
 </dependency>
 <dependency>
     <groupId>com.fasterxml.jackson.core</groupId>
@@ -176,6 +177,30 @@ public interface InventoryApi {
 - **`MediaType` constants:** standard MIME type constants in `ru.jrestly.http.MediaType` (`APPLICATION_JSON`, `APPLICATION_OCTET_STREAM`, `APPLICATION_FORM_URLENCODED`, `MULTIPART_FORM_DATA`, etc.).
 - **Client default headers:** configure universal ambient headers via `JRestlyClient.builder().defaultHeader(name, value)` or `.defaultHeaders(map)`. Default `Accept` serves as the fallback baseline; default `Content-Type` acts as a client fallback without overriding method declarations or breaking form/multipart encodings.
 - **Payload handling:** `@RequestBody byte[]` passes through verbatim without JSON conversion. `@RequestBody String` encodes using the charset declared in the effective Content-Type (falling back to UTF-8).
+
+## Asynchronous controller returns (`CompletableFuture<T>`)
+
+Controller methods can declare `CompletableFuture<T>` as their return type for non-blocking asynchronous dispatch:
+
+```java
+public interface AsyncItemApi {
+
+    @Get(path = "/api/items/${id}")
+    CompletableFuture<Item> getItemAsync(@PathVariable(name = "id") long id);
+
+    @Post(path = "/api/items")
+    CompletableFuture<Item> createItemAsync(@RequestBody Item item);
+
+    @Get(path = "/api/items/${id}")
+    @OnError(statuses = {404}, errorObject = ApiError.class)
+    CompletableFuture<Item> getItemOrThrowAsync(@PathVariable(name = "id") long id);
+}
+```
+
+- **Non-blocking dispatch:** Calls are dispatched immediately via `HttpClient.sendAsync(...)` on the client executor without blocking the calling thread.
+- **Wire contract unwrapping:** The generic type parameter `T` is unwrapped as the wire target (supports domain DTOs, collections, raw `String`, and `Void` on 204 or empty responses).
+- **Unified exception mapping:** On failure, the future completes exceptionally with the exact same exception types as synchronous calls (`HandledException`, `UnexpectedStatusException`, `RuntimeException` wrapping `IOException`). Per standard JDK semantics, `join()` wraps the failure in `CompletionException` and `get()` wraps it in `ExecutionException`.
+- **Async redirects:** Works transparently with `@FollowRedirects`, following redirect chains non-blockingly while preserving method and body semantics (307/308).
 
 ## Multipart uploads
 
