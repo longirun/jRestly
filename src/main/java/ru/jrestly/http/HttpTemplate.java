@@ -14,9 +14,15 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
+/**
+ * One declarative call: builds the wire request, dispatches it (sync or,
+ * for {@code CompletableFuture<T>} returns, async), and decodes the response.
+ */
 public class HttpTemplate {
     private static final Set<HttpMethod> BODY_LOGGING_METHODS =
             Set.of(HttpMethod.POST, HttpMethod.PATCH, HttpMethod.DELETE, HttpMethod.PUT);
@@ -38,6 +44,7 @@ public class HttpTemplate {
     private List<MultipartPart> multipartFormParts;
     private String multipartBoundary;
     private Type returnType;
+    private boolean async;
     private OnErrorParser onErrorParser;
     private List<Integer> expectStatuses;
     private Integer followRedirectsNumber;
@@ -49,52 +56,15 @@ public class HttpTemplate {
 
         logRequest(request);
 
-        String payload;
+        if (async) {
+            long start = System.nanoTime();
+            return (T) exchangeAsync(request, start);
+        }
 
         try {
             long start = System.nanoTime();
             WireResponse response = executeWithRedirects(request);
-            long elapsedMs = (System.nanoTime() - start) / 1_000_000;
-
-            List<Header> responseHeaders = response.headers();
-            if (authDetailsConsumer != null) {
-                authDetailsConsumer.accept(responseHeaders);
-            }
-
-            logResponse(response, elapsedMs);
-
-            byte[] bytes = response.body();
-            int statusCode = response.statusCode();
-            payload = (bytes != null && bytes.length > 0) ? new String(bytes, StandardCharsets.UTF_8) : null;
-
-            if (onErrorParser != null && onErrorParser.canParse(statusCode)) {
-                Object errorObject = (payload != null)
-                        ? jsonCodec.deserialize(payload, onErrorParser.getErrorClass())
-                        : null;
-                throw new HandledException(errorObject, statusCode, responseHeaders);
-            }
-
-            if (!isExpectedStatus(statusCode)) {
-                throw new UnexpectedStatusException(statusCode, payload == null ? "" : payload, responseHeaders);
-            }
-
-            if (payload == null) {
-                logger.log(System.Logger.Level.INFO, "No response.");
-                return null;
-            }
-
-            if (String.class.equals(returnType)) {
-                logger.log(System.Logger.Level.INFO, "Response size: " + payload.length() + " bytes\n" + payload);
-                return (T) payload;
-            }
-
-            logger.log(System.Logger.Level.INFO, "Response size: " + payload.length() + " bytes\n" + jsonCodec.prettyPrint(payload));
-            if (Void.class.equals(returnType) || void.class.equals(returnType)) {
-                return null;
-            }
-
-            return jsonCodec.deserialize(payload, returnType);
-
+            return processResponse(response, start);
         } catch (IOException e) {
             logger.log(System.Logger.Level.ERROR,
                     "Request failed: " + request.method() + " " + request.uri(), e);
@@ -106,57 +76,174 @@ public class HttpTemplate {
         }
     }
 
+    // async twin of exchange(): same tail, transport faults mapped like sync
+    private CompletableFuture<Object> exchangeAsync(WireRequest request, long startNanos) {
+        int hopsLeft = followRedirectsNumber == null ? 0 : followRedirectsNumber;
+        return executeAsyncWithRedirects(request, hopsLeft)
+                .thenApply(response -> processResponse(response, startNanos))
+                .exceptionally(ex -> {
+                    Throwable cause = unwrapCause(ex);
+                    if (cause instanceof InterruptedException) {
+                        Thread.currentThread().interrupt();
+                    }
+                    // a null-cause CompletionException survives unwrapCause (hence the guard)
+                    switch (cause) {
+                        case RuntimeException re when !(re instanceof CompletionException) -> throw re;
+                        case Error err -> throw err;
+                        case null -> throw new NullPointerException("cause is null");
+                        default -> {
+                            logger.log(System.Logger.Level.ERROR,
+                                    "Request failed: " + request.method() + " " + request.uri(), cause);
+                            throw new RuntimeException(cause);
+                        }
+                    }
+                });
+    }
+
+    private static Throwable unwrapCause(Throwable throwable) {
+        while (throwable instanceof CompletionException completion && completion.getCause() != null) {
+            throwable = completion.getCause();
+        }
+        return throwable;
+    }
+
+    // shared tail of both exchange paths: auth capture, logging, @OnError, status check, decoding
+    @SuppressWarnings("unchecked")
+    private <T> T processResponse(WireResponse response, long startNanos) {
+        long elapsedMs = (System.nanoTime() - startNanos) / 1_000_000;
+
+        List<Header> responseHeaders = response.headers();
+        if (authDetailsConsumer != null) {
+            authDetailsConsumer.accept(responseHeaders);
+        }
+
+        logResponse(response, elapsedMs);
+
+        byte[] bytes = response.body();
+        int statusCode = response.statusCode();
+        String payload = (bytes != null && bytes.length > 0) ? new String(bytes, StandardCharsets.UTF_8) : null;
+
+        if (onErrorParser != null && onErrorParser.canParse(statusCode)) {
+            Object errorObject = (payload != null)
+                    ? jsonCodec.deserialize(payload, onErrorParser.getErrorClass())
+                    : null;
+            throw new HandledException(errorObject, statusCode, responseHeaders);
+        }
+
+        if (!isExpectedStatus(statusCode)) {
+            throw new UnexpectedStatusException(statusCode, payload == null ? "" : payload, responseHeaders);
+        }
+
+        if (payload == null) {
+            logger.log(System.Logger.Level.INFO, "No response.");
+            return null;
+        }
+
+        if (String.class.equals(returnType)) {
+            logger.log(System.Logger.Level.INFO, "Response size: " + payload.length() + " bytes\n" + payload);
+            return (T) payload;
+        }
+
+        logger.log(System.Logger.Level.INFO, "Response size: " + payload.length() + " bytes\n" + jsonCodec.prettyPrint(payload));
+        if (Void.class.equals(returnType) || void.class.equals(returnType)) {
+            return null;
+        }
+
+        return jsonCodec.deserialize(payload, returnType);
+    }
+
     // Handles redirects according to HTTP spec:
     // 301/302/303 downgrade to GET and drop the body; 307/308 re-send the method and body.
     private WireResponse executeWithRedirects(WireRequest request) throws IOException, InterruptedException {
         int hopsLeft = followRedirectsNumber == null ? 0 : followRedirectsNumber;
 
         WireResponse response = send(request);
-
-        while (followRedirectsNumber != null && hopsLeft > 0) {
-            String location = redirectLocation(response);
-            if (location == null) {
+        while (hopsLeft > 0) {
+            WireRequest next = nextHop(request, response);
+            if (next == null) {
                 break;
             }
-
-            boolean preserveMethod = response.statusCode() == 307 || response.statusCode() == 308;
-            HttpMethod nextMethod = preserveMethod ? request.method() : HttpMethod.GET;
-
-            URI nextUri = request.uri().resolve(location);
-            List<Header> nextHeaders = request.headers();
-            if (isCrossOrigin(request.uri(), nextUri)) {
-                // Drop default client auth headers on cross-origin redirects to prevent credential leakage.
-                // Explicit @RequestHeader values are preserved as intentionally set by the caller.
-                nextHeaders = dropAuthHeaders(nextHeaders);
-                logger.log(System.Logger.Level.INFO,
-                        "Cross-origin redirect to " + nextUri + ", auth headers dropped");
-            }
-
-            logger.log(System.Logger.Level.INFO,
-                    "Following redirect (" + response.statusCode() + ") to: " + location);
-
-            request = new WireRequest(
-                    nextMethod,
-                    nextUri,
-                    nextHeaders,
-                    preserveMethod ? request.contentType() : null,
-                    preserveMethod ? request.body() : null,
-                    preserveMethod ? request.parts() : null,
-                    preserveMethod ? request.boundary() : null);
-
+            request = next;
             hopsLeft--;
-
             response = send(request);
         }
 
-        if (followRedirectsNumber != null && redirectLocation(response) != null) {
-            logger.log(System.Logger.Level.INFO, "Too many redirects, returning the last response");
-        }
-
+        logExhaustedRedirects(response);
         return response;
     }
 
+    // Async twin: same hop semantics, chained over sendAsync
+    private CompletableFuture<WireResponse> executeAsyncWithRedirects(WireRequest request, int hopsLeft) {
+        return sendAsync(request).thenCompose(response -> {
+            WireRequest next = nextHop(request, response);
+            if (next == null || hopsLeft <= 0) {
+                logExhaustedRedirects(response);
+                return CompletableFuture.completedFuture(response);
+            }
+            return executeAsyncWithRedirects(next, hopsLeft - 1);
+        });
+    }
+
+    // next redirect hop, or null when the chain stops (no @FollowRedirects, non-redirect status, missing Location)
+    private WireRequest nextHop(WireRequest request, WireResponse response) {
+        if (followRedirectsNumber == null) {
+            return null;
+        }
+
+        String location = redirectLocation(response);
+        if (location == null) {
+            return null;
+        }
+
+        boolean preserveMethod = response.statusCode() == 307 || response.statusCode() == 308;
+        HttpMethod nextMethod = preserveMethod ? request.method() : HttpMethod.GET;
+
+        URI nextUri = request.uri().resolve(location);
+        List<Header> nextHeaders = request.headers();
+        if (isCrossOrigin(request.uri(), nextUri)) {
+            // Drop default client auth headers on cross-origin redirects to prevent credential leakage.
+            // Explicit @RequestHeader values are preserved as intentionally set by the caller.
+            nextHeaders = dropAuthHeaders(nextHeaders);
+            logger.log(System.Logger.Level.INFO,
+                    "Cross-origin redirect to " + nextUri + ", auth headers dropped");
+        }
+
+        logger.log(System.Logger.Level.INFO,
+                "Following redirect (" + response.statusCode() + ") to: " + location);
+
+        return new WireRequest(
+                nextMethod,
+                nextUri,
+                nextHeaders,
+                preserveMethod ? request.contentType() : null,
+                preserveMethod ? request.body() : null,
+                preserveMethod ? request.parts() : null,
+                preserveMethod ? request.boundary() : null);
+    }
+
+    private void logExhaustedRedirects(WireResponse response) {
+        if (followRedirectsNumber != null && redirectLocation(response) != null) {
+            logger.log(System.Logger.Level.INFO, "Too many redirects, returning the last response");
+        }
+    }
+
     private WireResponse send(WireRequest request) throws IOException, InterruptedException {
+        long start = System.nanoTime();
+        HttpResponse<byte[]> response = httpClient.send(toHttpRequest(request), HttpResponse.BodyHandlers.ofByteArray());
+        logPerHop(request, response, start);
+        return toWireResponse(response);
+    }
+
+    private CompletableFuture<WireResponse> sendAsync(WireRequest request) {
+        long start = System.nanoTime();
+        return httpClient.sendAsync(toHttpRequest(request), HttpResponse.BodyHandlers.ofByteArray())
+                .thenApply(response -> {
+                    logPerHop(request, response, start);
+                    return toWireResponse(response);
+                });
+    }
+
+    private HttpRequest toHttpRequest(WireRequest request) {
         HttpRequest.Builder builder = HttpRequest.newBuilder(request.uri())
                 .timeout(Duration.ofMillis(moduleInfo.getSocketTimeout()));
 
@@ -179,14 +266,17 @@ public class HttpTemplate {
             builder.method(request.method().name(), bodyPublisher(request));
         }
 
-        long start = System.nanoTime();
-        HttpResponse<byte[]> response = httpClient.send(builder.build(), HttpResponse.BodyHandlers.ofByteArray());
-        long elapsedMs = (System.nanoTime() - start) / 1_000_000;
+        return builder.build();
+    }
 
+    private void logPerHop(WireRequest request, HttpResponse<byte[]> response, long startNanos) {
+        long elapsedMs = (System.nanoTime() - startNanos) / 1_000_000;
         // per-hop timing; the total (redirect chain included) is logged in the response INFO line
         logger.log(System.Logger.Level.DEBUG,
                 request.method() + " " + request.uri() + " -> " + response.statusCode() + " in " + elapsedMs + " ms");
+    }
 
+    private WireResponse toWireResponse(HttpResponse<byte[]> response) {
         List<Header> headers = response.headers().map().entrySet().stream()
                 .flatMap(entry -> entry.getValue().stream()
                         .map(value -> new Header(entry.getKey(), value)))
@@ -372,6 +462,10 @@ public class HttpTemplate {
 
     public void setReturnType(Type returnType) {
         this.returnType = returnType;
+    }
+
+    public void setAsync(boolean async) {
+        this.async = async;
     }
 
     public void setOnErrorParser(OnErrorParser onErrorParser) {
