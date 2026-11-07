@@ -12,11 +12,20 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.time.ZoneOffset;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
+import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
+import java.util.function.Function;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 /**
@@ -26,6 +35,16 @@ import java.util.stream.Collectors;
 public class HttpTemplate {
     private static final Set<HttpMethod> BODY_LOGGING_METHODS =
             Set.of(HttpMethod.POST, HttpMethod.PATCH, HttpMethod.DELETE, HttpMethod.PUT);
+
+    // RFC 9110 obsolete date formats for Retry-After
+    private static final DateTimeFormatter RFC850_DATE =
+            DateTimeFormatter.ofPattern("dd-MMM-yy HH:mm:ss zzz", Locale.ENGLISH);
+    private static final Set<String> RFC850_WEEKDAYS =
+            Set.of("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday");
+    private static final DateTimeFormatter ASCTIME_DATE =
+            DateTimeFormatter.ofPattern("EEE MMM d HH:mm:ss yyyy", Locale.ENGLISH)
+                    .withZone(ZoneOffset.UTC);
+    private static final Pattern ASCTIME_SPACE_RUNS = Pattern.compile("\\s{2,}");
 
     private System.Logger logger;
 
@@ -49,6 +68,7 @@ public class HttpTemplate {
     private List<Integer> expectStatuses;
     private Integer followRedirectsNumber;
     private HttpClient.Version httpVersion;
+    private RetryPolicy retryPolicy = RetryPolicy.off();
 
     @SuppressWarnings("unchecked")
     public <T> T exchange() {
@@ -63,7 +83,7 @@ public class HttpTemplate {
 
         try {
             long start = System.nanoTime();
-            WireResponse response = executeWithRedirects(request);
+            WireResponse response = executeWithRetries(request);
             return processResponse(response, start);
         } catch (IOException e) {
             logger.log(System.Logger.Level.ERROR,
@@ -78,8 +98,7 @@ public class HttpTemplate {
 
     // async twin of exchange(): same tail, transport faults mapped like sync
     private CompletableFuture<Object> exchangeAsync(WireRequest request, long startNanos) {
-        int hopsLeft = followRedirectsNumber == null ? 0 : followRedirectsNumber;
-        return executeAsyncWithRedirects(request, hopsLeft)
+        return executeAsyncWithRetries(request)
                 .thenApply(response -> processResponse(response, startNanos))
                 .exceptionally(ex -> {
                     Throwable cause = unwrapCause(ex);
@@ -182,6 +201,200 @@ public class HttpTemplate {
             }
             return executeAsyncWithRedirects(next, hopsLeft - 1);
         });
+    }
+
+    private WireResponse executeWithRetries(WireRequest request) throws IOException, InterruptedException {
+        RetryPolicy policy = retryPolicy;
+        int maxAttempts = policy.getMaxAttempts();
+
+        for (int attempt = 1; ; attempt++) {
+            boolean last = attempt == maxAttempts;
+            WireResponse response;
+            try {
+                response = executeWithRedirects(request);
+            } catch (IOException e) {
+                if (last || !policy.isRetryTransport()) {
+                    throw e;
+                }
+                scheduleRetry(attempt, maxAttempts, e.getClass().getSimpleName(), null, policy);
+                continue;
+            }
+
+            if (!last && isStatusRetry(policy, response)) {
+                scheduleRetry(attempt, maxAttempts, "HTTP " + response.statusCode(), response, policy);
+                continue;
+            }
+            if (!last && policy.isRetryDecodeFailures()) {
+                try {
+                    probePayloadDecode(response);
+                } catch (RuntimeException e) {
+                    scheduleRetry(attempt, maxAttempts,
+                            "decode (" + e.getClass().getSimpleName() + ")", response, policy);
+                    continue;
+                }
+            }
+            return response;
+        }
+    }
+
+    private long retryDelayMillis(int attempt, int maxAttempts, String failure, WireResponse response, RetryPolicy policy) {
+        long delayMillis = policy.nextDelayMillis(attempt, retryAfterDelayMillis(response), ThreadLocalRandom.current());
+        logger.log(System.Logger.Level.DEBUG,
+                "Attempt " + attempt + "/" + maxAttempts + " failed: " + failure
+                        + " — retrying in " + delayMillis + " ms");
+        return delayMillis;
+    }
+
+    private void scheduleRetry(int attempt, int maxAttempts, String failure, WireResponse response, RetryPolicy policy)
+            throws InterruptedException {
+        long delayMillis = retryDelayMillis(attempt, maxAttempts, failure, response, policy);
+        if (delayMillis > 0) {
+            Thread.sleep(delayMillis);
+        }
+    }
+
+    private CompletableFuture<WireResponse> executeAsyncWithRetries(WireRequest request) {
+        return attemptAsync(request, 1, retryPolicy.getMaxAttempts());
+    }
+
+    private CompletableFuture<WireResponse> attemptAsync(WireRequest request, int attempt, int maxAttempts) {
+        RetryPolicy policy = retryPolicy;
+        boolean last = attempt == maxAttempts;
+        int hopsLeft = followRedirectsNumber == null ? 0 : followRedirectsNumber;
+
+        return executeAsyncWithRedirects(request, hopsLeft)
+                .<CompletableFuture<WireResponse>>handle((response, failure) -> {
+                    if (failure != null) {
+                        Throwable cause = unwrapCause(failure);
+                        if (cause instanceof InterruptedException) {
+                            return CompletableFuture.failedFuture(failure);
+                        }
+                        if (cause instanceof IOException && !last && policy.isRetryTransport()) {
+                            return scheduleAsyncRetry(request, attempt, maxAttempts, cause.getClass().getSimpleName(), null, policy);
+                        }
+                        return CompletableFuture.failedFuture(failure);
+                    }
+
+                    if (!last && isStatusRetry(policy, response)) {
+                        return scheduleAsyncRetry(request, attempt, maxAttempts, "HTTP " + response.statusCode(), response, policy);
+                    }
+                    if (!last && policy.isRetryDecodeFailures()) {
+                        try {
+                            probePayloadDecode(response);
+                        } catch (RuntimeException e) {
+                            return scheduleAsyncRetry(request, attempt, maxAttempts,
+                                    "decode (" + e.getClass().getSimpleName() + ")", response, policy);
+                        }
+                    }
+                    return CompletableFuture.completedFuture(response);
+                })
+                .thenCompose(Function.identity());
+    }
+
+    private CompletableFuture<WireResponse> scheduleAsyncRetry(
+            WireRequest request, int attempt, int maxAttempts, String failure, WireResponse response, RetryPolicy policy) {
+        long delayMillis = retryDelayMillis(attempt, maxAttempts, failure, response, policy);
+        if (delayMillis <= 0) {
+            return attemptAsync(request, attempt + 1, maxAttempts);
+        }
+        return CompletableFuture.runAsync(() -> { },
+                        CompletableFuture.delayedExecutor(delayMillis, TimeUnit.MILLISECONDS))
+                .thenCompose(ignored -> attemptAsync(request, attempt + 1, maxAttempts));
+    }
+
+    private boolean isStatusRetry(RetryPolicy policy, WireResponse response) {
+        int status = response.statusCode();
+        if (onErrorParser != null && onErrorParser.canParse(status)) {
+            if (!policy.isRetryOnErrorStatuses()) {
+                return false;
+            }
+        } else if (isExpectedStatus(status)) {
+            return false;
+        }
+        if (!policy.getRetryableStatuses().contains(status)) {
+            return false;
+        }
+        return policy.isRetryNonIdempotent() || !isNonIdempotent(httpMethod);
+    }
+
+    private static boolean isNonIdempotent(HttpMethod method) {
+        return method == HttpMethod.POST || method == HttpMethod.PATCH;
+    }
+
+    // Probes if the payload can be deserialized; throws codec exception if invalid
+    void probePayloadDecode(WireResponse response) {
+        int status = response.statusCode();
+        if (onErrorParser != null && onErrorParser.canParse(status)) {
+            return;
+        }
+        if (!isExpectedStatus(status)) {
+            return;
+        }
+
+        byte[] bytes = response.body();
+        String payload = (bytes != null && bytes.length > 0) ? new String(bytes, StandardCharsets.UTF_8) : null;
+        if (payload == null) {
+            return;
+        }
+        if (String.class.equals(returnType)) {
+            return;
+        }
+        if (Void.class.equals(returnType) || void.class.equals(returnType)) {
+            return;
+        }
+
+        jsonCodec.deserialize(payload, returnType);
+    }
+
+    // Parses Retry-After header as delta-seconds or HTTP-date (IMF-fixdate, RFC 850, asctime)
+    Long retryAfterDelayMillis(WireResponse response) {
+        if (response == null) {
+            return null;
+        }
+        String raw = response.headers().stream()
+                .filter(h -> h.name() != null && h.name().equalsIgnoreCase("Retry-After"))
+                .map(Header::value)
+                .findFirst()
+                .orElse(null);
+        if (raw == null) {
+            return null;
+        }
+        String value = raw.trim();
+        if (value.isEmpty()) {
+            return null;
+        }
+        try {
+            return Long.parseLong(value) * 1_000L;
+        } catch (NumberFormatException ignored) {
+        }
+        try {
+            return delayFromParsedDate(ZonedDateTime.parse(value, DateTimeFormatter.RFC_1123_DATE_TIME));
+        } catch (DateTimeParseException ignored) {
+        }
+        String rfc850Body = value;
+        int comma = value.indexOf(',');
+        if (comma > 0 && RFC850_WEEKDAYS.contains(value.substring(0, comma))) {
+            rfc850Body = value.substring(comma + 1).trim();
+        }
+        try {
+            return delayFromParsedDate(pivotRfc850Year(ZonedDateTime.parse(rfc850Body, RFC850_DATE)));
+        } catch (DateTimeParseException ignored) {
+        }
+        try {
+            return delayFromParsedDate(
+                    ZonedDateTime.parse(ASCTIME_SPACE_RUNS.matcher(value).replaceAll(" "), ASCTIME_DATE));
+        } catch (DateTimeParseException ignored) {
+            return null;
+        }
+    }
+
+    private static long delayFromParsedDate(ZonedDateTime date) {
+        return Math.max(0L, date.toInstant().toEpochMilli() - System.currentTimeMillis());
+    }
+
+    // 2-digit year pivot: 80-99 maps to 1980-1999
+    private static ZonedDateTime pivotRfc850Year(ZonedDateTime date) {
+        return date.getYear() % 100 >= 80 ? date.minusYears(100) : date;
     }
 
     // next redirect hop, or null when the chain stops (no @FollowRedirects, non-redirect status, missing Location)
@@ -482,6 +695,10 @@ public class HttpTemplate {
 
     public void setHttpVersion(HttpClient.Version httpVersion) {
         this.httpVersion = httpVersion;
+    }
+
+    public void setRetryPolicy(RetryPolicy retryPolicy) {
+        this.retryPolicy = retryPolicy != null ? retryPolicy : RetryPolicy.off();
     }
 
     public void setModuleInfo(ModuleInfo moduleInfo) {

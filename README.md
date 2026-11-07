@@ -4,7 +4,7 @@
 
 A declarative HTTP client for Java. Define an interface, get a working client — no code generation, just a dynamic proxy over `java.net.http.HttpClient` with a zero-dependency core.
 
-> **Status:** early development, current release v0.9.0 — asynchronous controller returns (non-blocking CompletableFuture<T> dispatch, unified exception mapping). See `ROADMAP.md`.
+> **Status:** early development, current release v0.10.0 — retry contract: transport / status / Retry-After / payload-decode retries with exponential backoff and full jitter. See `ROADMAP.md`.
 
 ## Features
 
@@ -32,7 +32,7 @@ repositories {
 }
 
 dependencies {
-    implementation("com.github.longirun:jRestly:v0.9.0")
+    implementation("com.github.longirun:jRestly:v0.10.0")
     // JSON codec is not bundled — bring your own; Jackson 2 is autodetected
     implementation("com.fasterxml.jackson.core:jackson-databind:2.18.2")
 }
@@ -47,7 +47,7 @@ repositories {
 }
 
 dependencies {
-    implementation 'com.github.longirun:jRestly:v0.9.0'
+    implementation 'com.github.longirun:jRestly:v0.10.0'
     // JSON codec is not bundled — bring your own; Jackson 2 is autodetected
     implementation 'com.fasterxml.jackson.core:jackson-databind:2.18.2'
 }
@@ -66,7 +66,7 @@ dependencies {
 <dependency>
     <groupId>com.github.longirun</groupId>
     <artifactId>jRestly</artifactId>
-    <version>v0.9.0</version>
+    <version>v0.10.0</version>
 </dependency>
 <dependency>
     <groupId>com.fasterxml.jackson.core</groupId>
@@ -201,6 +201,41 @@ public interface AsyncItemApi {
 - **Wire contract unwrapping:** The generic type parameter `T` is unwrapped as the wire target (supports domain DTOs, collections, raw `String`, and `Void` on 204 or empty responses).
 - **Unified exception mapping:** On failure, the future completes exceptionally with the exact same exception types as synchronous calls (`HandledException`, `UnexpectedStatusException`, `RuntimeException` wrapping `IOException`). Per standard JDK semantics, `join()` wraps the failure in `CompletionException` and `get()` wraps it in `ExecutionException`.
 - **Async redirects:** Works transparently with `@FollowRedirects`, following redirect chains non-blockingly while preserving method and body semantics (307/308).
+
+## Retry with backoff
+
+Retry is **off by default** — an existing client's failure timing never changes until it is opted into, at the client level or per method:
+
+```java
+JRestlyClient client = JRestlyClient.builder()
+        .baseUrl("https://api.example.com")
+        .retry(RetryPolicy.builder()
+                .maxAttempts(3)                     // total attempts, including the first
+                .initialBackoff(Duration.ofMillis(200))
+                .maxBackoff(Duration.ofSeconds(5))  // exponential growth with a cap
+                .build())
+        .build();
+
+public interface FlakyApi {
+
+    @Get(path = "/api/items/${id}")
+    Item getItem(@PathVariable(name = "id") long id);
+
+    // The annotation is a self-contained policy: it replaces the client-level
+    // one entirely. @Retry(times = 1) is the explicit off-switch.
+    @Retry(times = 3, initialBackoffMs = 200, maxBackoffMs = 5_000)
+    @Get(path = "/api/search")
+    List<Item> search(@RequestParam(name = "q") String query);
+}
+```
+
+- **What is retried:** transport failures (`IOException` — timeouts, connection resets, DNS blips), and responses whose status is in the transient family `{408, 429, 500, 502, 503, 504}` (configurable via `statuses`). A bare 404 is deterministic and stops on the first attempt. `InterruptedException` is never retried.
+- **Idempotency (RFC 9110):** GET/PUT/DELETE are retried by default; POST/PATCH only with `nonIdempotent = true` — a retry happens after the request was sent, so a lost response on a successful POST is a classic double-submit.
+- **`@OnError` is a terminal contract:** statuses declared in `@OnError.statuses` fail fast with the typed `HandledException` unless `onErrorStatuses = true` opts them into the retry decision — and the final failure still stays a typed `HandledException`.
+- **Backoff:** exponential (`initialBackoff · 2^(n-1)`, capped at `maxBackoff`) with **full jitter** — the wait is a uniform draw in `[0, bound]`, so concurrent clients do not retry on the same beat and re-break a recovering server. `initialBackoff == maxBackoff` pins a fixed delay.
+- **`Retry-After`:** a parseable header (delta-seconds or any of the three RFC 9110 HTTP-date forms) replaces the jitter with a deterministic wait of `max(bound, min(cap, retryAfter))` — the server's explicit signal wins. The cap is `maxRetryAfter` when set, `maxBackoff` otherwise, so an unbounded server value (`Retry-After: 86400`) can never park the caller for a day; `respectRetryAfter = false` ignores the header entirely.
+- **Payload-decode retry:** a `200` whose bytes arrived but do not bind to the declared type is retried only with the distinct `decodeFailures = true` opt-in — "enable retry" stays a zero change on the success path. When attempts are exhausted on an unbindable body, the final failure is the codec's own exception, exactly as without retry.
+- **Sync and async are uniform:** a `CompletableFuture`-returning method retries with the same decisions, backoff and final exception; the async wait is spent on `CompletableFuture.delayedExecutor` without parking a thread.
 
 ## Multipart uploads
 

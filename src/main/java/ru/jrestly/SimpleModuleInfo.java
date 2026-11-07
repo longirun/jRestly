@@ -2,6 +2,7 @@ package ru.jrestly;
 
 import ru.jrestly.http.AuthHeaderProvider;
 import ru.jrestly.http.Header;
+import ru.jrestly.http.RetryPolicy;
 import ru.jrestly.json.JsonCodec;
 import ru.jrestly.json.JsonCodecResolver;
 
@@ -23,6 +24,7 @@ public class SimpleModuleInfo implements ModuleInfo {
     private final HttpClient.Version httpVersion;
     private final List<Header> defaultHeaders;
     private final boolean validateControllers;
+    private final RetryPolicy retryPolicy;
 
     private SimpleModuleInfo(Builder builder) {
         this.name = builder.name;
@@ -36,6 +38,7 @@ public class SimpleModuleInfo implements ModuleInfo {
         this.httpVersion = builder.httpVersion;
         this.defaultHeaders = Collections.unmodifiableList(new ArrayList<>(builder.defaultHeaders.values()));
         this.validateControllers = builder.validateControllers;
+        this.retryPolicy = builder.retryPolicy;
     }
 
     public static Builder builder() {
@@ -88,6 +91,11 @@ public class SimpleModuleInfo implements ModuleInfo {
         return validateControllers;
     }
 
+    @Override
+    public RetryPolicy getRetryPolicy() {
+        return retryPolicy != null ? retryPolicy : RetryPolicy.off();
+    }
+
     public static class Builder {
         private String name = "default";
         private String baseUrl;
@@ -99,6 +107,7 @@ public class SimpleModuleInfo implements ModuleInfo {
         private HttpClient.Version httpVersion = HttpClient.Version.HTTP_2;
         private final Map<String, Header> defaultHeaders = new LinkedHashMap<>();
         private boolean validateControllers = true;
+        private RetryPolicy retryPolicy;
 
         public Builder name(String name) {
             this.name = name;
@@ -167,6 +176,11 @@ public class SimpleModuleInfo implements ModuleInfo {
 
         public Builder validateControllers(boolean validate) {
             this.validateControllers = validate;
+            return this;
+        }
+
+        public Builder retry(RetryPolicy retryPolicy) {
+            this.retryPolicy = java.util.Objects.requireNonNull(retryPolicy, "retryPolicy");
             return this;
         }
 

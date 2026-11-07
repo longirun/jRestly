@@ -1,6 +1,7 @@
 package ru.jrestly;
 
 import ru.jrestly.http.Header;
+import ru.jrestly.http.RetryPolicy;
 import ru.jrestly.json.JsonCodec;
 import ru.jrestly.json.JsonCodecResolver;
 
@@ -34,6 +35,10 @@ public interface ModuleInfo {
 
     default HttpClient.Version getHttpVersion() {
         return HttpClient.Version.HTTP_2;
+    }
+
+    default RetryPolicy getRetryPolicy() {
+        return RetryPolicy.off();
     }
 
     default boolean isValidateControllers() {

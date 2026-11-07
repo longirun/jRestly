@@ -19,6 +19,7 @@ import ru.jrestly.annotation.RequestBody;
 import ru.jrestly.annotation.RequestDefaultParam;
 import ru.jrestly.annotation.RequestHeader;
 import ru.jrestly.annotation.RequestParam;
+import ru.jrestly.annotation.Retry;
 import ru.jrestly.annotation.SetAuthDetails;
 
 import java.io.File;
@@ -32,6 +33,7 @@ import java.net.http.HttpClient;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -121,6 +123,7 @@ public class HttpTemplateBuilder {
         result.setExpectStatuses(createExpectStatuses());
         result.setFollowRedirectsNumber(getFollowRedirectsNumber());
         result.setHttpVersion(getHttpVersion());
+        result.setRetryPolicy(resolveRetryPolicy());
 
         return result;
     }
@@ -716,5 +719,27 @@ public class HttpTemplateBuilder {
         }
 
         return null;
+    }
+
+    private RetryPolicy resolveRetryPolicy() {
+        Retry annotation = method.getAnnotation(Retry.class);
+        if (annotation == null) {
+            return moduleInfo.getRetryPolicy();
+        }
+
+        return RetryPolicy.builder()
+                .maxAttempts(annotation.times())
+                .initialBackoff(Duration.ofMillis(annotation.initialBackoffMs()))
+                .maxBackoff(Duration.ofMillis(annotation.maxBackoffMs()))
+                .retryableStatuses(Arrays.stream(annotation.statuses()).boxed().toList())
+                .retryTransport(annotation.transport())
+                .retryDecodeFailures(annotation.decodeFailures())
+                .retryOnErrorStatuses(annotation.onErrorStatuses())
+                .retryNonIdempotent(annotation.nonIdempotent())
+                .respectRetryAfter(annotation.respectRetryAfter())
+                .maxRetryAfter(annotation.maxRetryAfterMs() < 0
+                        ? null
+                        : Duration.ofMillis(annotation.maxRetryAfterMs()))
+                .build();
     }
 }

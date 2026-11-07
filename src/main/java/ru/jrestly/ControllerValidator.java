@@ -12,6 +12,7 @@ import ru.jrestly.annotation.Put;
 import ru.jrestly.annotation.RequestDefaultParam;
 import ru.jrestly.annotation.RequestHeader;
 import ru.jrestly.annotation.RequestParam;
+import ru.jrestly.annotation.Retry;
 import ru.jrestly.http.RequestType;
 
 import java.lang.reflect.AnnotatedElement;
@@ -158,6 +159,7 @@ public final class ControllerValidator {
         }
         validateMediaTypes(method, method.getName() + "()", problems);
         validateParameterNames(method, problems);
+        validateRetry(method, problems);
 
         RequestType requestType = resolveRequestType(method);
 
@@ -240,5 +242,33 @@ public final class ControllerValidator {
             return "RequestHeader";
         }
         return null;
+    }
+
+    private static void validateRetry(Method method, List<String> problems) {
+        Retry retry = method.getAnnotation(Retry.class);
+        if (retry == null) {
+            return;
+        }
+
+        if (retry.times() < 1) {
+            problems.add(method.getName() + "(): @Retry times must be >= 1, got " + retry.times());
+        }
+        if (retry.initialBackoffMs() < 0) {
+            problems.add(method.getName() + "(): @Retry initialBackoffMs must not be negative, got "
+                    + retry.initialBackoffMs());
+        }
+        if (retry.maxBackoffMs() < 0) {
+            problems.add(method.getName() + "(): @Retry maxBackoffMs must not be negative, got "
+                    + retry.maxBackoffMs());
+        }
+        if (retry.initialBackoffMs() >= 0 && retry.initialBackoffMs() > retry.maxBackoffMs()) {
+            problems.add(method.getName() + "(): @Retry initialBackoffMs must not exceed maxBackoffMs, got "
+                    + retry.initialBackoffMs() + " > " + retry.maxBackoffMs());
+        }
+        for (int status : retry.statuses()) {
+            if (status < 100 || status > 599) {
+                problems.add(method.getName() + "(): @Retry status must be in [100, 599], got " + status);
+            }
+        }
     }
 }

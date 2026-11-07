@@ -134,6 +134,10 @@ public interface TestController {
     @Get(path = "/api/server-error")
     CompletableFuture<TestDto> getServerErrorFaultAsync();
 
+    @Get(path = "/api/rate-limited")
+    @OnError(statuses = {429}, errorObject = TestErrorDto.class)
+    TestDto getRateLimited();
+
     @Delete(path = "/api/items/${id}/silent")
     @ExpectStatus(statuses = {204})
     void deleteSilent(@PathVariable(name = "id") Long id);

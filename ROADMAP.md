@@ -17,6 +17,22 @@ All architectural features are ported from the research branch `jrestly-infinite
 
 ---
 
+## 0.10.0 — Retry Contract: Transport, Status, Retry-After, Decode (FEAT-09, FEAT-10, FEAT-11)
+
+Source of truth: `jrestly-infinite` (`ba68f1f`) ADR-0008 (retry with backoff), ADR-0010 (obsolete `Retry-After` forms), ADR-0040 (bounds; its jitter/multiplier surface deliberately deferred — see FEAT-44), ADR-0011 (payload-decode retry). Local ADRs: [ADR-0012](docs/0.10/ADR-0012-retry-policy-exponential-backoff-jitter.md), [ADR-0013](docs/0.10/ADR-0013-retry-after-obsolete-date-forms-and-bounds.md), [ADR-0014](docs/0.10/ADR-0014-payload-decode-retry.md).
+Gates: WireMock suite green (`./gradlew test`), IDE inspections clean, zero `<dependency>` in generated POM.
+
+- [x] FEAT-09 — `RetryPolicy` value class + `@Retry` (client-level policy, self-contained per-method override), sync `executeWithRetries` + async twin on `delayedExecutor`, RFC 9110 idempotency gates, `@OnError` terminal contract with `retryOnErrorStatuses` opt-in, exponential backoff with cap and full jitter, `Retry-After` live forms (delta-seconds + IMF-fixdate) via the deterministic `max(bound, retryAfter)` rule, eager `@Retry` validation — [ADR-0012](docs/0.10/ADR-0012-retry-policy-exponential-backoff-jitter.md)
+- [x] FEAT-10 — `Retry-After` obsolete HTTP-date forms (RFC 850 with the two-digit-year pivot, asctime with the RFC's UTC assumption and whitespace collapse) + wait bounds (`maxRetryAfter` cap with the default fallback to `maxBackoff`, `respectRetryAfter` opt-out) — [ADR-0013](docs/0.10/ADR-0013-retry-after-obsolete-date-forms-and-bounds.md)
+- [x] FEAT-11 — payload-decode retry: the `probePayloadDecode` seam (side-effect-free, "classified exactly once" preserved), the distinct `retryDecodeFailures` opt-in in both loops, the final failure stays the codec's own exception — [ADR-0014](docs/0.10/ADR-0014-payload-decode-retry.md)
+- [x] Docs — README section "Retry with backoff"
+- [ ] Release finalize — atomic commits (`1 feature = 1 commit`), version bump `v0.10.0`, tag, ROADMAP closure (pending the developer's commit approval)
+
+> Verification: full WireMock suite 331 tests green (75 new across the cycle), IDE inspections clean on all touched files, generated POM with zero `<dependency>`.
+> The retry contract is feature-complete after this cycle: transport + status + `Retry-After` + decode, no remaining substantive known gap. Documented deviations: the reference's `Jitter` enum / `backoffMultiplier` are deferred to FEAT-44 (ADR-0012/0013); the reference's `RetryExecutor` extraction is not ported — the loop stays on `HttpTemplate` per ADR-0008 Aspect 6; the reference's Amendment #184 (default `Retry-After` cap) is applied directly instead of reproducing the uncapped-default bug.
+
+---
+
 ## 0.9.0 — Async Controller Returns (FEAT-08) ✅ COMPLETE (2026-11-02)
 
 Source of truth: `jrestly-infinite` ADR-0003 / commit `f1a9dbe`. Local ADR: [ADR-0011](docs/0.9/ADR-0011-completable-future-return-types.md).

@@ -218,6 +218,34 @@ public class ControllerValidationTest {
         assertTrue(ControllerValidator.validate(PathAndMultipartParamController.class).isEmpty());
     }
 
+    interface InvalidRetryController {
+        @ru.jrestly.annotation.Get(path = "/x")
+        @ru.jrestly.annotation.Retry(times = 0, initialBackoffMs = 500, maxBackoffMs = 200, statuses = {503, 99, 600})
+        String call();
+    }
+
+    interface ValidRetryController {
+        @ru.jrestly.annotation.Get(path = "/x")
+        @ru.jrestly.annotation.Retry(times = 3, initialBackoffMs = 10, maxBackoffMs = 50)
+        String call();
+    }
+
+    @Test
+    void rejectsInvalidRetryConfigurationEagerly() {
+        List<String> problems = ControllerValidator.validate(InvalidRetryController.class);
+        assertEquals(4, problems.size());
+        assertTrue(problems.stream().anyMatch(p -> p.startsWith("call(): @Retry times must be >= 1, got 0")));
+        assertTrue(problems.stream().anyMatch(p ->
+                p.startsWith("call(): @Retry initialBackoffMs must not exceed maxBackoffMs, got 500 > 200")));
+        assertTrue(problems.stream().anyMatch(p -> p.contains("@Retry status must be in [100, 599], got 99")));
+        assertTrue(problems.stream().anyMatch(p -> p.contains("@Retry status must be in [100, 599], got 600")));
+
+        JRestlyClient client = JRestlyClient.builder().baseUrl("http://localhost:1").build();
+        assertThrows(ControllerValidationException.class, () -> client.get(InvalidRetryController.class));
+
+        assertTrue(ControllerValidator.validate(ValidRetryController.class).isEmpty());
+    }
+
     // The test classpath is built with -parameters, so a class lacking the
     // MethodParameters attribute must be produced at runtime. The loader stays
     // open so the proxy can be built on the returned class.
